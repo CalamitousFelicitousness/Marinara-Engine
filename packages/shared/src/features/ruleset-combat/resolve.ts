@@ -62,6 +62,7 @@ import {
   spendRulesetShots,
   rulesetShotsAvailable,
   rulesetStoredNow,
+  rulesetHeldDrawPlan,
 } from "./ammo.js";
 import { parseRulesetCombatDice, rollRulesetDice, rulesetCombatRoller, sumOf } from "./dice.js";
 import { blocksSight, elevationAt } from "../tactical-combat/math.js";
@@ -7581,6 +7582,45 @@ function whyNotOffered(
 let shiftingSaves = false;
 
 export function applyRulesetCombatChoice(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  choice: RulesetCombatChoice,
+  roller: RulesetCombatRoller,
+): RulesetCombatStep {
+  return withItemDrawn(definition, applyShiftedChoice(definition, state, choice, roller), choice);
+}
+
+/**
+ * A choice made with a held item drawn as it is used (Capability API 1.800), a blow or a use, puts it
+ * in its user's hands once it is made, as a free swap: the fewest other such items in its slots are
+ * put away (`rulesetHeldDrawPlan`), and both are written to the bag as the step is saved. A refused
+ * choice draws nothing; nor does one whose item could not be drawn, which the menu never offers.
+ */
+function withItemDrawn(
+  definition: RulesetDefinition,
+  step: RulesetCombatStep,
+  choice: RulesetCombatChoice,
+): RulesetCombatStep {
+  if (!/^(?:item|offhand|use):\d/.test(choice.optionId) || step.events.some((event) => event.type === "refused"))
+    return step;
+  const index = rulesetActionItemIndex({ id: choice.optionId });
+  const actor = rulesetCombatant(step.state, choice.actorId);
+  const items = actor?.sheet?.items;
+  const held = index !== undefined ? items?.[index] : undefined;
+  if (!actor || !items || index === undefined || !held?.drawOnUse || (actor.drawn?.[index] ?? held.worn)) return step;
+  const plan = rulesetHeldDrawPlan(definition, items, index, actor.drawn);
+  if (!("stow" in plan)) return step;
+  const drawn = { ...actor.drawn, [index]: true, ...Object.fromEntries(plan.stow.map((at) => [at, false])) };
+  return {
+    ...step,
+    state: {
+      ...step.state,
+      combatants: step.state.combatants.map((one) => (one.id === actor.id ? { ...one, drawn } : one)),
+    },
+  };
+}
+
+function applyShiftedChoice(
   definition: RulesetDefinition,
   state: RulesetEncounterState,
   choice: RulesetCombatChoice,

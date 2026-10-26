@@ -155,7 +155,11 @@ export async function gameInventoryRoutes(app: FastifyInstance) {
       parsed.data.lasts,
     );
     if (!used.ok)
-      return reply.status(used.status).send({ error: used.error, ...(used.reason ? { reason: used.reason } : {}) });
+      return reply.status(used.status).send({
+        error: used.error,
+        ...(used.reason ? { reason: used.reason } : {}),
+        ...(used.heldBy ? { heldBy: used.heldBy } : {}),
+      });
     return {
       inventory: used.inventory,
       rulesetLive: used.rulesetLive,

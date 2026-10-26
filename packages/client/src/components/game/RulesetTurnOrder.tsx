@@ -126,9 +126,12 @@ export function RulesetTurnOrder({
   // The leader is the character the player plays as their own, as the fight says; else whoever of the
   // party is still standing first, as the old controls said. Theirs is shown and locked.
   const leader = view.lead ?? units.find((unit) => unit.side === "player" && unit.hp > 0)?.id;
+  // In a shared room (2026-10-26) only the viewer's own are theirs to command; the rest say who plays them.
+  const yours = (id: string) => !view.yours || view.yours.includes(id);
   // The companions, all at once: every party member but the leader, whoever was called aside.
   const companions = view.combatants.filter(
-    (combatant) => combatant.side === "party" && combatant.id !== leader && unitById.has(combatant.id),
+    (combatant) =>
+      combatant.side === "party" && combatant.id !== leader && unitById.has(combatant.id) && yours(combatant.id),
   );
   const companionControllers = new Set(companions.map((combatant) => unitById.get(combatant.id)?.controller ?? "ai"));
   const companionsValue = companionControllers.size === 1 ? [...companionControllers][0]! : "mixed";
@@ -193,7 +196,18 @@ export function RulesetTurnOrder({
           const unit = unitById.get(combatant.id);
           const percent = rulesetHealthPercent(combatant.health);
           const state = rulesetStateWord(combatant, t);
+          // Another room player's own character says whose it is, and that the Engine plays it for them.
+          const player = combatant.side === "party" && !yours(combatant.id) ? view.players?.[combatant.id] : undefined;
+          const playedBy = player
+            ? t(
+                unit?.controller === "ai"
+                  ? "game.combat.ruleset.screen.playedByEngineFor"
+                  : "game.combat.ruleset.screen.playedBy",
+                { name: player.name },
+              )
+            : "";
           const second = [
+            playedBy,
             combatant.kind ? rulesetKindLine(combatant.kind) : "",
             combatant.tier ? t("game.combat.ruleset.status.tier", { label: names.tier(combatant.tier) }) : "",
             // Its legendary points as they stand, on the board's table too (laptop 2026-10-26: shown
@@ -287,7 +301,14 @@ export function RulesetTurnOrder({
                     ) : null}
                   </span>
                 )}
-                {party && !isLeader ? (
+                {party && !yours(combatant.id) ? (
+                  <span
+                    className="inline-flex h-6 min-w-0 items-center truncate rounded-md border border-dashed border-[var(--border)] px-1.5 text-[0.7rem] text-[var(--muted-foreground)]"
+                    title={playedBy || undefined}
+                  >
+                    {player ? player.name : t("game.combat.ruleset.screen.host")}
+                  </span>
+                ) : party && !isLeader ? (
                   <select
                     aria-label={t("game.combat.ai.controllerFor", { name: combatant.name })}
                     value={unit?.controller ?? "ai"}

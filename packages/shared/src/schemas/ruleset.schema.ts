@@ -11109,6 +11109,19 @@ const itemsSchema = z
     tags: z.array(itemWordSchema).max(48).optional(),
     stats: z.array(rulesetItemStatSchema).max(24).optional(),
     slots: z.array(itemSlotSchema).max(12).optional(),
+    /** Items drawn as they are used (Capability API 1.800): those of one of these `categories` or
+     *  carrying one of these `tags`. One still takes its slots only while it is on, and is put on only
+     *  where they are free, but it is used while only carried: a use puts it on, first putting away
+     *  the fewest other such items that hold the slots it needs. Nothing else is ever taken off for it,
+     *  and where that leaves no room the use is refused. 5e's weapons: `{ "categories": ["weapon"] }`. */
+    drawOnUse: z
+      .object({
+        categories: z.array(sheetId).min(1).max(24).optional(),
+        tags: z.array(sheetId).min(1).max(48).optional(),
+      })
+      .strict()
+      .refine((draws) => draws.categories || draws.tags, { message: 'Say what is drawn: "categories", "tags" or both' })
+      .optional(),
     /** Attunement, investiture and the like: how many items one character may have bound at once,
      *  read off their sheet. */
     binding: z
@@ -18727,6 +18740,15 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           if (id !== undefined && !words[key].some((word) => word.id === id)) {
             issue([...path, "filter", key], `Unknown item ${key} "${id}"`);
           }
+        }
+      });
+    });
+    // What is drawn as it is used (1.800): categories and tags the block declares.
+    (["categories", "tags"] as const).forEach((key) => {
+      const known = key === "categories" ? items.categories : (items.tags ?? []);
+      items.drawOnUse?.[key]?.forEach((id, index) => {
+        if (!known.some((word) => word.id === id)) {
+          issue(at("drawOnUse", key, index), `Unknown item ${key === "categories" ? "category" : "tag"} "${id}"`);
         }
       });
     });

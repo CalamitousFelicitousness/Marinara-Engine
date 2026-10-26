@@ -53,7 +53,14 @@ export type GameItemUseResult =
       revealed?: string;
       playerStats?: unknown;
     }
-  | { ok: false; status: 404 | 409; error: string; reason?: RulesetItemUseRefusal | "no-ruleset" | "no-state" };
+  | {
+      ok: false;
+      status: 404 | 409;
+      error: string;
+      reason?: RulesetItemUseRefusal | "no-ruleset" | "no-state";
+      /** For `slots-full` (1.800): what holds the slots the item needs to be drawn, by name. */
+      heldBy?: string[];
+    };
 
 /** The card a character plays with, and the bag they carry: the player's own for the player's card
  *  (the one named for who the chat plays as, or the first card), and their own otherwise. */
@@ -270,7 +277,10 @@ export async function rollGameFightItemGate(
 
 /** A use refused inside the transaction, so nothing it touched is written. */
 class ItemUseRefused extends Error {
-  constructor(readonly reason: RulesetItemUseRefusal | "no-state") {
+  constructor(
+    readonly reason: RulesetItemUseRefusal | "no-state",
+    readonly heldBy?: string[],
+  ) {
     super(reason);
   }
 }
@@ -305,7 +315,7 @@ export async function useGameRulesetItem(
         let next: RulesetLiveStates = stored;
         committed = await applyGameInventoryChangeHeld(db, chatId, (stacks) => {
           const done = useForCarrier(context, book.itemOf, stacks, stackId, stored, roll, more, lasts);
-          if (!done.outcome.ok) throw new ItemUseRefused(done.outcome.reason);
+          if (!done.outcome.ok) throw new ItemUseRefused(done.outcome.reason, done.outcome.heldBy);
           outcome = done.outcome;
           revealed = done.revealed;
           next = done.live;
@@ -320,6 +330,17 @@ export async function useGameRulesetItem(
   } catch (error) {
     if (!(error instanceof ItemUseRefused)) throw error;
     if (error.reason === "no-stack") return { ok: false, status: 404, error: "No such stack", reason: "no-stack" };
+    // Drawn as it is used (1.800), with its slots held by what is not put away for it.
+    if (error.reason === "slots-full")
+      return {
+        ok: false,
+        status: 409,
+        error: error.heldBy?.length
+          ? `The item could not be drawn: its slots are held by ${error.heldBy.join(", ")}`
+          : "The item could not be drawn: its user has too few of the slots it takes",
+        reason: error.reason,
+        heldBy: error.heldBy ?? [],
+      };
     return { ok: false, status: 409, error: `The item could not be used (${error.reason})`, reason: error.reason };
   }
   const used = outcome as Extract<ReturnType<typeof useRulesetItemOutsideFight>, { ok: true }> | null;

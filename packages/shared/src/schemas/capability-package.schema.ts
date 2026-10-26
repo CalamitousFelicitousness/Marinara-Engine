@@ -1518,7 +1518,9 @@ const capabilityPackageManifestBaseSchema = z
 // 1.797: `combat.signatureAtTurnStart`: signature actions also bought as a foe's turn starts.
 // 1.799: a sheet list's `ritual`: a yes-or-no column whose ticked rows may be used outside a fight as a
 //        ritual, the use tag's ritual="yes", paying none of their pools (5e's ritual spells).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 799 } as const);
+// 1.800: `items.drawOnUse`: items of some categories or tags used while only carried, each put in hand
+//        as it is used by putting away the fewest other such items in its slots (5e's weapons).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 800 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

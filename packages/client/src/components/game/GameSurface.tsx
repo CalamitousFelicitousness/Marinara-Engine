@@ -9379,6 +9379,12 @@ function GameSurfaceComponent({
           error instanceof ApiError && error.payload && typeof error.payload === "object"
             ? (error.payload as { reason?: unknown }).reason
             : undefined;
+        // Drawn as it is used (1.800), with what holds the slots it needs named.
+        const heldBy =
+          error instanceof ApiError && error.payload && typeof error.payload === "object"
+            ? (error.payload as { heldBy?: unknown }).heldBy
+            : undefined;
+        const held = Array.isArray(heldBy) ? heldBy.filter((name) => typeof name === "string").join(", ") : "";
         // Nothing the Engine uses: it is said as any other item is.
         if (reason === "no-use" || reason === "not-ruleset-item" || reason === "no-ruleset") {
           if (useChatStore.getState().activeChatId === usedIn) said();
@@ -9390,14 +9396,18 @@ function GameSurfaceComponent({
               ? "ui.game.gamesurfacecomponent.itemUseNoneLeft"
               : reason === "not-worn"
                 ? "ui.game.gamesurfacecomponent.itemUseNotWorn"
-                : reason === "forbidden"
-                  ? "ui.game.gamesurfacecomponent.itemUseForbidden"
-                  : reason === "needs-unmet"
-                    ? "ui.game.gamesurfacecomponent.itemUseNeedsUnmet"
-                    : reason === "dead"
-                      ? "ui.game.gamesurfacecomponent.itemUseDead"
-                      : "ui.game.gamesurfacecomponent.itemUseFailed",
-            { item: label },
+                : reason === "slots-full"
+                  ? held
+                    ? "ui.game.gamesurfacecomponent.itemUseSlotsFull"
+                    : "ui.game.gamesurfacecomponent.itemUseNoSlots"
+                  : reason === "forbidden"
+                    ? "ui.game.gamesurfacecomponent.itemUseForbidden"
+                    : reason === "needs-unmet"
+                      ? "ui.game.gamesurfacecomponent.itemUseNeedsUnmet"
+                      : reason === "dead"
+                        ? "ui.game.gamesurfacecomponent.itemUseDead"
+                        : "ui.game.gamesurfacecomponent.itemUseFailed",
+            { item: label, held },
           ),
         );
         return;

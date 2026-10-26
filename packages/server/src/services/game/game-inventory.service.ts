@@ -462,6 +462,7 @@ async function endWhatWornItemsKept(
   if (!book) return;
   const worn = new Set(
     stacks.flatMap((stack) => {
+      // Read off the catalog item, so one drawn as it is used (1.800) counts only while it is on.
       const item = stack.item ? book.itemOf(stack.item)?.entry.item : undefined;
       return item && gameInventoryWearMet(stack, gameInventoryWearNeeds(item)) ? [stack.id] : [];
     }),

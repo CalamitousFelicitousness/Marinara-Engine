@@ -121,7 +121,7 @@ import {
   rulesetZoneCells,
 } from "./grid.js";
 import { rulesetCombatAdvantage, rulesetCombatIsPool, rulesetPoolDie, throwRulesetCombatPool } from "./pool.js";
-import { rulesetActionItemIndex, rulesetDroppedItems } from "./ammo.js";
+import { rulesetActionItemIndex, rulesetDroppedItems, rulesetHeldDrawPlan, rulesetHeldReady } from "./ammo.js";
 import { rulesetMountLoad, rulesetPaidLevel, rulesetReactionsAt, rulesetSheetWithin } from "./options.js";
 import { rulesetCanSee, rulesetHidingTraits, rulesetLightAt, rulesetStaysHidden } from "./sight.js";
 import { RULESET_MOVE_MODES } from "./types.js";
@@ -2846,7 +2846,8 @@ function itemUseActions(
     // Raising an ability for good is for outside a fight (1.503).
     if (use.raises) return;
     const wearable = Object.values(item.slots ?? {}).some((count) => count > 0) || !!item.binds;
-    if (wearable && !held.worn) return;
+    // Drawn as it is used (1.800): only where it could be drawn now (and is bound, where it binds).
+    if (wearable && !held.worn && !(held.drawOnUse && rulesetHeldReady(definition, items!, index))) return;
     const read = (value: unknown) => itemAttackValue(item, value);
     const whole = (value: unknown) =>
       typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : undefined;
@@ -3504,7 +3505,8 @@ function carriedSwitchActions(combat: RulesetCombat): RulesetCombatAction[] {
  * row is, with its values in place of columns and each stat it reads off the item itself. It adds
  * to hit the best of its abilities (with its skill, as a row's `with=` swaps one in), deals the best
  * of its damage abilities, and deals its `versatile` dice instead while each slot it takes has room
- * for as much again. What it carries past a resistance is its tags. An item put away offers nothing.
+ * for as much again. What it carries past a resistance is its tags. An item put away offers nothing,
+ * unless it is drawn as it is used (1.800) and could be drawn now.
  */
 function itemAttackActions(
   definition: RulesetDefinition,
@@ -3516,7 +3518,11 @@ function itemAttackActions(
   /** What the entries the sheet holds do to its weapons' attacks (1.244). */
   rules: readonly RulesetAttackRowRule[] = [],
 ): RulesetCombatAction[] {
-  if (!items?.some((held) => held.worn && held.item.attack)) return [];
+  // A weapon drawn as it is used (1.800) is offered while only carried, where it could be drawn now
+  // (laptop v3 2026-10-26: a carried Longbow was never offered as an attack).
+  const ready = (held: RulesetSheetItem, index: number) =>
+    held.worn || (held.drawOnUse === true && rulesetHeldReady(definition, items!, index));
+  if (!items?.some((held, index) => held.item.attack && ready(held, index))) return [];
   const pooled = rulesetCombatIsPool(combat);
   // What the fighter's worn items take of each slot, the weapon's own share included.
   // ponytail: an item put on but not yet bound fills its slot and is not counted here, because a
@@ -3538,13 +3544,19 @@ function itemAttackActions(
   items.forEach((held, index) => {
     const { item } = held;
     const attack = item.attack;
-    if (!attack || !held.worn) return;
+    if (!attack || !ready(held, index)) return;
     const read = (value: unknown) => itemAttackValue(item, value);
+    // One not yet drawn (1.800) is weighed as it will be held once drawn: its own share taken, and
+    // what is put away for it given back.
+    const drawing = held.worn ? undefined : rulesetHeldDrawPlan(definition, items, index);
+    const stowed = drawing && "stow" in drawing ? drawing.stow : [];
+    const holds = (slot: string) =>
+      (used[slot] ?? 0) +
+      (drawing ? (item.slots?.[slot] ?? 0) : 0) -
+      stowed.reduce((sum, at) => sum + (items[at]!.item.slots?.[slot] ?? 0) * items[at]!.quantity, 0);
     const free =
       attack.versatile !== undefined &&
-      Object.entries(item.slots ?? {}).every(
-        ([slot, count]) => (slotCounts.get(slot) ?? 0) - (used[slot] ?? 0) >= count,
-      );
+      Object.entries(item.slots ?? {}).every(([slot, count]) => (slotCounts.get(slot) ?? 0) - holds(slot) >= count);
     // No dice at all (1.498) is a blow of its bonus alone, or of nothing: a blowgun's 1, a net's none.
     const diceless = attack.damage.dice === undefined && !(free && attack.versatile?.dice !== undefined);
     const parsed = diceless

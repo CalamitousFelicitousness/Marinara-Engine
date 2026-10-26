@@ -9,10 +9,12 @@
 
 import type { GameInventoryJournalEntry } from "../../utils/game-inventory-ops.js";
 import {
+  drawGameInventoryStack,
   gameInventoryBagKey,
   gameInventoryStackLabel,
   gameInventoryWearMet,
   gameInventoryWearNeeds,
+  type GameInventoryItemRules,
   type GameInventoryStack,
 } from "../../utils/game-inventory-stacks.js";
 import type {
@@ -81,7 +83,10 @@ export type RulesetItemUseRefusal =
   /** Its user's sheet does not meet what it asks (1.654): a scroll off another class's list. */
   | "needs-unmet"
   /** Its user is dead on their sheet, and it does not bring back the dead. */
-  | "dead";
+  | "dead"
+  /** It is drawn as it is used (1.800), and the slots it needs are held by what is not put away for
+   *  it (a shield, armor, a cursed weapon), or its user has too few of them at all. */
+  | "slots-full";
 
 /** One thing a use did to its user's sheet. */
 export interface RulesetItemUsePart {
@@ -116,6 +121,8 @@ export interface RulesetItemUseSaid {
   gate?: { check: string; total: number; difficulty: number; success: boolean; rolls: number[] };
   /** What its use made (1.732), into its user's bag: a scroll of Goodberry's berries. */
   made?: { name: string; count: number };
+  /** Drawn as it was used (1.800): it is on now, and these were put away to make room. */
+  drawn?: { stowed: string[] };
   /** Used again before its user rested (1.731): the save they rolled, and what failing it did. */
   again?: { save: string; total: number; difficulty: number; success: boolean; rolls: number[]; harms: string[] };
 }
@@ -128,13 +135,31 @@ export type RulesetItemUseOutcome =
       live: RulesetLiveState;
       said: RulesetItemUseSaid;
     }
-  | { ok: false; reason: RulesetItemUseRefusal };
+  | {
+      ok: false;
+      reason: RulesetItemUseRefusal;
+      /** For `slots-full`: what holds the slots it needs, by name (none where its user has too few). */
+      heldBy?: string[];
+    };
 
-/**
- * Use the item on one stack, for whoever carries it. `live` is that character's stored live state and
- * `build` their sheet; `roll` throws one die of the given sides. Nothing is changed on a refusal.
- */
-export function useRulesetItemOutsideFight(input: {
+/** What an item's use reads off the ruleset's items to draw it as it is used (1.800): every item, and
+ *  the slots every character has. A bound cursed item stays where it is. */
+export function rulesetItemDrawRules(
+  definition: RulesetDefinition,
+  itemOf: (ref: string) => RulesetItemBookEntry | undefined,
+): GameInventoryItemRules {
+  return {
+    itemOf,
+    itemNamed: () => undefined,
+    offers: () => false,
+    actor: "player",
+    ...(definition.items?.slots?.length
+      ? { slots: definition.items.slots.map(({ id, label, count }) => ({ id, label, count })) }
+      : {}),
+  };
+}
+
+type RulesetItemUseInput = {
   definition: RulesetDefinition;
   itemOf: (ref: string) => RulesetItemBookEntry | undefined;
   stacks: readonly GameInventoryStack[];
@@ -145,7 +170,32 @@ export function useRulesetItemOutsideFight(input: {
   more?: number;
   /** How long what it makes lasts (1.747), by its place in `makesItems.lasts` from 1; the first without it. */
   lasts?: number;
-}): RulesetItemUseOutcome {
+};
+
+/**
+ * Use the item on one stack, for whoever carries it. `live` is that character's stored live state and
+ * `build` their sheet; `roll` throws one die of the given sides. Nothing is changed on a refusal. An
+ * item drawn as it is used (1.800) is put on first, as a free swap that puts away the fewest other
+ * such items holding its slots, and the use is made with it on; where nothing may be put away to make
+ * room it is refused as `slots-full` (laptop v3 2026-10-26: a carried Longbow was never offered).
+ */
+export function useRulesetItemOutsideFight(input: RulesetItemUseInput): RulesetItemUseOutcome {
+  const stack = input.stacks.find((each) => each.id === input.stackId);
+  const entry = stack?.item ? input.itemOf(stack.item) : undefined;
+  if (!stack || !entry?.drawOnUse || stack.equipped || !entry.entry.item?.use) return useHeldRulesetItem(input);
+  const drawn = drawGameInventoryStack(
+    [...input.stacks],
+    stack.id,
+    rulesetItemDrawRules(input.definition, input.itemOf),
+  );
+  if (!drawn) return { ok: false, reason: "no-stack" };
+  if ("refused" in drawn)
+    return { ok: false, reason: "slots-full", heldBy: drawn.refused === "hands-full" ? drawn.by : [] };
+  const used = useHeldRulesetItem({ ...input, stacks: drawn.stacks, stackId: drawn.id });
+  return used.ok ? { ...used, said: { ...used.said, drawn: { stowed: drawn.stowed } } } : used;
+}
+
+function useHeldRulesetItem(input: RulesetItemUseInput): RulesetItemUseOutcome {
   const { definition, stacks, user, roll } = input;
   const stack = stacks.find((each) => each.id === input.stackId);
   if (!stack) return { ok: false, reason: "no-stack" };
@@ -161,7 +211,8 @@ export function useRulesetItemOutsideFight(input: {
   // How long what it makes lasts (1.747), as its user picked.
   if (input.lasts !== undefined && !use.makesItems?.lasts?.[input.lasts - 1]) return { ok: false, reason: "no-use" };
   // Used while worn where it takes a slot or binds, as a fight uses it; worn means bound too there.
-  if (!gameInventoryWearMet(stack, gameInventoryWearNeeds(item))) return { ok: false, reason: "not-worn" };
+  // One drawn as it is used (1.800) was put on above, where it could be.
+  if (!gameInventoryWearMet(stack, gameInventoryWearNeeds(entry!))) return { ok: false, reason: "not-worn" };
   // Bound by somebody who does not meet what it asks, it is not worn; nor used by them (1.654).
   if (item.binds?.needs || item.userNeeds) {
     const bare = evaluateRulesetSheetLive(definition, user.build, user.live);
@@ -781,7 +832,10 @@ export function rulesetItemUseLine(said: RulesetItemUseSaid): string {
               : said.left.count > 0
                 ? `${said.left.count} left.`
                 : "None left.";
-  return `${said.user} uses ${said.item}: ${gate}${again}${does}. ${left}`;
+  const drawn = said.drawn
+    ? ` ${said.item} is drawn${said.drawn.stowed.length ? `, and ${said.drawn.stowed.join(", ")} put away` : ""}.`
+    : "";
+  return `${said.user} uses ${said.item}: ${gate}${again}${does}. ${left}${drawn}`;
 }
 
 /** What a rest gave back to one item. */

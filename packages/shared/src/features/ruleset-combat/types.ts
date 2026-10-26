@@ -2492,6 +2492,9 @@ export interface RulesetCombatant {
    *  now (`loaded`), and the share of what was shot that comes back after a won fight
    *  (`recoverable`, summed as it is shot and rounded down once). Absent until anything changed. */
   itemsUsed?: Record<string, number>;
+  /** Items drawn as they are used (Capability API 1.800), by their place in `sheet.items`: true for
+   *  one the fight drew as it was used, false for one it put away to make room. Absent until any was. */
+  drawn?: Record<string, boolean>;
   loaded?: Record<string, number>;
   recoverable?: Record<string, number>;
   /** Ammunition spent as it struck (1.644), the share of it that comes back after a won fight as

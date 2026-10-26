@@ -410,6 +410,14 @@ export interface DirectedRulesetOption extends RulesetCombatOption {
    *  what it does (Sculpt Spells spares one more a level). */
   levels?: { base: number; pay: Record<string, number> };
 }
+/** The room player a party member of a shared room's fight belongs to (2026-10-26). */
+export interface DirectedRulesetPlayer {
+  participantId: string;
+  /** The player's display name, for "played by". */
+  name: string;
+  /** The room's host, who also commands every party member no other player plays. */
+  host?: true;
+}
 export interface DirectedRulesetView {
   /** What the fight is resolved by, as the game pinned it. */
   ruleset: { id: string; version: number };
@@ -419,6 +427,14 @@ export interface DirectedRulesetView {
   order: string[];
   /** The party member the player plays as their own character; the others may be the Engine's. */
   lead?: string;
+  /** A shared room's fight (2026-10-26): the room player whose own character each party member is,
+   *  by combatant id, and whoever one of them called to the party's side. `name` is the player's
+   *  display name. Absent outside a room. */
+  players?: Record<string, DirectedRulesetPlayer>;
+  /** In a shared room's fight, the party members the one viewing may command: their own character,
+   *  and for the host every member no other player plays. Absent outside a room, where the viewer
+   *  commands the whole party. */
+  yours?: string[];
   /** The board, when the fight is on one, with what this ruleset calls one cell's worth of
    *  distance. Absent from a fight that is theatre of the mind, which is every fight until a
    *  ruleset declares `combat.distance` and the game asks for a positioned one. */

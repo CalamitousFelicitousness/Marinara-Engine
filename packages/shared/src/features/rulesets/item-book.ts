@@ -948,6 +948,21 @@ export function rulesetItemEffectText(fact: RulesetItemEffectFact): string {
   return `${"mode" in change ? change.mode : "value" in change ? change.value : ""} on ${which}`;
 }
 
+/** Whether an item is drawn as it is used (Capability API 1.800): it takes slots, and its category
+ *  or one of its tags is one the ruleset's `items.drawOnUse` names. Weapons, in 5e: a sword is used
+ *  out of its sheath and a bow off the back, and either goes in hand as a free swap. */
+export function rulesetItemDrawsOnUse(
+  definition: RulesetDefinition,
+  item: { category?: string; tags?: readonly string[]; slots?: Readonly<Record<string, number>> },
+): boolean {
+  const draws = definition.items?.drawOnUse;
+  if (!draws || !Object.values(item.slots ?? {}).some((count) => count > 0)) return false;
+  return (
+    (item.category !== undefined && (draws.categories ?? []).includes(item.category)) ||
+    (item.tags ?? []).some((tag) => (draws.tags ?? []).includes(tag))
+  );
+}
+
 export interface RulesetItemBookEntry extends GameInventoryRulesetItem {
   /** The catalog it is listed in; empty for an item the Game Master invented. */
   catalogId: string;
@@ -1123,6 +1138,7 @@ export function rulesetItemBook(
       ...(entry.item.stack !== undefined ? { stack: entry.item.stack } : {}),
       ...(typeof weight === "number" && weight > 0 ? { weight } : {}),
       ...(entry.item.slots && Object.keys(entry.item.slots).length > 0 ? { slots: entry.item.slots } : {}),
+      ...(rulesetItemDrawsOnUse(definition, entry.item) ? { drawOnUse: true as const } : {}),
       ...(entry.item.binds
         ? {
             binds: {
@@ -1507,11 +1523,15 @@ export function rulesetSheetItems(
     const takesSlots = Object.values(item.slots ?? {}).some((count) => count > 0);
     const binds = !!item.binds;
     const worn = (takesSlots || binds) && (!takesSlots || stack.equipped === true) && (!binds || stack.bound === true);
+    // Drawn as it is used (1.800): a fight offers it while it is only carried, and draws it as it is used.
+    const drawOnUse = book.itemOf(stack.item)?.drawOnUse === true;
     return [
       {
         item,
         quantity: stack.quantity,
         worn,
+        ...(drawOnUse ? { drawOnUse: true as const } : {}),
+        ...(drawOnUse && stack.bound ? { bound: true as const } : {}),
         name: stack.name,
         stack: { id: stack.id, ref: stack.item, ...(stack.holder !== undefined ? { holder: stack.holder } : {}) },
         ...(stack.loaded !== undefined ? { loaded: stack.loaded } : {}),

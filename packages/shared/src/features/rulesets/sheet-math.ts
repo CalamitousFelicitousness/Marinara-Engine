@@ -312,6 +312,11 @@ export interface RulesetSheetItem {
   item: RulesetCatalogItem;
   quantity: number;
   worn: boolean;
+  /** Drawn as it is used (Capability API 1.800): while only carried, a fight still offers it, and
+   *  using it puts it in hand. `worn` is still only whether it is on. */
+  drawOnUse?: true;
+  /** Bound, for an item drawn as it is used (1.800) that binds: it may be drawn only bound. */
+  bound?: true;
   /** What the stack is called, for a record of what an item did. */
   name?: string;
   /** Which inventory stack this is, so what a fight shoots or loads can be written back to it. */

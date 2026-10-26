@@ -243,8 +243,11 @@ export function DirectedCombatUI(props: Props) {
             controls={
               <CombatAiControls
                 // A ruleset fight takes a companion's controller at any time but a decision (the
-                // server refuses that one), so having acted this round locks nothing here.
-                party={s.party.map((member) => ({ ...member, hasActed: false }))}
+                // server refuses that one), so having acted this round locks nothing here. In a shared
+                // room only the viewer's own are offered (2026-10-26).
+                party={s.party
+                  .filter((member) => !board.yours || board.yours.includes(member.id))
+                  .map((member) => ({ ...member, hasActed: false }))}
                 defaultController="ai"
                 locked={busy}
                 onChange={(unitId, controller) => send({ type: "control", unitId, controller })}

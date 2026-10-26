@@ -150,6 +150,9 @@ export interface GameInventoryRulesetItem {
   weight?: number;
   /** The slots it takes while equipped, by slot id. Without any, it cannot be equipped. */
   slots?: Readonly<Record<string, number>>;
+  /** Drawn as it is used (Capability API 1.800): one of the ruleset's `items.drawOnUse` that takes
+   *  slots. It is used while only carried, and a use puts it on (`drawGameInventoryStack`). */
+  drawOnUse?: true;
   /** It has to be bound to work; `cursed` keeps it bound. Without this, it cannot be bound. Its bearer
    *  binds it only with one item of each `needsWorn` group worn, and it comes unbound when one comes
    *  off (1.313). */
@@ -1621,12 +1624,18 @@ export function gameInventoryOverloads(
 }
 
 /** What a ruleset's item asks of a stack before it may be used: worn where it takes slots, bound
- *  where it binds. The one rule the Use button, the fight menu and a fight's spends all read. */
-export function gameInventoryWearNeeds(item: { slots?: Readonly<Record<string, number>>; binds?: unknown }): {
+ *  where it binds. The one rule the Use button, the fight menu and a fight's spends all read. An item
+ *  drawn as it is used (1.800) is used while only carried, and the use puts it on; it is still bound
+ *  where it binds (laptop v3 2026-10-26: a carried Longbow was never offered as an attack). */
+export function gameInventoryWearNeeds(item: {
+  slots?: Readonly<Record<string, number>>;
+  binds?: unknown;
+  drawOnUse?: boolean;
+}): {
   equipped?: true;
   bound?: true;
 } {
-  const takesSlots = Object.values(item.slots ?? {}).some((count) => count > 0);
+  const takesSlots = !item.drawOnUse && Object.values(item.slots ?? {}).some((count) => count > 0);
   return { ...(takesSlots ? { equipped: true as const } : {}), ...(item.binds ? { bound: true as const } : {}) };
 }
 
@@ -1646,7 +1655,8 @@ function bindingNeedsMet(
       if (other === stack || !other.item || !group.anyOf.includes(other.item)) return false;
       if (gameInventoryBagKey(other.holder) !== bag) return false;
       const item = rules?.itemOf(other.item);
-      const wears = item ? gameInventoryWearNeeds(item) : {};
+      // Worn as it is, never as it may be drawn (1.800): a belt is needed on, not carried.
+      const wears = item ? gameInventoryWearNeeds({ slots: item.slots, binds: item.binds }) : {};
       return (wears.equipped || wears.bound) === true && gameInventoryWearMet(other, wears);
     }),
   );
@@ -1686,6 +1696,189 @@ export function gameInventoryUsableStack(
 ): boolean {
   const read = stack.item ? rules?.itemOf(stack.item) : undefined;
   return !read || gameInventoryWearMet(stack, gameInventoryWearNeeds(read));
+}
+
+/** One thing a character holds, as drawing an item weighs it (1.800): the slots it takes while worn
+ *  (none for one that leaves its slots free), how many of it, whether it is worn now, whether it is
+ *  drawn as it is used, and whether it may not come off (a bound cursed item). */
+export interface GameInventoryDrawHeld {
+  slots?: Readonly<Record<string, number>>;
+  quantity: number;
+  worn: boolean;
+  drawOnUse: boolean;
+  kept: boolean;
+}
+
+/** What drawing one item takes (1.800): nothing for one already worn; the fewest other worn items
+ *  drawn as they are used to put away to make room, by place; or, where that cannot make room, the
+ *  places of the worn items that stand in its way and may not be put away for it (empty when the
+ *  character has too few of a slot at all). */
+export type GameInventoryDrawPlan = { stow: number[] } | { blockedBy: number[] };
+
+/**
+ * How one item (at `index` of `held`) is drawn in its holder's hands as it is used (Capability API
+ * 1.800): it takes its slots, and where they are full, the fewest other worn items that are drawn as
+ * they are used and that are not cursed onto their bearer are put away to make room. A shield, armor,
+ * or anything else that is not drawn as it is used is never taken off for it: then the plan names
+ * what stands in the way, and the use is refused. One of a stack is drawn.
+ */
+export function gameInventoryDrawPlan(
+  held: readonly GameInventoryDrawHeld[],
+  index: number,
+  slotCounts: Readonly<Record<string, number>>,
+): GameInventoryDrawPlan {
+  const own = held[index];
+  if (!own || own.worn) return { stow: [] };
+  const needs = Object.entries(own.slots ?? {}).filter(([, count]) => count > 0);
+  const used: Record<string, number> = {};
+  held.forEach((one, at) => {
+    if (!one.worn || at === index) return;
+    for (const [slot, count] of Object.entries(one.slots ?? {})) used[slot] = (used[slot] ?? 0) + count * one.quantity;
+  });
+  const short = (freed: ReadonlySet<number>) =>
+    needs.filter(([slot, count]) => {
+      let taken = used[slot] ?? 0;
+      for (const at of freed) taken -= (held[at]!.slots?.[slot] ?? 0) * held[at]!.quantity;
+      return taken + count > (slotCounts[slot] ?? 0);
+    });
+  if (short(new Set()).length === 0) return { stow: [] };
+  const inTheWay = (at: number) =>
+    at !== index && held[at]!.worn && needs.some(([slot]) => (held[at]!.slots?.[slot] ?? 0) > 0);
+  const may = held.flatMap((one, at) => (inTheWay(at) && one.drawOnUse && !one.kept ? [at] : []));
+  // The fewest put away, the first held first among as few: a handful of weapons at most.
+  const pick = may.slice(0, 12);
+  for (let size = 1; size <= pick.length; size++) {
+    const found = subsetsOf(pick, size).find((subset) => short(new Set(subset)).length === 0);
+    if (found) return { stow: found };
+  }
+  return { blockedBy: held.flatMap((one, at) => (inTheWay(at) && (!one.drawOnUse || one.kept) ? [at] : [])) };
+}
+
+/** Every choice of `size` of `from`, in order. */
+function subsetsOf(from: readonly number[], size: number): number[][] {
+  if (size === 0) return [[]];
+  if (from.length < size) return [];
+  const [first, ...rest] = from;
+  return [...subsetsOf(rest, size - 1).map((tail) => [first!, ...tail]), ...subsetsOf(rest, size)];
+}
+
+/** Why a stack could not be drawn as it is used (1.800): what holds the slots it needs, by name, or
+ *  too few of a slot at all. */
+export type GameInventoryDrawRefusal = { refused: "hands-full"; by: string[] } | { refused: "no-slot" };
+
+/** What one bag's stacks hold, as drawing weighs it (1.800), with the stacks they are. */
+function drawHeld(
+  stacks: readonly GameInventoryStack[],
+  holder: string | undefined,
+  rules: GameInventoryItemRules,
+): { stacks: GameInventoryStack[]; held: GameInventoryDrawHeld[] } {
+  const bag = { holder };
+  const mine = stacks.filter((stack) => inBag(stack, bag) && stack.item);
+  return {
+    stacks: mine,
+    held: mine.map((stack) => {
+      const known = rules.itemOf(stack.item!);
+      return {
+        // Switched on to hover (1.693): its hand is free.
+        slots: stack.on && known?.toggle?.freesSlots ? {} : (known?.slots ?? {}),
+        quantity: stack.quantity,
+        worn: stack.equipped === true,
+        drawOnUse: known?.drawOnUse === true,
+        kept: stack.bound === true && known?.binds?.cursed === true,
+      };
+    }),
+  };
+}
+
+/** Why this stack could not be drawn as it is used now (1.800), or undefined when it can (or need not
+ *  be: it is worn already, or it is not drawn as it is used). */
+export function gameInventoryDrawRefusal(
+  stacks: readonly GameInventoryStack[],
+  stack: GameInventoryStack,
+  rules: GameInventoryItemRules | undefined,
+): GameInventoryDrawRefusal | undefined {
+  const known = stack.item ? rules?.itemOf(stack.item) : undefined;
+  if (!rules || !known?.drawOnUse || stack.equipped) return undefined;
+  const { stacks: mine, held } = drawHeld(stacks, stack.holder, rules);
+  const at = mine.findIndex((each) => each.id === stack.id);
+  if (at < 0) return undefined;
+  const plan = gameInventoryDrawPlan(
+    held.map((one, i) => (i === at ? { ...one, quantity: 1 } : one)),
+    at,
+    Object.fromEntries((rules.slots ?? []).map((slot) => [slot.id, slot.count])),
+  );
+  if ("stow" in plan) return undefined;
+  return plan.blockedBy.length
+    ? { refused: "hands-full", by: plan.blockedBy.map((i) => mine[i]!.nickname || mine[i]!.name) }
+    : { refused: "no-slot" };
+}
+
+/**
+ * One stack drawn as it is used (Capability API 1.800): one of it put on, as a free swap that first
+ * puts away the fewest other worn items drawn as they are used where its slots are full
+ * (`gameInventoryDrawPlan`). Unchanged for a stack already worn, or of an item not drawn as it is used.
+ * `id` is the stack drawn (one of a larger stack is taken into a stack of its own), and `stowed` the
+ * names of what was put away. Refused, nothing is changed. Null when there is no such stack.
+ */
+export function drawGameInventoryStack(
+  stacks: GameInventoryStack[],
+  id: string,
+  rules: GameInventoryItemRules | undefined,
+  newId: () => string = () => newGameInventoryStackId(stacks),
+): { stacks: GameInventoryStack[]; id: string; stowed: string[] } | GameInventoryDrawRefusal | null {
+  const stack = stacks.find((each) => each.id === id);
+  if (!stack) return null;
+  const known = stack.item ? rules?.itemOf(stack.item) : undefined;
+  if (!rules || !known?.drawOnUse || stack.equipped) return { stacks, id, stowed: [] };
+  const refusal = gameInventoryDrawRefusal(stacks, stack, rules);
+  if (refusal) return refusal;
+  const { stacks: mine, held } = drawHeld(stacks, stack.holder, rules);
+  const at = mine.findIndex((each) => each.id === id);
+  const plan = gameInventoryDrawPlan(
+    held.map((one, i) => (i === at ? { ...one, quantity: 1 } : one)),
+    at,
+    Object.fromEntries((rules.slots ?? []).map((slot) => [slot.id, slot.count])),
+  );
+  const stow = new Set("stow" in plan ? plan.stow.map((i) => mine[i]!.id) : []);
+  const stowed = mine.filter((each) => stow.has(each.id)).map((each) => each.nickname || each.name);
+  // Put away first, so the slots it needs are free; a binding that needed one of them on ends (1.313).
+  const away = releaseGameInventoryUnmetBindings(
+    stacks.map((each) => {
+      if (!stow.has(each.id)) return each;
+      const { equipped: _equipped, ...rest } = each;
+      return rest;
+    }),
+    rules,
+  );
+  const worn = wearGameInventoryStack(away, id, "equip", newId, rules);
+  if (!worn || "refused" in worn) return { refused: "no-slot" };
+  return { stacks: worn.stacks, id: worn.id, stowed };
+}
+
+/**
+ * One of the Engine's own fights using an item by its name (1.800): where it is drawn as it is used,
+ * one stack of it is drawn, unless one is already on. The stacks a fight would spend come first (the
+ * player's own, then the rest), and the first that can be drawn is. Unchanged where the item is not
+ * drawn as it is used; refused where no stack of it can be drawn.
+ */
+export function drawGameInventoryFightItem(
+  stacks: GameInventoryStack[],
+  name: string,
+  rules: GameInventoryItemRules | undefined,
+): { stacks: GameInventoryStack[]; stowed: string[] } | GameInventoryDrawRefusal {
+  const found = stacksNamed(stacks, name)
+    .map(({ stack }) => stack)
+    .filter((stack) => !keptByCurse(stack, rules) && gameInventoryUsableStack(stack, rules));
+  const draws = found.filter((stack) => stack.item && rules?.itemOf(stack.item)?.drawOnUse);
+  if (draws.length === 0 || draws.some((stack) => stack.equipped)) return { stacks, stowed: [] };
+  let refusal: GameInventoryDrawRefusal | undefined;
+  for (const stack of draws) {
+    const drawn = drawGameInventoryStack(stacks, stack.id, rules);
+    if (!drawn) continue;
+    if (!("refused" in drawn)) return { stacks: drawn.stacks, stowed: drawn.stowed };
+    refusal ??= drawn;
+  }
+  return refusal ?? { refused: "no-slot" };
 }
 
 /** Whether the player's own change would part them from this stack: a bound cursed item. */

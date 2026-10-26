@@ -11,6 +11,7 @@ import {
   gameInventoryItemsOwnNamed,
   gameInventoryKeptByCurse,
   gameInventoryUsableStack,
+  drawGameInventoryFightItem,
   normalizeGameInventoryStacks,
   rulesetFightItemChanges,
   rulesetCarriedLeft,
@@ -81,8 +82,11 @@ import {
   directedRulesetView,
   releaseRulesetHeldGround,
   rulesetBeginFight,
+  rulesetCommandRefusal,
   rulesetCompanionIds,
   rulesetDeployers,
+  rulesetUnitPlayer,
+  RULESET_ROOM_HOST,
   rulesetDirectorStage,
   rulesetFightLiveStates,
   rulesetFightReturningFoes,
@@ -114,6 +118,11 @@ import {
 } from "../services/game/story-fight.service.js";
 import { buildPartyNpcId } from "../services/generation/game-party-utils.js";
 import { gamePartyRoster } from "../services/game/ruleset-sheet-turn.service.js";
+import {
+  ROOM_GUEST_FIGHT_CONTROLLER,
+  roomFightPlayers,
+  roomPlayersByName,
+} from "../services/multiplayer/fight-players.js";
 import { logger } from "../lib/logger.js";
 import { resolveVisibleGameStateAnchor } from "./generate/generate-route-utils.js";
 
@@ -570,6 +579,7 @@ export async function combatDirectorRoutes(
         )
         .max(200),
       itemSpends: z.record(key, z.number().int().min(0).max(Number.MAX_SAFE_INTEGER)),
+      itemDraws: z.record(key, z.number().int().min(0).max(Number.MAX_SAFE_INTEGER)).optional(),
       gmCalls: z.number().int().min(0).max(12),
       // The ruleset fight itself. Its numbers are the ruleset's own and are checked by the resolver
       // that reads them; what is bounded here is the SHAPE and the size, the way the rest is.
@@ -733,6 +743,19 @@ export async function combatDirectorRoutes(
     }
     return { definition: resolved.definition, packageId: resolved.packageId };
   };
+  /** Whose own character each party member of a shared room's fight is, read from the room as it is
+   *  now (2026-10-26): a player who left hands theirs back to the host, and a fight outside a room, or
+   *  in one that ended, has no players. Set on the fight in hand; saved only with a step. */
+  const seatRoomPlayers = async (chatId: string, s: CombatDirectorState) => {
+    const fight = s.rulesetFight;
+    if (s.style !== "ruleset" || !fight) return;
+    const chat = await chats.getById(chatId);
+    const meta = chat ? (JSON.parse(chat.metadata || "{}") as Record<string, unknown>) : {};
+    const party = fight.encounter.combatants.filter((one) => one.side === "party" && !one.calledBy);
+    const players = roomFightPlayers(meta, party);
+    if (players) fight.players = players;
+    else delete fight.players;
+  };
   /** The session a client reads. A ruleset fight whose rules are gone comes back finished rather
    *  than resolved by other numbers, and nothing about that is written down: reinstalling the
    *  ruleset picks the same fight up where it was left. */
@@ -804,7 +827,9 @@ export async function combatDirectorRoutes(
     // The ruleset's items as the player uses them, read before the chat's queue is held and only once
     // the fight has spent something: a bound cursed item is one the player cannot use up.
     const rules =
-      Object.keys(s.itemSpends).length > 0 ? await loadGameInventoryItemBook(app.db, { chatId }, "player") : undefined;
+      Object.keys(s.itemSpends).length > 0 || Object.keys(s.itemDraws ?? {}).length > 0
+        ? await loadGameInventoryItemBook(app.db, { chatId }, "player")
+        : undefined;
     // The step that wins drops the fight's loot, rolled before the queue is held and added with the
     // step: each defeated bestiary opponent's table, or the native tables by how many fell.
     const won = s.outcome === "victory" && s.loot === undefined;
@@ -884,6 +909,28 @@ export async function combatDirectorRoutes(
             if (outcome.results.some((result, i) => !result.ok || result.count !== deltas[i]!.count))
               throw new Error("Inventory changed. Reload the battle.");
             return { stacks: outcome.stacks, journal: outcome.journal, value: null };
+          });
+        // What was used and is drawn as it is used (1.800) is put on, as a free swap: past what nothing
+        // may be put away for, the step is refused, as the fight offered it only while it could be drawn.
+        const draws = Object.entries(s.itemDraws ?? {}).flatMap(([name, count]) =>
+          count > (previous.state.itemDraws?.[name] ?? 0)
+            ? [s.inventory.find((line) => line.name === name)?.ownName ?? name]
+            : [],
+        );
+        if (draws.length)
+          await applyGameInventoryChangeHeld(app.db, chatId, (stacks) => {
+            let current = stacks;
+            for (const name of draws) {
+              const drawn = drawGameInventoryFightItem(current, name, rules);
+              if ("refused" in drawn)
+                throw new Error(
+                  drawn.refused === "hands-full"
+                    ? `${name} cannot be drawn: its slots are held by ${drawn.by.join(", ")}.`
+                    : `${name} cannot be drawn: there are too few of the slots it takes.`,
+                );
+              current = drawn.stacks;
+            }
+            return { stacks: current, journal: [], value: null };
           });
         // What a ruleset fight shot, loaded and won back since the last step, onto those very stacks,
         // with the party's sheets: a step either changes both or changes neither.
@@ -1047,8 +1094,10 @@ export async function combatDirectorRoutes(
         if (!anchor || anchor.chatId !== input.chatId)
           return reply.code(400).send({ error: "Battle anchor is not in this chat." });
         const existing = await load(input.chatId, input.anchor);
-        if (existing)
+        if (existing) {
+          await seatRoomPlayers(input.chatId, existing.state);
           return { session: sessionView(existing.state, await rulesetSessionFor(input.chatId, existing.state)) };
+        }
         const meta = JSON.parse(chat.metadata || "{}"),
           setup = meta.gameSetupConfig ?? {};
         if (setup.combatDirector !== true)
@@ -1374,6 +1423,10 @@ export async function combatDirectorRoutes(
             ...(partyRoster ? { roster: partyRoster } : {}),
             // Companions fight on their own unless the game says the player plays them (Alyssa 2026-10-26).
             companionsOnTheirOwn: setup.playerRunsCompanions !== true,
+            // In a shared room each player's own character is theirs to play (2026-10-26).
+            ...((players) => (players ? { players, othersPlay: ROOM_GUEST_FIGHT_CONTROLLER } : {}))(
+              roomPlayersByName(meta),
+            ),
             live: parseStoredRulesetLive(liveRow?.rulesetLive),
             // What each member holds as the fight starts, when the ruleset's sheet reads items.
             ...(fightItems ? { items: fightItems, holders: rulesetCardHolder(cardNames, persona?.name ?? null) } : {}),
@@ -1463,7 +1516,9 @@ export async function combatDirectorRoutes(
           const kept = rememberedControllers(meta);
           for (const id of fought.keys()) {
             const controller = kept[id];
-            if (controller) built.fight.controllers[id] = controller;
+            // What the host chose before never covers another room player's own character.
+            const player = rulesetUnitPlayer(built.fight, id);
+            if (controller && (!player || player.host)) built.fight.controllers[id] = controller;
           }
           // The one the player plays while their own character is dead is theirs, not the Engine's.
           if (built.standIn) built.fight.controllers[built.standIn] = "manual";
@@ -1505,9 +1560,9 @@ export async function combatDirectorRoutes(
     const { chatId, anchor } = parsed.data;
     try {
       const found = await load(chatId, anchor);
-      return found
-        ? { session: sessionView(found.state, await rulesetSessionFor(chatId, found.state)) }
-        : reply.code(404).send({ error: "Battle not found." });
+      if (!found) return reply.code(404).send({ error: "Battle not found." });
+      await seatRoomPlayers(chatId, found.state);
+      return { session: sessionView(found.state, await rulesetSessionFor(chatId, found.state)) };
     } catch (err) {
       logger.warn(err, "Unable to load directed combat");
       return reply.code(400).send({ error: err instanceof Error ? err.message : "Invalid combat save." });
@@ -1568,6 +1623,7 @@ export async function combatDirectorRoutes(
         if (!found) throw new Error("Battle not found.");
         const { row, state } = found;
         if (state.id !== input.id) throw new Error("Battle changed. Reload its current state.");
+        await seatRoomPlayers(input.chatId, state);
         const session = await rulesetSessionFor(input.chatId, state);
         const ruleset = session && "definition" in session ? session.definition : null;
         // Sent at a fight that has since moved on (another tab, a restart): nothing is done, and the
@@ -1578,6 +1634,13 @@ export async function combatDirectorRoutes(
         // A fight whose rules are gone changes nothing at all: it is already finished, and the view
         // says why.
         if (state.style === "ruleset" && !ruleset) return { session: sessionView(state, session) };
+        // In a shared room a party member is commanded by its own player only (2026-10-26). Every
+        // command these routes take is the host's: a guest's would arrive through the room.
+        const notTheirs =
+          ruleset && state.rulesetFight
+            ? rulesetCommandRefusal(state, state.rulesetFight, input.command as DirectedCommand, RULESET_ROOM_HOST)
+            : null;
+        if (notTheirs) return { refusal: notTheirs };
         const step = (command: DirectedCommand, source: "gm" | "ai" | "manual" | "fallback" = "manual") => {
           if (!ruleset) {
             commandCombatDirector(state, command, source);

@@ -10,9 +10,15 @@
 // event that says so.
 
 import type { GameInventoryJournalEntry } from "../../utils/game-inventory-ops.js";
-import { GAME_INVENTORY_MAX_QUANTITY, type GameInventoryStack } from "../../utils/game-inventory-stacks.js";
+import {
+  GAME_INVENTORY_MAX_QUANTITY,
+  gameInventoryDrawPlan,
+  newGameInventoryStackId,
+  type GameInventoryDrawPlan,
+  type GameInventoryStack,
+} from "../../utils/game-inventory-stacks.js";
 import type { RulesetDefinition } from "../../schemas/ruleset.schema.js";
-import type { RulesetItemCallRoll, RulesetStoredEntry } from "../rulesets/sheet-math.js";
+import type { RulesetItemCallRoll, RulesetSheetItem, RulesetStoredEntry } from "../rulesets/sheet-math.js";
 import type {
   RulesetCombatAction,
   RulesetCombatant,
@@ -401,6 +407,50 @@ export function breakRulesetItem(
   return { type: "broke", actorId: actor.id, optionId: action.id, label: action.label, roll: face };
 }
 
+/**
+ * How a fighter draws the item at `index` of what they hold as they use it (Capability API 1.800), with
+ * `drawn` the items the fight has drawn or put away since it began (`RulesetCombatant.drawn`): see
+ * `gameInventoryDrawPlan`. What a call lends (1.726) and what hovers (1.693) hold no slot.
+ */
+export function rulesetHeldDrawPlan(
+  definition: RulesetDefinition,
+  items: readonly RulesetSheetItem[],
+  index: number,
+  drawn?: Readonly<Record<string, boolean>>,
+): GameInventoryDrawPlan {
+  return gameInventoryDrawPlan(
+    items.map((held, at) => {
+      const worn = drawn?.[at] ?? held.worn;
+      return {
+        slots: held.lent || (held.on && held.item.toggle?.freesSlots) ? {} : (held.item.slots ?? {}),
+        quantity: at === index ? 1 : held.quantity,
+        worn: !held.lent && worn,
+        drawOnUse: held.drawOnUse === true,
+        kept: worn && !!held.item.binds?.cursed,
+      };
+    }),
+    index,
+    Object.fromEntries((definition.items?.slots ?? []).map((slot) => [slot.id, slot.count])),
+  );
+}
+
+/** Whether a fighter's held item is in their hands to use (1.800): worn, or drawn as it is used and
+ *  either drawn by the fight already or one that could be drawn now. */
+export function rulesetHeldReady(
+  definition: RulesetDefinition,
+  items: readonly RulesetSheetItem[],
+  index: number,
+  drawn?: Readonly<Record<string, boolean>>,
+): boolean {
+  const held = items[index];
+  if (!held) return false;
+  const worn = drawn?.[index] ?? held.worn;
+  if (worn) return true;
+  // Bound first where it binds: drawing never binds it.
+  if (held.drawOnUse !== true || (held.item.binds && !held.bound)) return false;
+  return "stow" in rulesetHeldDrawPlan(definition, items, index, drawn);
+}
+
 /** What one step of a fight did to one of the party's inventory stacks: how many it took out of it
  *  (fewer than none when a won fight gave some back) and what a weapon has loaded now. */
 export interface RulesetFightItemChange {
@@ -433,6 +483,8 @@ export interface RulesetFightItemChange {
   on?: boolean;
   /** What was made to last only so long has this many minutes left (1.747). */
   vanishesIn?: number;
+  /** Drawn as it was used (1.800), true; or put away to make room for another, false. */
+  equipped?: boolean;
 }
 
 /**
@@ -479,6 +531,7 @@ export function rulesetFightItemChanges(
         !combatant.on &&
         !combatant.became &&
         !combatant.madeFor &&
+        !combatant.drawn &&
         !combatant.actions.some((action) => action.storedIn?.item !== undefined))
     ) {
       continue;
@@ -532,6 +585,9 @@ export function rulesetFightItemChanges(
         madeLeft !== undefined ? Math.max(1, Math.ceil((madeLeft * (roundSeconds ?? 6)) / 60)) : undefined;
       const ticked =
         madeLeft !== undefined && JSON.stringify(batches) !== JSON.stringify(earlier?.madeFor?.[String(index)]);
+      // Drawn or put away (1.800), since `before`.
+      const wornNow = combatant.drawn?.[index];
+      const swapped = wornNow !== undefined && wornNow !== (earlier?.drawn?.[index] ?? held.worn);
       if (
         taken === 0 &&
         !reloaded &&
@@ -544,7 +600,8 @@ export function rulesetFightItemChanges(
         !restored &&
         !switched &&
         !turned &&
-        !ticked
+        !ticked &&
+        !swapped
       ) {
         return;
       }
@@ -567,6 +624,7 @@ export function rulesetFightItemChanges(
         ...(turned ? { becomes: { ref: became, name: combatant.sheet?.items?.[index]?.name ?? became } } : {}),
         ...(held.truly ? { truly: held.truly.name } : {}),
         ...(vanishesIn !== undefined ? { vanishesIn } : {}),
+        ...(swapped ? { equipped: wornNow } : {}),
       });
     });
   }
@@ -658,6 +716,17 @@ export function applyRulesetFightItemChanges(
       // What was made again lasts as long as the last of it made (1.747).
       ...(change.vanishesIn !== undefined ? { vanishesIn: change.vanishesIn } : {}),
     };
+    // Drawn as it was used (1.800), or put away to make room for another: one of a larger stack is
+    // drawn into a stack of its own, right after the rest of it.
+    if (change.equipped === false) delete next[at]!.equipped;
+    if (change.equipped === true && !stack.equipped) {
+      if (quantity === 1) next[at] = { ...next[at]!, equipped: true };
+      else {
+        const one = { ...next[at]!, id: newGameInventoryStackId(next), quantity: 1, equipped: true as const };
+        next[at] = { ...next[at]!, quantity: quantity - 1 };
+        next.splice(at + 1, 0, one);
+      }
+    }
   }
   return { stacks: next, journal };
 }

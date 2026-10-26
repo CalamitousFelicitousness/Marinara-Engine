@@ -3154,7 +3154,10 @@ function drawn(...rows: string[]): TacticalGrid {
   // Having acted this round locked the select, so a companion whose turn came before any player's
   // could never be handed over; the ruleset fight's server takes the change at any time.
   const directed = readSource("packages/client/src/components/game/DirectedCombatUI.tsx");
-  assert.match(directed, /party=\{s\.party\.map\(\(member\) => \(\{ \.\.\.member, hasActed: false \}\)\)\}/u);
+  assert.match(
+    directed,
+    /party=\{s\.party\s*\.filter\(\(member\) => !board\.yours \|\| board\.yours\.includes\(member\.id\)\)\s*\.map\(\(member\) => \(\{ \.\.\.member, hasActed: false \}\)\)\}/u,
+  );
 }
 
 // ── Closing setup after a failed Start keeps the game the Start made ──

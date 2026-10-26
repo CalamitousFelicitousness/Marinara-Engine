@@ -68,6 +68,9 @@ export interface CombatItemEffect {
   /** One of the ruleset's items used only from a stack that is worn (it takes slots) and bound (it
    *  binds), as a ruleset's own fight uses it. */
   wear?: { equipped?: true; bound?: true };
+  /** One of the ruleset's items drawn as it is used (Capability API 1.800): used while only carried,
+   *  and put on as it is used. */
+  draws?: true;
 }
 
 /** One generated in-combat dialogue cue. */

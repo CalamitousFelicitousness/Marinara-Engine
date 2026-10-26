@@ -198,6 +198,7 @@ import {
   type DirectedRulesetCalloutWay,
   type DirectedRulesetCombatant,
   type DirectedRulesetOption,
+  type DirectedRulesetPlayer,
   rulesetPaidLevel,
   type DirectedRulesetView,
   type RulesetBoardLight,
@@ -270,6 +271,10 @@ export interface RulesetFightState {
   controllers: Record<string, "manual" | "ai">;
   /** The party member the player plays as their own character, or plays in their dead one's place. */
   lead?: string;
+  /** A shared room's fight (2026-10-26): the room player whose own character each party member is, by
+   *  combatant id. Only that player commands it; the host commands every other party member. Kept up
+   *  to date with the room by the route, so a player who leaves hands theirs back to the host. */
+  players?: Record<string, DirectedRulesetPlayer>;
   /** The set-ups already called out (`<target>:<way>`), so each is said once while it stands. */
   calledOut?: string[];
   /** The player chooses what their own symbol throws buy (1.382): every party member they play is
@@ -657,6 +662,13 @@ export interface RulesetFightSeed {
   /** Every companion the player does not play themselves is the Engine's from the start (Alyssa
    *  2026-10-26: "companions should default to AI in solo games"). */
   companionsOnTheirOwn?: boolean;
+  /** A shared room's players (2026-10-26), by their character's name as a lookup key: whose own
+   *  character each party member is. One that is not the host's is never the host's stand-in nor one
+   *  of the host's companions. */
+  players?: Record<string, DirectedRulesetPlayer>;
+  /** Who plays the character of a room player other than the host as the fight begins: that player,
+   *  or the Engine while the room cannot carry a player's fight commands. */
+  othersPlay?: "manual" | "ai";
   /** The stored live sheet state of the whole game. */
   live: RulesetLiveStates | null;
   /** What each party member holds, by name, when the ruleset's sheet reads items. */
@@ -1824,7 +1836,20 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     !combatants.some((one) => one.side === "party" && normalizeCharacterLookupName(one.name) === leadKey);
   const leadDeadAway =
     leadMissing && rulesetSheetDead(definition, leadBuild!, input.live?.[leadKey], input.items?.(leadName));
-  const standInId = deadLead || leadMissing ? combatants.find((one) => one.side === "party")?.id : undefined;
+  // Another room player's own character is theirs to play, never the host's stand-in (2026-10-26).
+  const players: Record<string, DirectedRulesetPlayer> = {};
+  for (const one of combatants) {
+    const key = normalizeCharacterLookupName(one.name);
+    const player = one.side === "party" ? input.players?.[key] : undefined;
+    // One member by that name, never a guess between two.
+    const named = combatants.filter(
+      (other) => other.side === "party" && normalizeCharacterLookupName(other.name) === key,
+    );
+    if (player && named.length === 1) players[one.id] = { ...player };
+  }
+  const others = new Set(Object.keys(players).filter((id) => !players[id]!.host));
+  const standInId =
+    deadLead || leadMissing ? combatants.find((one) => one.side === "party" && !others.has(one.id))?.id : undefined;
   if (standInId) {
     const name = combatants.find((one) => one.id === standInId)!.name;
     const lead = deadLead ?? leadName;
@@ -1835,7 +1860,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     );
   }
   // Who the player plays: their own character, else the one in its place, else the first of the party.
-  const partyIds = combatants.filter((one) => one.side === "party").map((one) => one.id);
+  const partyIds = combatants.filter((one) => one.side === "party" && !others.has(one.id)).map((one) => one.id);
   const leadId =
     standInId ??
     combatants.find((one) => one.side === "party" && leadKey && normalizeCharacterLookupName(one.name) === leadKey)
@@ -1845,6 +1870,11 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
   if (input.companionsOnTheirOwn)
     for (const id of partyIds)
       if (id !== leadId && party.some((member) => member.id === id)) fight.controllers[id] = "ai";
+  // Each room player's own character is theirs (2026-10-26), whoever else is at the table.
+  if (Object.keys(players).length > 0) {
+    fight.players = players;
+    for (const id of others) fight.controllers[id] = input.othersPlay ?? "manual";
+  }
   return { ok: true, fight, ...(standInId ? { standIn: standInId } : {}) };
 }
 
@@ -2244,8 +2274,95 @@ export function rulesetCompanionIds(state: CombatDirectorState, fight: RulesetFi
   const lead = fight.lead ?? state.party[0]?.id;
   return state.party.flatMap((unit) => {
     const combatant = rulesetCombatant(fight.encounter, unit.id);
-    return combatant && combatant.side === "party" && !combatant.calledBy && unit.id !== lead ? [unit.id] : [];
+    // Another room player's own character is not one of the host's companions (2026-10-26).
+    return combatant &&
+      combatant.side === "party" &&
+      !combatant.calledBy &&
+      unit.id !== lead &&
+      !rulesetUnitPlayer(fight, unit.id)
+      ? [unit.id]
+      : [];
   });
+}
+
+/** Who commands a party member of a shared room's fight (2026-10-26): the host, or one other player. */
+export interface RulesetFightCommander {
+  host: boolean;
+  participantId?: string;
+}
+
+/** The host of the room, which is who sends every command through the Engine's own routes. */
+export const RULESET_ROOM_HOST: RulesetFightCommander = { host: true };
+
+/** The room player whose own character this party member is, or who called it to the party's side;
+ *  undefined for a member no player plays, and outside a room. */
+export function rulesetUnitPlayer(fight: RulesetFightState, unitId: string): DirectedRulesetPlayer | undefined {
+  if (!fight.players) return undefined;
+  let combatant = rulesetCombatant(fight.encounter, unitId);
+  // A called creature is its caller's, and a caller may have been called too: bounded, never a loop.
+  for (let hops = 0; combatant?.calledBy && hops < 8; hops++)
+    combatant = rulesetCombatant(fight.encounter, combatant.calledBy);
+  return combatant ? fight.players[combatant.id] : undefined;
+}
+
+/** Whether this commander may command this party member: its own player only, and the host every
+ *  member no other player plays. Outside a room the one player commands everybody. */
+export function rulesetMayCommand(fight: RulesetFightState, unitId: string, commander: RulesetFightCommander): boolean {
+  if (!fight.players || Object.keys(fight.players).length === 0) return commander.host;
+  const player = rulesetUnitPlayer(fight, unitId);
+  if (!player) return commander.host;
+  return player.host ? commander.host : !commander.host && player.participantId === commander.participantId;
+}
+
+/** The party member a command acts for: the one asked or on turn for a choice, the one named for a
+ *  placement, a controller or orders. Null for a command about the whole fight. */
+export function rulesetCommandUnit(
+  state: CombatDirectorState,
+  fight: RulesetFightState,
+  command: DirectedCommand,
+): string | null {
+  switch (command.type) {
+    case "ruleset":
+      return fight.encounter.window?.waiting[0] ?? currentRulesetActor(fight.encounter)?.id ?? null;
+    case "choose":
+      return state.window?.actorId ?? null;
+    case "deploy":
+    case "control":
+    case "orders":
+      return command.unitId;
+    default:
+      return null;
+  }
+}
+
+/** A shared room's fight takes a command for a party member only from the player who owns it, and a
+ *  command about the whole fight (begin, continue, flee, every companion at once) only from the host
+ *  (2026-10-26). Null when it may be sent; nothing is checked outside a room. */
+export function rulesetCommandRefusal(
+  state: CombatDirectorState,
+  fight: RulesetFightState,
+  command: DirectedCommand,
+  commander: RulesetFightCommander,
+): Extract<RulesetCommandResult, { ok: false }> | null {
+  if (!fight.players || Object.keys(fight.players).length === 0) return null;
+  const unitId = rulesetCommandUnit(state, fight, command);
+  if (unitId === null) {
+    if (commander.host) return null;
+    return {
+      ok: false,
+      error: "Only the room's host decides that for the whole fight.",
+      code: "ruleset_combat_host_only",
+    };
+  }
+  const combatant = rulesetCombatant(fight.encounter, unitId);
+  // Only a party member has a player; whatever else is named is left for the resolver to refuse.
+  if (!combatant || combatant.side !== "party" || rulesetMayCommand(fight, unitId, commander)) return null;
+  const player = rulesetUnitPlayer(fight, unitId);
+  return {
+    ok: false,
+    error: player ? `${combatant.name} is ${player.name}'s to play.` : `${combatant.name} is the host's to play.`,
+    code: "ruleset_combat_not_yours",
+  };
 }
 
 /** Who plays this combatant: the player, the Engine's own picker, or the Game Master. */
@@ -3013,13 +3130,22 @@ function rulesetPartyMayYield(state: CombatDirectorState, encounter: RulesetEnco
 export function directedRulesetView(
   definition: RulesetDefinition,
   state: CombatDirectorState,
+  viewer: RulesetFightCommander = RULESET_ROOM_HOST,
 ): DirectedRulesetView | undefined {
-  return withRulesetPlanMemo(() => rulesetViewOf(definition, state));
+  return withRulesetPlanMemo(() => rulesetViewOf(definition, state, viewer));
 }
 
-function rulesetViewOf(definition: RulesetDefinition, state: CombatDirectorState): DirectedRulesetView | undefined {
+function rulesetViewOf(
+  definition: RulesetDefinition,
+  state: CombatDirectorState,
+  viewer: RulesetFightCommander,
+): DirectedRulesetView | undefined {
   const fight = fightOf(state);
   if (!fight || !definition.combat) return undefined;
+  // In a shared room (2026-10-26) the menu, and who is set down, are the viewer's own only.
+  const theirs = (id: string) => rulesetMayCommand(fight, id, viewer);
+  const room = !!fight.players && Object.keys(fight.players).length > 0;
+  const partyIds = fight.encounter.combatants.filter((one) => one.side === "party").map((one) => one.id);
   const encounter = fight.encounter;
   const praying = rulesetPraying(fight);
   const actor = currentRulesetActor(encounter);
@@ -3099,13 +3225,24 @@ function rulesetViewOf(definition: RulesetDefinition, state: CombatDirectorState
     ...(fight.deploy && !over
       ? {
           deploy: {
-            ids: rulesetDeployers(state, fight),
+            ids: rulesetDeployers(state, fight).filter(theirs),
             cells: fight.deploy.cells.map((cell) => ({ x: cell.x, y: cell.y })),
           },
         }
       : {}),
     controller,
     ...(fight.lead ? { lead: fight.lead } : {}),
+    ...(room
+      ? {
+          players: Object.fromEntries(
+            partyIds.flatMap((id) => {
+              const player = rulesetUnitPlayer(fight, id);
+              return player ? [[id, { ...player }] as const] : [];
+            }),
+          ),
+          yours: partyIds.filter(theirs),
+        }
+      : {}),
     ...(callouts.length ? { callouts } : {}),
     combatants: encounter.combatants.map((combatant) =>
       projectCombatant(definition, combatant, encounter, actor && !over ? actor : undefined, praying),
@@ -3164,7 +3301,7 @@ function rulesetViewOf(definition: RulesetDefinition, state: CombatDirectorState
                 : {})(rulesetHeldUse(definition, encounter, held.window)),
             controller: held.controller,
           },
-          ...(held.controller === "manual" && !state.window
+          ...(held.controller === "manual" && !state.window && theirs(held.actorId)
             ? {
                 options: rulesetCounterOdds(
                   definition,
@@ -3176,7 +3313,7 @@ function rulesetViewOf(definition: RulesetDefinition, state: CombatDirectorState
               }
             : {}),
         }
-      : actor && !over && controller === "manual" && !state.window
+      : actor && !over && controller === "manual" && !state.window && theirs(actor.id)
         ? { options: rulesetMenu(definition, encounter, actor.id) }
         : {}),
     ...(rulesetCombatIsSymbol(definition.combat) ? { spends: { choose: !!fight.chooseSpends } } : {}),

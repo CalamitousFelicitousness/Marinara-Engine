@@ -103,6 +103,9 @@ export interface CombatDirectorState extends DirectedCombatView {
   inventory: Array<{ name: string; quantity: number; description?: string; ownName?: string; item?: string }>;
   itemEffects: CombatItemEffect[];
   itemSpends: Record<string, number>;
+  /** How many times each item drawn as it is used (1.800) was used, by its line's name: each new use
+   *  draws one of it as the step is saved. Absent in a save from before it. */
+  itemDraws?: Record<string, number>;
   requests: string[];
   gmCalls: number;
   /** The `ruleset` style's whole fight. Present exactly when the style is `ruleset`; everything
@@ -831,6 +834,8 @@ function declare(s: CombatDirectorState, action: Action, source: Source, reactio
       item.quantity--;
       s.itemSpends[itemName] = (s.itemSpends[itemName] ?? 0) + 1;
     }
+    // Drawn as it is used (1.800): put on as the step is saved.
+    if (effect.draws) (s.itemDraws ??= {})[itemName] = (s.itemDraws[itemName] ?? 0) + 1;
     // The route rolled its gate for its user and says here when they failed it (#6909), and what the use
     // truly does when it comes out of a fake (1.79).
     const failed = (action.classic ?? action.tactical) as { failed?: string; truly?: CombatItemEffect } | undefined;

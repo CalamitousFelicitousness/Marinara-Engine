@@ -12722,6 +12722,10 @@ export function getCapabilityPackageInstallIssue(
   ) {
     return "A ruleset whose list rows may be used as rituals (a list's ritual) requires schemaVersion 2 and capabilityApi 1.799 or newer";
   }
+  // Items drawn as they are used, 1.800.
+  if (!declaresApi(800) && plainRecord(plainRecord(ruleset)?.items)?.drawOnUse !== undefined) {
+    return "A ruleset whose items are drawn as they are used (items.drawOnUse) requires schemaVersion 2 and capabilityApi 1.800 or newer";
+  }
   // Signature actions bought at a foe's turn start, 1.797.
   if (!declaresApi(797) && plainRecord(plainRecord(ruleset)?.combat)?.signatureAtTurnStart !== undefined) {
     return "A ruleset whose signature actions are bought at a turn's start (combat.signatureAtTurnStart) requires schemaVersion 2 and capabilityApi 1.797 or newer";

@@ -3945,11 +3945,14 @@ function biggerWays(
       },
       payWith: pool,
       // An opponent's each step above its own rung a little dearer again, on its share of the pool,
-      // so the small one is still cast when it does.
+      // so the small one is still cast when it does; what grows no bigger, much dearer, so a big slot
+      // goes on it only when nothing else would buy more (cloud caster bosses 2026-10-26: Misty Step
+      // out of 4th and 5th-level slots, round after round).
       price:
         actor.side === "enemy"
-          ? paid.cost.reduce((total, entry) => total + share(entry.pool, entry.amount), 0) * (1 + 0.25 * steps)
-          : paid.cost.reduce((total, entry) => total + entry.amount, 0) + steps,
+          ? paid.cost.reduce((total, entry) => total + share(entry.pool, entry.amount), 0) *
+            (1 + (grows ? 0.25 : 1) * steps)
+          : paid.cost.reduce((total, entry) => total + entry.amount, 0) + (grows ? 1 : 3) * steps,
     });
     // What grows no bigger is paid from the least pool that can pay for it, and no other (laptop
     // 2026-10-25: an Entangle out of a 3rd-level slot with a 2nd-level one left), and so is a heal.
@@ -4733,6 +4736,22 @@ function rulesetCandidatesFrom(
         const id = candidates[index]!.action.option.id;
         if (id === held || actor.actions.find((one) => one.id === id)?.concentration) candidates.splice(index, 1);
       }
+    // Holding help on its own side (a Bless), it is not cast again while it holds anyone, nor let go
+    // for other help on its own side, which does no more (cloud caster bosses 2026-10-26: a priest's
+    // legendary Guidance cast on itself three times a round, and over the Bless it had just cast). A
+    // held spell that harms or holds a foe may still be worth more, as weighed above.
+    else if (rulesetHeldFriends(encounter, actor).length > 0)
+      for (let index = candidates.length - 1; index >= 0; index--) {
+        const candidate = candidates[index]!;
+        const id = candidate.action.option.id;
+        const action = actor.actions.find((one) => one.id === id);
+        const targets = candidate.action.choice.targetIds;
+        const helps =
+          !action?.damage &&
+          !action?.zone &&
+          (targets.length === 0 || targets.every((one) => rulesetCombatant(encounter, one)?.side === actor.side));
+        if (id === held || (action?.concentration && helps)) candidates.splice(index, 1);
+      }
   }
   // What a target threw off before, cast at it again by the same one, is worth half as much again
   // for each time (laptop pass 5 2026-10-26: Hold Person cast four times at one who saved each time,
@@ -5129,12 +5148,13 @@ export function rulesetEffectWorth(
               (modifier.flat ?? 0) <= 0 ||
               rulesetSideDeals(encounter, target.side, modifier.damageType))),
     );
-    // One that only touches ability checks is next to nothing in a fight (re-test 2026-10-23: a cleric
-    // spent six actions on Guidance); one spent the first time it adds (1.778) is worth half.
+    // One that only touches ability checks is nothing in a fight (re-test 2026-10-23: a cleric spent
+    // six actions on Guidance; cloud caster bosses 2026-10-26: a priest's legendary actions on it);
+    // one spent the first time it adds (1.778) is worth half.
     each += Math.min(
       0.3,
       counted.reduce(
-        (sum, modifier) => sum + (modifier.to === "checks" ? 0.02 : 0.1) * (modifier.spentOnUse ? 0.5 : 1),
+        (sum, modifier) => sum + (modifier.to === "checks" ? 0 : 0.1) * (modifier.spentOnUse ? 0.5 : 1),
         0,
       ),
     );
@@ -7548,6 +7568,21 @@ function rulesetHeldFoes(encounter: RulesetEncounterState, actor: RulesetCombata
   return encounter.combatants.filter(
     (one) =>
       one.side !== actor.side &&
+      rulesetCombatStanding(one) &&
+      one.tracked.some(
+        (entry) => entry.source === actor.id && entry.concentration && entry.action?.includes(held.actionId),
+      ),
+  );
+}
+
+/** Those on its own side, itself among them, still standing and carrying what its held spell put on
+ *  them. */
+function rulesetHeldFriends(encounter: RulesetEncounterState, actor: RulesetCombatant): RulesetCombatant[] {
+  const held = actor.concentrating;
+  if (!held) return [];
+  return encounter.combatants.filter(
+    (one) =>
+      one.side === actor.side &&
       rulesetCombatStanding(one) &&
       one.tracked.some(
         (entry) => entry.source === actor.id && entry.concentration && entry.action?.includes(held.actionId),

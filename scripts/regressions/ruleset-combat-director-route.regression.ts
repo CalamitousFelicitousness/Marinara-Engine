@@ -132,6 +132,11 @@ const fixtureText = JSON.stringify(document);
   for (const catalog of rows) for (const list of catalog.feeds ?? []) assert.ok(lists.has(list), list);
   assert.ok(lists.has(":fields"));
   assert.ok(!proposedSheetLists(definition, [{ proposed: { tier: "cr_1", sheet: {} } }]).has(":fields"));
+  // A foe written with the Game Master's own skills, one a heal, reads them as its attacks do (cloud
+  // and laptop re-tests 2026-10-26: a Cult Healer's Cure Wounds dropped, and a returning one's too).
+  const healerSkills = proposedSheetLists(definition, [{ skills: [{ type: "attack" }, { type: "heal" }] }]);
+  for (const catalog of rows) for (const list of catalog.feeds ?? []) assert.ok(healerSkills.has(list), list);
+  assert.ok(!proposedSheetLists(definition, [{ skills: [{ type: "attack" }] }]).has(":fields"));
 }
 
 const fighterBuild = build({

@@ -410,10 +410,27 @@ const RULESET_PROPOSED_FIELDS = ":fields";
  *  them too, whether a proposal wrote it or not, because its open choices are filled from there. */
 export function proposedSheetLists(
   definition: RulesetDefinition,
-  enemies: ReadonlyArray<{ proposed?: unknown; attacks?: ReadonlyArray<{ reaction?: unknown; kind?: unknown }> }>,
+  enemies: ReadonlyArray<{
+    proposed?: unknown;
+    attacks?: ReadonlyArray<{ reaction?: unknown; kind?: unknown }>;
+    /** The Game Master's own skills, which become its attacks: one not an attack is a kind. */
+    skills?: ReadonlyArray<{ reaction?: unknown; type?: unknown }>;
+  }>,
 ): Set<string> {
   const lists = new Set<string>();
-  for (const enemy of enemies) {
+  for (const given of enemies) {
+    // Read as the fight reads them (cloud re-test 2026-10-26: a Cult Healer written with skills had
+    // no class list loaded, so its Cure Wounds was dropped as beyond its sheet).
+    const enemy = {
+      ...given,
+      attacks: [
+        ...(given.attacks ?? []),
+        ...(given.skills ?? []).map((skill) => ({
+          reaction: skill.reaction,
+          kind: skill.type !== "attack" ? skill.type : undefined,
+        })),
+      ],
+    };
     // A reaction it was given by name may be an entry of the ruleset's own (a Counterspell that is a
     // spell), read off whichever list that entry's catalog feeds; and so may a spell or a feature
     // written beside the attacks of one with no sheet, which it is given a sheet for, with a class.

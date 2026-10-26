@@ -672,6 +672,57 @@ try {
     assert.ok((pick(true).worth ?? 0) > 0, "a torch beside it: oil is worth something");
   }
 
+  // ── Help held on its own side is not cast again, nor let go for other help; and what only adds to
+  // ability checks is worth nothing in a fight (cloud caster bosses 2026-10-26: a priest's legendary
+  // Guidance cast on itself three times a round, and over its Bless) ──
+  {
+    definition.combat!.conditions!.push({ condition: "guided", modifiers: [{ to: "checks", dice: "1d4" }] } as never);
+    const ward = {
+      id: "ward",
+      name: "Ward",
+      budget: "action",
+      targets: "ally",
+      range: { normal: 30 },
+      applies: [{ condition: "parrying", duration: { rounds: 10 } }],
+      concentration: true,
+    };
+    const guide = { ...ward, id: "guide", name: "Guide", applies: [{ condition: "guided", duration: { rounds: 10 } }] };
+    const { encounter, state } = fight({
+      priest: { side: "enemy", block: block([ward, guide, flick]), at: { x: 2, y: 4 } },
+      knight: { side: "enemy", block: block([poke]), at: { x: 3, y: 4 } },
+      foe: { side: "party", block: block([poke]), at: { x: 10, y: 4 } },
+    });
+    const priest = rulesetCombatant(encounter, "priest")!;
+    const guideAction = priest.actions.find((one) => one.label === "Guide")!;
+    assert.ok(
+      !(
+        (rulesetEffectWorth(
+          definition,
+          combat,
+          encounter,
+          priest,
+          guideAction,
+          rulesetCombatant(encounter, "knight")!,
+        ) ?? 0) > 0
+      ),
+      "a die on ability checks does nothing in a fight",
+    );
+    const wardId = priest.actions.find((one) => one.label === "Ward")!.id;
+    priest.concentrating = { actionId: wardId, label: "Ward" } as never;
+    rulesetCombatant(encounter, "knight")!.tracked.push({
+      condition: "parrying",
+      rounds: 10,
+      source: "priest",
+      concentration: true,
+      action: [wardId],
+    } as never);
+    const ranked = rankRulesetChoices(definition, state, encounter, "priest", 50).map(
+      (one) => one.candidate.action.option.label,
+    );
+    assert.ok(!ranked.includes("Ward") && !ranked.includes("Guide"), `the ward is kept: ${ranked.join(", ")}`);
+    definition.combat!.conditions!.pop();
+  }
+
   // ── A Counterspell is worth what it stops ──
   {
     const counter = {

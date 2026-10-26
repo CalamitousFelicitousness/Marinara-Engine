@@ -9,6 +9,7 @@ import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  type RefObject,
 } from "react";
 import { flushSync } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -343,6 +344,13 @@ const HOME_MODULE_ACCENTS = {
   violet: "oklch(0.72 0.17 303)",
 } as const;
 
+// The folded tab menu's dots and rows wear the three chat-mode colors in turn.
+const HOME_TAB_MENU_TONES = [
+  HOME_CHAT_MODE_ACCENTS.conversation,
+  HOME_CHAT_MODE_ACCENTS.roleplay,
+  HOME_CHAT_MODE_ACCENTS.game,
+] as const;
+
 const HOME_CUSTOM_WIDGET_ICONS = {
   sparkles: Sparkles,
   note: NotebookPen,
@@ -666,22 +674,55 @@ function BrowserBookmark({
   );
 }
 
+// A header menu closes on Escape or on a press outside it and its trigger.
+function useHeaderMenuDismiss(
+  open: boolean,
+  setOpen: (open: boolean) => void,
+  menuRef: RefObject<HTMLElement | null>,
+  triggerRef: RefObject<HTMLElement | null>,
+) {
+  useEffect(() => {
+    if (!open) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (menuRef.current?.contains(target)) return;
+      if (triggerRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open, setOpen, menuRef, triggerRef]);
+}
+
 function MobileBrowserBookmark({
   href,
   onClick,
   icon,
   tone,
+  current = false,
   children,
 }: {
   href?: string;
   onClick?: () => void;
   icon: ReactNode;
   tone: string;
+  /** The tab already open, in the folded tab menu. */
+  current?: boolean;
   children: ReactNode;
 }) {
   const style = { "--bookmark-tone": tone } as CSSProperties;
-  const className =
-    "group flex min-h-9 w-full items-center gap-2 rounded-lg border border-[color-mix(in_srgb,var(--bookmark-tone)_24%,var(--border))] bg-[color-mix(in_srgb,var(--bookmark-tone)_7%,var(--card))] px-2.5 py-1 text-left text-xs font-semibold text-[var(--foreground)] transition-[background-color,border-color,transform] hover:border-[color-mix(in_srgb,var(--bookmark-tone)_46%,var(--border))] hover:bg-[color-mix(in_srgb,var(--bookmark-tone)_13%,var(--card))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--bookmark-tone)] active:scale-[0.985]";
+  const className = cn(
+    "group flex min-h-9 w-full items-center gap-2 rounded-lg border border-[color-mix(in_srgb,var(--bookmark-tone)_24%,var(--border))] bg-[color-mix(in_srgb,var(--bookmark-tone)_7%,var(--card))] px-2.5 py-1 text-left text-xs font-semibold text-[var(--foreground)] transition-[background-color,border-color,transform] hover:border-[color-mix(in_srgb,var(--bookmark-tone)_46%,var(--border))] hover:bg-[color-mix(in_srgb,var(--bookmark-tone)_13%,var(--card))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--bookmark-tone)] active:scale-[0.985]",
+    current &&
+      "border-[color-mix(in_srgb,var(--bookmark-tone)_58%,var(--border))] bg-[color-mix(in_srgb,var(--bookmark-tone)_16%,var(--card))]",
+  );
   const content = (
     <>
       <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[color-mix(in_srgb,var(--bookmark-tone)_16%,var(--card))] ring-1 ring-[color-mix(in_srgb,var(--bookmark-tone)_30%,transparent)]">
@@ -699,7 +740,13 @@ function MobileBrowserBookmark({
     );
   }
   return (
-    <button type="button" onClick={onClick} className={className} style={style}>
+    <button
+      type="button"
+      onClick={onClick}
+      className={className}
+      style={style}
+      aria-current={current ? "page" : undefined}
+    >
       {content}
     </button>
   );
@@ -1064,6 +1111,13 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
   const feedShellRef = useRef<HTMLDivElement | null>(null);
   const mobileBookmarksRef = useRef<HTMLDivElement | null>(null);
   const mobileBookmarksTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const [tabMenuOpen, setTabMenuOpen] = useState(false);
+  const [tabStripWidth, setTabStripWidth] = useState(0);
+  const [collapsedTabsFor, setCollapsedTabsFor] = useState<string | null>(null);
+  const tabStripRef = useRef<HTMLDivElement | null>(null);
+  const tabListRef = useRef<HTMLDivElement | null>(null);
+  const tabMenuRef = useRef<HTMLDivElement | null>(null);
+  const tabMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [draggedWidgetId, setDraggedWidgetId] = useState<HomeWidgetId | null>(null);
   const draggedWidgetIdRef = useRef<HomeWidgetId | null>(null);
   const lastDragTargetRef = useRef<string | null>(null);
@@ -1216,24 +1270,34 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
     [],
   );
 
-  useEffect(() => {
-    if (!mobileBookmarksOpen) return;
-    const closeOnOutsidePointer = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (mobileBookmarksRef.current?.contains(target)) return;
-      if (mobileBookmarksTriggerRef.current?.contains(target)) return;
-      setMobileBookmarksOpen(false);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMobileBookmarksOpen(false);
-    };
-    document.addEventListener("pointerdown", closeOnOutsidePointer);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOnOutsidePointer);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [mobileBookmarksOpen]);
+  useHeaderMenuDismiss(mobileBookmarksOpen, setMobileBookmarksOpen, mobileBookmarksRef, mobileBookmarksTriggerRef);
+  useHeaderMenuDismiss(tabMenuOpen, setTabMenuOpen, tabMenuRef, tabMenuTriggerRef);
+
+  // Tabs that do not fit fold into one menu instead of scrolling; Home always stays a tab. Any change to the
+  // strip's width or to its tabs tries the full row again, and the layout effect folds it before paint.
+  const tabFitKey = [
+    tabStripWidth,
+    mobileShell,
+    activeTab,
+    ...localizedBrowserPackages.map(
+      ({ item, display }) => `${item.id}:${display.homeBrowserTab?.label ?? display.name}`,
+    ),
+  ].join("|");
+  const tabsCollapsed = collapsedTabsFor === tabFitKey;
+  useLayoutEffect(() => {
+    const strip = tabStripRef.current;
+    if (!strip) return;
+    setTabStripWidth(strip.clientWidth);
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => setTabStripWidth(strip.clientWidth));
+    observer.observe(strip);
+    return () => observer.disconnect();
+  }, []);
+  useLayoutEffect(() => {
+    setTabMenuOpen(false);
+    const list = tabListRef.current;
+    if (list && list.scrollWidth > list.clientWidth + 1) setCollapsedTabsFor(tabFitKey);
+  }, [tabFitKey]);
 
   useEffect(() => {
     if (activeTab === "home" || activeTab === "professor") return;
@@ -1318,6 +1382,7 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
   const selectTab = useCallback(
     (tab: string) => {
       setMobileBookmarksOpen(false);
+      setTabMenuOpen(false);
       setFocusedPackagePost((current) => (current?.packageId === tab ? current : null));
       if (sceneOriginFocus && sceneOriginFocus.packageId !== tab) setSceneOriginFocus(null);
       if (tab === "professor") {
@@ -1679,109 +1744,154 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
               </button>
             ) : null}
             <div
-              className={cn(
-                "flex min-w-0 flex-1 items-end gap-0.5 overflow-x-auto overflow-y-hidden",
-                !mobileShell && "sm:gap-1",
-              )}
-              role="tablist"
-              aria-label={t("home.browser.tabsLabel")}
-              data-component="HomeBrowserHub.TabList"
+              ref={tabStripRef}
+              className={cn("flex min-w-0 flex-1 items-end gap-0.5", !mobileShell && "sm:gap-1")}
+              data-component="HomeBrowserHub.TabStrip"
+              data-tabs-collapsed={tabsCollapsed ? "" : undefined}
             >
-              <button
-                id={homeBrowserTabId("home")}
-                type="button"
-                role="tab"
-                aria-controls={HOME_BROWSER_PANEL_ID}
-                aria-label={t("home.browser.homeTab")}
-                aria-selected={activeTab === "home"}
-                onClick={() => selectTab("home")}
+              <div
+                ref={tabListRef}
                 className={cn(
-                  "flex min-h-9 min-w-0 items-center justify-center rounded-t-lg border border-b-0 text-[0.65rem] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[oklch(0.79_0.16_205)]",
-                  !mobileShell && "sm:min-w-[6.5rem] sm:w-auto sm:flex-none sm:gap-1.5 sm:px-3 sm:text-xs",
-                  activeTab === "home" ? "min-w-[6.5rem] flex-1 gap-1 px-2" : "w-9 flex-none gap-0 px-0",
-                  activeTab === "home"
-                    ? "border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]"
-                    : "border-transparent text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
+                  "flex min-w-0 flex-1 items-end gap-0.5 overflow-x-auto overflow-y-hidden",
+                  !mobileShell && "sm:gap-1",
                 )}
+                role="tablist"
+                aria-label={t("home.browser.tabsLabel")}
+                data-component="HomeBrowserHub.TabList"
               >
-                <img src="/home/tab-icons/home.png" alt="" className="h-[1.125rem] w-[1.125rem] object-contain" />
-                <span className={cn("min-w-0 truncate", activeTab === "home" || !mobileShell ? "block" : "hidden")}>
-                  {t("home.browser.homeTab")}
-                </span>
-              </button>
-              <button
-                id={homeBrowserTabId("professor")}
-                type="button"
-                role="tab"
-                aria-controls={HOME_BROWSER_PANEL_ID}
-                aria-label={t("home.browser.professorTab")}
-                aria-selected={activeTab === "professor"}
-                onClick={openProfessor}
-                className={cn(
-                  "flex min-h-9 min-w-0 items-center justify-center rounded-t-lg border border-b-0 text-[0.65rem] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--marinara-chat-chrome-focus-ring)]",
-                  !mobileShell && "sm:min-w-[6.5rem] sm:w-auto sm:flex-none sm:gap-1.5 sm:px-3 sm:text-xs",
-                  activeTab === "professor" ? "min-w-[6.5rem] flex-1 gap-1 px-2" : "w-9 flex-none gap-0 px-0",
-                  activeTab === "professor"
-                    ? "border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]"
-                    : "border-transparent text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
-                )}
-              >
-                <img
-                  src={mariPoses.profile}
-                  {...mariImgLoading(MARI_ASSET_TIER.poses.profile)}
-                  width={16}
-                  height={16}
-                  alt=""
-                  className="h-4 w-4 rounded-sm object-cover"
-                />
-                <span
-                  className={cn("min-w-0 truncate", activeTab === "professor" || !mobileShell ? "block" : "hidden")}
+                <button
+                  id={homeBrowserTabId("home")}
+                  type="button"
+                  role="tab"
+                  aria-controls={HOME_BROWSER_PANEL_ID}
+                  aria-label={t("home.browser.homeTab")}
+                  aria-selected={activeTab === "home"}
+                  onClick={() => selectTab("home")}
+                  className={cn(
+                    "flex min-h-9 min-w-0 items-center justify-center rounded-t-lg border border-b-0 text-[0.65rem] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[oklch(0.79_0.16_205)]",
+                    !mobileShell && "sm:min-w-[6.5rem] sm:w-auto sm:flex-none sm:gap-1.5 sm:px-3 sm:text-xs",
+                    activeTab === "home" ? "min-w-[6.5rem] flex-1 gap-1 px-2" : "w-9 flex-none gap-0 px-0",
+                    activeTab === "home"
+                      ? "border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]"
+                      : "border-transparent text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
+                  )}
                 >
-                  {t("home.browser.professorTab")}
-                </span>
-              </button>
-              {localizedBrowserPackages.map(({ item, display }) => {
-                const tab = display.homeBrowserTab;
-                const tabActive = activeTab === item.id;
-                const hasUnreadRefresh = item.id === "noodle" && noodleRefreshUnread;
-                const activityDescriptionId = `${homeBrowserTabId(item.id)}-activity`;
-                return (
+                  <img src="/home/tab-icons/home.png" alt="" className="h-[1.125rem] w-[1.125rem] object-contain" />
+                  <span className={cn("min-w-0 truncate", activeTab === "home" || !mobileShell ? "block" : "hidden")}>
+                    {t("home.browser.homeTab")}
+                  </span>
+                </button>
+                {/* Folded, the row keeps Home and the open tab; the menu holds the rest. */}
+                {!tabsCollapsed || activeTab === "professor" ? (
                   <button
-                    key={item.id}
-                    id={homeBrowserTabId(item.id)}
+                    id={homeBrowserTabId("professor")}
                     type="button"
                     role="tab"
                     aria-controls={HOME_BROWSER_PANEL_ID}
-                    aria-label={tab?.ariaLabel ?? tab?.label ?? display.name}
-                    aria-describedby={hasUnreadRefresh ? activityDescriptionId : undefined}
-                    aria-selected={tabActive}
-                    onClick={() => selectTab(item.id)}
+                    aria-label={t("home.browser.professorTab")}
+                    aria-selected={activeTab === "professor"}
+                    onClick={openProfessor}
                     className={cn(
-                      "relative flex min-h-9 min-w-0 items-center justify-center rounded-t-lg border border-b-0 text-[0.65rem] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--marinara-chat-chrome-focus-ring)]",
+                      "flex min-h-9 min-w-0 items-center justify-center rounded-t-lg border border-b-0 text-[0.65rem] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--marinara-chat-chrome-focus-ring)]",
                       !mobileShell && "sm:min-w-[6.5rem] sm:w-auto sm:flex-none sm:gap-1.5 sm:px-3 sm:text-xs",
-                      tabActive ? "min-w-[6.5rem] flex-1 gap-1 px-2" : "w-9 flex-none gap-0 px-0",
-                      tabActive
+                      activeTab === "professor" ? "min-w-[6.5rem] flex-1 gap-1 px-2" : "w-9 flex-none gap-0 px-0",
+                      activeTab === "professor"
                         ? "border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]"
                         : "border-transparent text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                     )}
                   >
-                    <BrowserPackageTabIcon packageId={item.id} version={item.version} iconPaths={tab?.iconPaths} />
-                    <span className={cn("min-w-0 truncate", tabActive || !mobileShell ? "block" : "hidden")}>
-                      {tab?.label ?? display.name}
+                    <img
+                      src={mariPoses.profile}
+                      {...mariImgLoading(MARI_ASSET_TIER.poses.profile)}
+                      width={16}
+                      height={16}
+                      alt=""
+                      className="h-4 w-4 rounded-sm object-cover"
+                    />
+                    <span
+                      className={cn("min-w-0 truncate", activeTab === "professor" || !mobileShell ? "block" : "hidden")}
+                    >
+                      {t("home.browser.professorTab")}
                     </span>
-                    {hasUnreadRefresh ? (
-                      <span
-                        id={activityDescriptionId}
-                        aria-label={t("home.browser.newTimelineRefresh")}
-                        data-component="HomeBrowserHub.NoodleRefreshBadge"
-                        className="mari-chrome-accent-tile mari-accent-animated absolute right-1 top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[0.58rem] font-black leading-none ring-1 ring-[var(--marinara-chat-chrome-button-border-active)]"
-                      >
-                        <span aria-hidden="true">1</span>
-                      </span>
-                    ) : null}
                   </button>
-                );
-              })}
+                ) : null}
+                {localizedBrowserPackages.map(({ item, display }) => {
+                  const tab = display.homeBrowserTab;
+                  const tabActive = activeTab === item.id;
+                  if (tabsCollapsed && !tabActive) return null;
+                  const hasUnreadRefresh = item.id === "noodle" && noodleRefreshUnread;
+                  const activityDescriptionId = `${homeBrowserTabId(item.id)}-activity`;
+                  return (
+                    <button
+                      key={item.id}
+                      id={homeBrowserTabId(item.id)}
+                      type="button"
+                      role="tab"
+                      aria-controls={HOME_BROWSER_PANEL_ID}
+                      aria-label={tab?.ariaLabel ?? tab?.label ?? display.name}
+                      aria-describedby={hasUnreadRefresh ? activityDescriptionId : undefined}
+                      aria-selected={tabActive}
+                      onClick={() => selectTab(item.id)}
+                      className={cn(
+                        "relative flex min-h-9 min-w-0 items-center justify-center rounded-t-lg border border-b-0 text-[0.65rem] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--marinara-chat-chrome-focus-ring)]",
+                        !mobileShell && "sm:min-w-[6.5rem] sm:w-auto sm:flex-none sm:gap-1.5 sm:px-3 sm:text-xs",
+                        tabActive ? "min-w-[6.5rem] flex-1 gap-1 px-2" : "w-9 flex-none gap-0 px-0",
+                        tabActive
+                          ? "border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]"
+                          : "border-transparent text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
+                      )}
+                    >
+                      <BrowserPackageTabIcon packageId={item.id} version={item.version} iconPaths={tab?.iconPaths} />
+                      <span className={cn("min-w-0 truncate", tabActive || !mobileShell ? "block" : "hidden")}>
+                        {tab?.label ?? display.name}
+                      </span>
+                      {hasUnreadRefresh ? (
+                        <span
+                          id={activityDescriptionId}
+                          aria-label={t("home.browser.newTimelineRefresh")}
+                          data-component="HomeBrowserHub.NoodleRefreshBadge"
+                          className="mari-chrome-accent-tile mari-accent-animated absolute right-1 top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[0.58rem] font-black leading-none ring-1 ring-[var(--marinara-chat-chrome-button-border-active)]"
+                        >
+                          <span aria-hidden="true">1</span>
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+              {/* A sibling of the tab list, like the bookmarks button: a tablist may only contain tabs. */}
+              {tabsCollapsed ? (
+                <button
+                  ref={tabMenuTriggerRef}
+                  type="button"
+                  className={cn(
+                    "relative flex h-9 w-9 shrink-0 items-center justify-center self-end rounded-t-lg border border-b-0 border-transparent transition-colors hover:bg-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--marinara-app-accent-solid)]",
+                    tabMenuOpen && "bg-[var(--accent)]",
+                  )}
+                  aria-label={t("home.browser.tabMenu")}
+                  title={t("home.browser.tabMenu")}
+                  aria-expanded={tabMenuOpen}
+                  aria-controls="marinara-home-tab-menu"
+                  aria-describedby={noodleRefreshUnread ? "marinara-home-tab-menu-activity" : undefined}
+                  onClick={() => setTabMenuOpen((open) => !open)}
+                  data-component="HomeBrowserHub.TabMenuTrigger"
+                >
+                  <span aria-hidden="true" className="flex items-center gap-[3px]">
+                    {HOME_TAB_MENU_TONES.map((color) => (
+                      <span key={color} className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
+                    ))}
+                  </span>
+                  {noodleRefreshUnread ? (
+                    <span
+                      id="marinara-home-tab-menu-activity"
+                      aria-label={t("home.browser.newTimelineRefresh")}
+                      className="mari-chrome-accent-tile mari-accent-animated absolute right-0 top-0 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full px-0.5 text-[0.5rem] font-black leading-none ring-1 ring-[var(--marinara-chat-chrome-button-border-active)]"
+                    >
+                      <span aria-hidden="true">1</span>
+                    </span>
+                  ) : null}
+                </button>
+              ) : null}
             </div>
           </div>
 
@@ -2020,6 +2130,64 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                 >
                   {t("home.browser.widgets")}
                 </MobileBrowserBookmark>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+
+          <AnimatePresence initial={false}>
+            {tabsCollapsed && tabMenuOpen ? (
+              <motion.div
+                ref={tabMenuRef}
+                id="marinara-home-tab-menu"
+                initial={reduceMotion ? false : { opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -8 }}
+                transition={{ duration: reduceMotion ? 0 : 0.18, ease: [0.16, 1, 0.3, 1] }}
+                className="absolute left-2 right-2 top-[calc(100%+0.35rem)] grid max-h-[calc(100dvh-8rem)] gap-1 overflow-y-auto rounded-xl border border-[var(--border)] bg-[color-mix(in_srgb,var(--card)_96%,var(--background))] p-1.5 shadow-[0_22px_60px_-24px_rgba(0,0,0,0.72)] ring-1 ring-[color-mix(in_srgb,var(--foreground)_7%,transparent)] sm:left-auto sm:w-72"
+                data-component="HomeBrowserHub.TabMenu"
+              >
+                <MobileBrowserBookmark
+                  onClick={() => {
+                    setTabMenuOpen(false);
+                    openProfessor();
+                  }}
+                  icon={
+                    <img
+                      src={mariPoses.profile}
+                      {...mariImgLoading(MARI_ASSET_TIER.poses.profile)}
+                      width={16}
+                      height={16}
+                      alt=""
+                      className="h-4 w-4 rounded-sm object-cover"
+                    />
+                  }
+                  tone={HOME_TAB_MENU_TONES[0]}
+                  current={activeTab === "professor"}
+                >
+                  {t("home.browser.professorTab")}
+                </MobileBrowserBookmark>
+                {localizedBrowserPackages.map(({ item, display }, index) => {
+                  const tab = display.homeBrowserTab;
+                  return (
+                    <MobileBrowserBookmark
+                      key={item.id}
+                      onClick={() => selectTab(item.id)}
+                      icon={
+                        <BrowserPackageTabIcon packageId={item.id} version={item.version} iconPaths={tab?.iconPaths} />
+                      }
+                      tone={HOME_TAB_MENU_TONES[(index + 1) % HOME_TAB_MENU_TONES.length]!}
+                      current={activeTab === item.id}
+                    >
+                      {tab?.label ?? display.name}
+                      {item.id === "noodle" && noodleRefreshUnread ? (
+                        <span className="mari-chrome-accent-tile mari-accent-animated ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 align-middle text-[0.58rem] font-black leading-none ring-1 ring-[var(--marinara-chat-chrome-button-border-active)]">
+                          <span aria-hidden="true">1</span>
+                          <span className="sr-only">{t("home.browser.newTimelineRefresh")}</span>
+                        </span>
+                      ) : null}
+                    </MobileBrowserBookmark>
+                  );
+                })}
               </motion.div>
             ) : null}
           </AnimatePresence>

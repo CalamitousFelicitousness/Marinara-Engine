@@ -35,7 +35,13 @@ import { combatAiHash, type CombatTactics } from "../combat-ai.js";
 import { applyRulesetSheetOp, planRulesetUse, readRulesetLive } from "../rulesets/live-state.js";
 import { sheetFieldMatchTexts } from "../rulesets/scaled-rows.js";
 import { resolveRulesetValueRef } from "../rulesets/sheet-math.js";
-import { heaviestRider, RULESET_CLAMP_HEADROOM, rulesetStepAverageTimes, smallerDie } from "./creatures.js";
+import {
+  heaviestRider,
+  RULESET_CLAMP_HEADROOM,
+  rulesetActionAverage,
+  rulesetStepAverageTimes,
+  smallerDie,
+} from "./creatures.js";
 import { rulesetAverageAmount, rulesetAverageDamage } from "./dice.js";
 import { rulesetCostSteps, rulesetPoolFamily } from "./options.js";
 import type { RulesetCombatAction, RulesetCombatAmount, RulesetCombatant } from "./types.js";
@@ -747,6 +753,42 @@ export function raiseRulesetCasterPools(
         ? `Made a ${best.label} ${best.value}, so its spells have the pools they are paid out of.`
         : `${best.field.label} was set to ${best.value}, so its spells have the pools they are paid out of.`,
     ],
+  };
+}
+
+/**
+ * An invented caster held to its tier's damage: a spell whose damage alone, on average, is more than
+ * the most its tier deals in a round goes (cloud re-test 2026-10-26: a boss stepped down to a CR 4's
+ * numbers was made a 13th level caster to pay for Finger of Death, and kept it). Heals and rows not out
+ * of a catalog are untouched. What went is said.
+ */
+export function holdRulesetCasterSpellDamage(
+  proposed: RulesetSheetBuild,
+  catalogs: RulesetCatalogEntriesById,
+  tier: RulesetCombatThreatTier,
+): { sheet: RulesetSheetBuild; adjusted: string[] } {
+  const cap = tier.damagePerRound[1];
+  const sheet = structuredClone(proposed);
+  const gone: string[] = [];
+  for (const [listId, rows] of Object.entries(sheet.lists))
+    sheet.lists[listId] = rows.filter((row) => {
+      const mark = row[RULESET_CATALOG_ROW_KEY];
+      if (typeof mark !== "string") return true;
+      const catalogId = mark.slice(0, mark.indexOf("/"));
+      const entry = catalogs[catalogId]?.find((candidate) => candidate.id === mark.slice(mark.indexOf("/") + 1));
+      const mechanics = entry?.mechanics as { kind?: string; amount?: { dice?: string; flat?: number } } | undefined;
+      if (!entry || !mechanics?.amount || mechanics.kind === "heal") return true;
+      const average = rulesetActionAverage({ damage: mechanics.amount });
+      if (average <= cap) return true;
+      gone.push(`${entry.label} (${Math.round(average)})`);
+      return false;
+    });
+  return {
+    sheet,
+    adjusted:
+      gone.length > 0
+        ? [`${gone.join(", ")} went: more damage on its own than ${tier.label} deals in a round (${cap} at most).`]
+        : [],
   };
 }
 

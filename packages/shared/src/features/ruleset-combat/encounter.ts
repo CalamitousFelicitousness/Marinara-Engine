@@ -175,9 +175,19 @@ function amountOf(amount: RulesetCatalogMechanics["amount"]): RulesetCombatAmoun
  *  dice no longer thrown) in place of its own. */
 function rulesetAdjustedBlock(
   block: RulesetStatBlock,
-  adjust: { legendaryResistance?: number; health?: number; calls?: Array<{ action: string; creature: string }> },
+  adjust: {
+    legendaryResistance?: number;
+    health?: number;
+    calls?: Array<{ action: string; creature: string }>;
+    legendary?: { points: number; actions: RulesetStatBlockAction[] };
+  },
 ): RulesetStatBlock {
   const adjusted: RulesetStatBlock = { ...block };
+  // Made a boss with points and none of its own to spend them on: what they buy, beside the rest.
+  if (adjust.legendary?.actions.length && !block.actions.some((action) => action.signature)) {
+    adjusted.actions = [...block.actions, ...adjust.legendary.actions];
+    adjusted.signaturePoints = adjust.legendary.points;
+  }
   // Whom an action calls (1.371): the Shelves Lean calls a wraith once the party is high enough.
   if (adjust.calls?.length) {
     const key = (text: string) => text.trim().toLowerCase();

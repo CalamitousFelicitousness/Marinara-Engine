@@ -350,8 +350,10 @@ export function applySheetCommandTags(
         op.pool,
         card.items,
       ) === healthPoolOf);
+  // Nor are conditions put on them (laptop 0706 Party B: Restrained set on a dead Lyra): the dead are
+  // past them, and a revival that takes Unconscious or Prone off is the one change that reaches them.
   const raisesDead = (card: SheetCommandCard, op: RulesetSheetOp) =>
-    op.op === "rest" || (op.op === "condition" && !op.active) || wipesFailures(op) || healsHealth(card, op);
+    op.op === "rest" || op.op === "condition" || wipesFailures(op) || healsHealth(card, op);
   // A reply that both clears a dead hero's dying saves and gives them health back raises them, as the
   // story says (laptop 0706 Party B: a revival wrote "Death save failures" 0 and a restore of 1 hit
   // point), whatever order it wrote them in. Either alone is refused.

@@ -15,6 +15,7 @@ import {
   gameInventoryNameKey,
   applyRulesetSheetOp,
   capRulesetCasterSheet,
+  holdRulesetCasterSpellDamage,
   raiseRulesetCasterPools,
   raiseRulesetSheetAbilities,
   RULESET_INVENTED_CASTER_MOST,
@@ -892,19 +893,48 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       );
     }
     if (found) {
+      // A bestiary creature made a boss with points it has no legendary actions to spend on buys its own
+      // with them, as an invented boss does (cloud re-test 2026-10-26: a bestiary ogre and a young red
+      // dragon marked boss fought with none).
+      const own = found.entry.creature?.actions ?? [];
+      const legendary =
+        opponent.boss && (opponent.points ?? 0) > 0 && !own.some((action) => action.signature)
+          ? rulesetUnpricedLegendary(definition, input.bestiary, {
+              name: opponent.name,
+              points: Math.min(20, opponent.points!),
+              budget: rulesetStandardBudget(combat),
+              casts: !!found.entry.creature?.spellcasting,
+              actions: own,
+            })
+          : null;
+      if (legendary?.actions.length) {
+        adjustments.push(
+          legendary.from
+            ? `${opponent.name} had nothing priced out of its points, so it has the legendary actions of the ${legendary.from}.`
+            : `${opponent.name} had nothing priced out of its points, so it buys its own actions with them.`,
+        );
+        adjustments.push(
+          `${opponent.name} may spend ${Math.min(20, opponent.points!)} points between turns on ${legendary.actions.map((one) => one.name).join(", ")}.`,
+        );
+      }
       combatants.push({
         id: opponent.id,
         name: opponent.name,
         side: "enemy",
         creature: { catalogId: found.catalogId, entryId: found.entry.id },
-        ...(opponent.adjust
+        ...(opponent.adjust || legendary?.actions.length
           ? {
               adjust: {
-                ...(opponent.adjust.legendaryResistance !== undefined
+                ...(legendary?.actions.length
+                  ? { legendary: { points: Math.min(20, opponent.points!), actions: legendary.actions as never } }
+                  : {}),
+                ...(opponent.adjust?.legendaryResistance !== undefined
                   ? { legendaryResistance: opponent.adjust.legendaryResistance }
                   : {}),
-                ...(opponent.adjust.maxHp !== undefined ? { health: opponent.adjust.maxHp } : {}),
-                ...(opponent.adjust.calls?.length ? { calls: opponent.adjust.calls.map((call) => ({ ...call })) } : {}),
+                ...(opponent.adjust?.maxHp !== undefined ? { health: opponent.adjust.maxHp } : {}),
+                ...(opponent.adjust?.calls?.length
+                  ? { calls: opponent.adjust.calls.map((call) => ({ ...call })) }
+                  : {}),
               },
             }
           : {}),
@@ -928,6 +958,15 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
         .filter((attack) => (attack.kind || attack.spell) && !attack.reaction)
         .map((one) => one.name);
       let sheet: RulesetSheetBuild = rulesetSheetBuildSchema.parse({});
+      // A name its points buy below, lent by a creature of this ruleset, is given there (cloud re-test
+      // 2026-10-26: "no entry called Frightening Gaze" said beside "may spend points on ... Frightening Gaze").
+      const boughtLater = (name: string) =>
+        !!opponent.boss &&
+        (opponent.points ?? 0) > 0 &&
+        (opponent.attacks ?? []).some(
+          (one) => one.name === name && !one.reaction && !one.spell && (one.legendary ?? 0) > 0,
+        ) &&
+        !!rulesetBestiaryActionNamed(definition, input.bestiary, name);
       const missing: string[] = [];
       for (const name of named) {
         const plain = name.replace(/\s*\([^)]*\)\s*$/, "").trim();
@@ -947,7 +986,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
         const given = named.filter((name) => !missing.includes(name));
         if (numbersOnly) {
           // Its strikes are the ones written in its numbers, so a spell with no entry is no strike here.
-          for (const name of missing)
+          for (const name of missing.filter((one) => !boughtLater(one)))
             adjustments.push(`${opponent.name}: this ruleset has no entry called "${name}", so it was not given.`);
           adjustments.push(`${opponent.name} was given a sheet for ${given.join(", ")}.`);
           // A spell also written among its numbers is cast from its entry, with that entry's save and
@@ -966,7 +1005,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
         }
         const tiered = numbersOnly ? null : rulesetTierStatBlock(definition, opponent.tier, weapons);
         if (tiered) {
-          for (const name of unknown)
+          for (const name of unknown.filter((one) => !boughtLater(one)))
             adjustments.push(`${opponent.name}: this ruleset has no entry called "${name}", so it was not given.`);
           adjustments.push(`${opponent.name} was given a sheet for ${given.join(", ")}, at ${tiered.tier.label}.`);
           proposed = {
@@ -1297,6 +1336,9 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       const tier = tiers.find((entry) => entry.id === wanted) ?? tiers[0];
       // Written with no scores, the ability it casts with is raised to its tier (2026-10-25).
       if (tier) {
+        const damage = holdRulesetCasterSpellDamage(sheet, input.bestiary, tier);
+        damage.adjusted.forEach(said);
+        sheet = damage.sheet;
         const raised = raiseRulesetSheetAbilities(definition, sheet, tier);
         raised.adjusted.forEach(said);
         sheet = raised.sheet;

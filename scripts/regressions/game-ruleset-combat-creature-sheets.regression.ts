@@ -56,6 +56,7 @@ import {
   rulesetLayerOptionKey,
   rulesetProposedCreatureSchema,
   rulesetSheetBuildSchema,
+  rulesetUnpricedLegendary,
   type CombatTactics,
   type RulesetCatalogEntriesById,
   type RulesetCatalogEntry,
@@ -2153,6 +2154,30 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
         ["legendary_staff", 1],
       ],
     );
+    // A skill a creature of this ruleset has, priced out of its points, is bought with them and never
+    // called missing (cloud re-test 2026-10-26: "no entry called Frightening Gaze" said beside "may
+    // spend points on ... Frightening Gaze").
+    const gazer = started({
+      definition: classed,
+      cards: [card("Brenna", fighterBuild())],
+      party: [{ id: "brenna", name: "Brenna" }],
+      enemies: [
+        {
+          id: "veyl",
+          name: "Archmage Veyl",
+          tier: "cr_2",
+          boss: true,
+          points: 3,
+          attacks: [
+            { name: "Frost Mote", spell: true },
+            { name: "Watchful strike", kind: "debuff", legendary: 1 },
+          ],
+        },
+      ],
+    }).rulesetFight!;
+    const gazeSaid = gazer.adjustments.join("; ");
+    assert.doesNotMatch(gazeSaid, /no entry called "Watchful strike"/);
+    assert.match(gazeSaid, /Archmage Veyl may spend 3 points between turns on [^;]*Watchful strike/);
   }
   // A boss named for a creature of the bestiary buys that creature's legendary actions, held to its own
   // tier; one priced its writer's way buys each as itself, a strike its sheet has under another name as
@@ -2240,6 +2265,46 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
     assert.match(grakkaSaid, /Big Grakka was built from the numbers of /);
     assert.match(grakkaSaid, /Big Grakka may spend 3 points between turns on Move, Cleaver\./);
     assert.doesNotMatch(grakkaSaid, /no legendary actions/);
+
+    // A bestiary creature marked a boss, with points and no legendary actions of its own, buys its own
+    // with them (cloud re-test 2026-10-26: a bestiary ogre marked boss fought with none).
+    const houndFight = fight({ id: "hound", name: "Cinder Hound", tier: "cr_3", boss: true, points: 2 });
+    const houndSaid = houndFight.adjustments.join("; ");
+    assert.match(
+      houndSaid,
+      /Cinder Hound had nothing priced out of its points, so it buys its own actions with them\./,
+    );
+    assert.match(houndSaid, /Cinder Hound may spend 2 points between turns on Move, /);
+    const hound = who(houndFight.encounter, "hound");
+    assert.ok(
+      hound.actions.some((one) => one.signature),
+      hound.actions.map((one) => one.label).join(", "),
+    );
+
+    // A one-word bestiary name fits a word ending in it: an Archlich borrows a Lich's (cloud re-test
+    // 2026-10-26: an "Archlich" found no lich).
+    const sentinel5e = creatureEntry(fiveE, "creatures", "hollow-sentinel");
+    const lichLike = { lich: [{ ...structuredClone(sentinel5e), id: "lich", label: "Lich" }] } as never;
+    const borrowed = rulesetUnpricedLegendary(fiveE, lichLike, {
+      name: "Archlich Vorn",
+      points: 3,
+      budget: "action",
+      casts: false,
+      actions: [],
+    });
+    assert.equal(borrowed.from, "Lich");
+    // A short name does not: "Rat" is no "Pirat".
+    const ratLike = { rat: [{ ...structuredClone(sentinel5e), id: "rat", label: "Rat" }] } as never;
+    assert.equal(
+      rulesetUnpricedLegendary(fiveE, ratLike, {
+        name: "Pirat",
+        points: 3,
+        budget: "action",
+        casts: false,
+        actions: [],
+      }).from,
+      undefined,
+    );
   }
   // What reaches more than one is held as if it hit two (laptop pass 6 2026-10-26: a wizard 11
   // brought down to CR 8 kept a Chain Lightning of 45 on each of four heroes, under a cap read for one).
@@ -2278,6 +2343,32 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
         /Pyromancer: The damage was scaled down until the best round averages/.test(line),
       ),
       fight.adjustments.join("; "),
+    );
+  }
+  // A spell whose damage alone is more than its tier deals in a round goes (cloud re-test 2026-10-26: a
+  // boss brought down to CR 4 was made a 13th level caster to pay for Finger of Death, and kept it).
+  {
+    const small = started({
+      definition: spellbook,
+      cards: [card("Brenna", fighterBuild())],
+      party: [{ id: "brenna", name: "Brenna" }],
+      enemies: [
+        {
+          id: "adept",
+          name: "Hedge Adept",
+          tier: "cr_1_4",
+          proposed: caster(["Frost Mote", "Spark Lash", "Kindle Heart"], { tier: "cr_1_4" }),
+        },
+      ],
+    }).rulesetFight!;
+    assert.deepEqual(spellsOf(small, "adept"), ["Frost Mote", "Kindle Heart"], small.adjustments.join("; "));
+    assert.ok(
+      small.adjustments.some((line) =>
+        /Hedge Adept: Spark Lash \(7\) went: more damage on its own than CR 1\/4 deals in a round \(5 at most\)\./.test(
+          line,
+        ),
+      ),
+      small.adjustments.join("; "),
     );
   }
   // A legendary one (a boss with Legendary Resistance) keeps all it can cast; uncastable still goes.

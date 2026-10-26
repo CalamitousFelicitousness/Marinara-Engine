@@ -129,6 +129,24 @@ try {
     );
     assert.equal((raised.live.aldric as { pools: { hp: { value: number } } }).pools.hp.value, 1);
   }
+  // Nor is a condition put on them (laptop 0706 Party B: Restrained on a dead Lyra).
+  assert.deepEqual(
+    applyGameRulesetSheetTurn(
+      context,
+      `[sheet: who="Aldric" op="condition" condition="Restrained" state="on"]`,
+      live,
+    ).outcomes.map((one) => [one.ok, one.reason]),
+    [[false, "dead"]],
+  );
+  // A revival takes Prone off with it.
+  assert.deepEqual(
+    applyGameRulesetSheetTurn(
+      context,
+      `[sheet: who="Aldric" op="condition" condition="Prone" state="off"] [sheet: who="Aldric" op="track" track="${failures}" to="0"] [sheet: who="Aldric" op="restore" pool="hp" amount="1"]`,
+      live,
+    ).outcomes.map((one) => one.ok),
+    [true, true, true],
+  );
   // A damage or a note still reaches them.
   assert.equal(
     applyGameRulesetSheetTurn(context, `[sheet: who="Aldric" op="damage" pool="hp" amount="1"]`, live).outcomes[0]?.ok,

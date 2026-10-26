@@ -956,7 +956,15 @@ export type RulesetCombatantInput =
       /** What is stored in it as the fight starts, for a creature that `stores` (1.511). */
       stored?: RulesetStoredEntry[];
       /** Its stat block as this fight has it (1.363): a story fight's Legendary Resistance and health. */
-      adjust?: { legendaryResistance?: number; health?: number; calls?: Array<{ action: string; creature: string }> };
+      adjust?: {
+        legendaryResistance?: number;
+        health?: number;
+        calls?: Array<{ action: string; creature: string }>;
+        /** Points a bestiary creature with no legendary actions of its own was made a boss with, and
+         *  what it buys with them (cloud re-test 2026-10-26: a bestiary ogre and young red dragon marked
+         *  boss had none). */
+        legendary?: { points: number; actions: RulesetStatBlockAction[] };
+      };
       /** What it has on it as the fight starts (1.787), each by its item reference. */
       carried?: ReadonlyArray<RulesetCarriedInput>;
     };

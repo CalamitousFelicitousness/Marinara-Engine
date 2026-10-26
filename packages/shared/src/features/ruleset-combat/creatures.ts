@@ -577,6 +577,7 @@ export function rulesetUnpricedLegendary(
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim()} `;
+  const spoken = words.trim().split(" ");
   let best: { label: string; length: number; actions: RulesetCreatureAction[] } | undefined;
   for (const entries of Object.values(catalogs))
     for (const entry of entries) {
@@ -586,7 +587,12 @@ export function rulesetUnpricedLegendary(
         .toLowerCase()
         .replace(/[^\p{L}\p{N}]+/gu, " ")
         .trim();
-      if (label && words.includes(` ${label} `) && label.length > (best?.length ?? 0))
+      // A one-word name also fits a word that ends in it, its label 4 letters or more (cloud re-test
+      // 2026-10-26: an "Archlich" found no lich).
+      const fitsName =
+        words.includes(` ${label} `) ||
+        (label.length >= 4 && !label.includes(" ") && spoken.some((word) => word.endsWith(label)));
+      if (label && fitsName && label.length > (best?.length ?? 0))
         best = { label: entry.label, length: label.length, actions: own };
     }
   const taken = new Set(boss.actions.map((action) => action.id));

@@ -108,6 +108,7 @@ export {
 } from "./dice.js";
 export {
   capRulesetCasterSheet,
+  holdRulesetCasterSpellDamage,
   raiseRulesetCasterPools,
   raiseRulesetSheetAbilities,
   fillRulesetSheetChoices,

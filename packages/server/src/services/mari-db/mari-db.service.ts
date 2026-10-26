@@ -2252,6 +2252,19 @@ function assignStringField(target: Row, source: Row, sourceKeys: string[], targe
   return true;
 }
 
+// Like assignStringField, but "" and whitespace are a real value (a clear), as summary and the
+// character card fields already treat them; non-strings are still dropped.
+function assignClearableStringField(target: Row, source: Row, sourceKeys: string[], targetKey: string): boolean {
+  for (const key of sourceKeys) {
+    const value = source[key];
+    if (typeof value === "string") {
+      target[targetKey] = value.trim();
+      return true;
+    }
+  }
+  return false;
+}
+
 function assignNumberField(target: Row, source: Row, sourceKeys: string[], targetKey: string): boolean {
   const value = firstNumber(source, sourceKeys);
   if (value === undefined) return false;
@@ -3654,27 +3667,27 @@ export class MariDbService {
         assignStringField(patch, data, ["name"], "name");
         if (typeof data.summary === "string") patch.summary = data.summary.trim();
         if (typeof data.mes_example === "string") patch.mes_example = data.mes_example.trim();
-        assignStringField(patch, data, ["description"], "description");
-        assignStringField(patch, data, ["personality"], "personality");
-        assignStringField(patch, data, ["scenario"], "scenario");
-        assignStringField(patch, data, ["backstory"], "backstory");
-        assignStringField(patch, data, ["appearance"], "appearance");
-        assignStringField(patch, data, ["imageAppearance", "image_appearance"], "imageAppearance");
+        assignClearableStringField(patch, data, ["description"], "description");
+        assignClearableStringField(patch, data, ["personality"], "personality");
+        assignClearableStringField(patch, data, ["scenario"], "scenario");
+        assignClearableStringField(patch, data, ["backstory"], "backstory");
+        assignClearableStringField(patch, data, ["appearance"], "appearance");
+        assignClearableStringField(patch, data, ["imageAppearance", "image_appearance"], "imageAppearance");
         if (data.imageAppearanceEnabled !== undefined || data.image_appearance_enabled !== undefined) {
           const flag = data.imageAppearanceEnabled ?? data.image_appearance_enabled;
           patch.imageAppearanceEnabled = flag === true || flag === "true" ? "true" : "false";
         }
-        assignStringField(patch, data, ["comment"], "comment");
-        assignStringField(patch, data, ["creator"], "creator");
-        assignStringField(patch, data, ["creatorNotes", "creator_notes", "creator-notes"], "creatorNotes");
-        assignStringField(patch, data, ["phoneticName", "phonetic_name", "phonetic-name"], "phoneticName");
-        assignStringField(
+        assignClearableStringField(patch, data, ["comment"], "comment");
+        assignClearableStringField(patch, data, ["creator"], "creator");
+        assignClearableStringField(patch, data, ["creatorNotes", "creator_notes", "creator-notes"], "creatorNotes");
+        assignClearableStringField(patch, data, ["phoneticName", "phonetic_name", "phonetic-name"], "phoneticName");
+        assignClearableStringField(
           patch,
           data,
           ["convoDisplayName", "convo_display_name", "convo-display-name"],
           "convoDisplayName",
         );
-        assignStringField(patch, data, ["aboutMe", "about_me", "about-me"], "aboutMe");
+        assignClearableStringField(patch, data, ["aboutMe", "about_me", "about-me"], "aboutMe");
         if (
           data.convoBehavior !== undefined ||
           data.convo_behavior !== undefined ||

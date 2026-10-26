@@ -143,7 +143,13 @@ function skillForAction(action: string): string | undefined {
 const LINK_ACTIONS = new Set(["lorebook.linkcharacter", "lorebook.unlinkcharacter"]);
 const LINK_SKILLS = ["builtin-lorebook", "builtin-characters"];
 
+// onboarding.md tells her to send the card patch with the block, so that handbook covers character.update too.
+const CHARACTER_UPDATE_SKILLS = ["builtin-characters", "builtin-onboarding"];
+
 function actionSkillNeeded(action: string, seen: Set<string>): string | undefined {
+  if (normalizeAppDataActionName(action) === "character.update" && CHARACTER_UPDATE_SKILLS.some((id) => seen.has(id))) {
+    return undefined;
+  }
   if (LINK_ACTIONS.has(normalizeAppDataActionName(action)) && LINK_SKILLS.some((id) => seen.has(id))) {
     return undefined;
   }

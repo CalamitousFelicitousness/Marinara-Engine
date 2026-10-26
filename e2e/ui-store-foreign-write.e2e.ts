@@ -73,6 +73,7 @@ const DROPPED_BY_V74_COPY = [
   "roleplayNarratorAvatarCycling",
   "roleplayDisplayStyle",
   "roleplayChatPosition",
+  "roleplayChatWidthPercent",
   "roleplayVnAutoPlay",
   "roleplayVnAutoPlayDelay",
   "roleplayVnPortraitScale",

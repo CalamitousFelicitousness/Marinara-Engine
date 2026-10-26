@@ -6965,7 +6965,9 @@ function GameSurfaceComponent({
 
   // Clear generationFailed when a new generation starts (streaming begins).
   useEffect(() => {
-    if (isStreaming) setGenerationFailed(false);
+    if (!isStreaming) return;
+    setGenerationFailed(false);
+    setUnsentTurnChatId(null);
   }, [isStreaming]);
 
   // Play blueprint intro sequence only on first-ever load (not on re-navigation)
@@ -7082,6 +7084,13 @@ function GameSurfaceComponent({
     setGenerationFailed(false);
     generate({ chatId: activeChatId, connectionId: null });
   }, [activeChatId, generate, unsentTurnChatId]);
+
+  // The input no longer holds a turn it can send (cleared, or disabled): Retry asks the Game Master to go on instead.
+  const retryWithoutUnsentTurn = useCallback(() => {
+    setUnsentTurnChatId(null);
+    setGenerationFailed(false);
+    generate({ chatId: activeChatId, connectionId: null });
+  }, [activeChatId, generate]);
 
   const generateInitialGameTurn = useCallback(() => {
     if (experienceStartupScopeRef.current !== experienceStartupScope || experienceStartupRef.current.blocked) return;
@@ -14364,6 +14373,7 @@ function GameSurfaceComponent({
                                   draftKey={activeChatId}
                                   focusToken={gameInputFocusToken}
                                   sendToken={gameInputSendToken}
+                                  onSendTokenUnsent={retryWithoutUnsentTurn}
                                   onIllustrate={handleManualSceneIllustration}
                                   spatialCapabilityEnabled={hierarchicalMapsActive}
                                   interruptMode={pendingInterruptMode}
@@ -14466,6 +14476,7 @@ function GameSurfaceComponent({
                               draftKey={activeChatId}
                               focusToken={gameInputFocusToken}
                               sendToken={gameInputSendToken}
+                              onSendTokenUnsent={retryWithoutUnsentTurn}
                               onIllustrate={handleManualSceneIllustration}
                               spatialCapabilityEnabled={hierarchicalMapsActive}
                               interruptMode={pendingInterruptMode}

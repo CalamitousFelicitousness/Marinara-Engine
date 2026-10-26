@@ -90,6 +90,8 @@ try {
   assert.equal((await send("gemini-3.5-flash-lite", "medium"))[0]?.reasoning_effort, "medium");
   assert.equal((await send("deepseek-v4-flash", "maximum"))[0]?.reasoning_effort, "high");
   assert.equal((await send("gpt-5.6-terra", "maximum"))[0]?.reasoning_effort, "max", "GPT keeps its own levels");
+  assert.equal((await send("gpt-oss-120b", "maximum"))[0]?.reasoning_effort, "high", "gpt-oss takes up to high");
+  assert.equal((await send("openai/gpt-oss-120b", "maximum"))[0]?.reasoning_effort, "high");
   assert.equal("reasoning_effort" in (await send("custom-model", "maximum"))[0]!, false, "unknown ids get none");
 
   // A gateway that refuses the parameter is retried once without it, and the turn still completes.
@@ -98,6 +100,24 @@ try {
   assert.equal(retried.length, 2, "exactly one retry");
   assert.equal(retried[0]?.reasoning_effort, "high");
   assert.equal("reasoning_effort" in retried[1]!, false);
+  // The refusal is remembered for this gateway and model: the next request leaves the effort out from the start.
+  const remembered = await send("claude-haiku-5-5", "maximum");
+  assert.equal(remembered.length, 1, "no second refused round trip");
+  assert.equal("reasoning_effort" in remembered[0]!, false);
+
+  // An explicit Off is the user's own setting: a gateway that refuses it reports the error rather than thinking.
+  requests.length = 0;
+  await assert.rejects(
+    provider.chatComplete([{ role: "user", content: "think" }], {
+      model: "gemini-3.5-flash-lite",
+      stream: false,
+      reasoningEffort: "none",
+      enabledParameters: { reasoningEffort: true },
+    }),
+    /reasoning_effort/,
+  );
+  assert.equal(requests.length, 1, "Off is not retried without it");
+  assert.equal(requests[0]?.reasoning_effort, "none");
 
   // An effort set through Custom Parameters is the user's own: it is not stripped, so the refusal surfaces.
   requests.length = 0;

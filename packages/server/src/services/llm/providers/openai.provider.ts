@@ -171,6 +171,34 @@ const ROLE_ALTERNATION_HINT =
 /** A gateway's refusal of the reasoning parameter itself (unknown field, unsupported value, thinking not allowed). */
 const REASONING_PARAMETER_ERROR = /\breasoning(?:[_ ]effort)?\b|\bthinking\b/i;
 
+/** Request bodies whose `reasoning_effort` was inferred from the model id on a custom gateway, not asked for. */
+const inferredGatewayEfforts = new WeakSet<object>();
+/** Gateway and model pairs that refused an inferred effort, so later requests leave it out (bounded, for an hour). */
+const refusedGatewayEfforts = new Map<string, number>();
+const REFUSED_GATEWAY_EFFORT_TTL_MS = 60 * 60 * 1000;
+const REFUSED_GATEWAY_EFFORT_MAX = 256;
+
+function refusedGatewayEffortKey(baseUrl: string, model: string) {
+  return `${baseUrl}\n${model}`;
+}
+
+function gatewayRefusedEffort(baseUrl: string, model: string): boolean {
+  const key = refusedGatewayEffortKey(baseUrl, model);
+  const at = refusedGatewayEfforts.get(key);
+  if (at === undefined) return false;
+  if (Date.now() - at < REFUSED_GATEWAY_EFFORT_TTL_MS) return true;
+  refusedGatewayEfforts.delete(key);
+  return false;
+}
+
+function rememberGatewayRefusedEffort(baseUrl: string, model: string) {
+  if (refusedGatewayEfforts.size >= REFUSED_GATEWAY_EFFORT_MAX) {
+    const oldest = refusedGatewayEfforts.keys().next().value;
+    if (oldest !== undefined) refusedGatewayEfforts.delete(oldest);
+  }
+  refusedGatewayEfforts.set(refusedGatewayEffortKey(baseUrl, model), Date.now());
+}
+
 /** Variants that are served without reasoning even when their family reasons. */
 const NON_REASONING_VARIANT =
   /(?:^|[-_:.])(?:non-?reasoning|non-?think(?:ing)?|no-?think|instruct|chat|tts|image|embed(?:ding)?|audio|realtime|live)(?:$|[-_:.])/u;
@@ -999,21 +1027,25 @@ export class OpenAIProvider extends BaseLLMProvider {
     if (
       response.status === 400 &&
       this.isGenericCustomProvider() &&
-      typeof body.reasoning_effort === "string" &&
+      inferredGatewayEfforts.has(body) &&
       !Object.prototype.hasOwnProperty.call(options.customParameters ?? {}, "reasoning_effort") &&
       REASONING_PARAMETER_ERROR.test(errorText)
     ) {
-      // A custom gateway only says what it accepts by refusing: drop the reasoning setting once rather than fail the
-      // turn, so the connection keeps working without it. One set through Custom Parameters is the user's to keep.
+      // A custom gateway only says what it accepts by refusing: drop an effort inferred from the model id once rather
+      // than fail the turn, and leave it out for this gateway and model from then on. An effort the user set (Off,
+      // or through Custom Parameters) is theirs, so its refusal is reported as before.
       logger.warn(
-        "[OpenAI] %s refused reasoning_effort=%s for %s; retrying once without it",
+        "[OpenAI] %s refused reasoning_effort=%s for %s; retrying without it",
         this.chatCompletionsErrorLabel(),
         body.reasoning_effort,
         options.model,
       );
       delete body.reasoning_effort;
       response = await send();
-      if (response.ok) return response;
+      if (response.ok) {
+        rememberGatewayRefusedEffort(this.baseUrl, options.model);
+        return response;
+      }
       errorText = await response.text();
     }
     if (response.status === 400) {
@@ -1424,11 +1456,21 @@ export class OpenAIProvider extends BaseLLMProvider {
         !this.isLocalInferenceEndpoint() &&
         isCustomGatewayReasoningModel(options.model)
       ) {
+        if (gatewayRefusedEffort(this.baseUrl, options.model)) {
+          logger.debug(
+            "[OpenAI] %s refused reasoning_effort for %s before; leaving it out",
+            this.baseUrl,
+            options.model,
+          );
+          return;
+        }
         // Gateways take OpenAI's low/medium/high for other families; xhigh and max are OpenAI and native-only levels.
         // Local servers are left out: their templates treat every level alike (see enforceLocalInferenceThinkingDisable).
         const effort = options.reasoningEffort;
-        const openAIFamily = /^(?:o[1-9]|gpt-)/u.test(capabilityModelId(options.model).replace(/^.*\//u, ""));
+        // gpt-oss is served by the gateways themselves and takes low/medium/high like the other families.
+        const openAIFamily = /^(?:o[1-9]|gpt-(?!oss))/u.test(capabilityModelId(options.model).replace(/^.*\//u, ""));
         body.reasoning_effort = !openAIFamily && (effort === "xhigh" || effort === "max") ? "high" : effort;
+        inferredGatewayEfforts.add(body);
       }
       return;
     }

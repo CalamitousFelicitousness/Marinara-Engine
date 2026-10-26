@@ -17,6 +17,7 @@ import {
   TTS_SETTINGS_KEY,
   TTS_API_KEY_MASK,
   elevenLabsModelSupportsSpeed,
+  normalizeElevenLabsTtsModelId,
   ttsRoleplaySpeakerExtractorResponseSchema,
   type TTSSource,
   type TTSConfig,
@@ -89,11 +90,6 @@ const TTS_SOURCE_DEFAULTS: Record<TTSSource, { baseUrl: string; model: string }>
 const TTS_SOURCES: readonly TTSSource[] = ["openai", "elevenlabs", "pockettts", "xai"];
 
 const ELEVENLABS_NON_TTS_MODELS = new Set(["eleven_ttv_v3", "eleven_multilingual_ttv_v2"]);
-const ELEVENLABS_TTS_MODEL_ALIASES: Record<string, string> = {
-  tts_v3: "eleven_v3",
-  elevenlabs_v3: "eleven_v3",
-  elevenlabs_tts_v3: "eleven_v3",
-};
 const NANOGPT_TTS_MODEL_ALIASES: Record<string, string> = {
   eleven_v3: "Elevenlabs-V3",
   "elevenlabs-v3": "Elevenlabs-V3",
@@ -733,11 +729,6 @@ async function detectPocketTtsApiMode(cfg: TTSConfig): Promise<PocketTtsApiMode>
 function clearPocketTtsApiModeCache(cfg: TTSConfig): void {
   if (cfg.source !== "pockettts") return;
   pocketTtsApiModeCache.delete(configuredBaseUrl(cfg));
-}
-
-function normalizeElevenLabsTtsModelId(model: string) {
-  const trimmed = model.trim();
-  return ELEVENLABS_TTS_MODEL_ALIASES[trimmed.toLowerCase()] ?? trimmed;
 }
 
 function normalizeNanoGptTtsModelId(model: string) {

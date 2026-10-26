@@ -2182,18 +2182,19 @@ copy splits state the Engine keeps in one place. Pure helpers and types may stil
 **Shared server libraries.** A package server may leave `zod`, `adm-zip`, `dotenv`, `nanoid` and `jsonrepair` out of
 its bundle and import them by name, as it already may for `@huggingface/transformers`, `onnxruntime-node`,
 `onnxruntime-web`, `sharp`, `pino`, `pino-pretty` and `undici`. The Engine builds managed links in each package's
-runtime copy by resolving its server's declared dependencies with Node's package resolver. This works with direct,
-hoisted and partially hoisted dependencies, including when `DATA_DIR` is outside the Engine checkout.
+host-managed runtime copy by resolving its server's declared dependencies with Node's package resolver. This works
+with direct, hoisted and partially hoisted dependencies, including when `DATA_DIR` is outside the Engine checkout.
 Zod is the compatibility exception: a package's `zod` import resolves to the full `zod-v3` dependency, including its
 default, named, CommonJS and subpath exports. Other libraries keep the very module instance the Engine uses. The
 Engine's own `zod` imports continue to resolve to native Zod 4. The names above remain direct production dependencies
 of `packages/server`. Managed snapshots link declared dependencies; undeclared transitives such as `ws` are not part
-of the shared-library contract. Missing optional libraries are skipped, and installed development tools remain available. A missing or incompatible Zod 3 alias fails
-activation explicitly instead of letting a package silently load native Zod 4.
+of the shared-library contract. Missing optional libraries are skipped, and installed development tools remain
+available. A missing or incompatible Zod 3 alias fails activation explicitly instead of letting a package silently
+load native Zod 4.
 Windows uses junctions for these links; source and launcher installs, Android and Termux, and both Docker images use
 the same dependency-resolution contract. Legacy shared data links are refreshed when the physical server dependency
 directory is available. Existing real directories are left alone, and fresh runtime copies resolve their dependencies
-independently of that legacy data link.
+independently of that legacy data link. A package's own declared bundled dependency tree remains intact.
 
 **Declaring it.** A package that uses any of this declares `schemaVersion: 2`, `capabilityApi: { major: 1, minor: 341 }`
 and `builtAgainst`, and keeps its `engine` range. A `schemaVersion: 1` manifest is never checked against the

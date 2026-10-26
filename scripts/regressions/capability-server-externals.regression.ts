@@ -109,7 +109,8 @@ type ProbeService = {
 };
 
 const timestamp = new Date().toISOString();
-function fixturePackage(id: string, source: string, permissions: string[] = []) {
+function fixturePackage(id: string, source: string, permissions: string[] = [], bundled: Record<string, string> = {}) {
+  const payloads = { "server.mjs": source, ...bundled };
   const manifest = {
     schemaVersion: 1,
     id,
@@ -121,17 +122,18 @@ function fixturePackage(id: string, source: string, permissions: string[] = []) 
     entrypoints: { server: "server.mjs" },
     permissions,
     restartRequired: false,
-    files: [
-      {
-        path: "server.mjs",
-        bytes: Buffer.byteLength(source),
-        sha256: createHash("sha256").update(source).digest("hex"),
-      },
-    ],
+    files: Object.entries(payloads).map(([path, content]) => ({
+      path,
+      bytes: Buffer.byteLength(content),
+      sha256: createHash("sha256").update(content).digest("hex"),
+    })),
   };
   const root = join(dir, "capability-packages", "versions", id, "1.0.0");
   mkdirSync(root, { recursive: true });
-  writeFileSync(join(root, "server.mjs"), source);
+  for (const [path, content] of Object.entries(payloads)) {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), content);
+  }
   writeFileSync(join(root, "manifest.json"), JSON.stringify(manifest));
   return {
     id,
@@ -179,6 +181,21 @@ export async function activate(context) {
 const packages = [
   fixturePackage("externals-probe", probeSource, ["routes"]),
   fixturePackage("externals-transitive", `import "ws";\nexport function activate() {}\n`),
+  fixturePackage(
+    "externals-authored",
+    `import { value } from "authored-runtime-fixture";
+export function activate(context) { return context.api.registerService("externals-authored", value); }`,
+    [],
+    {
+      "node_modules/authored-runtime-fixture/package.json": JSON.stringify({
+        name: "authored-runtime-fixture",
+        version: "1.0.0",
+        type: "module",
+        exports: "./index.js",
+      }),
+      "node_modules/authored-runtime-fixture/index.js": "export const value = 42;",
+    },
+  ),
 ];
 writeFileSync(join(dir, "capability-packages", "installed.json"), JSON.stringify({ schemaVersion: 1, packages }));
 
@@ -250,6 +267,11 @@ try {
   await activateProbe("link to another install");
   assert.ok(existsSync(join(oldZod, "index.js")), "relinking removes only the link, never what it pointed to");
   await capabilityModuleRuntime.deactivatePackage("externals-probe");
+
+  const authored = await capabilityModuleRuntime.activatePackage(app, "externals-authored");
+  assert.equal(authored.readiness, "ready", "declared bundled dependencies still activate");
+  assert.equal(getCapabilityService("externals-authored"), 42, "the package keeps its own bundled dependency");
+  await capabilityModuleRuntime.deactivatePackage("externals-authored");
 
   // ── A transitive dependency of the Engine never resolves for a package ──
   await assert.rejects(

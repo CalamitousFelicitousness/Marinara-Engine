@@ -3395,7 +3395,25 @@ export async function chatsRoutes(app: FastifyInstance) {
     // assistant message's active swipe — so edits persist to the row the user
     // actually sees. Falls back to updateLatest when no messages exist yet.
     let updated: Awaited<ReturnType<typeof gameStateStore.updateLatest>> = null;
-    if (hasExplicitTarget) {
+    // Live sheet state is the game's, not one telling's, so it goes to the row GET reads, whatever
+    // row the screen last loaded. A screen holding an older row wrote its long rest there while the
+    // newer row kept the spent slot, which came back on the next reload (laptop playtest 2026-10-27).
+    let liveRow: typeof updated = null;
+    if (hasExplicitTarget && fields.rulesetLive !== undefined) {
+      const visible = resolveVisibleGameStateAnchor(await storage.listMessages(req.params.id));
+      if (visible && (visible.messageId !== targetMessageId || visible.swipeIndex !== targetSwipeIndex)) {
+        liveRow = await gameStateStore.updateByMessage(
+          visible.messageId,
+          visible.swipeIndex,
+          req.params.id,
+          { rulesetLive: fields.rulesetLive },
+          false,
+          gameStateUpdateOptions,
+        );
+        delete fields.rulesetLive;
+      }
+    }
+    if (hasExplicitTarget && (!liveRow || Object.keys(fields).length > 0)) {
       const targetMessage = await storage.getMessage(targetMessageId);
       const targetSnapshot = await gameStateStore.getByChatAndMessage(req.params.id, targetMessageId, targetSwipeIndex);
       if (targetMessage?.chatId === req.params.id || targetSnapshot !== null) {
@@ -3429,6 +3447,8 @@ export async function chatsRoutes(app: FastifyInstance) {
     if (!updated && !hasExplicitTarget) {
       updated = await gameStateStore.updateLatest(req.params.id, fields, manual);
     }
+    // Whatever row answers, its live state is the one the sheet now reads.
+    if (liveRow) updated = updated ? { ...updated, rulesetLive: liveRow.rulesetLive } : liveRow;
     // Wipe all manual overrides when explicitly requested. Every row's, because a regeneration
     // starts from the edits on any swipe of the reply it replaces.
     if (clearOverrides && updated) {

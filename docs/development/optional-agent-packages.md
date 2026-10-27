@@ -2190,7 +2190,8 @@ Engine's own `zod` imports continue to resolve to native Zod 4. The names above 
 of `packages/server`. Managed snapshots link declared dependencies; undeclared transitives such as `ws` are not part
 of the shared-library contract. Missing optional libraries are skipped, and installed development tools remain
 available. A missing or incompatible Zod 3 alias fails activation explicitly instead of letting a package silently
-load native Zod 4.
+load native Zod 4. Host dependency setup failures preserve the requested package version and rollback metadata;
+after the Engine dependency is repaired, activation can retry without reinstalling the package.
 Windows uses junctions for these links; source and launcher installs, Android and Termux, and both Docker images use
 the same dependency-resolution contract. Legacy shared data links are refreshed when the physical server dependency
 directory is available. Existing real directories are left alone, and fresh runtime copies resolve their dependencies

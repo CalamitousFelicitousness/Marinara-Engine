@@ -270,6 +270,23 @@ try {
     assert.equal((await states.getByChatAndMessage(restId, older.id, 0))?.weather, "rain");
   }
 
+  // ── A rest taken while a reply is being written survives the reply's own row (laptop 2026-10-27) ──
+  {
+    const { rebaseTurnRulesetLive } = await import("../../packages/server/src/routes/generate/generate-route-utils.js");
+    const start = { wiz: { pools: { slots_9: { value: 0 } } }, rogue: { pools: { hp: { value: 5 } } } };
+    const now = { rogue: { pools: { hp: { value: 5 } } } };
+    // The turn left the wizard alone: the rest on the sheet stands.
+    assert.deepEqual(rebaseTurnRulesetLive(start, start, now), now);
+    // The turn hurt the rogue and left the wizard: both kept.
+    const hurt = { ...start, rogue: { pools: { hp: { value: 2 } } } };
+    assert.deepEqual(rebaseTurnRulesetLive(start, hurt, now), { rogue: { pools: { hp: { value: 2 } } } });
+    // The turn spent the wizard's slot too: the turn's stands, it already started from the sheet.
+    const cast = { ...start, wiz: { pools: { slots_9: { value: 0 }, slots_8: { value: 0 } } } };
+    assert.deepEqual(rebaseTurnRulesetLive(start, cast, now), cast);
+    // Nobody edited the sheet meanwhile: the turn's own state, as it was.
+    assert.deepEqual(rebaseTurnRulesetLive(start, hurt, start), hurt);
+  }
+
   // ── The Game Master sees the sheets as they stand, late in the prompt ──
   {
     const blocks = renderGameRulesetSheetBlocks(fiveE, [{ name: "Mira", rulesetSheet: wizard }], second.live);

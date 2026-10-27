@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import {
   applyClockCommandTags,
   rulesetChargesStart,
@@ -644,6 +645,7 @@ import {
   resolveUserRegenerationPersistentAttachments,
   resolveVisibleGameStateAnchor,
   resolveKnowledgeSourceLorebookIds,
+  rebaseTurnRulesetLive,
   mergedChatSummaryReaders,
   shouldPreferLatestVisibleGameState,
   shouldRunCharacterActivityAgents,
@@ -11226,7 +11228,17 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // and otherwise just the purchases the checks already paid for. Without the second half a
           // turn whose sheet pass was skipped or threw would keep the automatic successes a player
           // bought and quietly give the points back, which is a free success.
-          const liveAfterTurn = inventoryLive ?? rulesetSheetTurn?.live ?? checkSpendLive;
+          const turnLive = inventoryLive ?? rulesetSheetTurn?.live ?? checkSpendLive;
+          // What the player changed on the sheet while this reply was written stays changed.
+          const liveAfterTurn = await (async () => {
+            const startRow = await turnStartRulesetSnapshot();
+            if (!startRow?.id) return turnLive;
+            const nowRow = await gameStateStore.getById(startRow.id, input.chatId);
+            const startLive = parseStoredRulesetLive(startRow.rulesetLive) ?? {};
+            const nowLive = parseStoredRulesetLive(nowRow?.rulesetLive) ?? {};
+            if (!nowRow || isDeepStrictEqual(startLive, nowLive)) return turnLive;
+            return rebaseTurnRulesetLive(startLive, turnLive ?? startLive, nowLive);
+          })().catch(() => turnLive);
           const rulesetStatePatch = {
             ...(liveAfterTurn ? { rulesetLive: liveAfterTurn } : {}),
             ...(rulesetClocksAfterTurn !== undefined ? { rulesetClocks: rulesetClocksAfterTurn } : {}),

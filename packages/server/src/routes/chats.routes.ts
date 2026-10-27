@@ -3398,7 +3398,7 @@ export async function chatsRoutes(app: FastifyInstance) {
     // Live sheet state is the game's, not one telling's, so it goes to the row GET reads, whatever
     // row the screen last loaded. A screen holding an older row wrote its long rest there while the
     // newer row kept the spent slot, which came back on the next reload (laptop playtest 2026-10-27).
-    let liveRow: typeof updated = null;
+    let liveRow: Awaited<ReturnType<typeof gameStateStore.updateLatest>> = null;
     if (hasExplicitTarget && fields.rulesetLive !== undefined) {
       const visible = resolveVisibleGameStateAnchor(await storage.listMessages(req.params.id));
       if (visible && (visible.messageId !== targetMessageId || visible.swipeIndex !== targetSwipeIndex)) {

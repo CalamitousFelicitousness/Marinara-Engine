@@ -158,6 +158,44 @@ try {
     }
   }
 
+  // #8396: details from the reported tracker appearance must survive every style profile.
+  const reportedNpc = {
+    name: "Yunyun Lian",
+    appearance: "5’2”, fluffy pink bunny ears, light pink hair, blue eyes, curvy figure.",
+    outfit: "Knight Corps uniform",
+  };
+  for (const profile of DEFAULT_IMAGE_STYLE_PROFILES) {
+    const compiled = compileImagePrompt({
+      kind: "portrait",
+      prompt: buildTrackerPortraitPrompt(reportedNpc, true),
+      styleProfiles: { defaultProfileId: profile.id, profiles: DEFAULT_IMAGE_STYLE_PROFILES },
+      styleProfileId: profile.id,
+    });
+    for (const detail of ["5’2”", "fluffy pink bunny ears", "light pink hair", "blue eyes", "curvy figure"]) {
+      assert.ok(compiled.prompt.includes(detail), `${profile.id}: missing reported detail ${detail}`);
+    }
+    assert.ok(compiled.prompt.includes(reportedNpc.outfit), `${profile.id}: missing the outfit`);
+  }
+  const longNpc = {
+    name: "Long Portrait",
+    appearance: `${Array.from({ length: 100 }, (_, i) => `distinctive embroidered marking ${i}`).join(", ")}, opal antlers`,
+    outfit: `${Array.from({ length: 80 }, (_, i) => `layer ${i} has its own geometric stitching`).join(". ")}. Brass anklets`,
+  };
+  const longPortrait = buildTrackerPortraitPrompt(longNpc, true);
+  assert.ok(longPortrait.includes(longNpc.appearance), "the complete appearance survives prompt assembly");
+  assert.ok(longPortrait.includes("Brass anklets"), "the last outfit detail survives prompt assembly");
+  for (const profile of DEFAULT_IMAGE_STYLE_PROFILES) {
+    const compiled = compileImagePrompt({
+      kind: "portrait",
+      prompt: longPortrait,
+      styleProfiles: { defaultProfileId: profile.id, profiles: DEFAULT_IMAGE_STYLE_PROFILES },
+      styleProfileId: profile.id,
+    });
+    for (const detail of ["marking 0", "marking 50", "marking 99", "opal antlers", "layer 79", "Brass anklets"]) {
+      assert.ok(compiled.prompt.includes(detail), `${profile.id}: missing long-prompt detail ${detail}`);
+    }
+  }
+
   // #7419: the tracker's outfit gets its own line, which every style profile keeps, even the
   // tag profiles that shorten portrait prompts. It used to be a "wearing ..." clause they dropped.
   const npc = {

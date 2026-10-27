@@ -60,7 +60,8 @@ import { createLLMProvider } from "../services/llm/provider-registry.js";
 import type { ChatMessage } from "../services/llm/base-provider.js";
 import { logger, logDebugOverride } from "../lib/logger.js";
 import { cardPromptText } from "../services/prompt/card-text.js";
-import { normalizeRpgStatPools } from "@marinara-engine/shared";
+import { normalizeCharacterLookupName, normalizeRpgStatPools } from "@marinara-engine/shared";
+import { roomCharacterNames } from "../services/multiplayer/fight-players.js";
 import {
   tacticalBattlefieldSetupSchema,
   validateTacticalEncounterBlueprint,
@@ -221,6 +222,44 @@ function withStandIn(
     personaName: standIn,
     personaCtx: `Name: ${standIn}\nThe player has no persona of their own: they direct the whole party, which ${standIn} leads.`,
   };
+}
+
+/** The host's own room character as the player, with the room's other players' characters named as
+ *  fighting beside them. */
+function roomPersonaContext(
+  host: { name: string; description: string },
+  others: readonly string[],
+): { personaName: string; personaCtx: string } {
+  let personaCtx = `Name: ${host.name}\n`;
+  const description = cardPromptText(host.description);
+  if (description) personaCtx += `${description}\n`;
+  if (others.length > 0)
+    personaCtx += `This is a shared game. Other players play ${others.join(", ")}, each their own character, and every one of them is in the party and fights.\n`;
+  return { personaName: host.name, personaCtx };
+}
+
+/** Every room player's character in the fight's party: one the model left out goes in with a plain
+ *  attack, as a ruleset fight reads its numbers off the character's sheet anyway. */
+export function withRoomCharacters(party: unknown, others: readonly string[]): Array<Record<string, unknown>> {
+  const members = Array.isArray(party) ? (party as Array<Record<string, unknown>>) : [];
+  const present = new Set(
+    members.map((member) => (typeof member.name === "string" ? normalizeCharacterLookupName(member.name) : "")),
+  );
+  const missing = others.filter((name) => !present.has(normalizeCharacterLookupName(name)));
+  if (missing.length === 0) return members;
+  const template = members[0] ?? {};
+  const hp = typeof template.maxHp === "number" && template.maxHp > 0 ? template.maxHp : 10;
+  return [
+    ...members,
+    ...missing.map((name) => ({
+      name,
+      hp,
+      maxHp: hp,
+      attacks: [{ name: "Attack", type: "single-target", description: "A basic attack", power: 1, cooldown: 0 }],
+      items: [],
+      statuses: [],
+    })),
+  ];
 }
 
 function readChatMeta(raw: unknown): Record<string, unknown> | null {
@@ -1220,7 +1259,13 @@ export async function encounterRoutes(app: FastifyInstance) {
       } else {
         chatMeta = (chat.metadata as Record<string, unknown> | null) ?? null;
       }
-      const { personaName, personaCtx } = withStandIn(identity, chatMeta);
+      // A room this Engine hosts sets its fight up around the players' own characters: the host plays
+      // theirs, and every other player's is in the party (room playtest 2026-10-27: the guest's
+      // character was left out of the fight, so the guest had nobody to place or command).
+      const room = roomCharacterNames(chatMeta);
+      const { personaName, personaCtx } = room?.host
+        ? roomPersonaContext(room.host, room.others)
+        : withStandIn(identity, chatMeta);
       // The game's ruleset, read once: it may name the combat styles its games play (1.778), and a fight
       // it resolves gets its brief below.
       const resolvedRuleset =
@@ -1394,6 +1439,7 @@ export async function encounterRoutes(app: FastifyInstance) {
       if (!aiBlueprint.success)
         return refuse({ error: `Invalid combat AI data: ${aiBlueprint.error.issues[0]?.message}` });
       combatState = aiBlueprint.data;
+      if (room) combatState = { ...combatState, party: withRoomCharacters(combatState.party, room.others) };
       if (storyOpponents?.length) {
         combatState = {
           ...combatState,

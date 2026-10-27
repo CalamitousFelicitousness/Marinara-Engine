@@ -56,3 +56,29 @@ export function roomFightPlayers(
   }
   return Object.keys(players).length > 0 ? players : undefined;
 }
+
+/** The characters the players of a room this Engine hosts play, by name: the host's own and every other
+ *  player's (2026-10-27), each the game card bound to them, else their persona's name. Null outside a
+ *  hosted room. A fight is set up around them, so every player's character is in it. */
+export function roomCharacterNames(
+  metadata: Record<string, unknown> | null | undefined,
+): { host: { name: string; description: string } | null; others: string[] } | null {
+  const room = record(metadata?.multiplayer);
+  if (room.version !== 1 || room.role !== "host" || room.status === "ended" || !Array.isArray(room.participants))
+    return null;
+  const cards = Array.isArray(metadata?.gameCharacterCards) ? metadata.gameCharacterCards.map(record) : [];
+  let host: { name: string; description: string } | null = null;
+  const others: string[] = [];
+  for (const participant of room.participants.map(record)) {
+    if (typeof participant.id !== "string" || participant.joinsNextRound === true) continue;
+    const persona = record(participant.persona);
+    const bound = cards.find((card) => card.multiplayerParticipantId === participant.id);
+    const raw = typeof bound?.name === "string" ? bound.name : persona.name;
+    const name = typeof raw === "string" ? raw.trim() : "";
+    if (!name) continue;
+    if (participant.isHost === true)
+      host = { name, description: typeof persona.description === "string" ? persona.description : "" };
+    else others.push(name);
+  }
+  return { host, others };
+}

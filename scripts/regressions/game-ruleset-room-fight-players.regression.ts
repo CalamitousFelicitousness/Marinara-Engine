@@ -206,6 +206,23 @@ try {
       undefined,
       "two members by one name are never guessed between",
     );
+    // A room's fight is set up around every player's own character (room playtest 2026-10-27).
+    const { roomCharacterNames } = await import("../../packages/server/src/services/multiplayer/fight-players.js");
+    const { withRoomCharacters } = await import("../../packages/server/src/routes/encounter.routes.js");
+    const named = roomCharacterNames({
+      multiplayer: room(true),
+      gameCharacterCards: [{ name: "Dace", multiplayerParticipantId: GUEST.id }],
+    });
+    assert.equal(named?.host?.name, "Brenna");
+    assert.deepEqual(named?.others, ["Dace"]);
+    assert.equal(roomCharacterNames({}), null, "no room, no characters");
+    const filled = withRoomCharacters([{ name: "Brenna", hp: 12, maxHp: 12, isPlayer: true }], named!.others);
+    assert.deepEqual(
+      filled.map((member) => member.name),
+      ["Brenna", "Dace"],
+      "a player's character the setup left out joins the party",
+    );
+    assert.equal(withRoomCharacters([{ name: "dace" }], ["Dace"]).length, 1, "one already there is not added twice");
   }
 
   // ── A room fight through the real routes ──

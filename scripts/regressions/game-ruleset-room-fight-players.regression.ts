@@ -6,8 +6,9 @@
  *   - The fight knows whose own character each party member is, read from the host's live room: the
  *     host's, each guest's, and nobody's for a companion no player plays.
  *   - Defaults: the host's own character is the host's; a companion nobody plays is the Engine's as in a
- *     solo game; a guest's character is the guest's, played by the Engine while the room cannot carry a
- *     guest's fight commands, and never covered by what the host chose for their own companions before.
+ *     solo game; a guest's character is the guest's to play (2026-10-27), the Engine's only while that
+ *     guest is not connected as the fight starts, and never covered by what the host chose for their own
+ *     companions before.
  *   - A command acting for a party member (ruleset, choose, deploy, control, orders) is accepted only
  *     from the player who owns it: the host owns their own and the unowned ones, a guest only their
  *     own. A command about the whole fight is the host's. A refusal changes nothing and says why in a
@@ -15,6 +16,9 @@
  *   - The view tells each viewer which members are theirs, and sends the menu only to the one whose
  *     member is asked. A guest who leaves hands their character back to the host.
  *   - The host's stand-in for a dead or absent character is never another player's.
+ *   - Through the room (2026-10-27): the room is told each time the fight moves; a guest is shown the fight
+ *     on the board now as theirs, and their commands go through the same checks as the host's, a shape
+ *     aimed at a square catching whoever the menu says it catches there.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -115,7 +119,13 @@ const unit = (id: string, name: string, side: "player" | "enemy") => ({
 const db = await getDB();
 const app = Fastify();
 app.decorate("db", db);
-await app.register(combatDirectorRoutes, { prefix: "/combat" });
+let bridge: import("../../packages/server/src/routes/combat-director.routes.js").RoomFightBridge | undefined;
+let absent = new Set<string>();
+const changed: string[] = [];
+await app.register(combatDirectorRoutes, {
+  prefix: "/combat",
+  room: { absent: () => absent, changed: (chatId: string) => changed.push(chatId), ready: (ready) => (bridge = ready) },
+});
 const chats = createChatsStorage(db);
 const states = createGameStateStorage(db);
 const store = createGameEngineStateStorage(db);
@@ -220,7 +230,7 @@ try {
   const controllerOf = (id: string) => s.party.find((member) => member.id === id)?.controller;
   assert.equal(controllerOf("brenna"), "manual");
   assert.equal(controllerOf("dace"), "ai", "a companion nobody plays is the Engine's, as in a solo game");
-  assert.equal(ROOM_GUEST_FIGHT_CONTROLLER, "ai");
+  assert.equal(ROOM_GUEST_FIGHT_CONTROLLER, "manual");
   assert.equal(
     controllerOf("corwin"),
     ROOM_GUEST_FIGHT_CONTROLLER,
@@ -358,6 +368,81 @@ try {
     assert.equal(view.ruleset!.players, undefined);
     assert.equal(view.ruleset!.yours, undefined);
     assert.equal(view.party.find((member) => member.id === "corwin")?.controller, "ai", "a companion, as in solo");
+  }
+
+  // ── Through the room (2026-10-27) ──
+  {
+    assert.ok(bridge, "the routes hand the room its bridge");
+    const guest = { host: false, participantId: GUEST.id };
+    // A guest not connected as the fight starts has the Engine play for them until they take it back.
+    absent = new Set([GUEST.id]);
+    const late = await newRoomGame();
+    const begun = await post("/combat/start", { ...body, chatId: late.chat.id, anchor: late.anchor.id });
+    assert.equal(begun.statusCode, 200, begun.body);
+    const lateView = begun.json().session as DirectedCombatView;
+    assert.equal(lateView.party.find((member) => member.id === "corwin")?.controller, "ai");
+    assert.ok(changed.includes(late.chat.id), "the room is told a fight began");
+    absent = new Set();
+
+    const fresh = await newRoomGame();
+    const opened = await post("/combat/start", { ...body, chatId: fresh.chat.id, anchor: fresh.anchor.id });
+    assert.equal(opened.statusCode, 200, opened.body);
+    let hostView = opened.json().session as DirectedCombatView;
+    assert.equal(hostView.party.find((member) => member.id === "corwin")?.controller, "manual");
+    const shown = async () => {
+      const seen = await bridge!.view(fresh.chat.id, guest);
+      assert.ok(seen, "the guest is shown the fight on the board now");
+      assert.equal(seen.anchor, fresh.anchor.id);
+      return seen.view;
+    };
+    let guestView = await shown();
+    assert.deepEqual(guestView.ruleset!.yours, ["corwin"]);
+    const send = (command: DirectedCommand, at = guestView) =>
+      bridge!.command(
+        fresh.chat.id,
+        { anchor: fresh.anchor.id, id: at.id, instanceId: at.instanceId!, revision: at.revision, command },
+        guest,
+      );
+    const hostSend = async (command: DirectedCommand) => {
+      const response = await post("/combat/command", {
+        chatId: fresh.chat.id,
+        anchor: fresh.anchor.id,
+        id: hostView.id,
+        instanceId: hostView.instanceId,
+        revision: hostView.revision,
+        requestId: crypto.randomUUID(),
+        command,
+      });
+      assert.equal(response.statusCode, 200, response.body);
+      hostView = response.json().session;
+    };
+    // Someone else's character is not the guest's, and a command at an old revision moves nothing.
+    assert.deepEqual(await send({ type: "control", unitId: "brenna", controller: "ai" }), { ok: false, stale: false });
+    const before = changed.length;
+    assert.deepEqual(await send({ type: "control", unitId: "corwin", controller: "ai" }), { ok: true });
+    assert.ok(changed.length > before, "the room is told the fight moved");
+    assert.deepEqual(await send({ type: "control", unitId: "corwin", controller: "manual" }), {
+      ok: false,
+      stale: true,
+    });
+    guestView = await shown();
+    assert.deepEqual(await send({ type: "control", unitId: "corwin", controller: "manual" }), { ok: true });
+    // The host begins and plays their own side on its own, until the guest's character is asked.
+    hostView = (await app.inject({ url: `/combat/state?chatId=${fresh.chat.id}&anchor=${fresh.anchor.id}` })).json()
+      .session;
+    if (hostView.ruleset!.deploy) await hostSend({ type: "deployed" });
+    await hostSend({ type: "control", unitId: "brenna", controller: "ai" });
+    for (let guard = 0; guard < 60; guard++) {
+      guestView = await shown();
+      if (guestView.ruleset!.options?.length || guestView.outcome) break;
+      await hostSend({ type: "continue" });
+    }
+    assert.equal(guestView.ruleset!.actorId, "corwin", "the fight reaches the guest's own turn");
+    assert.equal(hostView.ruleset!.options, undefined, "which the host is not offered");
+    const end = guestView.ruleset!.options!.find((option) => option.kind === "end-turn")!;
+    assert.deepEqual(await send({ type: "ruleset", optionId: end.id, targetIds: [] }), { ok: true });
+    guestView = await shown();
+    assert.notEqual(guestView.ruleset!.actorId, "corwin", "the guest's turn is played");
   }
 
   console.log("game-ruleset-room-fight-players: ok");

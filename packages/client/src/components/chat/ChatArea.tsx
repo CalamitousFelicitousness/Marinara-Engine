@@ -618,7 +618,16 @@ export const ChatArea = memo(function ChatArea({
   if (chat && (metadata.multiplayerSetup === true || metadata.multiplayer)) {
     return (
       <Suspense fallback={null}>
-        <MultiplayerChat key={chat.id} chat={chat} />
+        <MultiplayerChat
+          key={chat.id}
+          chat={chat}
+          renderGame={() => (
+            <LocalChatArea
+              chatWindowIntroAllowed={chatWindowIntroAllowed}
+              onChatWindowIntroOpenChange={onChatWindowIntroOpenChange}
+            />
+          )}
+        />
         {chatSettingsButton}
       </Suspense>
     );

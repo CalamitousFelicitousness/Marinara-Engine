@@ -683,8 +683,11 @@ export interface RulesetFightSeed {
    *  of the host's companions. */
   players?: Record<string, DirectedRulesetPlayer>;
   /** Who plays the character of a room player other than the host as the fight begins: that player,
-   *  or the Engine while the room cannot carry a player's fight commands. */
+   *  or the Engine. */
   othersPlay?: "manual" | "ai";
+  /** Room players not connected as the fight starts, by participant id: theirs fight on their own
+   *  (2026-10-27), each taken back with a controller switch once its player is there. */
+  absent?: string[];
   /** The stored live sheet state of the whole game. */
   live: RulesetLiveStates | null;
   /** What each party member holds, by name, when the ruleset's sheet reads items. */
@@ -2055,7 +2058,9 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
   // Each room player's own character is theirs (2026-10-26), whoever else is at the table.
   if (Object.keys(players).length > 0) {
     fight.players = players;
-    for (const id of others) fight.controllers[id] = input.othersPlay ?? "manual";
+    const absent = new Set(input.absent ?? []);
+    for (const id of others)
+      fight.controllers[id] = absent.has(players[id]!.participantId) ? "ai" : (input.othersPlay ?? "manual");
   }
   return { ok: true, fight, ...(standInId ? { standIn: standInId } : {}) };
 }

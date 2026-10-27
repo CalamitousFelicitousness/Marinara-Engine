@@ -65,6 +65,23 @@ export const MULTIPLAYER_GUEST_LABEL_KEYS = [
   "eventKick",
   "eventPause",
   "eventResume",
+  "fightTitle",
+  "fightYourTurn",
+  "fightWaitingOn",
+  "fightActing",
+  "fightOver",
+  "fightDeploy",
+  "fightPickTargets",
+  "fightPickCell",
+  "fightConfirm",
+  "fightBack",
+  "fightPlayedBy",
+  "fightDown",
+  "fightLetEngine",
+  "fightTakeBack",
+  "fightLog",
+  "fightSquare",
+  "fightHealth",
 ] as const;
 
 export type MultiplayerGuestLabels = Record<(typeof MULTIPLAYER_GUEST_LABEL_KEYS)[number], string> & {

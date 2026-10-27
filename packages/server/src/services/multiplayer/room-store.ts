@@ -268,6 +268,10 @@ export function createMultiplayerRoomStore(db: DB, chatId: string, roomId: strin
             pass: action.type === "pass",
           };
           claimed = await closeRound(room, chats);
+        } else if (action.type === "fight-command") {
+          // The fight itself checks the command once its receipt is kept (2026-10-27); a room that is not
+          // playing a Game has no fight to send it to.
+          if (chat.mode !== "game" || room.status !== "active") throw new MultiplayerError("busy");
         } else if (action.type === "request-response") {
           if (chat.mode === "game") throw new MultiplayerError("restricted-command");
           claimed = claim(room);
@@ -316,6 +320,27 @@ export function createMultiplayerRoomStore(db: DB, chatId: string, roomId: strin
           pass: true,
         };
         await appendEvent(chats, "host-pass", room.participants.find((p) => p.id === participantId)!.persona.name);
+        return closeRound(room, chats);
+      });
+    },
+    /** The room's fight is over (2026-10-27): its result is the host's turn, and the round closes on it,
+     *  everybody yet to act passing, so the Game Master tells what came of it at once. */
+    async fightResult(text: string) {
+      return change(async (room, chats, chat) => {
+        const round = room.round;
+        const host = room.participants.find((p) => p.isHost)!;
+        if (chat.mode !== "game" || room.status !== "active" || !round || round.phase !== "collecting")
+          throw new MultiplayerError("busy");
+        const previous = round.submissions[host.id];
+        round.submissions[host.id] = {
+          operationId: newId(),
+          revision: previous ? previous.revision + 1 : 0,
+          text,
+          pass: false,
+        };
+        if (!round.requiredParticipantIds.includes(host.id)) round.requiredParticipantIds.push(host.id);
+        for (const id of round.requiredParticipantIds)
+          round.submissions[id] ??= { operationId: newId(), revision: 0, text: "", pass: true };
         return closeRound(room, chats);
       });
     },

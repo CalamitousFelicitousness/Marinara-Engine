@@ -87,6 +87,7 @@ import {
   rulesetDeployers,
   rulesetUnitPlayer,
   RULESET_ROOM_HOST,
+  type RulesetFightCommander,
   rulesetDirectorStage,
   rulesetFightLiveStates,
   rulesetFightReturningFoes,
@@ -521,15 +522,53 @@ async function loadFightCatalogs(
   return catalogs;
 }
 
+/** A guest's command for their own party members, as the room hands it to the fight (2026-10-27). */
+export interface RoomFightCommandInput {
+  anchor: string;
+  id: string;
+  instanceId: string;
+  revision: number;
+  command: DirectedCommand;
+}
+
+/** What reads and commands a shared room's fight for one of its players (2026-10-27). */
+export interface RoomFightBridge {
+  /** The room's fight on the board now, as this player is shown it; null when none is. */
+  view(chatId: string, viewer: RulesetFightCommander): Promise<{ anchor: string; view: DirectedCombatView } | null>;
+  /** Sends one player's command, checked as the host's own are and against whose it is. */
+  command(
+    chatId: string,
+    input: RoomFightCommandInput,
+    viewer: RulesetFightCommander,
+  ): Promise<{ ok: true } | { ok: false; stale: boolean }>;
+}
+
+/** What a shared room gives the fight and takes from it (2026-10-27). */
+export interface RoomFightHooks {
+  /** The room's players not connected now, by participant id: their characters fight on their own. */
+  absent(chatId: string): ReadonlySet<string>;
+  /** The fight moved, so the room's players are shown where it is now. */
+  changed(chatId: string): void;
+  ready(bridge: RoomFightBridge): void;
+}
+
 export async function combatDirectorRoutes(
   app: FastifyInstance,
-  options: { chooseBoss?: typeof chooseGmCombatOption } = {},
+  options: { chooseBoss?: typeof chooseGmCombatOption; room?: RoomFightHooks } = {},
 ) {
   const chats = createChatsStorage(app.db),
     store = createGameEngineStateStorage(app.db);
+  /** The fight each chat last had on screen, which is the one a shared room's players are shown. */
+  const roomFights = new Map<string, string>();
+  const rememberFight = (chatId: string, anchor: string) => {
+    roomFights.delete(chatId);
+    roomFights.set(chatId, anchor);
+    if (roomFights.size > 200) roomFights.delete(roomFights.keys().next().value!);
+  };
   const load = async (chatId: string, anchor: string) => {
     const row = await store.getByChatAndMessage(chatId, anchor, 0, COMBAT_DIRECTOR_NAMESPACE);
     if (!row) return null;
+    rememberFight(chatId, anchor);
     let state: CombatDirectorState;
     try {
       state = JSON.parse(row.state) as CombatDirectorState;
@@ -768,13 +807,17 @@ export async function combatDirectorRoutes(
   /** The session a client reads. A ruleset fight whose rules are gone comes back finished rather
    *  than resolved by other numbers, and nothing about that is written down: reinstalling the
    *  ruleset picks the same fight up where it was left. */
-  const sessionView = (s: CombatDirectorState, session: RulesetSession | null): DirectedCombatView => {
+  const sessionView = (
+    s: CombatDirectorState,
+    session: RulesetSession | null,
+    viewer: RulesetFightCommander = RULESET_ROOM_HOST,
+  ): DirectedCombatView => {
     const fight = s.rulesetFight;
     if (s.style !== "ruleset" || !fight) return combatDirectorView(s);
     if (session && "definition" in session) {
       const view = combatDirectorView(s);
       view.stage = rulesetDirectorStage(s);
-      view.ruleset = directedRulesetView(session.definition, s);
+      view.ruleset = directedRulesetView(session.definition, s, viewer);
       return view;
     }
     const reason = session && "unavailable" in session ? session.unavailable : "This fight's rules could not be read.";
@@ -1442,9 +1485,15 @@ export async function combatDirectorRoutes(
             // Companions fight on their own unless the game says the player plays them (Alyssa 2026-10-26).
             companionsOnTheirOwn: setup.playerRunsCompanions !== true,
             // In a shared room each player's own character is theirs to play (2026-10-26).
-            ...((players) => (players ? { players, othersPlay: ROOM_GUEST_FIGHT_CONTROLLER } : {}))(
-              roomPlayersByName(meta),
-            ),
+            // One not connected as it starts fights on their own until they take them back (2026-10-27).
+            ...((players) =>
+              players
+                ? {
+                    players,
+                    othersPlay: ROOM_GUEST_FIGHT_CONTROLLER,
+                    absent: [...(options.room?.absent(input.chatId) ?? [])],
+                  }
+                : {})(roomPlayersByName(meta)),
             live: parseStoredRulesetLive(liveRow?.rulesetLive),
             // What each member holds as the fight starts, when the ruleset's sheet reads items.
             ...(fightItems ? { items: fightItems, holders: rulesetCardHolder(cardNames, persona?.name ?? null) } : {}),
@@ -1565,6 +1614,8 @@ export async function combatDirectorRoutes(
           committed: true,
         });
         state.instanceId = rowId;
+        rememberFight(input.chatId, input.anchor);
+        options.room?.changed(input.chatId);
         return { session: sessionView(state, session) };
       });
     } catch (err) {
@@ -1616,21 +1667,23 @@ export async function combatDirectorRoutes(
     if (!released) return save(rowId, chatId, s, session);
     return keepHeldGroundReleasedWhile(app.db, chatId, released, () => save(rowId, chatId, s, session));
   };
-  app.post("/command", async (req, reply) => {
-    const parsed = z
-      .object({
-        chatId: key,
-        anchor: key,
-        id: key,
-        instanceId: key,
-        revision: z.number().int().min(0),
-        requestId: key,
-        command,
-        debugMode: z.boolean().optional(),
-      })
-      .safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message });
-    const input = parsed.data;
+  const commandBody = z.object({
+    chatId: key,
+    anchor: key,
+    id: key,
+    instanceId: key,
+    revision: z.number().int().min(0),
+    requestId: key,
+    command,
+    debugMode: z.boolean().optional(),
+  });
+  type CommandAnswer = { code: 200 | 400; body: Record<string, unknown> };
+  /** One command, from the host's screen or (2026-10-27) a room player's through the room, checked
+   *  against whose party member it moves. */
+  const runCommand = async (
+    input: z.infer<typeof commandBody>,
+    commander: RulesetFightCommander,
+  ): Promise<CommandAnswer> => {
     // Who the player hands to the Engine, or takes back, is kept for the chat's next fights too
     // (laptop party A 2026-10-25: companions back on Player at every fight).
     let controlled: Array<{ unitId: string; controller: "manual" | "ai" }> | undefined;
@@ -1646,17 +1699,18 @@ export async function combatDirectorRoutes(
         const ruleset = session && "definition" in session ? session.definition : null;
         // Sent at a fight that has since moved on (another tab, a restart): nothing is done, and the
         // reply says so, so the client takes the fight as it stands rather than its own older copy.
-        if (state.instanceId !== input.instanceId) return { session: sessionView(state, session), stale: true };
-        if (state.requests.includes(input.requestId)) return { session: sessionView(state, session) };
-        if (state.revision !== input.revision) return { session: sessionView(state, session), stale: true };
+        if (state.instanceId !== input.instanceId)
+          return { session: sessionView(state, session, commander), stale: true };
+        if (state.requests.includes(input.requestId)) return { session: sessionView(state, session, commander) };
+        if (state.revision !== input.revision) return { session: sessionView(state, session, commander), stale: true };
         // A fight whose rules are gone changes nothing at all: it is already finished, and the view
         // says why.
-        if (state.style === "ruleset" && !ruleset) return { session: sessionView(state, session) };
-        // In a shared room a party member is commanded by its own player only (2026-10-26). Every
-        // command these routes take is the host's: a guest's would arrive through the room.
+        if (state.style === "ruleset" && !ruleset) return { session: sessionView(state, session, commander) };
+        // In a shared room a party member is commanded by its own player only (2026-10-26): the host's
+        // come through this route, a guest's through the room (2026-10-27).
         const notTheirs =
           ruleset && state.rulesetFight
-            ? rulesetCommandRefusal(state, state.rulesetFight, input.command as DirectedCommand, RULESET_ROOM_HOST)
+            ? rulesetCommandRefusal(state, state.rulesetFight, input.command as DirectedCommand, commander)
             : null;
         if (notTheirs) return { refusal: notTheirs };
         const step = (command: DirectedCommand, source: "gm" | "ai" | "manual" | "fallback" = "manual") => {
@@ -1675,7 +1729,8 @@ export async function combatDirectorRoutes(
         }
         const w = state.window;
         if (input.command.type === "continue" && w?.controller === "gm") {
-          if (w.requestedAt && Date.now() - w.requestedAt < 12000) return { session: sessionView(state, session) };
+          if (w.requestedAt && Date.now() - w.requestedAt < 12000)
+            return { session: sessionView(state, session, commander) };
           if (w.requestedAt || state.gmCalls >= 12) {
             step({ type: "fallback" }, "fallback");
             state.requests = [...state.requests, input.requestId].slice(-256);
@@ -1778,8 +1833,9 @@ export async function combatDirectorRoutes(
           .catch((err) => logger.warn(err, "Unable to remember a combat controller"));
       }
       if ("refusal" in result && result.refusal)
-        return reply.code(400).send({ error: result.refusal.error, code: result.refusal.code });
-      if ("session" in result) return result;
+        return { code: 400, body: { error: result.refusal.error, code: result.refusal.code } };
+      options.room?.changed(input.chatId);
+      if ("session" in result) return { code: 200, body: result };
       const job = result.job;
       const abort = new AbortController();
       let timer: ReturnType<typeof setTimeout> | undefined;
@@ -1807,7 +1863,7 @@ export async function combatDirectorRoutes(
         if (timer) clearTimeout(timer);
         abort.abort();
       }
-      return await serialized(input.chatId, async () => {
+      const answered = await serialized(input.chatId, async () => {
         const current = await load(input.chatId, input.anchor);
         if (!current) throw new Error("Battle no longer exists.");
         const session = await rulesetSessionFor(input.chatId, current.state);
@@ -1826,7 +1882,7 @@ export async function combatDirectorRoutes(
             job.revision,
             current.state.revision,
           );
-          return { session: sessionView(current.state, session) };
+          return { session: sessionView(current.state, session, commander) };
         }
         const answer: DirectedCommand = candidateId ? { type: "choose", candidateId } : { type: "fallback" };
         const source = candidateId ? "gm" : "fallback";
@@ -1849,9 +1905,44 @@ export async function combatDirectorRoutes(
         current.state.requests = [...current.state.requests, input.requestId].slice(-256);
         return await saveLettingGo(current.row.id, input.chatId, current.state, session, ruleset);
       });
+      options.room?.changed(input.chatId);
+      return { code: 200, body: answered };
     } catch (err) {
       logger.warn(err, "Directed combat command rejected");
-      return reply.code(400).send({ error: err instanceof Error ? err.message : "Invalid combat action." });
+      return { code: 400, body: { error: err instanceof Error ? err.message : "Invalid combat action." } };
     }
+  };
+  app.post("/command", async (req, reply) => {
+    const parsed = commandBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message });
+    const answer = await runCommand(parsed.data, RULESET_ROOM_HOST);
+    return answer.code === 200 ? answer.body : reply.code(400).send(answer.body);
+  });
+  const roomView: RoomFightBridge["view"] = async (chatId, viewer) => {
+    const anchor = roomFights.get(chatId);
+    const found = anchor ? await load(chatId, anchor) : null;
+    if (!anchor || !found) return null;
+    await seatRoomPlayers(chatId, found.state);
+    return { anchor, view: sessionView(found.state, await rulesetSessionFor(chatId, found.state), viewer) };
+  };
+  options.room?.ready({
+    view: roomView,
+    async command(chatId, input, viewer) {
+      let command = input.command;
+      // A shape a guest aimed at a cell catches whoever the menu says it catches there.
+      if (command.type === "ruleset" && command.at && command.targetIds.length === 0) {
+        const { at, optionId } = command;
+        const shown = await roomView(chatId, viewer);
+        const aim = shown?.view.ruleset?.options
+          ?.find((option) => option.id === optionId)
+          ?.aim?.find((cell) => cell.x === at.x && cell.y === at.y);
+        if (aim) command = { ...command, targetIds: aim.targetIds.slice(0, 20) };
+      }
+      const parsed = commandBody.safeParse({ chatId, ...input, command, requestId: randomUUID() });
+      if (!parsed.success) return { ok: false, stale: false };
+      const answer = await runCommand(parsed.data, viewer);
+      if (answer.code !== 200) return { ok: false, stale: false };
+      return answer.body.stale === true ? { ok: false, stale: true } : { ok: true };
+    },
   });
 }

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   multiplayerErrorCodeSchema,
@@ -47,13 +47,18 @@ const PreparedMultiplayerGameSetup = lazy(() =>
   import("./PreparedMultiplayerGameSetup").then((module) => ({ default: module.PreparedMultiplayerGameSetup })),
 );
 
-export function MultiplayerChat({ chat }: { chat: Chat }) {
+/** `renderGame` draws the host's own Game screen, which a shared room's fight is played on (2026-10-27). */
+export function MultiplayerChat({ chat, renderGame }: { chat: Chat; renderGame?: () => ReactNode }) {
   const metadata = readChatMetadata(chat);
   const role =
     metadata.multiplayer && typeof metadata.multiplayer === "object"
       ? (metadata.multiplayer as { role?: unknown }).role
       : null;
-  return role === "guest" ? <JoinedMultiplayerChat chat={chat} /> : <HostedMultiplayerChat chat={chat} />;
+  return role === "guest" ? (
+    <JoinedMultiplayerChat chat={chat} />
+  ) : (
+    <HostedMultiplayerChat chat={chat} renderGame={renderGame} />
+  );
 }
 
 function useGuestLabels(): MultiplayerGuestLabels {
@@ -183,7 +188,7 @@ function JoinedMultiplayerChat({ chat }: { chat: Chat }) {
   );
 }
 
-function HostedMultiplayerChat({ chat }: { chat: Chat }) {
+function HostedMultiplayerChat({ chat, renderGame }: { chat: Chat; renderGame?: () => ReactNode }) {
   const { t } = useTranslation();
   const labels = useGuestLabels();
   const status = useMultiplayerStatus();
@@ -205,6 +210,18 @@ function HostedMultiplayerChat({ chat }: { chat: Chat }) {
     if (!settingsOpen) setInitialSection(null);
   }, [settingsOpen]);
   const [participantOpen, setParticipantOpen] = useState(false);
+  // A fight is played on the host's own Game screen, with the board and Begin the fight on it; the room's
+  // view is a button away (2026-10-27). Each fight opens on the board again.
+  const fighting =
+    chat.mode === "game" &&
+    !!host &&
+    host.snapshot.status !== "lobby" &&
+    host.snapshot.game?.state === "combat" &&
+    !!renderGame;
+  const [roomShown, setRoomShown] = useState(false);
+  useEffect(() => {
+    if (!fighting) setRoomShown(false);
+  }, [fighting]);
   const [gameStart, setGameStart] = useState<MultiplayerGameStart | undefined>(() =>
     chat.metadata.gameSetupConfig && chat.metadata.multiplayerGameSetup
       ? { type: "startGame", config: chat.metadata.gameSetupConfig, ...chat.metadata.multiplayerGameSetup }
@@ -349,6 +366,21 @@ function HostedMultiplayerChat({ chat }: { chat: Chat }) {
       ) : (
         <>
           <div className="flex shrink-0 items-center justify-end gap-2 border-b border-[var(--border)] px-3 py-1">
+            {fighting && (
+              <>
+                <p className="mr-auto min-w-0 truncate text-xs text-[var(--muted-foreground)]">
+                  {t("multiplayer.host.fightOnScreen")}
+                </p>
+                <button
+                  type="button"
+                  className={MULTIPLAYER_BUTTON_CLASS}
+                  aria-pressed={roomShown}
+                  onClick={() => setRoomShown((shown) => !shown)}
+                >
+                  {t(roomShown ? "multiplayer.host.showFight" : "multiplayer.host.showRoom")}
+                </button>
+              </>
+            )}
             <button
               type="button"
               className={MULTIPLAYER_BUTTON_CLASS}
@@ -375,7 +407,9 @@ function HostedMultiplayerChat({ chat }: { chat: Chat }) {
               />
             </div>
           )}
-          {host.snapshot.status === "lobby" && chat.mode === "game" ? (
+          {fighting && !roomShown ? (
+            <div className="relative flex min-h-0 flex-1 flex-col">{renderGame!()}</div>
+          ) : host.snapshot.status === "lobby" && chat.mode === "game" ? (
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
               <h1 className="mb-3 text-base font-semibold">{chat.name}</h1>
               <p className="mb-4 text-sm">{t("multiplayer.host.reviewParty")}</p>

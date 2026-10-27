@@ -1,10 +1,9 @@
 import { normalizeCharacterLookupName, type DirectedRulesetPlayer } from "@marinara-engine/shared";
 import { record } from "./room-projection.js";
 
-/** Who plays another room player's own character as a fight begins (2026-10-26). The Engine, while the
- *  room protocol cannot carry a guest's fight commands: their character would otherwise stand waiting
- *  on a player who has no way to answer. Becomes "manual" once guests see and command their fights. */
-export const ROOM_GUEST_FIGHT_CONTROLLER: "manual" | "ai" = "ai";
+/** Who plays another room player's own character as a fight begins: that player (2026-10-27), who sees
+ *  the fight and commands it through the room. One not connected as it begins has the Engine play it. */
+export const ROOM_GUEST_FIGHT_CONTROLLER: "manual" | "ai" = "manual";
 
 /**
  * The room player whose own character each name is, by the name's lookup key (2026-10-26), read from the

@@ -23,6 +23,8 @@ import { useUIStore } from "../stores/ui.store";
 const RULESET_TURN_PAUSE_MS = 900;
 /** How often a step the screen has waited on for a while is looked in on. */
 const RULESET_CATCH_UP_MS = 8000;
+/** How often a shared room's fight is looked in on for the other players' moves. */
+const ROOM_FIGHT_CATCH_UP_MS = 2000;
 
 /** The code of a ruleset refusal: the rules saying no to a command, which changed nothing on the
  *  server. Anything else is the command failing, not being refused. */
@@ -197,6 +199,14 @@ export function useDirectedCombat(input: {
     const timer = setInterval(() => void catchUp(), RULESET_CATCH_UP_MS);
     return () => clearInterval(timer);
   }, [polling, catchUp]);
+  // A shared room's fight is moved from the other players' screens too (2026-10-27), so it is looked in
+  // on while nothing is on its way from this one.
+  const roomFight = !!query.data?.ruleset?.players && !query.data.outcome;
+  useEffect(() => {
+    if (!roomFight || mutate.isPending) return;
+    const timer = setInterval(() => void catchUp(), ROOM_FIGHT_CATCH_UP_MS);
+    return () => clearInterval(timer);
+  }, [roomFight, mutate.isPending, catchUp]);
   useEffect(() => {
     if (queued.current.length) return;
     if (!query.data?.window || query.data.window.controller !== "gm" || mutate.isPending || mutate.isError) return;

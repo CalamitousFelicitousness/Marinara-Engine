@@ -7312,6 +7312,13 @@ function GameSurfaceComponent({
     localizeUi,
   ]);
 
+  // A shared room this Engine hosts and has not ended (2026-10-27).
+  const hostedRoom = (() => {
+    const room = chatMeta.multiplayer;
+    if (!room || typeof room !== "object") return false;
+    const { role, status } = room as { role?: unknown; status?: unknown };
+    return role === "host" && status !== "ended";
+  })();
   const sendMessage = useCallback(
     async (
       message: string,
@@ -7319,6 +7326,22 @@ function GameSurfaceComponent({
       pendingSpatialTransition?: PendingSpatialTransition,
     ) => {
       if ((chatMeta.gameSessionStatus as string) === "concluded") return false;
+      // A room this Engine hosts has its own Game Master (2026-10-27): what a fight played on this screen
+      // came to goes to the room as the host's turn, and the round closes on it. Every other turn is
+      // written in the room's own action box.
+      if (hostedRoom) {
+        if (!message.includes("[combat_result]")) {
+          toast.info(localizeUi("game.room.turnsInRoom"));
+          return false;
+        }
+        try {
+          await api.post("/multiplayer/host/actions", { type: "fight-result", text: message.slice(0, 8000) });
+          return true;
+        } catch {
+          toast.error(localizeUi("game.room.fightResultFailed"));
+          return false;
+        }
+      }
       let userMessage = formatTextQuotes(message, quoteFormat);
       // A turn is stored with its macros filled in, as a Roleplay or Conversation send is (#7585), so the Game
       // log and the model read the same {{random}} pick. Macros only: a turn skips user-input regex and
@@ -7357,7 +7380,7 @@ function GameSurfaceComponent({
         ...(pendingSpatialTransition ? { pendingSpatialTransition } : {}),
       });
     },
-    [activeChatId, chatMeta.gameSessionStatus, generate, queryClient, quoteFormat],
+    [activeChatId, chatMeta.gameSessionStatus, generate, hostedRoom, localizeUi, queryClient, quoteFormat],
   );
 
   // Background seam: the experience pushes a background and we render it behind the narration, so it

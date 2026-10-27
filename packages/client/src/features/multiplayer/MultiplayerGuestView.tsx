@@ -5,6 +5,7 @@ import { ChatModeIcon } from "../../components/chat/ChatModeIcon";
 import { getChatInputShellClass } from "../../components/chat/chat-input-styles";
 import { cn, generateClientId } from "../../lib/utils";
 import type { MultiplayerGuestLabels } from "./multiplayer-guest-labels";
+import { MultiplayerGuestFight } from "./MultiplayerGuestFight";
 
 interface MultiplayerGuestViewProps {
   state: MultiplayerGuestState;
@@ -265,6 +266,28 @@ export function MultiplayerGuestView({ state, onAction, labels, onOpenPlayers }:
             )}
           </div>
         </details>
+      )}
+
+      {isGame && snapshot?.fight && !playersOpen && (
+        <MultiplayerGuestFight
+          fight={snapshot.fight}
+          labels={labels}
+          disabled={!canAct || pending}
+          onCommand={(command) =>
+            dispatch({
+              type: "fight-command",
+              operationId: generateClientId(),
+              sequence: snapshot.nextSequence,
+              fight: {
+                anchor: snapshot.fight!.anchor,
+                id: snapshot.fight!.id,
+                instanceId: snapshot.fight!.instanceId,
+                revision: snapshot.fight!.revision,
+              },
+              command,
+            })
+          }
+        />
       )}
 
       {playersOpen && snapshot ? (

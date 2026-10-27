@@ -66,6 +66,8 @@ export function projectRoomSnapshot(input: {
   connected: ReadonlySet<string>;
   messages: readonly MessageRow[];
   game?: import("@marinara-engine/shared").MultiplayerGameState | null;
+  /** The room's fight as this player sees it (2026-10-27). */
+  fight?: import("@marinara-engine/shared").MultiplayerFight | null;
   /** Trusted local management must remain available to reduce an oversized shared update. */
   forLocalHost?: boolean;
 }): MultiplayerSnapshot {
@@ -166,6 +168,7 @@ export function projectRoomSnapshot(input: {
     characters: room.characters,
     messages,
     game: input.game ?? null,
+    ...(input.fight ? { fight: input.fight } : {}),
     round: round
       ? {
           id: round.id,

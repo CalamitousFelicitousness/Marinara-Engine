@@ -1295,10 +1295,18 @@ const ID_KEYED_MAPS = new Set([
 ]);
 
 /** What a feature scan reads further into: every value but an id-keyed map's. */
+/** While one install check runs, each record's values are listed once: the check walks the same document for every
+ *  gate, and listing them anew each time made it slow on a large ruleset. Nothing in a check changes the document. */
+let featureValuesMemo: WeakMap<object, unknown[]> | null = null;
+
 function featureValues(record: Record<string, unknown>): unknown[] {
-  return Object.entries(record).flatMap(([key, value]) =>
+  const known = featureValuesMemo?.get(record);
+  if (known) return known;
+  const values = Object.entries(record).flatMap(([key, value]) =>
     ID_KEYED_MAPS.has(key) && plainRecord(value) ? [] : [value],
   );
+  featureValuesMemo?.set(record, values);
+  return values;
 }
 
 /** The 1.45 keys in the ruleset file itself: `levels` in the combat block, and a combat condition's
@@ -8545,6 +8553,20 @@ function rulesetCarriesSections141Keys(ruleset: { sheet?: unknown } | undefined)
 }
 
 export function getCapabilityPackageInstallIssue(
+  manifest: CapabilityCatalogPackage["manifest"],
+  rulesetDocument?: unknown,
+  catalogDocuments?: ReadonlyMap<string, unknown>,
+): string | null {
+  const outer = featureValuesMemo;
+  featureValuesMemo ??= new WeakMap();
+  try {
+    return capabilityPackageInstallIssueFor(manifest, rulesetDocument, catalogDocuments);
+  } finally {
+    featureValuesMemo = outer;
+  }
+}
+
+function capabilityPackageInstallIssueFor(
   manifest: CapabilityCatalogPackage["manifest"],
   rulesetDocument?: unknown,
   catalogDocuments?: ReadonlyMap<string, unknown>,

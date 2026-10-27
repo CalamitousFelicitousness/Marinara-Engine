@@ -624,12 +624,24 @@ function splitPromptFragments(
         fragments.push(clean);
       }
     }
-    return fragments;
+    return fragments.flatMap(splitNegativePromptSentence);
   }
 
   const prepared = sourcePrompt ? distillTaggedPromptSource(normalized) : normalized;
 
-  return splitPromptListItems(prepared);
+  return splitPromptListItems(prepared).flatMap(splitNegativePromptSentence);
+}
+
+function splitNegativePromptSentence(value: string): string[] {
+  const fragments: string[] = [];
+  while (hasAvoidInstructionPrefix(value)) {
+    const boundary = findTopLevelSentenceBoundary(value);
+    if (boundary < 0) break;
+    fragments.push(value.slice(0, boundary + 1));
+    value = value.slice(boundary + 1).trim();
+  }
+  if (value) fragments.push(value);
+  return fragments;
 }
 
 function splitNegativePromptItems(value: string): string[] {
@@ -924,7 +936,8 @@ function extractNegativeFragment(fragment: string): string | null {
   const clean = fragment.trim();
   const match = clean.match(/^(?:avoid|no|without|exclude|do not include|don't include)\s+(.+)/i);
   if (!match?.[1]) return null;
-  const firstSentence = match[1].split(/[.!?]+(?:\s+|$)/u, 1)[0] ?? match[1];
+  const boundary = findTopLevelSentenceBoundary(match[1]);
+  const firstSentence = boundary < 0 ? match[1] : match[1].slice(0, boundary);
   const negative = (splitPromptListItems(firstSentence)[0] ?? "")
     .replace(/[.]+$/g, "")
     .replace(/^(?:any|all)\s+/i, "")

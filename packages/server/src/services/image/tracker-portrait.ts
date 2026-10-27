@@ -34,8 +34,8 @@ export function buildTrackerPortraitPrompt(character: TrackerPortraitCharacter, 
   const outfit = includeOutfit ? clause(character.outfit) : "";
   return [
     `Portrait of ${name}.`,
-    appearance ? `Appearance: ${appearance}` : "",
-    outfit ? `Outfit: ${outfit}` : "",
+    appearance,
+    outfit,
     "Character portrait, head and shoulders, detailed face, high quality",
   ]
     .filter(Boolean)

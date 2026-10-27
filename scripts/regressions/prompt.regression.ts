@@ -9030,6 +9030,50 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
     },
   },
   {
+    name: "preserved image prompts keep positive sentences after inline negation (#8396)",
+    run() {
+      const styleProfiles = createDefaultImageStyleProfileSettings();
+      for (const profile of styleProfiles.profiles) {
+        for (const kind of ["portrait", "sprite", "illustration", "background", "selfie"] as const) {
+          for (const prompt of [
+            "Blue eyes, no hat. Red coat",
+            "Blue eyes, no hat. No shoes. Red coat",
+            "Portrait of Yunyun.\nAppearance: Blue eyes, no hat. Red coat\nOutfit: Gold armor",
+          ]) {
+            const compiled = compileImagePrompt({ kind, prompt, styleProfiles, styleProfileId: profile.id });
+            assert.match(compiled.prompt, /Blue eyes/, `${profile.id}/${kind} lost the preceding positive clause`);
+            assert.match(compiled.prompt, /Red coat/, `${profile.id}/${kind} lost the trailing positive sentence`);
+            assert.match(compiled.negativePrompt, /\bhat\b/);
+            assert.doesNotMatch(compiled.negativePrompt, /Blue eyes|Red coat|Gold armor/);
+            assert.doesNotMatch(compiled.prompt, /\bno hat\b/);
+            if (prompt.includes("Gold armor")) assert.match(compiled.prompt, /Gold armor/);
+          }
+          const grouped = compileImagePrompt({
+            kind,
+            prompt:
+              'Blue eyes, no (bad hands, extra fingers:1.2). Red coat, a sign says "no hat. Blue coat", (red coat. blue hem:1.2)',
+            styleProfiles,
+            styleProfileId: profile.id,
+          });
+          assert.match(grouped.negativePrompt, /\(bad hands, extra fingers:1\.2\)/);
+          assert.match(grouped.prompt, /Red coat/);
+          assert.ok(grouped.prompt.includes('"no hat. Blue coat"'));
+          assert.ok(grouped.prompt.includes("(red coat. blue hem:1.2)"));
+          assert.doesNotMatch(grouped.negativePrompt, /Red coat|Blue coat|blue hem/);
+          const quotedNegative = compileImagePrompt({
+            kind,
+            prompt: 'Blue eyes, no ("bad. hands", extra fingers:1.2). Red coat',
+            styleProfiles,
+            styleProfileId: profile.id,
+          });
+          assert.ok(quotedNegative.negativePrompt.includes('("bad. hands", extra fingers:1.2)'));
+          assert.match(quotedNegative.prompt, /Red coat/);
+          assert.doesNotMatch(quotedNegative.negativePrompt, /Red coat/);
+        }
+      }
+    },
+  },
+  {
     name: "image prompt negation only moves the directly negated comma clause",
     run() {
       const styleProfiles = createDefaultImageStyleProfileSettings();

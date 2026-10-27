@@ -33,7 +33,8 @@ import {
   type MultiplayerGuestLabels,
 } from "./multiplayer-guest-labels";
 import { MultiplayerPersonaFields, MULTIPLAYER_BUTTON_CLASS, MULTIPLAYER_INPUT_CLASS } from "./MultiplayerFields";
-import { MultiplayerHostControls, type MultiplayerGameStart } from "./MultiplayerHostControls";
+import { MultiplayerAwayPlayers, MultiplayerHostControls, type MultiplayerGameStart } from "./MultiplayerHostControls";
+import { MultiplayerBlankSheets } from "./MultiplayerBlankSheets";
 import { MultiplayerParticipantControls } from "./MultiplayerParticipantControls";
 import { useHostHasDetachedDrawers } from "../../components/ui/drawer-host";
 
@@ -211,17 +212,19 @@ function HostedMultiplayerChat({ chat, renderGame }: { chat: Chat; renderGame?: 
   }, [settingsOpen]);
   const [participantOpen, setParticipantOpen] = useState(false);
   // A fight is played on the host's own Game screen, with the board and Begin the fight on it; the room's
-  // view is a button away (2026-10-27). Each fight opens on the board again.
+  // view is a button away (2026-10-27). Each fight opens on the board again. A fight the room reads as
+  // still on counts too, as the game may not say combat yet while the party is set down.
+  const gameOpenable = chat.mode === "game" && !!host && host.snapshot.status !== "lobby" && !!renderGame;
   const fighting =
-    chat.mode === "game" &&
-    !!host &&
-    host.snapshot.status !== "lobby" &&
-    host.snapshot.game?.state === "combat" &&
-    !!renderGame;
-  const [roomShown, setRoomShown] = useState(false);
+    gameOpenable && (host.snapshot.game?.state === "combat" || (!!host.snapshot.fight && !host.snapshot.fight.over));
+  // Outside a fight the host can open the Game screen too, for the party's sheets (room playtest
+  // 2026-10-27). A fight starting or ending goes back to the screen it belongs on.
+  const [screen, setScreen] = useState<"auto" | "room" | "game">("auto");
   useEffect(() => {
-    if (!fighting) setRoomShown(false);
+    setScreen("auto");
   }, [fighting]);
+  const gameShown = gameOpenable && (screen === "game" || (screen === "auto" && fighting));
+  const gameMounted = fighting || gameShown;
   const [gameStart, setGameStart] = useState<MultiplayerGameStart | undefined>(() =>
     chat.metadata.gameSetupConfig && chat.metadata.multiplayerGameSetup
       ? { type: "startGame", config: chat.metadata.gameSetupConfig, ...chat.metadata.multiplayerGameSetup }
@@ -367,19 +370,25 @@ function HostedMultiplayerChat({ chat, renderGame }: { chat: Chat; renderGame?: 
         <>
           <div className="flex shrink-0 items-center justify-end gap-2 border-b border-[var(--border)] px-3 py-1">
             {fighting && (
-              <>
-                <p className="mr-auto min-w-0 truncate text-xs text-[var(--muted-foreground)]">
-                  {t("multiplayer.host.fightOnScreen")}
-                </p>
-                <button
-                  type="button"
-                  className={MULTIPLAYER_BUTTON_CLASS}
-                  aria-pressed={roomShown}
-                  onClick={() => setRoomShown((shown) => !shown)}
-                >
-                  {t(roomShown ? "multiplayer.host.showFight" : "multiplayer.host.showRoom")}
-                </button>
-              </>
+              <p className="mr-auto min-w-0 truncate text-xs text-[var(--muted-foreground)]">
+                {t("multiplayer.host.fightOnScreen")}
+              </p>
+            )}
+            {gameOpenable && (
+              <button
+                type="button"
+                className={MULTIPLAYER_BUTTON_CLASS}
+                aria-pressed={!gameShown}
+                onClick={() => setScreen(gameShown ? "room" : "game")}
+              >
+                {t(
+                  gameShown
+                    ? "multiplayer.host.showRoom"
+                    : fighting
+                      ? "multiplayer.host.showFight"
+                      : "multiplayer.host.showGame",
+                )}
+              </button>
             )}
             <button
               type="button"
@@ -407,9 +416,16 @@ function HostedMultiplayerChat({ chat, renderGame }: { chat: Chat; renderGame?: 
               />
             </div>
           )}
-          {fighting && !roomShown ? (
-            <div className="relative flex min-h-0 flex-1 flex-col">{renderGame!()}</div>
-          ) : host.snapshot.status === "lobby" && chat.mode === "game" ? (
+          <MultiplayerAwayPlayers host={host} />
+          {gameOpenable && !fighting && (
+            <MultiplayerBlankSheets metadata={metadata} onOpen={gameShown ? undefined : () => setScreen("game")} />
+          )}
+          {/* Kept mounted while the room is shown, so going back finds the board as it was (laptop room
+              playtest 2026-10-27: drawn again at the deploy, it came back without its board). */}
+          {gameMounted && (
+            <div className={`relative min-h-0 flex-1 flex-col ${gameShown ? "flex" : "hidden"}`}>{renderGame!()}</div>
+          )}
+          {gameShown ? null : host.snapshot.status === "lobby" && chat.mode === "game" ? (
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
               <h1 className="mb-3 text-base font-semibold">{chat.name}</h1>
               <p className="mb-4 text-sm">{t("multiplayer.host.reviewParty")}</p>

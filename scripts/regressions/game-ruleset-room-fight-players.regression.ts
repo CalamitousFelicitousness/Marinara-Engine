@@ -385,7 +385,12 @@ try {
     absent = new Set();
 
     const fresh = await newRoomGame();
-    const opened = await post("/combat/start", { ...body, chatId: fresh.chat.id, anchor: fresh.anchor.id });
+    const opened = await post("/combat/start", {
+      ...body,
+      positioned: true,
+      chatId: fresh.chat.id,
+      anchor: fresh.anchor.id,
+    });
     assert.equal(opened.statusCode, 200, opened.body);
     let hostView = opened.json().session as DirectedCombatView;
     assert.equal(hostView.party.find((member) => member.id === "corwin")?.controller, "manual");
@@ -397,6 +402,9 @@ try {
     };
     let guestView = await shown();
     assert.deepEqual(guestView.ruleset!.yours, ["corwin"]);
+    // Set down first, the guest places their own character and the host keeps theirs (room playtest 2026-10-27).
+    assert.deepEqual(guestView.ruleset!.deploy?.ids, ["corwin"]);
+    assert.deepEqual(hostView.ruleset!.deploy?.ids, ["brenna"]);
     const send = (command: DirectedCommand, at = guestView) =>
       bridge!.command(
         fresh.chat.id,

@@ -361,3 +361,55 @@ export function MultiplayerPlayersSection({
     </ChatSettingsSection>
   );
 }
+
+/** The players a collecting round still waits on who are not here, with Pass and Remove a click away, so a
+ *  player whose Engine went away cannot hold the room's round forever (room playtest 2026-10-27). */
+export function MultiplayerAwayPlayers({ host }: { host: MultiplayerHostState }) {
+  const { t } = useTranslation();
+  const action = useMultiplayerMutation<unknown, MultiplayerHostAction>("/multiplayer/host/actions");
+  const round = host.snapshot.round;
+  if (host.snapshot.mode !== "game" || round?.phase !== "collecting") return null;
+  const away = host.snapshot.players.filter(
+    (player) =>
+      !player.isHost &&
+      !player.connected &&
+      round.requiredParticipantIds.includes(player.id) &&
+      !round.submittedParticipantIds.includes(player.id),
+  );
+  if (away.length === 0) return null;
+  const run = async (value: Extract<MultiplayerHostAction, { type: "pass" | "kick" }>) => {
+    const confirmed = await showConfirmDialog({
+      title: t(`multiplayer.host.${value.type}`),
+      message: t(`multiplayer.host.${value.type}Confirm`),
+      tone: value.type === "pass" ? "default" : "destructive",
+    });
+    if (confirmed) action.mutate(value);
+  };
+  return (
+    <ul className="shrink-0 space-y-1 border-b border-[var(--border)] px-3 py-2 text-xs">
+      {away.map((player) => (
+        <li key={player.id} className="flex flex-wrap items-center gap-2">
+          <p className="min-w-0 flex-1 break-words">
+            {t("multiplayer.host.awayWaiting", { name: player.personaName ?? player.displayName })}
+          </p>
+          <button
+            type="button"
+            className={MULTIPLAYER_BUTTON_CLASS}
+            disabled={action.isPending}
+            onClick={() => void run({ type: "pass", participantId: player.id })}
+          >
+            {t("multiplayer.host.pass")}
+          </button>
+          <button
+            type="button"
+            className={MULTIPLAYER_BUTTON_CLASS}
+            disabled={action.isPending}
+            onClick={() => void run({ type: "kick", participantId: player.id })}
+          >
+            {t("multiplayer.host.kick")}
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}

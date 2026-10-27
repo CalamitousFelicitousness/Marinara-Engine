@@ -385,7 +385,33 @@ try {
   {
     const chat = read("../../packages/client/src/features/multiplayer/MultiplayerChat.tsx");
     assert.match(chat, /host\.snapshot\.game\?\.state === "combat"/u, "a room fight opens the host's Game screen");
-    assert.match(chat, /fighting && !roomShown \? \(\s*<div[^>]*>\{renderGame!\(\)\}<\/div>/u);
+    assert.match(
+      chat,
+      /\(!!host\.snapshot\.fight && !host\.snapshot\.fight\.over\)/u,
+      "a fight still being set down opens it too, before the game says combat",
+    );
+    // Kept mounted while the room is shown, so going back finds the board as it was.
+    assert.match(
+      chat,
+      /\{gameMounted && \(\s*<div className=\{`[^`]*\$\{gameShown \? "flex" : "hidden"\}`\}>\{renderGame!\(\)\}<\/div>/u,
+    );
+    // Outside a fight the host can open the Game screen for the party's sheets.
+    assert.match(
+      chat,
+      /const gameShown = gameOpenable && \(screen === "game" \|\| \(screen === "auto" && fighting\)\);/u,
+    );
+    assert.match(chat, /"multiplayer\.host\.showGame"/u);
+    // A round waiting on a player who is not here offers Pass and Remove; blank sheets are named before a fight.
+    assert.match(chat, /<MultiplayerAwayPlayers host=\{host\} \/>/u);
+    const controls = read("../../packages/client/src/features/multiplayer/MultiplayerHostControls.tsx");
+    assert.match(controls, /!player\.connected &&\s*round\.requiredParticipantIds\.includes\(player\.id\)/u);
+    assert.match(chat, /gameOpenable && !fighting && \(\s*<MultiplayerBlankSheets/u);
+    const snapshotting = read("../../packages/server/src/services/multiplayer/service.ts");
+    assert.match(snapshotting, /const viewer = forLocalHost \? \{ host: true \} : \{ host: false, participantId \};/u);
+    assert.match(
+      snapshotting,
+      /fight = projected && \(!projected\.over \|\| game\.state === "combat"\) \? projected : null;/u,
+    );
     const area = read("../../packages/client/src/components/chat/ChatArea.tsx");
     assert.match(area, /<MultiplayerChat[\s\S]{0,200}renderGame=\{\(\) => \(\s*<LocalChatArea/u);
     const surface = read("../../packages/client/src/components/game/GameSurface.tsx");

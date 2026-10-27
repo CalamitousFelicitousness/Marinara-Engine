@@ -518,14 +518,19 @@ export class MultiplayerService {
           })
         : null;
     this.live(host);
-    // A guest is shown the room's fight as theirs to play (2026-10-27); the host plays it on their own screen.
+    // A guest is shown the room's fight as theirs to play (2026-10-27); the host plays it on their own
+    // screen, which this tells a fight is on. Read from the fight itself, not only the game's state, which
+    // may not say combat yet while the party is set down (laptop room playtest 2026-10-27).
     let fight = null;
-    if (!forLocalHost && game?.state === "combat" && this.fights) {
-      const shown = await this.fights.view(host.chatId, { host: false, participantId }).catch((error: unknown) => {
+    if (game && this.fights) {
+      const viewer = forLocalHost ? { host: true } : { host: false, participantId };
+      const shown = await this.fights.view(host.chatId, viewer).catch((error: unknown) => {
         logger.warn({ err: error }, "[multiplayer] The room's fight could not be read for a player");
         return null;
       });
-      fight = shown ? projectMultiplayerFight(shown.anchor, shown.view) : null;
+      const projected = shown ? projectMultiplayerFight(shown.anchor, shown.view) : null;
+      // A fight that is over stays shown only while the game still says combat.
+      fight = projected && (!projected.over || game.state === "combat") ? projected : null;
       this.live(host);
     }
     try {

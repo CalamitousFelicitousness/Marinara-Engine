@@ -478,7 +478,7 @@ export function MariChangeReceipt({
   const lang = i18n.resolvedLanguage ?? "en";
   const [openRecords, setOpenRecords] = useState<ReadonlySet<number>>(() => new Set());
   const [dragX, setDragX] = useState(0);
-  const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  const drag = useRef<{ id: number; x: number; y: number; moved: boolean } | null>(null);
   const swiped = useRef(false);
   const pendingIds = new Set(controls?.pending.keys() ?? []);
   const states = results.map((result) => mariReceiptState(result, pendingIds, controls?.answered));
@@ -528,11 +528,18 @@ export function MariChangeReceipt({
       ? {
           onPointerDown: (event: React.PointerEvent<HTMLElement>) => {
             swiped.current = false;
-            if (event.button === 0) drag.current = { x: event.clientX, y: event.clientY, moved: false };
+            if (event.button === 0 && event.isPrimary && !drag.current)
+              drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false };
           },
           onPointerMove: (event: React.PointerEvent<HTMLElement>) => {
             const start = drag.current;
-            if (!start) return;
+            if (!start || start.id !== event.pointerId) return;
+            if (event.buttons === 0) {
+              // Released outside the card: disarm the swipe.
+              drag.current = null;
+              setDragX(0);
+              return;
+            }
             const dx = event.clientX - start.x;
             if (!start.moved) {
               if (Math.abs(dx) < 8) return;
@@ -547,8 +554,12 @@ export function MariChangeReceipt({
           },
           onPointerUp: (event: React.PointerEvent<HTMLElement>) => {
             const start = drag.current;
+            if (!start || start.id !== event.pointerId) return;
             drag.current = null;
-            if (!start?.moved) return;
+            if (!start.moved) {
+              setDragX(0);
+              return;
+            }
             swiped.current = true;
             setDragX(0);
             const dx = event.clientX - start.x;

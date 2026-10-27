@@ -3,7 +3,7 @@
 // name, what changed in words, the changed fields (folded: one key field; opened: every field), her reason,
 // and Undo while the undo copy lasts. No Keep: an applied change is already saved, and Undo is the way back.
 
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { AlertTriangle, Check, ChevronDown, ExternalLink, Undo2 } from "lucide-react";
 import {
@@ -496,6 +496,13 @@ export function MariChangeReceipt({
         ? "undone"
         : "kept";
   const multi = results.length > 1;
+  const swipeable = state === "open" && !(controls?.busy ?? false);
+  useEffect(() => {
+    // The handlers detach while the card is closed or busy; drop any half-finished drag.
+    if (swipeable) return;
+    drag.current = null;
+    setDragX(0);
+  }, [swipeable]);
   if (!multi && results[0]!.status === "failed") {
     return (
       <FailedReceipt
@@ -528,7 +535,7 @@ export function MariChangeReceipt({
       ? {
           onPointerDown: (event: React.PointerEvent<HTMLElement>) => {
             swiped.current = false;
-            if (event.button === 0 && event.isPrimary)
+            if (event.button === 0 && event.isPrimary && !drag.current?.moved)
               drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false };
           },
           onPointerMove: (event: React.PointerEvent<HTMLElement>) => {

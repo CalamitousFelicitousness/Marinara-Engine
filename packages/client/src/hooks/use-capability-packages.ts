@@ -4,6 +4,7 @@ import {
   EXPERIENCE_FILE_CONTENT_TYPE,
   isInstalledCapabilityReady,
   replaceBuiltInAgentDefinitions,
+  rulesetTranslationLanguages,
   type CapabilityCatalog,
   type CapabilityPackageManifest,
   type CapabilityPackageUpdate,
@@ -133,11 +134,31 @@ export interface RulesetPackageRead {
   ruleset?: string;
   /** Each catalog file's number of entries, by catalog id. */
   catalogs: Record<string, number>;
+  /** The translations it carries (a dry run), or the one kept (an import). */
+  locales?: string[];
 }
 
-/** Read a ruleset package file (a parsed `.ruleset.json`) without keeping anything, for the review. */
-export function readRulesetPackage(file: Record<string, unknown>) {
-  return api.post<RulesetPackageRead>("/game-rulesets/import-package", { package: file, dryRun: true });
+/** A language pack picked with a ruleset package file (1.803): its file name, which says whose it is. */
+export interface RulesetPickedPack {
+  name: string;
+  document: Record<string, unknown>;
+}
+
+/** Of the language packs picked, the ones in the page's language (or the language it is a kind of): the
+ *  only ones an import keeps, so the rest are never sent. */
+export function rulesetPacksForPage(packs: readonly RulesetPickedPack[]): RulesetPickedPack[] {
+  const wanted = rulesetTranslationLanguages(rulesetPackLanguage());
+  return packs.filter((pack) => wanted.includes(String((pack.document._meta as { locale?: unknown })?.locale)));
+}
+
+/** Read a ruleset package file (a parsed `.ruleset.json`), with any language packs picked with it, without
+ *  keeping anything, for the review. */
+export function readRulesetPackage(file: Record<string, unknown>, packs: RulesetPickedPack[] = []) {
+  return api.post<RulesetPackageRead>("/game-rulesets/import-package", {
+    package: file,
+    dryRun: true,
+    ...(packs.length ? { packs } : {}),
+  });
 }
 
 /** Import a ruleset package file (RM): its ruleset and catalog files, as data, under `local/<id>`, and of
@@ -145,8 +166,12 @@ export function readRulesetPackage(file: Record<string, unknown>) {
 export function useImportRulesetPackage() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (file: Record<string, unknown>) =>
-      api.post<RulesetPackageRead>("/game-rulesets/import-package", { package: file, locale: rulesetPackLanguage() }),
+    mutationFn: ({ file, packs = [] }: { file: Record<string, unknown>; packs?: RulesetPickedPack[] }) =>
+      api.post<RulesetPackageRead>("/game-rulesets/import-package", {
+        package: file,
+        locale: rulesetPackLanguage(),
+        ...(packs.length ? { packs } : {}),
+      }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: capabilityPackageKeys.rulesets() }),
   });
 }

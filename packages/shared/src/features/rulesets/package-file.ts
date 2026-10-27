@@ -25,3 +25,11 @@ export function isRulesetPackageFile(value: unknown): boolean {
     (value as { format?: unknown }).format === RULESET_PACKAGE_FILE_FORMAT
   );
 }
+
+/** Whether a parsed JSON document is a ruleset's language pack (1.803), `<id>-<version>.<lang>.json`: a
+ *  translation naming its language, with the ruleset strings it translates. */
+export function isRulesetLocalePackFile(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const file = value as { _meta?: { locale?: unknown }; ruleset?: unknown };
+  return typeof file._meta?.locale === "string" && !!file.ruleset && typeof file.ruleset === "object";
+}

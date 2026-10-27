@@ -138,7 +138,7 @@ export const scopedExport = typeof cors;
     await link(f.modules, "zod-v3");
     await packageWithoutMetadata(f.modules, name);
     const hostRequire = createRequire(join(f.server, "package.json"));
-    assert.equal(hostRequire.resolve(name), await realpath(join(f.modules, name, "index.js")));
+    assert.equal(await realpath(hostRequire.resolve(name)), await realpath(join(f.modules, name, "index.js")));
     await assert.rejects(
       () => linkCapabilitySnapshotDependencies(f.snapshot, f.logicalModules),
       (error: unknown) => error instanceof Error && (error.cause as NodeJS.ErrnoException)?.code === "ENOENT",

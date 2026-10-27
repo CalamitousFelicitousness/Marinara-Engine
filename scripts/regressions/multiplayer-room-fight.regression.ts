@@ -406,6 +406,20 @@ try {
     const controls = read("../../packages/client/src/features/multiplayer/MultiplayerHostControls.tsx");
     assert.match(controls, /!player\.connected &&\s*round\.requiredParticipantIds\.includes\(player\.id\)/u);
     assert.match(chat, /gameOpenable && !fighting && \(\s*<MultiplayerBlankSheets/u);
+    // The host's Game screen plays the host as their room persona and lists each guest on their room card,
+    // so both sheets can be built there; the room header keeps the Game screen's bubbles off its buttons.
+    const hostSurface = read("../../packages/client/src/components/game/GameSurface.tsx");
+    assert.match(hostSurface, /const roomHumans = useMemo\(\(\) => readHostedRoomHumans\(chatMeta\.multiplayer\)/u);
+    assert.match(hostSurface, /: \{ name: own\.name, \.\.\.\(own\.description/u);
+    assert.match(
+      hostSurface,
+      /for \(const guest of roomHumans\?\.guests \?\? \[\]\) \{\s*const gc = findGameCard\(guest\.name\);/u,
+    );
+    assert.match(chat, /data-multiplayer-room-header\s+data-chat-window-top-obstacle/u);
+    assert.match(
+      read("../../packages/client/src/components/ui/FloatingWindow.tsx"),
+      /\[data-multiplayer-room-header\]\[data-chat-window-top-obstacle\]/u,
+    );
     const snapshotting = read("../../packages/server/src/services/multiplayer/service.ts");
     assert.match(snapshotting, /const viewer = forLocalHost \? \{ host: true \} : \{ host: false, participantId \};/u);
     assert.match(

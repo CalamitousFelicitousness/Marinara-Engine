@@ -2347,6 +2347,29 @@ interface GameSurfaceProps {
   >;
 }
 
+/** The players of a room this Engine hosts, from the room stored on the chat: the host's own room
+ *  persona and every other player already in play. Null for any other chat. */
+function readHostedRoomHumans(value: unknown): {
+  host: { name: string; description: string } | null;
+  guests: Array<{ id: string; name: string }>;
+} | null {
+  const room = value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+  if (!room || room.version !== 1 || room.role !== "host" || room.status === "ended") return null;
+  const humans = (Array.isArray(room.participants) ? room.participants : []).flatMap((entry) => {
+    const participant = entry && typeof entry === "object" ? (entry as Record<string, unknown>) : {};
+    const persona = participant.persona as { name?: unknown; description?: unknown } | undefined;
+    const name = typeof persona?.name === "string" ? persona.name.trim() : "";
+    if (!name || typeof participant.id !== "string" || participant.joinsNextRound === true) return [];
+    const description = typeof persona?.description === "string" ? persona.description : "";
+    return [{ id: participant.id, name, description, isHost: participant.isHost === true }];
+  });
+  const own = humans.find((human) => human.isHost);
+  return {
+    host: own ? { name: own.name, description: own.description } : null,
+    guests: humans.filter((human) => !human.isHost).map(({ id, name }) => ({ id, name })),
+  };
+}
+
 function GameSurfaceComponent({
   activeChatId,
   chat,
@@ -2355,7 +2378,7 @@ function GameSurfaceComponent({
   isStreaming,
   characterMap,
   characters: libraryCharacters,
-  personaInfo,
+  personaInfo: libraryPersonaInfo,
   chatBackground,
   connectedChatName,
   onCloseSettings,
@@ -2367,6 +2390,17 @@ function GameSurfaceComponent({
   isMessagesLoading,
   avatarStage,
 }: GameSurfaceProps) {
+  // A room the host shares plays the host as their room persona and lists every player's character,
+  // each on the card the room made for them (room playtest 2026-10-27: the host's Game screen showed
+  // "Player" and no guest, so neither sheet could be built).
+  const roomHumans = useMemo(() => readHostedRoomHumans(chatMeta.multiplayer), [chatMeta.multiplayer]);
+  const personaInfo = useMemo<PersonaInfo | undefined>(() => {
+    const own = roomHumans?.host;
+    if (!own) return libraryPersonaInfo;
+    return libraryPersonaInfo?.name === own.name
+      ? libraryPersonaInfo
+      : { name: own.name, ...(own.description ? { description: own.description } : {}) };
+  }, [libraryPersonaInfo, roomHumans]);
   const { t: localizeUi } = useUiTranslation();
   const { t } = useTranslation();
   useRenderTimer("game-surface"); // [#3104 diagnostic]
@@ -9003,8 +9037,14 @@ function GameSurfaceComponent({
       }
     }
 
+    // The room's other players, each right after the host.
+    for (const guest of roomHumans?.guests ?? []) {
+      if (baseMembers.some((m) => m.id === guest.id)) continue;
+      baseMembers.splice(1, 0, { id: guest.id, name: guest.name, avatarUrl: null, canRemove: false });
+    }
+
     return baseMembers;
-  }, [chatCharacterIds, chatMeta, characters, characterMap, npcs, personaInfo]);
+  }, [chatCharacterIds, chatMeta, characters, characterMap, npcs, personaInfo, roomHumans]);
 
   /** Whose bags the inventory screen shows: the player first (no holder), then the party in order,
    *  then anybody who has left the party but still carries something. */
@@ -10976,8 +11016,50 @@ function GameSurfaceComponent({
       };
     }
 
+    // The room's other players, on the cards the room made for them.
+    for (const guest of roomHumans?.guests ?? []) {
+      const gc = findGameCard(guest.name);
+      const existing = cards[guest.id];
+      const carried = bagInventory(guest.name);
+      cards[guest.id] = {
+        ...existing,
+        title: guest.name,
+        subtitle: existing?.subtitle ?? "Player Character",
+        avatarUrl: existing?.avatarUrl ?? null,
+        level: Math.max(
+          1,
+          Math.round(
+            readGameCardAttribute(gc as StoredGameCombatCard | undefined, "level", "lvl") ?? sessionNumber ?? 1,
+          ),
+        ),
+        ...(carried.length > 0 ? { inventory: carried } : {}),
+        gameCard: gc
+          ? {
+              shortDescription: (gc.shortDescription as string) || "",
+              class: (gc.class as string) || "",
+              abilities: (gc.abilities as string[]) || [],
+              strengths: (gc.strengths as string[]) || [],
+              weaknesses: (gc.weaknesses as string[]) || [],
+              extra: (gc.extra as Record<string, string>) || {},
+              rpgStats: gc.rpgStats as
+                { attributes: Array<{ name: string; value: number }>; hp: { value: number; max: number } } | undefined,
+            }
+          : existing?.gameCard,
+      };
+    }
+
     return cards;
-  }, [chatCharacterIds, chatMeta, gameSnapshot, personaInfo, characters, npcs, sessionNumber, inventoryItems]);
+  }, [
+    chatCharacterIds,
+    chatMeta,
+    gameSnapshot,
+    personaInfo,
+    characters,
+    npcs,
+    sessionNumber,
+    inventoryItems,
+    roomHumans,
+  ]);
 
   const handleSaveCharacterSheet = useCallback(
     async (cardTitle: string, gameCard: GameCharacterSheetGameCard | undefined) => {

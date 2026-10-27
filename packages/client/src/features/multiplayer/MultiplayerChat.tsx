@@ -368,7 +368,11 @@ function HostedMultiplayerChat({ chat, renderGame }: { chat: Chat; renderGame?: 
         />
       ) : (
         <>
-          <div className="flex shrink-0 items-center justify-end gap-2 border-b border-[var(--border)] px-3 py-1">
+          <div
+            data-multiplayer-room-header
+            data-chat-window-top-obstacle
+            className="flex shrink-0 items-center justify-end gap-2 border-b border-[var(--border)] px-3 py-1"
+          >
             {fighting && (
               <p className="mr-auto min-w-0 truncate text-xs text-[var(--muted-foreground)]">
                 {t("multiplayer.host.fightOnScreen")}

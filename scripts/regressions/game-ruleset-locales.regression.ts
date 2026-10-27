@@ -378,6 +378,16 @@ try {
   assert.equal(joined("Languages: Common, Kaela's cant"), "Языки: Общий, Kaela's cant", "an unknown name as written");
   assert.equal(joined("Wish: Fireball, Languages: Elvish"), "Желание: Огненный шар, Языки: Эльфийский");
   assert.equal(joined("Nothing: here"), "Nothing: here");
+  // A way of a spell the fight named after it reads the spell, brackets and all, and the way.
+  const ways = rulesetTextLookup({
+    "True Polymorph (unwilling)": "Polimorfismo verdadero (involuntario)",
+    Frog: "Rana",
+    Fireball: "Bola de fuego",
+  });
+  assert.equal(ways("True Polymorph (unwilling) (Frog)"), "Polimorfismo verdadero (involuntario) (Rana)");
+  assert.equal(ways("True Polymorph (unwilling)"), "Polimorfismo verdadero (involuntario)");
+  assert.equal(ways("Fireball (Kaela's twist)"), "Bola de fuego (Kaela's twist)", "an unknown way as written");
+  assert.equal(ways("Dagger (thrown)"), "Dagger (thrown)", "nothing known, nothing changed");
   const view = {
     combatants: [
       {

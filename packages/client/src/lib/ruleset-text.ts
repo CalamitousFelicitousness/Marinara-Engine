@@ -21,6 +21,7 @@ export const RULESET_TEXT_AS_IS: RulesetText = (english) => english;
  * and a line the Engine joined out of the ruleset's own words ("Languages: Common, Elvish", "Wish:
  * Fireball") reads its label on its own and each name after it on its own, since the translation is
  * keyed by each English string exactly as the ruleset wrote it and never by what was joined from them.
+ * A name the fight gave a way of a spell ("Polymorph (unwilling) (Frog)") reads the spell and the way.
  */
 export function rulesetTextLookup(strings: Readonly<Record<string, string>> | null | undefined): RulesetText {
   if (!strings || Object.keys(strings).length === 0) return RULESET_TEXT_AS_IS;
@@ -45,6 +46,14 @@ export function rulesetTextLookup(strings: Readonly<Record<string, string>> | nu
         .split(", ")
         .map((part) => (part.includes(": ") ? lookup(part) : one(part)))
         .join(", ");
+    }
+    // "<Spell> (<way>)": a way the fight named after the spell (True Polymorph (unwilling) (Frog),
+    // Spanish playtest 2026-10-27), each part read on its own; the spell's own name may hold brackets.
+    const bracketed = /^(.+) \(([^()]+)\)$/u.exec(english);
+    if (bracketed && colon < 0) {
+      const head = lookup(bracketed[1]!);
+      const way = one(bracketed[2]!);
+      if (head !== bracketed[1] || way !== bracketed[2]) return `${head} (${way})`;
     }
     // "<Label>: <name>, <name>": the label first, then what follows it, a list read name by name.
     if (colon > 0) {

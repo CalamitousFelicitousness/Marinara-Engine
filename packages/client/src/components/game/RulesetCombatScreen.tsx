@@ -680,7 +680,8 @@ function CurrentTurn({
       )}
       {(actor.pools ?? []).map((pool) => (
         <div key={pool.id} className="flex items-center gap-2 text-[0.7rem] text-[var(--muted-foreground)]">
-          <span className="w-24 shrink-0 truncate" title={pool.label}>
+          {/* Wrapped, never cut: nine slot pools that differ only at the end ("… nivel 1") must read apart. */}
+          <span className="w-24 shrink-0 break-words leading-tight" title={pool.label}>
             {pool.label}
           </span>
           {pool.max <= 12 ? (

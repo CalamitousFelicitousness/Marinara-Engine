@@ -528,7 +528,7 @@ export function MariChangeReceipt({
       ? {
           onPointerDown: (event: React.PointerEvent<HTMLElement>) => {
             swiped.current = false;
-            if (event.button === 0 && event.isPrimary && !drag.current)
+            if (event.button === 0 && event.isPrimary)
               drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false };
           },
           onPointerMove: (event: React.PointerEvent<HTMLElement>) => {
@@ -598,9 +598,11 @@ export function MariChangeReceipt({
       )}
       data-state={state}
       data-multi={multi || undefined}
-      data-dragging={dragX !== 0 || undefined}
+      data-dragging={(swipe && dragX !== 0) || undefined}
       style={
-        dragX ? { transform: `translateX(${dragX}px)`, opacity: Math.max(0.4, 1 - Math.abs(dragX) / 400) } : undefined
+        swipe && dragX
+          ? { transform: `translateX(${dragX}px)`, opacity: Math.max(0.4, 1 - Math.abs(dragX) / 400) }
+          : undefined
       }
       {...swipe}
       aria-label={

@@ -923,8 +923,9 @@ export function AgentsPanel() {
           : await (async () => {
               const parsed = JSON.parse(await file.text());
               // A Game Mode ruleset or its language pack is imported as a ruleset, never read for agents.
-              if (isRulesetPackageFile(parsed) || isRulesetLocalePackFile(parsed))
-                throw new Error(localizeUi("game.ruleset.import.useRulesetImport"));
+              if (isRulesetPackageFile(parsed)) throw new Error(localizeUi("game.ruleset.import.useRulesetImport"));
+              if (isRulesetLocalePackFile(parsed))
+                throw new Error(localizeUi("game.ruleset.import.packUseRulesetImport"));
               return {
                 agents: getAgentImportEntries(parsed).map((raw): FolderPackageImportEntry => ({
                   raw,
@@ -2007,6 +2008,7 @@ export function AgentsPanel() {
           label: catalog.label,
           count: catalog.entries?.length ?? pendingRulesetImport?.catalogs?.[catalog.id] ?? 0,
         }))}
+        translation={!!pendingRulesetImport?.packs?.length}
         onCancel={() => setPendingRulesetImport(null)}
         onConfirm={() => void handleConfirmRulesetImport()}
       />

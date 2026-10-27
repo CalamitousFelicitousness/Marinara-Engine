@@ -560,6 +560,13 @@ function findTopLevelSentenceBoundary(value: string): number {
 
     const insideGroup = parenDepth > 0 || bracketDepth > 0 || braceDepth > 0;
     if (!insideGroup && /[.!?]/.test(char) && (!value[index + 1] || /\s/.test(value[index + 1]!))) {
+      // Titles within an exclusion are not sentence ends: "Avoid Dr. Smith's glasses. Red coat".
+      if (
+        char === "." &&
+        /\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|Mt)\.$/i.test(value.slice(Math.max(0, index - 5), index + 1))
+      ) {
+        continue;
+      }
       return index;
     }
   }
@@ -602,7 +609,6 @@ function splitPromptFragments(
   const normalized = text
     .replace(/\r\n?/g, "\n")
     .replace(/[.!?]\s+(?=(?:avoid|no|without|exclude|do not include|don't include)\b)/gi, "\n")
-    .replace(/((?:^|\n)(?:avoid|no|without|exclude|do not include|don't include)\s+[^.!?\n]+[.!?])\s+(?=\S)/gim, "$1\n")
     .replace(/\b(?:avoid|negative prompt|undesired content)\s*:/gi, "\navoid ")
     .replace(/\b(?:SD|Stable Diffusion)\/Illustrious\s+tags?\s*:/gi, "\n")
     .replace(/\b(?:positive prompt|tags?)\s*:/gi, "\n");

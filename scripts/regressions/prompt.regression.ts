@@ -9069,6 +9069,19 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
           assert.ok(quotedNegative.negativePrompt.includes('("bad. hands", extra fingers:1.2)'));
           assert.match(quotedNegative.prompt, /Red coat/);
           assert.doesNotMatch(quotedNegative.negativePrompt, /Red coat/);
+          for (const title of ["Dr.", "Prof.", "Mr.", "Mrs.", "Ms.", "Sr.", "Jr.", "St.", "Mt."]) {
+            for (const lead of ["", "Blue eyes, "]) {
+              const titled = compileImagePrompt({
+                kind,
+                prompt: `${lead}Avoid ${title} Smith's glasses. Red coat`,
+                styleProfiles,
+                styleProfileId: profile.id,
+              });
+              assert.ok(titled.negativePrompt.includes(`${title} Smith's glasses`));
+              assert.doesNotMatch(titled.prompt, /Smith's glasses/);
+              assert.match(titled.prompt, /Red coat/);
+            }
+          }
         }
       }
     },

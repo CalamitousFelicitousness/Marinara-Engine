@@ -20,6 +20,11 @@
  *     while every command it sends still names the ruleset's own ids.
  *   - A line the Engine joins out of the ruleset's words ("Languages: Common, Elvish", "Wish: Fireball")
  *     is read label first, then name by name, as the translation is keyed by each exact English string.
+ *   - A language pack picked with the package file (`<id>-<version>.<lang>.json`, as a catalog publishes
+ *     it) is read as the file's own translation in that language, standing over one inside it; one of
+ *     another ruleset or version, renamed, or not a pack is refused with why, keeping what was there.
+ *   - The card editor's sheet and its guided builder (Spanish playtest 2026-10-27) show the ruleset's
+ *     words translated, steps, choices, field options and suggestions alike, writing its own words.
  */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -290,6 +295,53 @@ try {
     assert.equal(inEnglish.statusCode, 200, inEnglish.body);
     assert.deepEqual(inEnglish.json().locales, []);
     assert.equal((await strings("ru")).json().locale, null);
+
+    // ── A language pack picked with the file (installed from a file, 2026-10-27): kept as its own ──
+    const pack = (locale: string, ruleset: Record<string, string>) => ({ _meta: { locale }, ruleset });
+    const withPacks = (packs: Array<{ name: string; document: unknown }>, extra: Record<string, unknown> = {}) =>
+      app.inject({
+        method: "POST",
+        url: "/api/game-rulesets/import-package",
+        payload: { package: bare, locale: "ru", packs, ...extra },
+      });
+    const russianPack = {
+      name: "ember-roads-tongues-1.0.0.ru.json",
+      document: pack("ru", { [english]: "Тропы углей" }),
+    };
+    const packReview = await withPacks([russianPack], { dryRun: true });
+    assert.equal(packReview.statusCode, 200, packReview.body);
+    assert.deepEqual(packReview.json().locales, ["ru"], "the review lists the pack's language");
+    const packed = await withPacks([russianPack]);
+    assert.equal(packed.statusCode, 200, packed.body);
+    assert.equal(packed.json().status, "unchanged", "the same version, now with its translation");
+    assert.deepEqual(packed.json().locales, ["ru"]);
+    assert.equal((await strings("ru")).json().strings[english], "Тропы углей");
+    // A pack stands over the same language inside the file.
+    const over = await app.inject({
+      method: "POST",
+      url: "/api/game-rulesets/import-package",
+      payload: { package: corrected, locale: "ru", packs: [russianPack] },
+    });
+    assert.equal(over.statusCode, 200, over.body);
+    assert.equal((await strings("ru")).json().strings[english], "Тропы углей");
+    // Refused, keeping what was there: another ruleset's or version's pack, one renamed, not a pack, broken.
+    for (const [packs, why] of [
+      [
+        [{ ...russianPack, name: "ember-roads-tongues-0.9.0.ru.json" }],
+        /its ru pack is ember-roads-tongues-1.0.0.ru.json/,
+      ],
+      [[{ ...russianPack, name: "other-ruleset-1.0.0.ru.json" }], /not a language pack of ember-roads-tongues 1.0.0/],
+      [[{ name: "ember-roads-tongues-1.0.0.ru.json", document: { ruleset: {} } }], /not a ruleset language pack/],
+      [[{ ...russianPack, document: { ...pack("ru", {}), code: "x" } }], /holds "code"/],
+      [[{ ...russianPack, document: { _meta: { locale: "ru" } } }], /has no ruleset section/],
+    ] as const) {
+      const refused = await withPacks([...packs]);
+      assert.equal(refused.statusCode, 400, refused.body);
+      assert.match(refused.json().error, why);
+    }
+    assert.equal((await strings("ru")).json().strings[english], "Тропы углей");
+    const tooMany = await withPacks(Array.from({ length: 5 }, () => russianPack));
+    assert.equal(tooMany.statusCode, 400, "a few packs at most");
   } finally {
     await app.close();
     await closeDB();
@@ -300,7 +352,13 @@ try {
 
 // ── On screen: swapped as it is drawn, ids never ──
 {
-  const text = rulesetTextLookup({ Goblin: "Гоблин", Prone: "Лежащий", "Fire Bolt": "Огненный снаряд" });
+  const text = rulesetTextLookup({
+    Goblin: "Гоблин",
+    Prone: "Лежащий",
+    "Fire Bolt": "Огненный снаряд",
+    "1st-level slots": "Espacios de nivel 1",
+    "1st-level slot": "Espacio de nivel 1",
+  });
   assert.equal(text("Goblin"), "Гоблин");
   assert.equal(text("Goblin 2"), "Гоблин 2", "a fight's number on a translated name");
   assert.equal(text("Goblin, Prone"), "Гоблин, Лежащий");
@@ -321,7 +379,14 @@ try {
   assert.equal(joined("Wish: Fireball, Languages: Elvish"), "Желание: Огненный шар, Языки: Эльфийский");
   assert.equal(joined("Nothing: here"), "Nothing: here");
   const view = {
-    combatants: [{ id: "Goblin", name: "Goblin 1", conditions: ["Prone"] }],
+    combatants: [
+      {
+        id: "Goblin",
+        name: "Goblin 1",
+        conditions: ["Prone"],
+        pools: [{ id: "spell_slots_1", label: "1st-level slots", value: 2, max: 3, unit: "1st-level slot" }],
+      },
+    ],
     options: [{ id: "spells/fire-bolt", optionId: "Fire Bolt", label: "Fire Bolt" }],
     adjustments: ["Goblin is built from its tier."],
     events: [{ seq: 1, event: { type: "turn", actorId: "Goblin", label: "Fire Bolt" } }],
@@ -330,6 +395,10 @@ try {
   assert.equal(shown.combatants[0].name, "Гоблин 1");
   assert.equal(shown.combatants[0].id, "Goblin");
   assert.deepEqual(shown.combatants[0].conditions, ["Prone"], "condition ids stay ids");
+  // The fight's HUD names a caster's slots in the player's language (Spanish playtest 2026-10-27).
+  assert.deepEqual(shown.combatants[0].pools, [
+    { id: "spell_slots_1", label: "Espacios de nivel 1", value: 2, max: 3, unit: "Espacio de nivel 1" },
+  ]);
   assert.equal(shown.options[0].label, "Огненный снаряд");
   assert.equal(shown.options[0].optionId, "Fire Bolt");
   assert.equal(shown.events[0].event.label, "Огненный снаряд");
@@ -385,8 +454,9 @@ try {
     new URL("../../packages/client/src/components/game/GameRulesetSheet.tsx", import.meta.url),
     "utf8",
   );
+  assert.match(sheet, /return useRulesetDefinitionText\(definition\);/);
   assert.match(
-    sheet,
+    readFileSync(new URL("../../packages/client/src/hooks/use-ruleset-text.ts", import.meta.url), "utf8"),
     /useRulesetStrings\(definition\.id, definition\.version, i18n\.resolvedLanguage \?\? i18n\.language\)/,
     "loaded as the fight screen loads it",
   );
@@ -421,3 +491,23 @@ try {
 console.log(
   "Ruleset file translations: read strictly, the page's language kept beside its version, served by language, swapped in as drawn.",
 );
+
+// ── The sheet editor and its builder read the translation as they draw (Spanish playtest 2026-10-27) ──
+{
+  const source = (path: string) => readFileSync(new URL(`../../packages/client/src/${path}`, import.meta.url), "utf8");
+  const editor = source("components/rulesets/RulesetSheetEditor.tsx");
+  assert.match(editor, /<RulesetTextContext\.Provider value=\{text\}>\s*<SheetEditor \{\.\.\.props\} \/>/);
+  assert.match(editor, /useRulesetDefinitionText\(props\.definition\)/);
+  const builder = source("components/rulesets/RulesetSheetBuilder.tsx");
+  assert.match(builder, /const rt = useRulesetText\(\);/);
+  assert.match(builder, /\{rt\(step\.label\)\}<\/h4>/, "a step's heading");
+  assert.match(builder, /\{rt\(entry\.label\)\}/, "a catalog entry's name");
+  const typed = source("components/rulesets/RulesetTypedInput.tsx");
+  assert.match(typed, /\{rt\(spec\.valueLabels\?\.\[option\] \?\? option\)\}/, "a field's options");
+  assert.match(typed, /\{rt\(word\)\}/, "a field's suggestions");
+  assert.match(
+    typed,
+    /onChange=\{\(event\) => onChange\(event\.target\.value\)\}/,
+    "the value kept is the ruleset's own",
+  );
+}

@@ -10,6 +10,7 @@ import {
 import { DraftNumberInput } from "../ui/DraftNumberInput";
 import { DraftTextarea } from "../ui/DraftTextarea";
 import { useTranslation as useUiTranslation } from "react-i18next";
+import { useRulesetText } from "../../lib/ruleset-text";
 
 export type Scalar = number | string | boolean;
 
@@ -55,6 +56,8 @@ export function TypedInput({
   /** How many of a text field's suggestions its holder picks (1.789), as the sheet reads now. */
   pick?: number;
 }) {
+  // A choice's words in the player's language (1.803); the value kept is the ruleset's own.
+  const rt = useRulesetText();
   if (spec.type === "text" && spec.suggestions?.length)
     return (
       <SuggestedText
@@ -130,7 +133,7 @@ export function TypedInput({
       >
         {spec.values.map((option) => (
           <option key={option} value={option}>
-            {spec.valueLabels?.[option] ?? option}
+            {rt(spec.valueLabels?.[option] ?? option)}
           </option>
         ))}
       </select>
@@ -193,6 +196,7 @@ function SuggestedText({
   pick?: number;
 }) {
   const { t } = useUiTranslation();
+  const rt = useRulesetText();
   const maxLength = spec.maxLength;
   const suggestions = spec.suggestions ?? [];
   const input = (
@@ -242,7 +246,7 @@ function SuggestedText({
                 : "border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
             }`}
           >
-            {word}
+            {rt(word)}
           </button>
         ))}
       </div>

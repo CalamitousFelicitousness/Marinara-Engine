@@ -79,7 +79,6 @@ const KEPT = new Set([
   "damageType",
   "types",
   "pool",
-  "pools",
   "track",
   "save",
   "check",

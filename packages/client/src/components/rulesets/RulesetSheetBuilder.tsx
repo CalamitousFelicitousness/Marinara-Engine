@@ -77,6 +77,7 @@ import { rulesetPoolLevels, rulesetSheetAttacks } from "../../lib/ruleset-sheet-
 import { api } from "../../lib/api-client";
 import { visibleCatalogEntries } from "../../lib/ruleset-catalog";
 import { rulesetCheckValueText } from "../../lib/ruleset-resolution";
+import { useRulesetText } from "../../lib/ruleset-text";
 import { DraftNumberInput } from "../ui/DraftNumberInput";
 import { clamp, inputClass, labelClass, rulesetPickCount, TypedInput } from "./RulesetTypedInput";
 import { RollCellButton, rollRulesetCell } from "./RulesetRollCellButton";
@@ -307,6 +308,8 @@ export function RulesetSheetBuilder({
   gearNote?: boolean;
 }) {
   const { t } = useUiTranslation();
+  // The ruleset's own words in the player's language (1.803): shown only, never written to the sheet.
+  const rt = useRulesetText();
   const builder = definition.sheet.builder!;
   const [stepId, setStepId] = useState(builder.steps[0]!.id);
   const [freeEdit, setFreeEdit] = useState(false);
@@ -334,7 +337,7 @@ export function RulesetSheetBuilder({
         .filter((column) => column.type === "text" && column.id !== nameColumn)
         .flatMap((column) => {
           const value = first.values[column.id];
-          return typeof value === "string" && value.trim() ? [value.trim()] : [];
+          return typeof value === "string" && value.trim() ? [rt(value.trim())] : [];
         })
         .join(" · ")
     );
@@ -496,9 +499,9 @@ export function RulesetSheetBuilder({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step.id, ready, describing]);
 
-  const abilityLabel = (id: string) => definition.sheet.abilities.find((ability) => ability.id === id)?.label ?? id;
-  const skillLabel = (id: string) => definition.sheet.skills.find((skill) => skill.id === id)?.label ?? id;
-  const saveLabel = (id: string) => definition.sheet.saves.find((save) => save.id === id)?.label ?? id;
+  const abilityLabel = (id: string) => rt(definition.sheet.abilities.find((ability) => ability.id === id)?.label ?? id);
+  const skillLabel = (id: string) => rt(definition.sheet.skills.find((skill) => skill.id === id)?.label ?? id);
+  const saveLabel = (id: string) => rt(definition.sheet.saves.find((save) => save.id === id)?.label ?? id);
 
   const slotsHere = (
     <>
@@ -509,7 +512,7 @@ export function RulesetSheetBuilder({
             key={slot.key}
             title={
               t("ui.rulesets.builder.chooseScores", {
-                from: slot.entry?.label ?? step.label,
+                from: rt(slot.entry?.label ?? step.label),
                 count: slot.count,
                 amount: signed(slot.amount),
               }) +
@@ -539,7 +542,7 @@ export function RulesetSheetBuilder({
         .map((slot) => (
           <p key={slot.key} className="text-xs text-[var(--muted-foreground)]">
             {t("ui.rulesets.builder.heldWaiting", {
-              from: slot.entry?.label ?? step.label,
+              from: rt(slot.entry?.label ?? step.label),
               count: slot.count,
               what: t(slot.what === "skills" ? "ui.rulesets.builder.heldSkills" : "ui.rulesets.builder.heldSaves"),
             })}
@@ -552,7 +555,7 @@ export function RulesetSheetBuilder({
           <ChoiceSlot
             key={slot.key}
             title={t(slot.what === "skills" ? "ui.rulesets.builder.chooseSkills" : "ui.rulesets.builder.chooseSaves", {
-              from: slot.entry?.label ?? step.label,
+              from: rt(slot.entry?.label ?? step.label),
               count: slot.count,
             })}
             slot={slot}
@@ -565,15 +568,23 @@ export function RulesetSheetBuilder({
         .map((slot) => (
           <ChoiceSlot
             key={slot.key}
-            title={t("ui.rulesets.builder.chooseEntries", { from: slot.entry?.label ?? step.label, count: slot.count })}
+            title={t("ui.rulesets.builder.chooseEntries", {
+              from: rt(slot.entry?.label ?? step.label),
+              count: slot.count,
+            })}
             slot={slot}
             filterLabelOf={(id) =>
-              definition.catalogs
-                ?.find((catalog) => catalog.id === slot.catalog)
-                ?.filters?.find((filter) => filter.id === id)?.label ?? id
+              rt(
+                definition.catalogs
+                  ?.find((catalog) => catalog.id === slot.catalog)
+                  ?.filters?.find((filter) => filter.id === id)?.label ?? id,
+              )
             }
-            labelOf={(id) => (catalogs[slot.catalog] ?? []).find((entry) => entry.id === id)?.label ?? id}
-            infoOf={(id) => (catalogs[slot.catalog] ?? []).find((entry) => entry.id === id)?.summary}
+            labelOf={(id) => rt((catalogs[slot.catalog] ?? []).find((entry) => entry.id === id)?.label ?? id)}
+            infoOf={(id) => {
+              const summary = (catalogs[slot.catalog] ?? []).find((entry) => entry.id === id)?.summary;
+              return summary && rt(summary);
+            }}
             held={(id) => {
               const entry = (catalogs[slot.catalog] ?? []).find((one) => one.id === id);
               return !!entry && rulesetBuilderEntryHeld(definition, build, slot.catalog, entry);
@@ -588,7 +599,7 @@ export function RulesetSheetBuilder({
   const pricedPool = (poolId: string | undefined) => {
     if (!poolId) return null;
     const pool = spending.find((each) => each.id === poolId);
-    const label = builder.pools?.find((each) => each.id === poolId)?.label ?? poolId;
+    const label = rt(builder.pools?.find((each) => each.id === poolId)?.label ?? poolId);
     if (!pool) return null;
     return (
       <p
@@ -625,7 +636,7 @@ export function RulesetSheetBuilder({
       for (const other of builder.steps) {
         if (other.kind !== "catalog" || other.id === current.id || other.catalog !== current.catalog) continue;
         for (const entry of rulesetBuilderPicks(definition, other.id, state, catalogs, build))
-          elsewhere.set(entry.id, other.label);
+          elsewhere.set(entry.id, rt(other.label));
       }
       const toggle = (id: string) => {
         const on = (state.picks?.[current.id] ?? []).includes(id);
@@ -647,7 +658,12 @@ export function RulesetSheetBuilder({
       const searching = options.length > CATALOG_SEARCH_FROM;
       const query = searching ? (searches[current.id] ?? "").trim().toLowerCase() : "";
       const listed = query
-        ? options.filter((entry) => picked.includes(entry.id) || entry.label.toLowerCase().includes(query))
+        ? options.filter(
+            (entry) =>
+              picked.includes(entry.id) ||
+              entry.label.toLowerCase().includes(query) ||
+              rt(entry.label).toLowerCase().includes(query),
+          )
         : options;
       const telling = (definition.catalogs?.find((catalog) => catalog.id === current.catalog)?.filters ?? []).filter(
         (filter) =>
@@ -661,7 +677,7 @@ export function RulesetSheetBuilder({
             if (value === undefined || value === "" || Array.isArray(value)) return [];
             // A value written as an id ("multiclass", "bard") is for the steps to match on, not words.
             if (typeof value === "string" && /^[a-z0-9_-]+$/u.test(value)) return [];
-            return [filter.type === "number" ? `${filter.label} ${value}` : String(value)];
+            return [filter.type === "number" ? `${rt(filter.label)} ${value}` : rt(String(value))];
           })
           .join(" · ");
       if (options.length === 0 && inactive.length === 0) {
@@ -683,9 +699,11 @@ export function RulesetSheetBuilder({
           <ChoiceConstraints
             limits={current}
             labelOf={(id) =>
-              definition.catalogs
-                ?.find((catalog) => catalog.id === current.catalog)
-                ?.filters?.find((filter) => filter.id === id)?.label ?? id
+              rt(
+                definition.catalogs
+                  ?.find((catalog) => catalog.id === current.catalog)
+                  ?.filters?.find((filter) => filter.id === id)?.label ?? id,
+              )
             }
           />
           {inactive.length > 0 && (
@@ -698,7 +716,7 @@ export function RulesetSheetBuilder({
             .map((id) => (
               <button key={id} type="button" className={buttonClass} onClick={() => toggle(id)}>
                 {t("ui.rulesets.builder.removeInactive", {
-                  name: (catalogs[current.catalog] ?? []).find((entry) => entry.id === id)?.label ?? id,
+                  name: rt((catalogs[current.catalog] ?? []).find((entry) => entry.id === id)?.label ?? id),
                 })}
               </button>
             ))}
@@ -716,7 +734,7 @@ export function RulesetSheetBuilder({
               className={buttonClass}
               onClick={() => setMoreWanted(new Set([...moreWanted, current.id]))}
             >
-              {t("ui.rulesets.builder.addAnother", { step: current.label })}
+              {t("ui.rulesets.builder.addAnother", { step: rt(current.label) })}
             </button>
           )}
           {searching && (
@@ -771,7 +789,7 @@ export function RulesetSheetBuilder({
                   {/* The buttons wrap below a long name rather than squeezing it to a letter a line. */}
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="min-w-[6rem] flex-1 break-words text-xs font-semibold text-[var(--foreground)]">
-                      {entry.label}
+                      {rt(entry.label)}
                       {tellsApart(entry) && (
                         <span className="block text-[0.625rem] font-normal text-[var(--muted-foreground)]">
                           {tellsApart(entry)}
@@ -792,7 +810,7 @@ export function RulesetSheetBuilder({
                           aria-expanded={openInfo === infoId}
                           aria-controls={infoDomId}
                           onClick={() => setOpenInfo(openInfo === infoId ? null : infoId)}
-                          aria-label={t("ui.rulesets.builder.infoFor", { name: entry.label })}
+                          aria-label={t("ui.rulesets.builder.infoFor", { name: rt(entry.label) })}
                           className={`${chipClass} ${chipOff}`}
                         >
                           {t("ui.rulesets.builder.info")}
@@ -805,9 +823,9 @@ export function RulesetSheetBuilder({
                         onClick={() => toggle(entry.id)}
                         aria-label={
                           !on && known
-                            ? t("ui.rulesets.builder.alreadyKnownName", { name: entry.label })
+                            ? t("ui.rulesets.builder.alreadyKnownName", { name: rt(entry.label) })
                             : t(stored ? "ui.rulesets.builder.unpick" : "ui.rulesets.builder.pick", {
-                                name: entry.label,
+                                name: rt(entry.label),
                               })
                         }
                         className={`${chipClass} ${on ? chipOn : chipOff}`}
@@ -821,7 +839,7 @@ export function RulesetSheetBuilder({
                         ) : known ? (
                           t("ui.rulesets.builder.alreadyKnown")
                         ) : stored ? (
-                          t("ui.rulesets.builder.removeInactive", { name: entry.label })
+                          t("ui.rulesets.builder.removeInactive", { name: rt(entry.label) })
                         ) : (
                           t("ui.rulesets.builder.select")
                         )}
@@ -837,7 +855,7 @@ export function RulesetSheetBuilder({
                   {openInfo === infoId && entry.summary && (
                     <div id={infoDomId} className="space-y-1 text-[0.6875rem] text-[var(--muted-foreground)]">
                       {entryStatLine(entry) && <p className="text-[var(--foreground)]">{entryStatLine(entry)}</p>}
-                      <p>{entry.summary}</p>
+                      <p>{rt(entry.summary)}</p>
                     </div>
                   )}
                 </li>
@@ -864,7 +882,7 @@ export function RulesetSheetBuilder({
         }
         return (
           <label key={id} className={`flex min-w-0 flex-col gap-1 ${field.type === "longtext" ? "col-span-full" : ""}`}>
-            <span className={labelClass}>{field.label}</span>
+            <span className={labelClass}>{rt(field.label)}</span>
             <TypedInput
               spec={spec}
               pick={rulesetPickCount(definition, build, spec)}
@@ -899,7 +917,7 @@ export function RulesetSheetBuilder({
                   onApply(applied.build, applied.state);
                 }
               }
-              ariaLabel={field.label}
+              ariaLabel={rt(field.label)}
             />
           </label>
         );
@@ -949,7 +967,7 @@ export function RulesetSheetBuilder({
                 className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--card)] p-2 text-xs"
               >
                 <span className="min-w-0 flex-1">
-                  <span className="font-semibold">{spec.label}</span>{" "}
+                  <span className="font-semibold">{rt(spec.label)}</span>{" "}
                   <span className="text-[var(--muted-foreground)]">
                     {spec.gain
                       ? t("ui.rulesets.builder.rollImprove", {
@@ -1034,7 +1052,7 @@ export function RulesetSheetBuilder({
           <tbody className="tabular-nums">
             {shown.rows.map((row) => (
               <tr key={row.field} className="border-t border-[var(--border)]">
-                <td className="py-1 pr-2">{row.label}</td>
+                <td className="py-1 pr-2">{rt(row.label)}</td>
                 <td className="py-1 pr-2">{text(row.now)}</td>
                 <td className="py-1">
                   {shown.done
@@ -1170,7 +1188,7 @@ export function RulesetSheetBuilder({
               .filter((column) => !blank(row[column.id]))
               .map((column) => (
                 <span key={column.id} className="min-w-0">
-                  <span className="text-[var(--muted-foreground)]">{column.label}:</span> {String(row[column.id])}
+                  <span className="text-[var(--muted-foreground)]">{rt(column.label)}:</span> {String(row[column.id])}
                 </span>
               ))}
             <span className="ml-auto text-[0.625rem] text-[var(--muted-foreground)]">
@@ -1192,7 +1210,7 @@ export function RulesetSheetBuilder({
                     className={`flex min-w-0 flex-col gap-0.5 ${column.type === "longtext" ? "col-span-full" : ""}`}
                   >
                     <span className={labelClass}>
-                      {column.label}
+                      {rt(column.label)}
                       {needed && blank(row[column.id]) && (
                         <span className="ml-1 text-[var(--marinara-app-accent-static)]">
                           {t("ui.rulesets.builder.rowsRequired")}
@@ -1209,14 +1227,14 @@ export function RulesetSheetBuilder({
                           ),
                         )
                       }
-                      ariaLabel={`${list.label} ${position + 1}: ${column.label}`}
+                      ariaLabel={`${rt(list.label)} ${position + 1}: ${rt(column.label)}`}
                       disabled={column.type === "number" && !!column.sum}
                     />
                     {/* A rolled cell (1.85) is thrown with the Engine's dice here as on All fields. */}
                     {column.type === "number" && column.roll && (
                       <RollCellButton
                         notation={rulesetListRollNotation(definition, build, column, row, evaluated)}
-                        ariaLabel={`${list.label} ${position + 1}: ${column.label}`}
+                        ariaLabel={`${rt(list.label)} ${position + 1}: ${rt(column.label)}`}
                         onRolled={(total) =>
                           write(
                             rawRows.map((each, i) =>
@@ -1243,7 +1261,7 @@ export function RulesetSheetBuilder({
             <button
               type="button"
               onClick={() => write(rawRows.filter((_, i) => i !== index))}
-              aria-label={t("ui.rulesets.sheet.removeRow", { list: list.label, index: position + 1 })}
+              aria-label={t("ui.rulesets.sheet.removeRow", { list: rt(list.label), index: position + 1 })}
               className="rounded-lg p-1 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--marinara-app-accent-static)]"
             >
               <Trash2 size={14} aria-hidden="true" />
@@ -1305,7 +1323,7 @@ export function RulesetSheetBuilder({
             <option value="">{t("ui.rulesets.builder.rowsFromCatalog")}</option>
             {copies.map((entry) => (
               <option key={entry.id} value={entry.id}>
-                {entry.label}
+                {rt(entry.label)}
               </option>
             ))}
           </select>
@@ -1449,7 +1467,7 @@ export function RulesetSheetBuilder({
               {current.methods.rolls.map((group, index) => (
                 <li key={index}>
                   {group.abilities
-                    .map((id) => definition.sheet.abilities.find((each) => each.id === id)?.short ?? id)
+                    .map((id) => rt(definition.sheet.abilities.find((each) => each.id === id)?.short ?? id))
                     .join(", ")}
                   {": "}
                   {rulesetCreationDiceText(group.dice)}
@@ -1495,7 +1513,7 @@ export function RulesetSheetBuilder({
                       type="button"
                       disabled={costOf(score - 1) === undefined}
                       onClick={() => set(score - 1)}
-                      aria-label={t("ui.rulesets.builder.lower", { name: ability.label })}
+                      aria-label={t("ui.rulesets.builder.lower", { name: rt(ability.label) })}
                       className={`${chipClass} ${chipOff} px-1.5`}
                     >
                       <Minus size={12} aria-hidden="true" />
@@ -1505,7 +1523,7 @@ export function RulesetSheetBuilder({
                       type="button"
                       disabled={!canUp}
                       onClick={() => set(score + 1)}
-                      aria-label={t("ui.rulesets.builder.raise", { name: ability.label })}
+                      aria-label={t("ui.rulesets.builder.raise", { name: rt(ability.label) })}
                       className={`${chipClass} ${chipOff} px-1.5`}
                     >
                       <Plus size={12} aria-hidden="true" />
@@ -1523,7 +1541,7 @@ export function RulesetSheetBuilder({
                     min={min}
                     max={max}
                     integer
-                    ariaLabel={t("ui.rulesets.builder.baseFor", { name: ability.label })}
+                    ariaLabel={t("ui.rulesets.builder.baseFor", { name: rt(ability.label) })}
                     className={`${inputClass} text-center`}
                   />
                 );
@@ -1544,7 +1562,7 @@ export function RulesetSheetBuilder({
                       }
                       update({ ...state, assign });
                     }}
-                    aria-label={t("ui.rulesets.builder.baseFor", { name: ability.label })}
+                    aria-label={t("ui.rulesets.builder.baseFor", { name: rt(ability.label) })}
                     className={inputClass}
                   >
                     <option value="">{t("ui.rulesets.builder.unassigned")}</option>
@@ -1553,7 +1571,10 @@ export function RulesetSheetBuilder({
                         {takenBy.has(valueIndex) && takenBy.get(valueIndex) !== id
                           ? t("ui.rulesets.builder.valueTaken", {
                               value,
-                              by: definition.sheet.abilities.find((each) => each.id === takenBy.get(valueIndex))?.short,
+                              by: rt(
+                                definition.sheet.abilities.find((each) => each.id === takenBy.get(valueIndex))?.short ??
+                                  "",
+                              ),
                             })
                           : String(value)}
                       </option>
@@ -1566,9 +1587,9 @@ export function RulesetSheetBuilder({
                   key={id}
                   className="grid grid-cols-[minmax(0,1fr)_minmax(0,6.5rem)_2.5rem_2.5rem_2.5rem] items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 py-1"
                 >
-                  <span className="min-w-0 truncate text-xs text-[var(--foreground)]" title={ability.label}>
+                  <span className="min-w-0 truncate text-xs text-[var(--foreground)]" title={rt(ability.label)}>
                     {/* A phone's row is narrow: the short name there, the full one where it fits. */}
-                    <span className="sm:hidden">{ability.short ?? ability.label}</span>
+                    <span className="sm:hidden">{rt(ability.short ?? ability.label)}</span>
                     <span className="hidden sm:inline">{ability.label}</span>
                   </span>
                   {control}
@@ -1615,14 +1636,14 @@ export function RulesetSheetBuilder({
           const assigned = saved.priorities?.[group.id];
           return (
             <fieldset key={group.id} className="min-w-0 space-y-2">
-              <legend className="text-xs font-semibold text-[var(--foreground)]">{group.label}</legend>
+              <legend className="text-xs font-semibold text-[var(--foreground)]">{rt(group.label)}</legend>
               {current.priorities && (
                 <label className={labelClass}>
-                  {t("ui.rulesets.builder.priorityFor", { name: group.label })}
+                  {t("ui.rulesets.builder.priorityFor", { name: rt(group.label) })}
                   <select
                     className={inputClass}
                     value={assigned ?? ""}
-                    aria-label={t("ui.rulesets.builder.priorityFor", { name: group.label })}
+                    aria-label={t("ui.rulesets.builder.priorityFor", { name: rt(group.label) })}
                     onChange={(event) => {
                       const priorities = { ...saved.priorities };
                       if (event.target.value === "") delete priorities[group.id];
@@ -1662,7 +1683,7 @@ export function RulesetSheetBuilder({
                     "ability" in target
                       ? abilityLabel(target.ability)
                       : "field" in target
-                        ? (definition.sheet.fields.find((field) => field.id === target.field)?.label ?? target.field)
+                        ? rt(definition.sheet.fields.find((field) => field.id === target.field)?.label ?? target.field)
                         : "skill" in target
                           ? skillLabel(target.skill)
                           : "save" in target
@@ -1768,17 +1789,17 @@ export function RulesetSheetBuilder({
     const targetOf = (target: RulesetBuilderRatingTarget): { label: string; value: unknown } => {
       if ("ability" in target)
         return {
-          label: definition.sheet.abilities.find((each) => each.id === target.ability)?.label ?? target.ability,
+          label: rt(definition.sheet.abilities.find((each) => each.id === target.ability)?.label ?? target.ability),
           value: build.abilities[target.ability],
         };
       if ("field" in target)
         return {
-          label: definition.sheet.fields.find((each) => each.id === target.field)?.label ?? target.field,
+          label: rt(definition.sheet.fields.find((each) => each.id === target.field)?.label ?? target.field),
           value: build.fields[target.field],
         };
       const id = "skill" in target ? target.skill : "save" in target ? target.save : target.bonus;
       const entry = [...definition.sheet.skills, ...definition.sheet.saves].find((each) => each.id === id);
-      return { label: entry?.label ?? id, value: undefined };
+      return { label: rt(entry?.label ?? id), value: undefined };
     };
     return (
       <div className="space-y-3">
@@ -1786,7 +1807,7 @@ export function RulesetSheetBuilder({
           {pool.budget === null
             ? t("ui.rulesets.builder.spendNotConfigured")
             : t("ui.rulesets.builder.spendPool", {
-                name: spec.label,
+                name: rt(spec.label),
                 budget: pool.budget,
                 spent: pool.spent,
                 credit: pool.credit,
@@ -1830,14 +1851,14 @@ export function RulesetSheetBuilder({
             .map((row) => (
               <div key={row.stepId + "/" + row.offer.id} className="space-y-1.5 py-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="min-w-0 text-xs text-[var(--foreground)]">{row.offer.label}</span>
+                  <span className="min-w-0 text-xs text-[var(--foreground)]">{rt(row.offer.label)}</span>
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
                       className={buttonClass}
                       disabled={!row.purchases.length}
                       onClick={() => act(row.offer.id, "refund", row.stepId)}
-                      aria-label={t("ui.rulesets.builder.spendRefundFor", { name: row.offer.label })}
+                      aria-label={t("ui.rulesets.builder.spendRefundFor", { name: rt(row.offer.label) })}
                     >
                       {t("ui.rulesets.builder.spendRefund", { cost: row.purchases.at(-1)?.paid ?? 0 })}
                     </button>
@@ -1846,7 +1867,7 @@ export function RulesetSheetBuilder({
                       className={buttonClass}
                       disabled={!row.canBuy}
                       onClick={() => act(row.offer.id, "buy", row.stepId)}
-                      aria-label={t("ui.rulesets.builder.spendBuyFor", { name: row.offer.label })}
+                      aria-label={t("ui.rulesets.builder.spendBuyFor", { name: rt(row.offer.label) })}
                     >
                       {row.offer.exchange
                         ? t("ui.rulesets.builder.spendTrade", {
@@ -1869,7 +1890,7 @@ export function RulesetSheetBuilder({
                         className={buttonClass}
                         disabled={!row.canReduce}
                         onClick={() => act(row.offer.id, "reduce", row.stepId)}
-                        aria-label={t("ui.rulesets.builder.spendReduceFor", { name: row.offer.label })}
+                        aria-label={t("ui.rulesets.builder.spendReduceFor", { name: rt(row.offer.label) })}
                       >
                         {t("ui.rulesets.builder.spendReduce", { cost: row.reduce?.paid ?? "?" })}
                       </button>
@@ -1971,7 +1992,7 @@ export function RulesetSheetBuilder({
       }
     }
     const fixed = [...named.values()].map(({ label, tier }) =>
-      rank(tier) > 1 ? `${label} (${tiers[rank(tier)]!.label})` : label,
+      rank(tier) > 1 ? `${label} (${rt(tiers[rank(tier)]!.label)})` : label,
     );
     return (
       <div className="space-y-2">
@@ -2014,8 +2035,8 @@ export function RulesetSheetBuilder({
         <ul className="space-y-1">
           {gear.map((gear) => (
             <li key={gear.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-xs">
-              <span className="font-semibold text-[var(--foreground)]">{gear.label}</span>
-              {gear.summary && <span className="ml-1 text-[var(--muted-foreground)]">{gear.summary}</span>}
+              <span className="font-semibold text-[var(--foreground)]">{rt(gear.label)}</span>
+              {gear.summary && <span className="ml-1 text-[var(--muted-foreground)]">{rt(gear.summary)}</span>}
             </li>
           ))}
         </ul>
@@ -2055,7 +2076,7 @@ export function RulesetSheetBuilder({
       const value = build.fields[id];
       if (!field || value === undefined || value === "" || isRulesetItemHidden(field, build, definition)) return [];
       if (!always && field.type === "number" && value === blankFields[id]) return [];
-      const text = field.type === "enum" ? (field.valueLabels?.[String(value)] ?? String(value)) : String(value);
+      const text = field.type === "enum" ? rt(field.valueLabels?.[String(value)] ?? String(value)) : String(value);
       return [{ id, label: field.label, text }];
     });
   const shownDerived = summary.derived.flatMap((id) => {
@@ -2083,7 +2104,7 @@ export function RulesetSheetBuilder({
                   onClick={() => setStepId(each.id)}
                   className={`${chipClass} inline-flex items-center gap-1 ${each.id === step.id ? chipOn : chipOff}`}
                 >
-                  {each.label}
+                  {rt(each.label)}
                   {ready && left > 0 ? (
                     <>
                       <span
@@ -2112,7 +2133,7 @@ export function RulesetSheetBuilder({
       {builder.profiles && (
         <p className="text-[0.6875rem] text-[var(--muted-foreground)]">
           {t("ui.rulesets.builder.profile", {
-            name: rulesetBuilderActiveProfile(definition, build)?.label ?? t("ui.rulesets.builder.profileNone"),
+            name: rt(rulesetBuilderActiveProfile(definition, build)?.label ?? t("ui.rulesets.builder.profileNone")),
           })}
         </p>
       )}
@@ -2142,14 +2163,17 @@ export function RulesetSheetBuilder({
         </button>
       )}
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_14rem]">
-        <section aria-label={steps.length ? step.label : t("ui.rulesets.builder.steps")} className="min-w-0 space-y-2">
-          {steps.length > 0 && <h4 className="text-xs font-semibold text-[var(--foreground)]">{step.label}</h4>}
+        <section
+          aria-label={steps.length ? rt(step.label) : t("ui.rulesets.builder.steps")}
+          className="min-w-0 space-y-2"
+        >
+          {steps.length > 0 && <h4 className="text-xs font-semibold text-[var(--foreground)]">{rt(step.label)}</h4>}
           {ready && failedRules.some((rule) => rule.step === step.id) && (
             <ul role="status" className="space-y-0.5 text-[0.6875rem] text-[var(--marinara-app-accent-static)]">
               {failedRules
                 .filter((rule) => rule.step === step.id)
                 .map((rule) => (
-                  <li key={rule.id}>{rule.label}</li>
+                  <li key={rule.id}>{rt(rule.label)}</li>
                 ))}
             </ul>
           )}
@@ -2217,7 +2241,7 @@ export function RulesetSheetBuilder({
             <dl className="space-y-0.5 text-[0.6875rem]">
               {shownFields.map((entry) => (
                 <div key={entry.id} className="flex justify-between gap-2">
-                  <dt className="min-w-0 break-words text-[var(--muted-foreground)]">{entry.label}</dt>
+                  <dt className="min-w-0 break-words text-[var(--muted-foreground)]">{rt(entry.label)}</dt>
                   <dd className="min-w-0 break-words text-right text-[var(--foreground)]">{entry.text}</dd>
                 </div>
               ))}
@@ -2227,7 +2251,9 @@ export function RulesetSheetBuilder({
             <div className="grid grid-cols-3 gap-1">
               {definition.sheet.abilities.map((ability) => (
                 <div key={ability.id} className="rounded border border-[var(--border)] px-1 py-0.5 text-center">
-                  <div className="text-[0.625rem] text-[var(--muted-foreground)]">{ability.short ?? ability.label}</div>
+                  <div className="text-[0.625rem] text-[var(--muted-foreground)]">
+                    {rt(ability.short ?? ability.label)}
+                  </div>
                   <div className="text-xs font-semibold tabular-nums text-[var(--foreground)]">
                     {evaluated.abilityScores[ability.id] ?? ability.default}
                   </div>
@@ -2243,7 +2269,7 @@ export function RulesetSheetBuilder({
               {shownDerived.map((entry) => (
                 <div key={entry.id} className="rounded border border-[var(--border)] px-1.5 py-0.5">
                   <dt className="break-words text-[0.625rem] leading-tight text-[var(--muted-foreground)]">
-                    {entry.label}
+                    {rt(entry.label)}
                   </dt>
                   <dd className="text-xs font-semibold tabular-nums text-[var(--foreground)]">{entry.text}</dd>
                 </div>
@@ -2255,7 +2281,7 @@ export function RulesetSheetBuilder({
               {restingPools.map((pool) => (
                 <div key={pool.key} className="rounded border border-dashed border-[var(--border)] px-1.5 py-0.5">
                   <dt className="break-words text-[0.625rem] leading-tight text-[var(--muted-foreground)]">
-                    {pool.label}
+                    {rt(pool.label)}
                     {poolLevels[pool.key] !== undefined &&
                       ` · ${t("game.ruleset.sheet.poolLevel", { level: poolLevels[pool.key]! })}`}
                   </dt>
@@ -2283,7 +2309,7 @@ export function RulesetSheetBuilder({
               {attacks
                 .map(
                   (attack) =>
-                    `${attack.label}${attack.toHit !== undefined ? ` ${attack.toHit >= 0 ? "+" : ""}${attack.toHit}` : ""}${attack.damage ? ` (${attack.damage})` : ""}`,
+                    `${rt(attack.label)}${attack.toHit !== undefined ? ` ${attack.toHit >= 0 ? "+" : ""}${attack.toHit}` : ""}${attack.damage ? ` (${attack.damage})` : ""}`,
                 )
                 .join(", ")}
             </p>

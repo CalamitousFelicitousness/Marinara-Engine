@@ -64,8 +64,9 @@ import {
   rulesetSheetAttacks,
   rulesetSheetSummaryShown,
 } from "../../lib/ruleset-sheet-view";
-import { rulesetCatalogQuery, useRulesetStrings } from "../../hooks/use-capability-packages";
-import { RulesetTextContext, rulesetTextLookup, useRulesetText, type RulesetText } from "../../lib/ruleset-text";
+import { rulesetCatalogQuery } from "../../hooks/use-capability-packages";
+import { RulesetTextContext, useRulesetText, type RulesetText } from "../../lib/ruleset-text";
+import { useRulesetDefinitionText } from "../../hooks/use-ruleset-text";
 import { useCombatScreenStore } from "../../stores/combat-screen.store";
 import { DraftNumberInput } from "../ui/DraftNumberInput";
 import { DraftTextarea } from "../ui/DraftTextarea";
@@ -169,9 +170,7 @@ function signedText(value: number, signed: boolean | undefined): string {
  * what is shown goes through it; ids, and what goes back to the rules, stay the ruleset's own.
  */
 function useSheetRulesetText(definition: RulesetDefinition): RulesetText {
-  const { i18n } = useUiTranslation();
-  const strings = useRulesetStrings(definition.id, definition.version, i18n.resolvedLanguage ?? i18n.language);
-  return useMemo(() => rulesetTextLookup(strings.data?.strings), [strings.data]);
+  return useRulesetDefinitionText(definition);
 }
 
 /** How many conditions the "Add condition" search offers at once: it narrows as more is typed. */

@@ -9,6 +9,8 @@
  *   - A creature's spell that has variants is each of them too, every one cast from the spell's
  *     own uses.
  *   - Refused shapes; the install gate.
+ *   - The fight pane keeps a spell's row open through the steps of the way picked under it, a target
+ *     and a form for Polymorph (unwilling), since that way has no row of its own (playtest 2026-10-27).
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -306,4 +308,14 @@ try {
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
+}
+
+// ── The pane's row stays open for the way picked under it ──
+{
+  const menu = readFileSync(
+    fileURLToPath(new URL("../../packages/client/src/components/game/RulesetCombatMenu.tsx", import.meta.url)),
+    "utf8",
+  );
+  assert.match(menu, /const open = openId !== undefined && ways\.some\(\(way\) => way\.id === openId\);/);
+  assert.doesNotMatch(menu, /const open = openId === option\.id;/);
 }

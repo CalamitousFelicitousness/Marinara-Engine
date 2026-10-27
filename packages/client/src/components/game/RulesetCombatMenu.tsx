@@ -1666,9 +1666,11 @@ export function RulesetCombatMenu({
             ? `${rulesetDistanceText(option.range.normal, distance, t)} / ${rulesetDistanceText(option.range.long, distance, t)}`
             : rulesetDistanceText(option.range.normal, distance, t)
           : "";
-      const open = openId === option.id;
       // A spell's variants sit under one row (1.756); one of them that can be aimed opens the pick.
       const ways = rulesetMenuVariants(view.options, option);
+      // The row stays open through the steps of the way picked (Polymorph's unwilling target and form,
+      // playtest 2026-10-27), as that way has no row of its own to open under.
+      const open = openId !== undefined && ways.some((way) => way.id === openId);
       const unaimable = ways.every((way) => rulesetOptionUnaimable(way));
       return (
         <Fragment key={option.id}>

@@ -520,4 +520,14 @@ console.log(
     /onChange=\{\(event\) => onChange\(event\.target\.value\)\}/,
     "the value kept is the ruleset's own",
   );
+  // The editor's catalog picker too: filters, entries and chips as shown, values kept as written.
+  const picker = source("components/rulesets/RulesetCatalogPicker.tsx");
+  assert.match(picker, /const rt = useRulesetText\(\);/);
+  assert.match(picker, /\{rt\(view\.filter\.label\)\}/, "a filter's name");
+  assert.match(picker, /<option key=\{option\} value=\{option\}>\s*\{rt\(option\)\}/, "a filter's values");
+  assert.match(picker, /\{rt\(entry\.label\)\}<\/span>/, "an entry's name");
+  assert.match(picker, /rt\(entry\.label\)\.toLowerCase\(\)\.includes\(needle\)/, "found by its name as shown");
+  const items = source("components/game/RulesetItemPicker.tsx");
+  assert.match(items, /const rt = useRulesetDefinitionText\(definition\);/);
+  assert.match(items, /\{rt\(each\.name\)\}<\/span>/, "an item's name in the inventory's picker");
 }

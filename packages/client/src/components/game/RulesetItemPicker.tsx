@@ -20,6 +20,7 @@ import {
 } from "@marinara-engine/shared";
 import { ArtIcon } from "./ArtIcon";
 import { useRulesetCatalog } from "../../hooks/use-capability-packages";
+import { useRulesetDefinitionText } from "../../hooks/use-ruleset-text";
 import {
   CATALOG_FILTER_ANY,
   CATALOG_VISIBLE_LIMIT,
@@ -426,6 +427,8 @@ export function RulesetItemPicker({
   onAdd: (picks: RulesetItemBookEntry[]) => void;
 }) {
   const { t } = useUiTranslation();
+  // The ruleset's own words in the player's language, as the sheet editor's picker shows them.
+  const rt = useRulesetDefinitionText(definition);
   const searchRef = useRef<HTMLInputElement>(null);
   const catalogs = useMemo(
     () => (definition.catalogs ?? []).filter((catalog) => catalog.holds === "items"),
@@ -436,7 +439,7 @@ export function RulesetItemPicker({
   const coinsChosen = catalogId === COINS_LIST && book.coins.length > 0;
   const catalog = coinsChosen ? undefined : (catalogs.find((each) => each.id === catalogId) ?? catalogs[0]);
   const lists = [
-    ...catalogs.map((each) => ({ id: each.id, label: each.label })),
+    ...catalogs.map((each) => ({ id: each.id, label: rt(each.label) })),
     ...(book.coins.length > 0 ? [{ id: COINS_LIST, label: t("game.ruleset.items.coins") }] : []),
   ];
   const [search, setSearch] = useState("");
@@ -461,8 +464,13 @@ export function RulesetItemPicker({
   const active = chosen ?? starts;
   const matches = useMemo(() => {
     const shown = new Set(filterCatalogEntries(entries, views, search, active));
-    return items.filter((each) => shown.has(each.entry));
-  }, [active, entries, items, search, views]);
+    // Found by its name as shown too.
+    const needle = search.trim().toLowerCase();
+    const named = needle ? new Set(filterCatalogEntries(entries, views, "", active)) : null;
+    return items.filter(
+      (each) => shown.has(each.entry) || (named?.has(each.entry) && rt(each.name).toLowerCase().includes(needle)),
+    );
+  }, [active, entries, items, rt, search, views]);
   const visible = matches.slice(0, CATALOG_VISIBLE_LIMIT);
 
   const toggle = (item: string) =>
@@ -518,7 +526,7 @@ export function RulesetItemPicker({
           )}
           {views.map((view) => (
             <label key={view.filter.id} className="flex min-w-0 basis-36 flex-col gap-1">
-              <span className={labelClass}>{view.filter.label}</span>
+              <span className={labelClass}>{rt(view.filter.label)}</span>
               <select
                 value={active[view.filter.id] ?? CATALOG_FILTER_ANY}
                 onChange={(event) => setChosen({ ...active, [view.filter.id]: event.target.value })}
@@ -527,7 +535,7 @@ export function RulesetItemPicker({
                 <option value={CATALOG_FILTER_ANY}>{t("game.ruleset.catalog.filterAny")}</option>
                 {view.options.map((option) => (
                   <option key={option} value={option}>
-                    {option}
+                    {rt(option)}
                   </option>
                 ))}
               </select>
@@ -569,7 +577,7 @@ export function RulesetItemPicker({
                     type="checkbox"
                     checked={selected.has(each.item)}
                     onChange={() => toggle(each.item)}
-                    aria-label={each.name}
+                    aria-label={rt(each.name)}
                     className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--primary)]"
                   />
                   <span className="min-w-0 flex-1 space-y-1">
@@ -582,7 +590,7 @@ export function RulesetItemPicker({
                         ]}
                         className="h-5 w-5"
                       />
-                      <span className="text-xs font-medium text-[var(--foreground)]">{each.name}</span>
+                      <span className="text-xs font-medium text-[var(--foreground)]">{rt(each.name)}</span>
                       {kind.map((word) => (
                         <span key={word} className={chipClass}>
                           {word}
@@ -590,7 +598,7 @@ export function RulesetItemPicker({
                       ))}
                     </span>
                     {each.summary && (
-                      <span className="block text-[0.6875rem] text-[var(--muted-foreground)]">{each.summary}</span>
+                      <span className="block text-[0.6875rem] text-[var(--muted-foreground)]">{rt(each.summary)}</span>
                     )}
                     {stats && <span className="block text-[0.6875rem] text-[var(--foreground)]">{stats}</span>}
                     {rulesetItemEffectLines(facts, t).map((line) => (

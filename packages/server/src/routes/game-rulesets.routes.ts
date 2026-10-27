@@ -372,12 +372,13 @@ export async function gameRulesetsRoutes(app: FastifyInstance) {
       const locales = Object.keys(translations).sort();
       if (dryRun) return { status: "checked", rulesetId, version, ruleset: read.ruleset, catalogs, locales };
       // Of the languages the file carries, only the Engine's is kept, and it replaces whatever language
-      // was kept before; to read the ruleset in another, import the file again in it. A file carrying none
-      // leaves what was kept.
+      // was kept before; to read the ruleset in another, import the file again in it. A file carrying
+      // none in the Engine's language leaves what was kept: importing French while playing in Spanish
+      // must not take the Spanish away (laptop 2026-10-27).
       const language = rulesetTranslationLanguages(locale ?? (await capabilityPackageManager.rulesetLanguage())).find(
         (each) => translations[each] !== undefined,
       );
-      const kept = !locales.length ? undefined : language ? { [language]: translations[language]! } : {};
+      const kept = language ? { [language]: translations[language]! } : undefined;
       try {
         const { status } = await createGameRulesetsStorage(app.db).put({
           rulesetId,

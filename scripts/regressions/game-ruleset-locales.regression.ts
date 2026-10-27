@@ -286,7 +286,9 @@ try {
     });
     assert.equal(plain.statusCode, 200, plain.body);
     assert.equal((await strings("ru")).json().strings[english], "Угольные пути");
-    // One carrying translations but none in the page's language (English, the Engine's default) keeps none.
+    // One carrying translations but none in the page's language (English, the Engine's default) keeps
+    // none of them, and leaves the translation already kept alone (laptop 2026-10-27: French imported
+    // while playing in Spanish took the Spanish away).
     const inEnglish = await app.inject({
       method: "POST",
       url: "/api/game-rulesets/import-package",
@@ -294,7 +296,8 @@ try {
     });
     assert.equal(inEnglish.statusCode, 200, inEnglish.body);
     assert.deepEqual(inEnglish.json().locales, []);
-    assert.equal((await strings("ru")).json().locale, null);
+    assert.equal(inEnglish.json().status, "unchanged");
+    assert.equal((await strings("ru")).json().strings[english], "Угольные пути");
 
     // ── A language pack picked with the file (installed from a file, 2026-10-27): kept as its own ──
     const pack = (locale: string, ruleset: Record<string, string>) => ({ _meta: { locale }, ruleset });

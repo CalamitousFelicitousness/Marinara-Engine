@@ -531,3 +531,51 @@ console.log(
   assert.match(items, /const rt = useRulesetDefinitionText\(definition\);/);
   assert.match(items, /\{rt\(each\.name\)\}<\/span>/, "an item's name in the inventory's picker");
 }
+
+// ── An item's lines read the ruleset's words in the player's language (Spanish re-test 2026-10-27) ──
+{
+  const { rulesetItemEffectLines, rulesetItemStatsLine } =
+    await import("../../packages/client/src/components/game/RulesetItemPicker.js");
+  const spanish: Record<string, string> = {
+    "Weight (lb)": "Peso (lb)",
+    acid: "ácido",
+    Dexterity: "Destreza",
+    Action: "Acción",
+    ft: "pies",
+    "gold pieces": "piezas de oro",
+    poisoned: "envenenado",
+  };
+  const rt = (english: string) => spanish[english] ?? english;
+  const t = ((key: string, options?: Record<string, unknown>) =>
+    `${key}(${Object.entries(options ?? {})
+      .map(([name, value]) => `${name}=${value}`)
+      .join(",")})`) as never;
+  const facts = {
+    stats: [{ label: "Weight (lb)", text: "2" }],
+    tags: [],
+    use: {
+      kind: "attack",
+      budget: "Action",
+      amount: "2d6",
+      type: "acid",
+      toHit: "Dexterity",
+      unit: "ft",
+      range: 20,
+      applies: ["poisoned", "blinded"],
+      consumes: true,
+    },
+  } as never;
+  assert.equal(rulesetItemStatsLine(facts, rt), "Peso (lb) 2");
+  assert.equal(rulesetItemStatsLine(facts), "Weight (lb) 2", "English stays as written");
+  const [line] = rulesetItemEffectLines(facts, t, rt);
+  for (const word of ["Acción", "ácido", "Destreza", "unit=pies", "envenenado, blinded"]) {
+    assert.ok(line!.includes(word), `${word} in ${line}`);
+  }
+  for (const word of ["Action", "acid", "Dexterity", "unit=ft"]) assert.ok(!line!.includes(word), line);
+  const source = readFileSync(
+    new URL("../../packages/client/src/components/game/RulesetItemPicker.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /\{rt\(word\)\}/, "a chip");
+  assert.match(source, /withRulesetWords\(t, rt\)\("game\.ruleset\.items\.cost", facts\.cost\)/, "a price's coin");
+}

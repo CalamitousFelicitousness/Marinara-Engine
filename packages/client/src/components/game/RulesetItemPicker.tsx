@@ -21,6 +21,7 @@ import {
 import { ArtIcon } from "./ArtIcon";
 import { useRulesetCatalog } from "../../hooks/use-capability-packages";
 import { useRulesetDefinitionText } from "../../hooks/use-ruleset-text";
+import { RULESET_TEXT_AS_IS, type RulesetText } from "../../lib/ruleset-text";
 import {
   CATALOG_FILTER_ANY,
   CATALOG_VISIBLE_LIMIT,
@@ -37,8 +38,37 @@ const chipClass =
   "rounded-full border border-[var(--border)] px-1.5 py-0.5 text-[0.625rem] text-[var(--muted-foreground)]";
 
 /** An item's stats as one line: "Damage 1d6 · Reach close". A yes-or-no stat that is yes is its label. */
-export function rulesetItemStatsLine(facts: RulesetItemFacts): string {
-  return facts.stats.map((stat) => (stat.text !== undefined ? `${stat.label} ${stat.text}` : stat.label)).join(" · ");
+export function rulesetItemStatsLine(facts: RulesetItemFacts, rt: RulesetText = RULESET_TEXT_AS_IS): string {
+  return facts.stats
+    .map((stat) => (stat.text !== undefined ? `${rt(stat.label)} ${rulesetWords(stat.text, rt)}` : rt(stat.label)))
+    .join(" · ");
+}
+
+/** The ruleset's own words in the player's language: a whole phrase when it has one, else each of a
+ *  list's words. A number or a die has none, so it stays as written. */
+function rulesetWords(value: string, rt: RulesetText): string {
+  const whole = rt(value);
+  if (whole !== value || !value.includes(", ")) return whole;
+  return value.split(", ").map(rt).join(", ");
+}
+
+/** `t` with every word handed to it read in the ruleset's own translation: an item line is the UI's
+ *  sentence around the ruleset's English names (a damage type, a save, a unit, a coin). */
+function withRulesetWords(t: TFunction, rt: RulesetText): TFunction {
+  if (rt === RULESET_TEXT_AS_IS) return t;
+  const translate = (key: unknown, options?: unknown) =>
+    (t as unknown as (key: unknown, options?: unknown) => string)(
+      key,
+      options && typeof options === "object"
+        ? Object.fromEntries(
+            Object.entries(options).map(([name, value]) => [
+              name,
+              typeof value === "string" ? rulesetWords(value, rt) : value,
+            ]),
+          )
+        : options,
+    );
+  return translate as unknown as TFunction;
 }
 
 /** A fight effect's localized words, by effect id. The ones about the holder's own checks, saves and
@@ -60,7 +90,7 @@ const FIGHT_EFFECT_KEYS: Record<string, string> = {
 /** A weapon's attack, in two lines: what it adds to hit and deals ("Attack (Act): Brawn + 1 to hit,
  *  1d6 + Brawn cut damage"), then how far it reaches and carries and what it deals with a hand free.
  *  Empty for an item that is no weapon. */
-function rulesetItemAttackLines(facts: RulesetItemFacts, t: TFunction): string[] {
+function rulesetItemAttackLines(facts: RulesetItemFacts, t: TFunction, rt: RulesetText): string[] {
   const attack = facts.attack;
   if (!attack) return [];
   const toHit = attack.proficiency
@@ -114,7 +144,7 @@ function rulesetItemAttackLines(facts: RulesetItemFacts, t: TFunction): string[]
     ...(attack.plus ?? []).map((clause) =>
       [
         t("ui.game.gameinventory.attackPlus", { amount: clause.amount }),
-        clause.type ?? "",
+        clause.type ? rt(clause.type) : "",
         clause.against ? t("ui.game.gameinventory.attackPlusAgainst", { what: clause.against.join(", ") }) : "",
         clause.critical ? t("ui.game.gameinventory.attackPlusCritical") : "",
         clause.toggled ? t("ui.game.gameinventory.attackPlusToggled", { label: clause.toggled }) : "",
@@ -381,11 +411,16 @@ export function rulesetEffectPhrase(fact: RulesetItemEffectFact, t: TFunction): 
   return t("ui.game.gameinventory.effectAgainst", { effect: save, against });
 }
 
-export function rulesetItemEffectLines(facts: RulesetItemFacts, t: TFunction): string[] {
+export function rulesetItemEffectLines(
+  facts: RulesetItemFacts,
+  localize: TFunction,
+  rt: RulesetText = RULESET_TEXT_AS_IS,
+): string[] {
+  const t = withRulesetWords(localize, rt);
   const phrase = (fact: RulesetItemEffectFact) => rulesetEffectPhrase(fact, t);
   const useLine = rulesetItemUseLine(facts, t);
   return [
-    ...rulesetItemAttackLines(facts, t),
+    ...rulesetItemAttackLines(facts, t, rt),
     ...(useLine ? [useLine] : []),
     ...(facts.toggle ? [t("ui.game.gameinventory.toggleLine", { ...facts.toggle })] : []),
     ...(["worn", "carried"] as const).flatMap((when) =>
@@ -567,7 +602,7 @@ export function RulesetItemPicker({
             {visible.map((each) => {
               const { facts } = each;
               const kind = [facts.category, facts.rarity, ...facts.tags].filter((word): word is string => !!word);
-              const stats = rulesetItemStatsLine(facts);
+              const stats = rulesetItemStatsLine(facts, rt);
               return (
                 <label
                   key={each.item}
@@ -593,7 +628,7 @@ export function RulesetItemPicker({
                       <span className="text-xs font-medium text-[var(--foreground)]">{rt(each.name)}</span>
                       {kind.map((word) => (
                         <span key={word} className={chipClass}>
-                          {word}
+                          {rt(word)}
                         </span>
                       ))}
                     </span>
@@ -601,7 +636,7 @@ export function RulesetItemPicker({
                       <span className="block text-[0.6875rem] text-[var(--muted-foreground)]">{rt(each.summary)}</span>
                     )}
                     {stats && <span className="block text-[0.6875rem] text-[var(--foreground)]">{stats}</span>}
-                    {rulesetItemEffectLines(facts, t).map((line) => (
+                    {rulesetItemEffectLines(facts, t, rt).map((line) => (
                       <span key={line} className="block text-[0.6875rem] text-[var(--foreground)]">
                         {line}
                       </span>
@@ -609,7 +644,7 @@ export function RulesetItemPicker({
                     {(facts.cost || each.stack) && (
                       <span className="block text-[0.6875rem] text-[var(--muted-foreground)]">
                         {[
-                          facts.cost ? t("game.ruleset.items.cost", facts.cost) : null,
+                          facts.cost ? withRulesetWords(t, rt)("game.ruleset.items.cost", facts.cost) : null,
                           each.stack ? t("game.ruleset.items.stack", { max: each.stack }) : null,
                         ]
                           .filter(Boolean)

@@ -145,7 +145,7 @@ export function RulesetCatalogPicker({
   }, [active, entries, rt, search, views]);
   const visible = matches.slice(0, CATALOG_VISIBLE_LIMIT);
 
-  const labels = useMemo(() => catalogMechanicsLabels(definition, catalog), [catalog, definition]);
+  const labels = useMemo(() => catalogMechanicsLabels(definition, catalog, rt), [catalog, definition, rt]);
   const battleCatalogIds = useMemo(() => rulesetBattleCatalogIds(definition), [definition]);
   const showsMechanics = useMemo(() => entries.some((entry) => entry.mechanics), [entries]);
 

@@ -57,6 +57,8 @@ import { GAME_SECTION_CLASS } from "../../lib/chat-widget-colors";
 import { defaultInventorySplitSize, parseInventoryAmount, parseInventoryCount } from "../../lib/game-inventory-amount";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { RulesetItemPicker, rulesetItemEffectLines, rulesetItemStatsLine } from "./RulesetItemPicker";
+import { useRulesetDefinitionText } from "../../hooks/use-ruleset-text";
+import type { RulesetText } from "../../lib/ruleset-text";
 import { StartingGearPicker, type StartingGearTaken } from "./StartingGearPicker";
 import { ArtIcon } from "./ArtIcon";
 
@@ -218,6 +220,7 @@ export function GameInventory({
   startingGear,
 }: GameInventoryProps) {
   const { t: localizeUi } = useUiTranslation();
+  const rulesetText = useRulesetDefinitionText(rulesetDefinition ?? { id: "", version: 0 });
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
   // What was typed as a new name, kept with the stack and name it was typed for.
   const [renameTyped, setRenameTyped] = useState<{ key: string; text: string } | null>(null);
@@ -858,6 +861,7 @@ export function GameInventory({
             {selectedRulesetItem && (
               <RulesetItemDetails
                 details={selectedRulesetItem}
+                rt={rulesetText}
                 bound={selectedInventoryItem?.bound === true}
                 loaded={selectedInventoryItem?.loaded}
                 charges={selectedInventoryItem?.charges}
@@ -1437,8 +1441,11 @@ function RulesetItemDetails({
   usesLeft,
   stackId,
   storedEntries,
+  rt,
 }: {
   details: RulesetItemBookEntry;
+  /** The ruleset's own words in the player's language. */
+  rt: RulesetText;
   bound: boolean;
   loaded?: number;
   charges?: number;
@@ -1456,18 +1463,18 @@ function RulesetItemDetails({
     (details.entry.item?.stores?.found ? rulesetFoundStored(details.entry.item.stores, stackId) : undefined);
   const binds = details.entry.item?.binds;
   const kind = [facts.category, facts.rarity, ...facts.tags].filter((word): word is string => !!word);
-  const stats = rulesetItemStatsLine(facts);
+  const stats = rulesetItemStatsLine(facts, rt);
   return (
     <div className="mb-2.5 space-y-1">
       <div className="flex flex-wrap gap-1">
         {kind.map((word) => (
           <span key={word} className="rounded bg-white/8 px-1.5 py-0.5 text-[0.6rem] text-white/80">
-            {word}
+            {rt(word)}
           </span>
         ))}
       </div>
       {stats && <div className="text-[0.65rem] leading-tight text-white/70">{stats}</div>}
-      {rulesetItemEffectLines(facts, localizeUi).map((line) => (
+      {rulesetItemEffectLines(facts, localizeUi, rt).map((line) => (
         <div key={line} className="text-[0.65rem] leading-tight text-white/70">
           {line}
         </div>

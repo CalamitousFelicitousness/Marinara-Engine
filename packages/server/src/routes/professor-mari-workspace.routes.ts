@@ -132,6 +132,19 @@ export const professorMariPromptSchema = z.object({
     )
     .optional()
     .default([]),
+  // `@` links from the composer: resolved once, beside this message (the ids are re-read server-side).
+  references: z
+    .array(
+      z.object({
+        kind: z.enum(["character", "persona", "lorebook", "lorebookEntry", "preset", "skill", "memory"]),
+        id: z.string().min(1).max(200),
+        label: z.string().min(1).max(200),
+        parentId: z.string().max(200).optional(),
+      }),
+    )
+    .max(8)
+    .optional()
+    .default([]),
 });
 
 const resetSchema = z.object({
@@ -484,6 +497,7 @@ export async function professorMariWorkspaceRoutes(app: FastifyInstance) {
         connectionId: body.connectionId ?? null,
         debugMode: body.debugMode,
         attachments: body.attachments,
+        references: body.references,
         existingUserMessageId: body.existingUserMessageId,
         context: body.context,
         seasonalPackId: body.seasonalPackId,

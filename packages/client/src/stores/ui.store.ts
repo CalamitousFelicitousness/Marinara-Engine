@@ -1755,6 +1755,8 @@ export function pickSyncedSettings(state: UIState) {
     mariEditViewMode: state.mariEditViewMode,
     mariWindowHeightRem: normalizeMariWindowHeightRem(state.mariWindowHeightRem),
     mariWindowWidthRem: normalizeMariWindowWidthRem(state.mariWindowWidthRem),
+    mariCompanionDocked: state.mariCompanionDocked,
+    mariCompanionWidthRem: normalizeMariCompanionWidthRem(state.mariCompanionWidthRem),
     omnibarWindowWidthRem: normalizeOmnibarWindowWidthRem(state.omnibarWindowWidthRem),
     omnibarWindowHeightRem: normalizeOmnibarWindowHeightRem(state.omnibarWindowHeightRem),
     mariAppearancePackId: getMariAppearancePack(state.mariAppearancePackId).id,

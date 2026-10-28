@@ -407,7 +407,7 @@ html[data-marinara-effects-paused="true"] .mari-workspace-glow-band::after {
 }
 
 .mari-topbar-status.mari-field-chip[data-edge="below"] {
-  bottom: max(0.75rem, env(safe-area-inset-bottom));
+  bottom: max(0.75rem, var(--mari-safe-area-inset-bottom, env(safe-area-inset-bottom)));
 }
 
 /* Her mark on an editor field: a faint cyan edge while her step writes it, one pulse when she shows
@@ -5133,7 +5133,7 @@ html[data-marinara-effects-paused="true"] .mari-workspace-portrait img {
   inset-inline: 0;
   bottom: 0;
   height: 50dvh;
-  padding-bottom: env(safe-area-inset-bottom);
+  padding-bottom: var(--mari-safe-area-inset-bottom, env(safe-area-inset-bottom));
   border-radius: 1rem 1rem 0 0;
   box-shadow:
     0 0 0 1px var(--border),

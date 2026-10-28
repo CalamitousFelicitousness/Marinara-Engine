@@ -1787,6 +1787,20 @@ exit button available on every package screen and use `aria-pressed` to reflect 
 must update the button without replacing unfinished forms. Packages depending on this control
 declare capability API 1.376 or newer; older packages can keep their existing layouts.
 
+### Capability API 1.388: a service only the Engine can read
+
+Every service a package registers is readable by every other package through `runtime.services.get(key)`. A
+service meant for the Engine alone, such as a runtime the Engine calls during generation, takes a third argument:
+
+```ts
+api.registerService("my-package:runtime", service, { hostOnly: true });
+```
+
+The Engine's own lookup still returns it. `runtime.services.get` returns `null` for it to every package, the owner
+included. Releasing the service clears the flag, so the key can be registered again without it. An Engine older than
+1.388 ignores the argument, so the service stays readable there; do not rely on `hostOnly` for secrecy on older
+Engines.
+
 ### Capability API 1.387: read a chat's summaries
 
 `persistence.listChatSummaries(chatId)` returns the summaries the Engine keeps for a chat, so a package
@@ -2136,7 +2150,8 @@ servers take a few libraries from the Engine instead of bundling them. Every new
 
 - `runtime.services.get(key)` returns a service a package registered with `api.registerService`, or `null` while it is
   absent or during a shared-room generation. It reads the Engine's own registry, so every package sees it.
-  `agent-runtime:` and `mari-actions:` keys always return `null`; only the Engine reads those.
+  `agent-runtime:` and `mari-actions:` keys always return `null`; only the Engine reads those. So does a service
+  registered with `hostOnly` (Capability API 1.388), for every package including its owner.
 - `runtime.commands.parse(content)`, `strip(content)` and `instructions()` read conversation commands with the
   Engine's grammar and every package's registered tags.
 - `runtime.logger.isLevelEnabled(level)` says whether the Engine logger writes that level now.

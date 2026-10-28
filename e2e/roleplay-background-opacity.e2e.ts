@@ -225,9 +225,9 @@ for (const theme of ["dark", "light"] as const) {
       const windowHook = await page.addStyleTag({ content: ":root { --mari-window-bg: rgba(80, 60, 40, 0.2); }" });
       const chatHook = await page.addStyleTag({ content: ":root { --mari-chat-bg: linear-gradient(red, blue); }" });
       await expect(characterBubble).toHaveCSS("background-image", "linear-gradient(rgb(255, 0, 0), rgb(0, 0, 255))");
-      await chatHook.evaluate((element) => element.remove());
+      await chatHook.evaluate((element) => element.parentNode?.removeChild(element));
       await expect.poll(async () => (await paintPixel(characterBubble))[3]).toBe(51);
-      await windowHook.evaluate((element) => element.remove());
+      await windowHook.evaluate((element) => element.parentNode?.removeChild(element));
       await expect.poll(async () => (await paintPixel(characterBubble))[3]).toBe(128);
       await page.evaluate(async () => {
         const { useUIStore } = await import("/src/stores/ui.store.ts" as string);

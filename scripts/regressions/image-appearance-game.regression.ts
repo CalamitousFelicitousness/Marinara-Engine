@@ -256,9 +256,9 @@ try {
           description:
             name === "Aster" ? "{{setvar::coat::stale-default}}An old default." : "An ordinary character description.",
           extensions: {
-            appearance: "{{char}} wears {{coat}} cloth beside {{user}}",
+            appearance: "{{char}} wears {{coat}} cloth beside {{user}} (roster {{characters}})",
             imageAppearanceEnabled: true,
-            imageAppearance: "{{char}} wears {{getvar::coat}} armor beside {{user}}",
+            imageAppearance: "{{char}} wears {{getvar::coat}} armor beside {{user}} (roster {{characters}})",
           },
         }),
       ),
@@ -287,13 +287,13 @@ try {
     {
       name: "override",
       enabled: true,
-      override: "{{char}} wears {{getvar::coat}} armor beside {{user}}",
+      override: "{{char}} wears {{getvar::coat}} armor beside {{user}} (roster {{characters}})",
       clothing: "armor",
     },
     {
       name: "disabled",
       enabled: false,
-      override: "{{char}} wears {{getvar::coat}} armor beside {{user}}",
+      override: "{{char}} wears {{getvar::coat}} armor beside {{user}} (roster {{characters}})",
       clothing: "cloth",
     },
     { name: "blank", enabled: true, override: " ", clothing: "cloth" },
@@ -333,7 +333,7 @@ try {
       for (const prompt of [previewPrompt, imagePrompts.at(-1)!]) {
         for (const name of ["Aster", "Boreal"])
           assert.ok(
-            prompt.includes(`${name} wears ${coat} ${scenario.clothing} beside Macro Mari`),
+            prompt.includes(`${name} wears ${coat} ${scenario.clothing} beside Macro Mari (roster Aster, Boreal)`),
             `${scenario.name}: ${name} has its own owner and chat scope: ${prompt}`,
           );
         assert.ok(

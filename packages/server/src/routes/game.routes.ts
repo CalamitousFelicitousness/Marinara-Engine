@@ -169,7 +169,9 @@ import { normalizeCharacterLookupName } from "../services/game/name-normalizatio
 import {
   buildPromptMacroContext,
   normalizeChatMacroVariables,
+  resolveCharacterMacroData,
   resolveMacrosForPreview,
+  scopePromptMacroContextToCharacter,
   resolveMacrosWithVariableSnapshot,
   setLorebookEntryCounts,
 } from "../services/prompt/index.js";
@@ -721,12 +723,17 @@ function createIllustrationAppearanceResolver(args: {
     if (!appearance.includes("{{")) return appearance;
     personaPromise ??= personaId ? characters.getPersona(personaId, args.chat.id) : Promise.resolve(null);
     const persona = await personaPromise;
+    const owner = characterId
+      ? (await resolveCharacterMacroData(args.db, [characterId], args.chat.id)).profilesById.get(characterId)
+      : undefined;
+    // A removed or unreadable card must not borrow the first party member's fields.
+    if (characterId && !owner) return "";
+    // ponytail: macro-heavy libraries rebuild party context per card; cache those reads if profiling requires it.
     const macroContext = await buildPromptMacroContext({
       db: args.db,
       chatId: args.chat.id,
       worldState: args.worldState,
-      characterIds: characterId ? [characterId] : partyIds,
-      groupCharacterIds: characterId ? partyIds : undefined,
+      characterIds: partyIds,
       personaName: persona?.name ?? "User",
       personaDescription: persona?.description ?? "",
       personaFields: {
@@ -737,9 +744,15 @@ function createIllustrationAppearanceResolver(args: {
         scenario: persona?.scenario ?? "",
       },
       localVariables: normalizeChatMacroVariables(args.meta.macroVariables),
-      macroSources: [appearance],
+      macroSources: [
+        appearance,
+        ...Object.values(owner ?? {}).filter((value): value is string => typeof value === "string"),
+      ],
     });
-    return resolveMacrosForPreview(appearance, macroContext);
+    return resolveMacrosForPreview(
+      appearance,
+      owner ? scopePromptMacroContextToCharacter(macroContext, owner) : macroContext,
+    );
   };
 }
 

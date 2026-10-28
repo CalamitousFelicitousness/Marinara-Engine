@@ -53,7 +53,7 @@ export function hasMariField(path: string): boolean {
 }
 
 /** The server's app_data action aliases (normalizeAppDataActionName): `Characters_Update` -> `character.update`. */
-function appDataAction(action: unknown): string {
+export function appDataAction(action: unknown): string {
   if (typeof action !== "string") return "";
   return action
     .trim()

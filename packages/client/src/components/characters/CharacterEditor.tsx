@@ -1332,6 +1332,7 @@ export function CharacterEditor() {
                   if (trimmedName !== formData.name) updateField("name", trimmedName);
                 }}
                 className="mari-editor-title-input"
+                data-mari-field="name"
                 title={formData.name || undefined}
                 aria-label={localizeUi("ui.characters.charactereditor.characterName")}
                 placeholder={localizeUi("ui.characters.charactereditor.characterName")}

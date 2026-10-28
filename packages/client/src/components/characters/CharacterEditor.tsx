@@ -6844,7 +6844,7 @@ function ColorsTab({
         value={boxColor}
         onChange={(v) => updateExtension("boxColor", v)}
         label={localizeUi("ui.characters.colorstab.messageBoxColor")}
-        helpText={`Background color for this character's chat message bubbles. Use a semi-transparent color for best results (e.g. rgba). ${localizeUi("ui.characters.colorstab.roleplayOnly")}`}
+        helpText={localizeUi("ui.colors.messageBoxHelp")}
       />
       {/* Name Aliases */}
       <NameAliasesSection

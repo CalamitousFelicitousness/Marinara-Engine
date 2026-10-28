@@ -2855,7 +2855,14 @@ export const ChatMessage = memo(function ChatMessage({
   const ownDialogueColor = !isMergedGroup && !!msgColors?.dialogueColor;
   const boxBgColor = msgColors?.boxColor;
   const msgNameColor = msgColors?.nameColor;
-  const roleplayBubbleBg = boxBgColor ? boxBgColor : isUser ? userBubbleBg : assistantBubbleBg;
+  const roleplayBubbleBg =
+    chatFontOpacity <= 0
+      ? "transparent"
+      : boxBgColor
+        ? `rgb(from ${boxBgColor} r g b / ${chatFontOpacity / 100})`
+        : isUser
+          ? userBubbleBg
+          : assistantBubbleBg;
   const nameColorMap = useMemo(() => {
     if (!colorInlineNames || !scopedCharacterMap) return null;
     const map = new Map<string, string>();
@@ -4124,6 +4131,7 @@ export const ChatMessage = memo(function ChatMessage({
                   // an inline `background` so card CSS can override the bubble
                   // (inline styles beat every selector). Applied by `.mari-rp-bubble`.
                   "--mari-rp-bubble-bg": roleplayBubbleBg,
+                  "--mari-rp-bubble-opacity": chatFontOpacity / 100,
                 } as React.CSSProperties
               }
             >

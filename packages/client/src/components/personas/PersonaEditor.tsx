@@ -3241,7 +3241,7 @@ function PersonaColorsTab({
         value={formData.boxColor}
         onChange={(v) => updateField("boxColor", v)}
         label={localizeUi("ui.personas.personacolorstab.messageBoxColor")}
-        helpText="Background color for your persona's chat message bubbles. Use a semi-transparent color for best results (e.g. rgba)."
+        helpText={localizeUi("ui.colors.messageBoxHelp")}
       />
     </div>
   );

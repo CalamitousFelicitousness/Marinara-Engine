@@ -21792,8 +21792,9 @@ test("Roleplay reduced paint effects preserve semantic and custom styling", asyn
     await expect(defaultBubble).toHaveAttribute("data-roleplay-bubble-transparent", "true");
     await expect(defaultBubble).toHaveCSS("background-image", "none");
     await expect(defaultBubble).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-    await expect(bubble).not.toHaveAttribute("data-roleplay-bubble-transparent", "true");
-    expect(await bubble.evaluate((element) => getComputedStyle(element).backgroundImage)).toContain("rgb(18, 52, 86)");
+    await expect(bubble).toHaveAttribute("data-roleplay-bubble-transparent", "true");
+    await expect(bubble).toHaveCSS("background-image", "none");
+    await expect(bubble).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
 
     await expect
       .poll(() =>
@@ -21809,7 +21810,7 @@ test("Roleplay reduced paint effects preserve semantic and custom styling", asyn
     await page.reload();
     await expect(surface).toHaveClass(/mari-rp-reduced-paint/);
     await expect(defaultBubble).toHaveAttribute("data-roleplay-bubble-transparent", "true");
-    await expect(bubble).not.toHaveAttribute("data-roleplay-bubble-transparent", "true");
+    await expect(bubble).toHaveAttribute("data-roleplay-bubble-transparent", "true");
     await expect(bubble).not.toHaveCSS("box-shadow", "none");
   } finally {
     await Promise.all([

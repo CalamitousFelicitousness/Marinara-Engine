@@ -25,6 +25,22 @@ export function getCssBackgroundStyle(value: string) {
   return isCssGradient(value) ? { background: value } : { backgroundColor: value };
 }
 
+/** Replace authored alpha without changing the color channels or gradient geometry. */
+export function withCssPaintAlpha(value: string, alpha: string): string {
+  const colorWithAlpha = (color: string) => `rgb(from ${color} r g b / ${alpha})`;
+  if (!isCssGradient(value)) return colorWithAlpha(value);
+
+  const open = value.indexOf("(");
+  const close = value.lastIndexOf(")");
+  const stops = splitTopLevelCommas(value.slice(open + 1, close)).map((stop) => {
+    const color = readFunctionColor(stop) ?? stop.match(/^(?:#[0-9a-f]{3,8}\b|[a-z][a-z-]*)/i)?.[0];
+    // Keep directions, interpolation spaces, positions and transition hints intact.
+    if (!color || !CSS.supports("color", color)) return stop;
+    return colorWithAlpha(color) + stop.slice(color.length);
+  });
+  return `${value.slice(0, open + 1)}${stops.join(", ")})`;
+}
+
 function splitTopLevelCommas(value: string): string[] {
   const parts: string[] = [];
   let depth = 0;

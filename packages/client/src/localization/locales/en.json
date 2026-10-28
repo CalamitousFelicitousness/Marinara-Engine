@@ -13312,6 +13312,8 @@
   "ui.panels.appearancesettings.rgbMode": "RGB Mode",
   "ui.panels.appearancesettings.roleplayAvatars": "Roleplay Avatars",
   "ui.panels.appearancesettings.roleplayMessagesBackgroundOpacity": "Roleplay Messages Background Opacity",
+  "settings.controls.roleplayMessageOpacity.help": "Overrides transparency in character, persona, and applied preset background colors.",
+  "ui.colors.messageBoxHelp": "Background color for Roleplay message bubbles. Set transparency with Roleplay Messages Background Opacity in Settings → Appearance → Roleplay.",
   "ui.panels.appearancesettings.scalesGameModeDialoguePortraitsSeparatelyFromTheCenter": "Sizes Game mode dialogue portraits separately from the full-body sprites in the middle. Very large art still shrinks to fit the screen.",
   "ui.panels.appearancesettings.schemeDefaultValue1": "Scheme default {{value1}}",
   "ui.panels.appearancesettings.setABackgroundGradientForAllConversationModeChats": "Set a background gradient for all Conversation-mode chats, separately for dark and light color schemes.",

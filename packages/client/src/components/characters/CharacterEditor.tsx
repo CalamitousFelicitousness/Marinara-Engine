@@ -510,16 +510,19 @@ export function CharacterEditor() {
     const { merged, conflicts } = rebaseForm(base, formData, server);
     setFormData(merged);
     if (conflicts.length === 0) return;
-    toast.warning(
-      localizeUi("ui.characters.charactereditor.changedElsewhereKeptYourEdits", { value1: conflicts.length }),
-      {
-        id: `character-rebase-${characterId}`,
-        action: {
-          label: localizeUi("ui.characters.charactereditor.useTheNewVersion"),
-          onClick: () => setFormData((prev) => prev && rebaseForm(base, server, prev).merged),
+    const id = characterId;
+    toast.warning(localizeUi("ui.characters.charactereditor.changedElsewhereKeptYourEdits"), {
+      id: `character-rebase-${id}`,
+      duration: 12_000,
+      action: {
+        label: localizeUi("ui.characters.charactereditor.useTheNewVersion"),
+        onClick: () => {
+          // The toast can outlive a switch to another character.
+          if (useUIStore.getState().characterDetailId !== id) return;
+          updateFormData((prev) => rebaseForm(base, server, prev).merged);
         },
       },
-    );
+    });
   });
 
   // Parse the character when it first loads, or when switching characters.
@@ -720,9 +723,6 @@ export function CharacterEditor() {
     }
     setSaving(true);
     const editRevisionAtSaveStart = editRevisionRef.current;
-    // The saved card is the merge base for the refetch that follows the save.
-    const baseBeforeSave = loadedDataRef.current;
-    loadedDataRef.current = formData;
     try {
       await updateCharacter.mutateAsync({
         id: characterId,
@@ -734,7 +734,6 @@ export function CharacterEditor() {
       }
       return editRevisionRef.current === editRevisionAtSaveStart;
     } catch (err: any) {
-      loadedDataRef.current = baseBeforeSave;
       console.error("[CharacterEditor] Save failed:", err);
       toast.error(
         err?.message ?? localizeUi("ui.characters.charactereditor.failedToSaveCharacterCheckTheConsoleForDetails"),

@@ -41,6 +41,20 @@ try {
     { read: ["builtin-characters"], touched: ["builtin-characters", "builtin-onboarding"] },
     "only successful app_data calls count, and only built-in skills are read",
   );
+  // A call held for approval was written on its surface, so it touches (Manual mode, #8392 review).
+  assert.deepEqual(
+    handbookTurnFromResults(
+      [call({ action: "lorebook.link_character", lorebookId: "l", characterId: "c" }, false)],
+      [
+        {
+          id: "h",
+          name: "app_data",
+          arguments: { action: "lorebook.link_character", lorebookId: "l", characterId: "c" },
+        },
+      ],
+    ).touched.sort(),
+    ["builtin-characters", "builtin-lorebook"],
+  );
   assert.deepEqual(handbooksForAction("lorebook.link_character").sort(), ["builtin-characters", "builtin-lorebook"]);
   assert.deepEqual(
     handbooksForAction("lorebook.update", { data: { content: '{{#if decision:"stay"}}x{{/if}}' } }).sort(),
@@ -60,6 +74,11 @@ try {
   assert.deepEqual(activeHandbookIds([read(C), quiet, quiet, quiet]), [], "dropped after the 3rd quiet turn");
   assert.deepEqual(activeHandbookIds([read(C), quiet, touch(C), quiet, quiet]), [C], "a write keeps it");
   assert.deepEqual(activeHandbookIds([touch(C), quiet]), [], "a write alone never adds one");
+  assert.deepEqual(
+    activeHandbookIds([read(C), touch(C), touch(C), touch(C), touch(C)]),
+    [C],
+    "held proposals in a row keep it, like any write",
+  );
   assert.deepEqual(activeHandbookIds([read(C), quiet, quiet, quiet, touch(C)]), [], "nor brings back a dropped one");
   assert.deepEqual(
     activeHandbookIds([read(C), read("builtin-onboarding"), read("builtin-lorebook")]),
@@ -71,6 +90,11 @@ try {
     [C, "builtin-lorebook"],
     "reading one again makes it the newest",
   );
+  assert.deepEqual(
+    activeHandbookIds([read(C), read("builtin-onboarding"), touch(C), read("builtin-lorebook")]),
+    [C, "builtin-lorebook"],
+    "the limit drops the one idle longest, not the one read first",
+  );
 
   // --- The block: whole text, names can't break the tag, nothing when empty.
   assert.equal(renderActiveHandbooksPrompt([]), null);
@@ -81,7 +105,7 @@ try {
   assert.match(block, /^<active_handbooks>\n/);
   assert.match(
     block,
-    /<handbook id="builtin-characters" name="Cards  and   more ">\n# Characters\nAll of it.\n<\/handbook>/,
+    /<handbook id="builtin-characters" name="Cards &quot;and&quot; &lt;more&gt;">\n# Characters\nAll of it.\n<\/handbook>/,
   );
   assert.match(block, /drops after 3 turns without it/);
   assert.match(block, /<\/active_handbooks>$/);

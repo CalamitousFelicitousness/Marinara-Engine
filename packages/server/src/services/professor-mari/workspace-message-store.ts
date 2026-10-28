@@ -95,7 +95,7 @@ export function buildAssistantMessageExtra(run: AssistantRunRecord): Record<stri
   });
   if (continuity) extraUpdate.mariWorkspaceContinuity = continuity;
   // #8391: what this turn did with handbooks, so the next turn knows which ones to keep in context.
-  extraUpdate.mariHandbooks = handbookTurnFromResults(run.commandResults);
+  extraUpdate.mariHandbooks = handbookTurnFromResults(run.commandResults, run.endedWithDeferral ? run.heldCalls : []);
   extraUpdate.generationInfo = {
     provider: run.connection.provider,
     model: run.connection.model,

@@ -4,19 +4,26 @@
 // works out the active set from those records, carries their whole text and re-arms the gate for the rest.
 
 import { normalizeAppDataActionName } from "../mari-db/mari-db.service.js";
-import type { WorkspaceCommandResult } from "./workspace-agent.service.js";
+import { escapeXmlAttribute, flattenLine } from "./mari-skills-prompt.js";
+import type { WorkspaceCommandCall, WorkspaceCommandResult } from "./workspace-agent.service.js";
 import { handbooksForAction } from "./workspace-commands.js";
 
 /** At most this many handbooks stay; reading another drops the oldest (characters + onboarding fit together). */
 export const STICKY_HANDBOOK_LIMIT = 2;
-/** A handbook drops after this many user turns in a row without a read or write on its surface. */
+/** A handbook drops after this many of Mari's turns in a row (one per user message) without a read or write on its surface. */
 export const STICKY_HANDBOOK_QUIET_TURNS = 3;
 
 /** What one assistant turn did with handbooks: built-in skills it read, and the handbooks its other actions route to. */
 export type MariHandbookTurn = { read: string[]; touched: string[] };
 
-/** One turn's record from its tool results. Only successful app_data calls count, and only built-in skills are read. */
-export function handbookTurnFromResults(results: WorkspaceCommandResult[]): MariHandbookTurn {
+/**
+ * One turn's record from its tool results. Only successful app_data calls count, and only built-in skills are read.
+ * Calls held for the user's approval (Manual mode) count as touches too: she wrote them on that surface.
+ */
+export function handbookTurnFromResults(
+  results: WorkspaceCommandResult[],
+  heldCalls: WorkspaceCommandCall[] = [],
+): MariHandbookTurn {
   const read = new Set<string>();
   const touched = new Set<string>();
   for (const result of results) {
@@ -29,6 +36,11 @@ export function handbookTurnFromResults(results: WorkspaceCommandResult[]): Mari
       continue;
     }
     handbooksForAction(action, result.input).forEach((id) => touched.add(id));
+  }
+  for (const call of heldCalls) {
+    if (call.name !== "app_data") continue;
+    const action = typeof call.arguments.action === "string" ? call.arguments.action : call.arguments.type;
+    if (typeof action === "string") handbooksForAction(action, call.arguments).forEach((id) => touched.add(id));
   }
   return { read: [...read], touched: [...touched] };
 }
@@ -55,9 +67,12 @@ export function activeHandbookIds(turns: MariHandbookTurn[]): string[] {
       active = active.filter((entry) => entry.id !== id);
       active.push({ id, lastTurn: index });
     }
+    // A touch moves it to the end too, so the limit below drops the one idle longest, not the one read first.
     for (const id of turn.touched) {
       const entry = active.find((candidate) => candidate.id === id);
-      if (entry) entry.lastTurn = index;
+      if (!entry) continue;
+      active = active.filter((candidate) => candidate !== entry);
+      active.push({ id, lastTurn: index });
     }
     active = active.slice(-STICKY_HANDBOOK_LIMIT);
   });
@@ -75,7 +90,7 @@ export function renderActiveHandbooksPrompt(
     .filter((handbook) => handbook.content.trim())
     .map(
       (handbook) =>
-        `<handbook id="${handbook.id}" name="${handbook.name.replace(/["<>&\r\n]/g, " ")}">\n${handbook.content.trim()}\n</handbook>`,
+        `<handbook id="${escapeXmlAttribute(flattenLine(handbook.id))}" name="${escapeXmlAttribute(flattenLine(handbook.name))}">\n${handbook.content.trim()}\n</handbook>`,
     );
   if (blocks.length === 0) return null;
   return [

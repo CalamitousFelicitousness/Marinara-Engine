@@ -62,6 +62,7 @@ export function buildProfessorMariCommandCenterContext(
     settingsLocation?: { tab?: string; controlId?: string };
     field?: string;
     fieldId?: string;
+    fieldDraft?: { fieldId: string; value: string; selection?: string };
     error?: { message: string; code?: string };
     asideAnswer?: { query: string; answer: string; tier: "local" | "remote"; sources?: ProfessorMariQuickSource[] };
     /** R22/K1: a failed-reply "fix this" row hands off through the chat-error door, not command-center. */
@@ -95,6 +96,14 @@ export function buildProfessorMariCommandCenterContext(
     ...(options.settingsLocation ? { settingsLocation: options.settingsLocation } : {}),
     ...(options.field ? { field: options.field } : {}),
     ...(options.fieldId ? { fieldId: options.fieldId } : {}),
+    ...(options.fieldDraft && options.fieldDraft.fieldId === options.fieldId
+      ? {
+          fieldDraft: {
+            value: options.fieldDraft.value.slice(0, 20_000),
+            ...(options.fieldDraft.selection ? { selection: options.fieldDraft.selection.slice(0, 4_000) } : {}),
+          },
+        }
+      : {}),
     ...(options.error ? { error: options.error } : {}),
     ...(options.asideAnswer ? { asideAnswer: options.asideAnswer } : {}),
   };

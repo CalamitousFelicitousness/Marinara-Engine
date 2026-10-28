@@ -373,6 +373,7 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
   const activeChatId = useChatStore((state) => state.activeChatId);
   const openCharacterId = useUIStore((state) => state.characterDetailId);
   const activeEditorField = useUIStore((state) => state.activeEditorField);
+  const mariFieldDraft = useUIStore((state) => state.mariFieldDraft);
   const lastAppError = useUIStore((state) => state.lastAppError);
   const openPersonaId = useUIStore((state) => state.personaDetailId);
   const openLorebookId = useUIStore((state) => state.lorebookDetailId);
@@ -1157,6 +1158,8 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
     chatPendingForMariRef.current = context && !context.activeChat && activeChatId ? activeChatId : null;
     if (context) {
       setMariContext(context);
+      // One handoff per capture: a later Mari door in this session must not resend old text as current.
+      if (context.fieldDraft) useUIStore.getState().setMariFieldDraft(null);
       // The handoff lives in session state, not component state, so a task that
       // Mari finishes while the omnibar is shut is still waiting on reopen.
       setSessionValue("mariHandoff", {
@@ -1526,6 +1529,8 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
           : undefined,
       field: gameSetupStep ?? activeEditorField?.label,
       fieldId: gameSetupStep ? undefined : activeEditorField?.id,
+      fieldDraft:
+        !gameSetupStep && mariFieldDraft?.fieldId === activeEditorField?.id ? (mariFieldDraft ?? undefined) : undefined,
       // Only the deliberate "fix this" handoff actually needs lastAppError's text; every other
       // Mari call (R22) must not carry it along just because an unrelated error happens to be live.
       error: fix && lastAppError ? { message: lastAppError.message, code: lastAppError.code } : undefined,

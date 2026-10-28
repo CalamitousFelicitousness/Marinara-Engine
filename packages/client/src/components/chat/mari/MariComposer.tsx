@@ -36,11 +36,11 @@ import {
 import { useTranslation } from "react-i18next";
 import { MariWorkspaceContextItem } from "../../../hooks/use-mari-workspace-context";
 import { ProfessorMariContextFacet } from "../../../lib/professor-mari-presentation";
-import { activeToken, composerKeyAction } from "../../../lib/composer-triggers";
+import { activeToken, composerKeyAction, type ComposerMark } from "../../../lib/composer-triggers";
 import { cn } from "../../../lib/utils";
 import { useLocalizedUiText } from "../../../localization/use-localized-ui-text";
 import { useUIStore } from "../../../stores/ui.store";
-import { InlineGhostText } from "../../ui/InlineGhostText";
+import { InlineDraftOverlay } from "../../ui/InlineDraftOverlay";
 import { ConnectionModelPicker } from "../../connections/ConnectionModelPicker";
 import { MariRow } from "../mari-primitives";
 import { MariConnectionGuidance } from "./MariConnectionGuidance";
@@ -128,6 +128,8 @@ type MariComposerProps = {
   pickerOpen?: boolean;
   onPickerAction?: (action: "picker-next" | "picker-prev" | "picker-accept" | "picker-close") => void;
   onActiveTokenChange?: (token: ReturnType<typeof activeToken>) => void;
+  /** Resolved `@` references to mark in the draft. */
+  referenceMarks?: ComposerMark[];
 };
 
 export function MariComposer({
@@ -148,6 +150,7 @@ export function MariComposer({
   connectionOptions,
   draft,
   draftSuffix,
+  referenceMarks = [],
   effectiveConnection,
   effectiveConnectionId,
   enterToSend,
@@ -387,18 +390,20 @@ export function MariComposer({
         ) : null}
 
         <div className="relative flex min-w-0 flex-1 basis-full">
-          {liveToken ? null : (
-            <InlineGhostText
-              value={draft}
-              suffix={draftSuffix}
-              multiline
-              scrollLeft={composerScroll.left}
-              scrollTop={composerScroll.top}
-              className="mari-workspace-composer__text"
-              // The textarea is disabled while busy, so the suggestion is not tappable then either.
-              onAccept={isBusy ? undefined : acceptDraftCompletion}
-            />
-          )}
+          <InlineDraftOverlay
+            value={draft}
+            suffix={liveToken ? "" : draftSuffix}
+            marks={[
+              ...referenceMarks,
+              ...(liveToken ? [{ start: liveToken.start, end: liveToken.end, tone: "pending" as const }] : []),
+            ]}
+            multiline
+            scrollLeft={composerScroll.left}
+            scrollTop={composerScroll.top}
+            className="mari-workspace-composer__text"
+            // The textarea is disabled while busy, so the suggestion is not tappable then either.
+            onAccept={isBusy ? undefined : acceptDraftCompletion}
+          />
           <textarea
             ref={floatingTextareaRef}
             value={draft}

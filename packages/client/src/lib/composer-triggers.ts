@@ -72,6 +72,33 @@ export function formatReferenceToken(label: string): string {
   return `@"${label.replace(/"/g, "").trim()}"`;
 }
 
+export type ComposerMark = { start: number; end: number; tone: "reference" | "pending" | "unresolved" };
+
+/**
+ * Splits `value` into runs for the draft overlay. Marks are clamped to the value, sorted, and empty or
+ * overlapping ones dropped (the earlier start wins; on an equal start the longer). Joining every `text`
+ * gives back `value` exactly.
+ */
+export function draftSegments(
+  value: string,
+  marks: ComposerMark[],
+): Array<{ text: string; tone?: ComposerMark["tone"] }> {
+  const clamped = marks
+    .map((mark) => ({ ...mark, start: Math.max(0, mark.start), end: Math.min(value.length, mark.end) }))
+    .filter((mark) => mark.end > mark.start)
+    .sort((a, b) => a.start - b.start || b.end - a.end);
+  const out: Array<{ text: string; tone?: ComposerMark["tone"] }> = [];
+  let cursor = 0;
+  for (const mark of clamped) {
+    if (mark.start < cursor) continue;
+    if (mark.start > cursor) out.push({ text: value.slice(cursor, mark.start) });
+    out.push({ text: value.slice(mark.start, mark.end), tone: mark.tone });
+    cursor = mark.end;
+  }
+  if (cursor < value.length) out.push({ text: value.slice(cursor) });
+  return out;
+}
+
 export type ComposerKeyInput = {
   key: string;
   shiftKey: boolean;

@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import {
   activeToken,
   composerKeyAction,
+  draftSegments,
   formatReferenceToken,
   type ComposerKeyInput,
+  type ComposerMark,
 } from "../../packages/client/src/lib/composer-triggers.js";
 
 const atEnd = (text: string) => activeToken(text, text.length);
@@ -75,5 +77,81 @@ assert.equal(act({ key: "Enter", enterToSend: false }), "none");
 assert.equal(act({ key: "Enter", enterToSend: false, metaKey: true }), "send");
 assert.equal(act({ key: "Enter", enterToSend: false, ctrlKey: true }), "send");
 assert.equal(act({ key: "a" }), "none");
+
+// draftSegments
+const joined = (value: string, marks: ComposerMark[]) =>
+  draftSegments(value, marks)
+    .map((seg) => seg.text)
+    .join("");
+assert.deepEqual(draftSegments("hello", []), [{ text: "hello" }]);
+assert.deepEqual(draftSegments("", [{ start: 0, end: 3, tone: "reference" }]), []);
+assert.deepEqual(draftSegments("hi @Al ok", [{ start: 3, end: 6, tone: "reference" }]), [
+  { text: "hi " },
+  { text: "@Al", tone: "reference" },
+  { text: " ok" },
+]);
+assert.deepEqual(draftSegments("@Al ok", [{ start: 0, end: 3, tone: "pending" }]), [
+  { text: "@Al", tone: "pending" },
+  { text: " ok" },
+]);
+assert.deepEqual(draftSegments("ok @Al", [{ start: 3, end: 6, tone: "unresolved" }]), [
+  { text: "ok " },
+  { text: "@Al", tone: "unresolved" },
+]);
+// clamped, and fully out-of-range or empty marks dropped
+assert.deepEqual(draftSegments("ok @Al", [{ start: 3, end: 99, tone: "reference" }]), [
+  { text: "ok " },
+  { text: "@Al", tone: "reference" },
+]);
+assert.deepEqual(draftSegments("ok", [{ start: -5, end: 1, tone: "reference" }]), [
+  { text: "o", tone: "reference" },
+  { text: "k" },
+]);
+assert.deepEqual(
+  draftSegments("ok", [
+    { start: 5, end: 9, tone: "reference" },
+    { start: 1, end: 1, tone: "pending" },
+  ]),
+  [{ text: "ok" }],
+);
+// overlap: the earlier start wins, then the longer on an equal start
+assert.deepEqual(
+  draftSegments("abcdef", [
+    { start: 2, end: 5, tone: "pending" },
+    { start: 0, end: 3, tone: "reference" },
+  ]),
+  [{ text: "abc", tone: "reference" }, { text: "def" }],
+);
+assert.deepEqual(
+  draftSegments("abcdef", [
+    { start: 1, end: 2, tone: "pending" },
+    { start: 1, end: 4, tone: "reference" },
+  ]),
+  [{ text: "a" }, { text: "bcd", tone: "reference" }, { text: "ef" }],
+);
+// unsorted input
+assert.deepEqual(
+  draftSegments("@a @b", [
+    { start: 3, end: 5, tone: "unresolved" },
+    { start: 0, end: 2, tone: "reference" },
+  ]),
+  [{ text: "@a", tone: "reference" }, { text: " " }, { text: "@b", tone: "unresolved" }],
+);
+// concatenation invariant
+const sample = 'x @Al \n@"B c" y';
+const markSets: ComposerMark[][] = [
+  [],
+  [{ start: 2, end: 5, tone: "reference" }],
+  [
+    { start: -3, end: 4, tone: "pending" },
+    { start: 3, end: 40, tone: "unresolved" },
+  ],
+  [
+    { start: 7, end: 12, tone: "reference" },
+    { start: 2, end: 5, tone: "reference" },
+    { start: 4, end: 8, tone: "pending" },
+  ],
+];
+for (const marks of markSets) assert.equal(joined(sample, marks), sample);
 
 console.log("Composer triggers regression passed");

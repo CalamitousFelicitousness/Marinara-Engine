@@ -9607,7 +9607,7 @@
   "ui.chibiProfessorMari.loved": "Remember, you are loved and appreciated. Cheers!",
   "ui.chibiProfessorMari.shiny": "✨ This is SO rare!! ✨",
   "ui.chibiProfessorMari.visit": "If you see this image while scrolling through Marinara Engine, you've been visited by the rare Chibi Professor Mari!",
-  "ui.colors.messageBoxHelp": "Background color for Roleplay message bubbles. Set transparency with Roleplay Messages Background Opacity in Settings → Appearance → Roleplay.",
+  "ui.colors.messageBoxHelp": "Set Roleplay message transparency in Settings → Appearance → Roleplay.",
   "ui.connections.choicesetting.backendDefault": "Backend default",
   "ui.connections.comfyuilorasettings.chooseUpToFiveLoras": "Choose up to five LoRAs returned by ComfyUI, or enter their filenames.",
   "ui.connections.comfyuilorasettings.loraNumber": "LoRA {{value1}}",

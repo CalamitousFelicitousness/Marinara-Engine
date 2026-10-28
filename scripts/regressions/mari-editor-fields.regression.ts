@@ -2,8 +2,12 @@
 // `character.update` step must name the same `data-mari-field` id the editor puts on the field.
 import assert from "node:assert/strict";
 import {
+  characterFieldValue,
   characterPatchFieldId,
   editorFieldId,
+  heldCharacterFields,
+  keptCharacterFields,
+  withCharacterFieldValue,
   hasMariField,
   mariWorkingFieldFromTool,
   mariFieldDraft,
@@ -74,5 +78,63 @@ assert.equal(hasMariField("name"), true);
 assert.equal(hasMariField("data.extensions.talkativeness"), false);
 assert.equal(hasMariField("avatarPath"), false);
 assert.equal(hasMariField("data.extensions"), false);
+
+// Slice 5: the fields a held change would write, full values, in editor order; a later call to
+// the same field wins; lists, unknown keys and other records' actions stay out.
+const long = "x".repeat(900);
+assert.deepEqual(
+  heldCharacterFields([
+    {
+      name: "app_data",
+      arguments: { action: "character.update", characterId: "c1", patch: { firstMes: "Hi", tags: ["a"] } },
+    },
+    {
+      name: "app_data",
+      arguments: { action: "Character.Update", id: "c1", data: { description: long, personality: "Dry" } },
+    },
+    {
+      name: "app_data",
+      arguments: { action: "character.update", characterId: "c1", extensions: { backstory: "Swamp" } },
+    },
+    { name: "app_data", arguments: { action: "character.update", characterId: "c1", patch: { personality: "Warm" } } },
+    { name: "app_data", arguments: { action: "lorebook.update", lorebookId: "l1", patch: { description: "No" } } },
+    { name: "write", arguments: { path: "x" } },
+  ]),
+  [
+    { characterId: "c1", fieldId: "description", value: long },
+    { characterId: "c1", fieldId: "personality", value: "Warm" },
+    { characterId: "c1", fieldId: "extensions.backstory", value: "Swamp" },
+    { characterId: "c1", fieldId: "first_mes", value: "Hi" },
+  ],
+);
+assert.deepEqual(heldCharacterFields(null), []);
+
+// Kept: only a character update whose review is still pending can be undone from the field.
+const updated = {
+  resource: { kind: "character", id: "c1" },
+  status: "updated",
+  changedFields: ["data.personality", "data.description", "data.tags"],
+  reviewIds: ["r1"],
+  undoUntil: "2026-10-28T14:32:00.000Z",
+};
+assert.deepEqual(keptCharacterFields([updated], new Set(["r1"])), {
+  reviewIds: ["r1"],
+  fields: [
+    { characterId: "c1", fieldId: "description" },
+    { characterId: "c1", fieldId: "personality" },
+  ],
+  undoUntil: "2026-10-28T14:32:00.000Z",
+});
+assert.deepEqual(keptCharacterFields([updated], new Set()), { reviewIds: [], fields: [], undoUntil: null });
+
+// Reading and writing a field by its editor id (Edit, and the user's text after her change).
+const server = { description: "Hers", extensions: { backstory: "Hers b", talkativeness: 0.5 } };
+assert.deepEqual(withCharacterFieldValue(server, "extensions.backstory", "Mine b"), {
+  description: "Hers",
+  extensions: { backstory: "Mine b", talkativeness: 0.5 },
+});
+assert.equal(server.extensions.backstory, "Hers b");
+assert.equal(characterFieldValue(server, "extensions.backstory"), "Hers b");
+assert.equal(characterFieldValue(server, "extensions.missing"), "");
 
 console.log("mari-editor-fields regression passed");

@@ -23,6 +23,7 @@
     "tts-safari-play-guard.regression.ts",
     "client-runtime-diagnostics.regression.ts",
     "character-form-rebase.regression.ts",
+    "mari-editor-fields.regression.ts",
     "ruleset-catalog-picker.regression.ts",
     "ruleset-catalog-refresh.regression.ts",
     "ruleset-combat-bridge-client.regression.ts",

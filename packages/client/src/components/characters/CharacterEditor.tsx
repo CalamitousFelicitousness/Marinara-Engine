@@ -165,6 +165,7 @@ import { SpriteWandCleanupEditor } from "../ui/SpriteWandCleanupEditor";
 import { ExportFormatDialog, type ExportFormatChoice } from "../ui/ExportFormatDialog";
 import { EditorTabNavigation } from "../ui/EditorTabNavigation";
 import { useEditorSections } from "../../hooks/use-editor-sections";
+import { useMariEditorFields } from "../../hooks/use-mari-editor-fields";
 import { useEditorLeaveSave } from "../../hooks/use-editor-leave-save";
 import { LazyEditorSection } from "../ui/LazyEditorSection";
 import { leaveWithoutSaving } from "../../lib/editor-leave";
@@ -428,11 +429,18 @@ export function CharacterEditor() {
     () => storedOnboarding !== undefined && !characterOnboardingSchema.safeParse(storedOnboarding).success,
     [storedOnboarding],
   );
-  const { contentRef, scrollToSection } = useEditorSections(
+  const { contentRef, scrollToSection, scrollToElement } = useEditorSections(
     characterId,
     !!formData,
     (useUIStore.getState().characterDetailInitialTab as TabId | null) ?? "metadata",
     setActiveTab,
+  );
+  // Report the focused field to the omnibar so "make this warmer" knows the target; show Prof. Mari's fields.
+  const { workingOffscreen, revealWorkingField } = useMariEditorFields(
+    contentRef,
+    characterId,
+    !!formData,
+    scrollToElement,
   );
   const [characterComment, setCharacterComment] = useState("");
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
@@ -443,18 +451,6 @@ export function CharacterEditor() {
   const dirtyRef = useRef(false);
   const editRevisionRef = useRef(0);
   const setEditorDirty = useUIStore((s) => s.setEditorDirty);
-  // Report the focused field to the omnibar so "make this warmer" knows the target.
-  const setActiveEditorField = useUIStore((s) => s.setActiveEditorField);
-  useEffect(() => {
-    const field =
-      activeTab === "card"
-        ? { id: "description", label: "Description" }
-        : activeTab === "convo"
-          ? { id: "first_mes", label: "Greeting" }
-          : null;
-    setActiveEditorField(field);
-    return () => setActiveEditorField(null);
-  }, [activeTab, setActiveEditorField]);
   const lorebookEmbedInFlightRef = useRef(false);
   const [lorebookEmbedding, setLorebookEmbedding] = useState(false);
   const setDirtyState = useCallback((nextDirty: boolean) => {
@@ -1392,7 +1388,23 @@ export function CharacterEditor() {
       </div>
 
       {/* ── Body ── */}
-      <div className="mari-editor-body">
+      <div className="mari-editor-body relative">
+        {workingOffscreen && (
+          <button
+            type="button"
+            className="mari-topbar-status mari-field-chip"
+            data-state="working"
+            data-edge={workingOffscreen}
+            onClick={revealWorkingField}
+          >
+            {workingOffscreen === "above" ? (
+              <ArrowUp size="0.75rem" aria-hidden="true" />
+            ) : (
+              <ArrowDown size="0.75rem" aria-hidden="true" />
+            )}
+            {localizeUi("ui.characters.charactereditor.mariIsHere")}
+          </button>
+        )}
         {/* Tab Content */}
         <div ref={contentRef} className="mari-editor-content @max-5xl:p-4">
           <div className="mari-editor-content-inner">
@@ -1713,6 +1725,7 @@ function CharacterCardTab({
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-personality">
           <TextareaTab
+            mariField="personality"
             actions={wandFor("personality")}
             title={localizeUi("chat.settings.inlineEditor.fields.personality")}
             subtitle={localizeUi("ui.characters.charactercardtab.aConciseSummaryOfTheCharacterSPersonalityTraits")}
@@ -1739,6 +1752,7 @@ function CharacterCardTab({
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-backstory">
           <TextareaTab
+            mariField="extensions.backstory"
             actions={wandFor("backstory")}
             title={localizeUi("chat.settings.inlineEditor.fields.backstory")}
             subtitle={localizeUi("ui.characters.charactercardtab.theCharacterSHistoryOriginStoryAndFormativeLife")}
@@ -1763,6 +1777,7 @@ function CharacterCardTab({
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-appearance">
           <TextareaTab
+            mariField="extensions.appearance"
             actions={wandFor("appearance")}
             title={localizeUi("chat.settings.inlineEditor.fields.appearance")}
             subtitle={localizeUi(
@@ -1817,6 +1832,7 @@ function CharacterCardTab({
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-scenario">
           <TextareaTab
+            mariField="scenario"
             actions={wandFor("scenario")}
             title={localizeUi("chat.settings.inlineEditor.fields.scenario")}
             subtitle={localizeUi(
@@ -2362,7 +2378,7 @@ function CharacterSummaryField({
   const { t: localizeUi } = useUiTranslation();
   const characterId = useUIStore((state) => state.characterDetailId);
   return (
-    <div className="mari-editor-panel space-y-3 p-3">
+    <div className="mari-editor-panel space-y-3 p-3" data-mari-field="summary">
       <div className="flex items-start justify-between gap-3">
         <SectionHeader
           title={localizeUi("ui.characters.summary.label")}
@@ -2408,7 +2424,7 @@ function CharacterDescriptionTab({
   const { t: localizeUi } = useUiTranslation();
   const selfCharacterId = useUIStore((s) => s.characterDetailId);
   return (
-    <div className="mari-editor-panel space-y-3 p-3">
+    <div className="mari-editor-panel space-y-3 p-3" data-mari-field="description">
       <div className="flex items-start justify-between gap-3">
         <SectionHeader
           title={localizeUi("chat.settings.inlineEditor.fields.description")}
@@ -2452,6 +2468,7 @@ function TextareaTab({
   onFocus,
   footer,
   actions,
+  mariField,
 }: {
   title: string;
   subtitle: string;
@@ -2465,10 +2482,12 @@ function TextareaTab({
   /** Shown under the textarea, inside the panel. */
   footer?: ReactNode;
   actions?: ReactNode;
+  /** The field id Prof. Mari knows this field by (see lib/mari-editor-fields). */
+  mariField?: string;
 }) {
   const selfCharacterId = useUIStore((s) => s.characterDetailId);
   return (
-    <div className="mari-editor-panel space-y-3 p-3">
+    <div className="mari-editor-panel space-y-3 p-3" data-mari-field={mariField}>
       <div className="flex items-start justify-between gap-3">
         <SectionHeader title={title} subtitle={subtitle} helpText={helpText} />
         {actions}
@@ -2753,7 +2772,7 @@ function MetadataTab({
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <label className="space-y-1.5 sm:col-span-2">
+        <label className="space-y-1.5 sm:col-span-2" data-mari-field="name">
           <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
             {localizeUi("ui.characters.metadatatab.name")}{" "}
             <HelpTooltip text={localizeUi("ui.characters.metadatatab.theCharacterSDisplayNameThisIsWhatAppears")} />
@@ -2780,7 +2799,7 @@ function MetadataTab({
             placeholder={localizeUi("ui.characters.metadatatab.modernAuVersion")}
           />
         </label>
-        <label className="space-y-1.5">
+        <label className="space-y-1.5" data-mari-field="creator">
           <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
             {localizeUi("ui.characters.metadatatab.creator")}{" "}
             <HelpTooltip text={localizeUi("ui.characters.metadatatab.thePersonWhoMadeThisCharacterUsefulForGiving")} />
@@ -2792,7 +2811,7 @@ function MetadataTab({
             placeholder={localizeUi("ui.characters.metadatatab.yourName")}
           />
         </label>
-        <div className="space-y-1.5">
+        <div className="space-y-1.5" data-mari-field="character_version">
           <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
             <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
               {localizeUi("ui.characters.metadatatab.version")}{" "}
@@ -2849,7 +2868,7 @@ function MetadataTab({
       </div>
 
       {/* Tags */}
-      <div className="space-y-2">
+      <div className="space-y-2" data-mari-field="tags">
         <div className="flex items-center justify-between gap-2">
           <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
             {localizeUi("ui.characters.metadatatab.tags")}{" "}
@@ -2992,7 +3011,7 @@ function MetadataTab({
       </div>
 
       {/* Creator Notes */}
-      <div className="block space-y-1.5">
+      <div className="block space-y-1.5" data-mari-field="creator_notes">
         <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
           {localizeUi("ui.characters.metadatatab.creatorNotes")}{" "}
           <HelpTooltip text={localizeUi("ui.characters.metadatatab.privateNotesAboutThisCharacterTipsForUseKnown")} />
@@ -3545,7 +3564,7 @@ function DialogueTab({
       )}
 
       {/* First Message */}
-      <div className="block space-y-1.5">
+      <div className="block space-y-1.5" data-mari-field="first_mes">
         <div className="flex items-center justify-between gap-3">
           <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
             {localizeUi("ui.characters.dialoguetab.firstMessage")}{" "}
@@ -3581,7 +3600,7 @@ function DialogueTab({
       </div>
 
       {/* Alternate Greetings */}
-      <div className="space-y-3">
+      <div className="space-y-3" data-mari-field="alternate_greetings">
         <div className="flex items-center justify-between">
           <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
             {localizeUi("ui.characters.dialoguetab.alternateGreetings")}
@@ -3672,7 +3691,7 @@ function DialogueTab({
       </div>
 
       {/* Example Messages */}
-      <div className="block space-y-1.5">
+      <div className="block space-y-1.5" data-mari-field="mes_example">
         <div className="flex items-start justify-between gap-3">
           <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
             {localizeUi("chat.settings.inlineEditor.fields.exampleDialogue")}{" "}
@@ -3729,7 +3748,7 @@ function AdvancedTab({
         helpText={CHARACTER_ADVANCED_HELP}
       />
 
-      <div className="block space-y-1.5">
+      <div className="block space-y-1.5" data-mari-field="system_prompt">
         <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
           {localizeUi("ui.characters.advancedtab.systemPrompt")}{" "}
           <HelpTooltip
@@ -3751,7 +3770,7 @@ function AdvancedTab({
         />
       </div>
 
-      <div className="block space-y-1.5">
+      <div className="block space-y-1.5" data-mari-field="post_history_instructions">
         <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
           {localizeUi("ui.characters.advancedtab.postHistoryInstructions")}{" "}
           <HelpTooltip text={localizeUi("ui.characters.advancedtab.textInsertedAfterTheChatHistoryRightBeforeThe")} />
@@ -3770,7 +3789,10 @@ function AdvancedTab({
       </div>
 
       {/* Depth Prompt */}
-      <div className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
+      <div
+        className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--card)] p-4"
+        data-mari-field="extensions.depth_prompt"
+      >
         <span className="inline-flex items-center gap-1 text-xs font-semibold">
           {localizeUi("ui.characters.advancedtab.depthPrompt")}{" "}
           <HelpTooltip text={localizeUi("ui.characters.advancedtab.injectsTextAtASpecificPositionInTheChat")} />

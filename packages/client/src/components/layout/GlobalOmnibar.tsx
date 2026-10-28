@@ -115,7 +115,8 @@ import type { ProfessorMariNavigationTarget } from "../../lib/professor-mari-nav
 import { executeStateNavigation } from "../../lib/state-navigation";
 import { isPullHandoffPending, takePullHandoff } from "../../lib/pull-to-open";
 import { measureOmnibarFirstResultPaint } from "../../lib/omnibar-open-timing";
-import { hasEditorLeaveHandler } from "../../lib/editor-leave";
+import { confirmEditorLeave } from "../../lib/editor-leave";
+import { openCharacterAtField } from "../../hooks/use-mari-editor-fields";
 import { cn } from "../../lib/utils";
 import { useLocalizedUiText } from "../../localization/use-localized-ui-text";
 import { useChatStore } from "../../stores/chat.store";
@@ -1210,16 +1211,9 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
     window.addEventListener(PROFESSOR_MARI_OPEN_EVENT, openRequestedProfessorMari);
     return () => window.removeEventListener(PROFESSOR_MARI_OPEN_EVENT, openRequestedProfessorMari);
   }, []);
-  /**
-   * Guards every path that leaves an open editor, so no route skips the prompt.
-   * An editor with a leave handler saves itself on the way out (the store routes
-   * the leave through it), so only editors without one need the prompt; the
-   * chat sidebar applies the same rule.
-   */
-  const confirmLeaveEditor = () =>
-    !ui().editorDirty ||
-    hasEditorLeaveHandler(ui()) ||
-    window.confirm(t("commandCenter.dirtyEditor", "You have unsaved changes. Leave this editor?"));
+  // The chat sidebar applies the same rule.
+  const leavePrompt = () => t("commandCenter.dirtyEditor", "You have unsaved changes. Leave this editor?");
+  const confirmLeaveEditor = () => confirmEditorLeave(ui(), leavePrompt());
   const navigate = (target: ProfessorMariNavigationTarget) => {
     // Q2: a setting that lives in this omnibar opens its settings view here, so the omnibar stays
     // open and nothing is left behind (no editor-leave prompt, no close).
@@ -1656,10 +1650,8 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
     const resource = action.resource;
     if (!resource) return;
     if (resource.kind === "character") {
-      if (!confirmLeaveEditor()) return;
-      ui().openCharacterDetail(resource.id, {
-        ...(action.kind === "open-field" ? { initialTab: action.field === "Greeting" ? "convo" : "card" } : {}),
-      });
+      const fieldId = action.kind === "open-field" ? action.fieldId : undefined;
+      if (!openCharacterAtField(resource.id, fieldId, leavePrompt())) return;
       onClose();
       return;
     }

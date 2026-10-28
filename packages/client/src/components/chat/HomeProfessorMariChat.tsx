@@ -55,6 +55,7 @@ import { completeInline } from "../../lib/inline-completion";
 import { resolveMariRestStory, type MariStoryState } from "../../lib/mari-work-animations";
 import { lorebookKeys, useLorebooks } from "../../hooks/use-lorebooks";
 import { useMariComposerReferences } from "../../hooks/use-mari-composer-references";
+import type { MariCommandId } from "../../lib/mari-commands";
 import { presetKeys, usePresets } from "../../hooks/use-presets";
 import { useMariWorkspaceContext } from "../../hooks/use-mari-workspace-context";
 import { useDialogFocusScope } from "../../hooks/use-dialog-focus-scope";
@@ -337,19 +338,6 @@ export function HomeProfessorMariChat({
     ],
     [completionCharacters.data, completionLorebooks.data, completionPersonas.data, completionPresets.data],
   );
-  // `@` links: the picker's picks, their marks in the draft, and what a send carries.
-  const composerReferences = useMariComposerReferences({
-    draft,
-    setDraft,
-    editorResource,
-    companionDocked: useUIStore((state) => state.mariCompanionDocked),
-    sources: {
-      characters: completionCharacters.data,
-      personas: completionPersonas.data,
-      lorebooks: completionLorebooks.data,
-      presets: completionPresets.data,
-    },
-  });
   const characterPreviewById = useMemo(() => {
     const previews = new Map<string, CharacterPreviewModel>();
     for (const item of completionCharacters.data ?? []) {
@@ -2591,6 +2579,54 @@ export function HomeProfessorMariChat({
     [refreshWorkspaceStatus, visiblePendingChangeReviews],
   );
 
+  // `@` links and `/` commands: the picker's picks, their marks in the draft, and what a send carries.
+  // Declared here because the commands run handlers defined above.
+  const availableCommands = useMemo<MariCommandId[]>(
+    () => [
+      "new",
+      "history",
+      "skills",
+      "memories",
+      "context",
+      "attach",
+      "model",
+      "permissions",
+      ...(visiblePendingChangeReviews.length > 0 ? (["approvals"] as const) : []),
+    ],
+    [visiblePendingChangeReviews.length],
+  );
+  const runComposerCommand = (id: MariCommandId) => {
+    if (id === "new") void runRestart();
+    else if (id === "history") toggleChatHistory();
+    else if (id === "skills") toggleSkillsMenu();
+    else if (id === "memories") toggleMemoriesMenu();
+    else if (id === "context") void handleOpenContextViewer();
+    else if (id === "attach") attachmentInputRef.current?.click();
+    else if (id === "model") {
+      setPermissionsMenuOpen(false);
+      setConnectionMenuOpen(true);
+    } else if (id === "permissions") {
+      setConnectionMenuOpen(false);
+      setPermissionsMenuOpen(true);
+    } else openPendingApprovals();
+  };
+  const composerReferences = useMariComposerReferences({
+    draft,
+    setDraft,
+    editorResource,
+    companionDocked: useUIStore((state) => state.mariCompanionDocked),
+    sources: {
+      characters: completionCharacters.data,
+      personas: completionPersonas.data,
+      lorebooks: completionLorebooks.data,
+      presets: completionPresets.data,
+      skills,
+      memories,
+    },
+    onCommand: runComposerCommand,
+    availableCommands,
+  });
+
   const handledPendingReviewRequestRef = useRef(0);
   useEffect(() => {
     if (!chatWindowOpen || pendingReviewRequest <= handledPendingReviewRequestRef.current) return;
@@ -3401,6 +3437,13 @@ export function HomeProfessorMariChat({
                           onPickerAction={composerReferences.onPickerAction}
                           onActiveTokenChange={composerReferences.onActiveTokenChange}
                           referenceMarks={composerReferences.referenceMarks}
+                          availableCommands={availableCommands}
+                          onCommand={runComposerCommand}
+                          commandCounts={{
+                            skills: activeSkillCount,
+                            memories: activeMemoryCount,
+                            approvals: visiblePendingChangeReviews.length,
+                          }}
                           referenceUi={{
                             ...composerReferences.referenceUi,
                             canLinkCompletion: composerReferences.canLinkCompletion,

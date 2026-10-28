@@ -44,6 +44,7 @@ import {
   type ComposerMark,
   type ComposerPickerAction,
 } from "../../../lib/composer-triggers";
+import type { MariCommandId } from "../../../lib/mari-commands";
 import { cn } from "../../../lib/utils";
 import { useLocalizedUiText } from "../../../localization/use-localized-ui-text";
 import { useUIStore } from "../../../stores/ui.store";
@@ -136,6 +137,10 @@ type MariComposerProps = {
   pickerOpen?: boolean;
   onPickerAction?: (action: ComposerPickerAction) => void;
   onActiveTokenChange?: (token: ReturnType<typeof activeToken>) => void;
+  /** The commands the `/` picker and the paperclip menu offer, how to run one, and the counts shown beside some. */
+  availableCommands?: readonly MariCommandId[];
+  onCommand?: (id: MariCommandId) => void;
+  commandCounts?: Partial<Record<MariCommandId, number>>;
   /** Resolved `@` references to mark in the draft. */
   referenceMarks?: ComposerMark[];
   /** The `@` picker's rows, its highlighted option, and the references picked so far (shown as chips). */
@@ -217,6 +222,9 @@ export function MariComposer({
   onPickerAction,
   onActiveTokenChange,
   referenceUi,
+  availableCommands = [],
+  onCommand,
+  commandCounts,
 }: MariComposerProps) {
   const localize = useLocalizedUiText();
   const { t: localizeUi } = useTranslation();
@@ -242,6 +250,22 @@ export function MariComposer({
     textarea.setSelectionRange(caretRequest.pos, caretRequest.pos);
     setCaret(caretRequest.pos);
   }, [caretRequest, floatingTextareaRef]);
+  // The paperclip's "Link with @" types the trigger at the caret, which opens the picker.
+  const [atRequest, setAtRequest] = useState<{ pos: number; n: number } | null>(null);
+  const linkWithAt = () => {
+    const at = Math.min(caret, draft.length);
+    const before = draft.slice(0, at);
+    const lead = before === "" || /\s$/.test(before) ? "" : " ";
+    setDraft(`${before}${lead}@${draft.slice(at)}`);
+    setAtRequest((current) => ({ pos: at + lead.length + 1, n: (current?.n ?? 0) + 1 }));
+  };
+  useLayoutEffect(() => {
+    const textarea = floatingTextareaRef.current;
+    if (!atRequest || !textarea) return;
+    textarea.focus();
+    textarea.setSelectionRange(atRequest.pos, atRequest.pos);
+    setCaret(atRequest.pos);
+  }, [atRequest, floatingTextareaRef]);
   // The ghost may sit in an `@` token that ends the draft (a Tab there links it); the open picker replaces it.
   const ghostInToken = liveToken?.trigger === "@" && liveToken.end === draft.length;
   const ghostAvailable = Boolean(draftSuffix) && (!liveToken || ghostInToken);
@@ -511,11 +535,15 @@ export function MariComposer({
         </div>
         {/* Under the text, like Claude's: attach, the connection and the Permissions Mode. */}
         <div className="mari-composer-toolbar">
-          <div className="mari-workspace-composer__attach">
+          <div className="mari-workspace-composer__attach mari-composer-menu">
             <MariAttachButton
               onAttachFiles={() => attachmentInputRef.current?.click()}
               onAddChatHistory={() => void handleOpenHistoryPicker()}
               onViewContext={() => void handleOpenContextViewer()}
+              onLinkWithAt={linkWithAt}
+              onCommand={(id) => onCommand?.(id)}
+              availableCommands={availableCommands}
+              commandCounts={commandCounts}
               attachedFileCount={attachments.length}
               attachedContextCount={attachedContext?.length ?? 0}
               disabled={isBusy || isReadingAttachments}

@@ -3,6 +3,7 @@
 import type { MariComposerReference, ProfessorMariContextResource } from "@marinara-engine/shared";
 import { getCharacterDisplayIdentity } from "./character-display";
 import { formatReferenceToken, type ActiveComposerToken } from "./composer-triggers";
+import type { MariCommandId } from "./mari-commands";
 
 /** The server resolves at most this many references per message. */
 export const MAX_COMPOSER_REFERENCES = 8;
@@ -10,7 +11,8 @@ export const MAX_COMPOSER_REFERENCES = 8;
 const ROWS_PER_GROUP = 8;
 const ENTRY_ROWS = 30;
 
-export type ReferenceGroupId = "open" | "character" | "persona" | "lorebook" | "preset" | "lorebookEntry";
+export type ReferenceGroupId =
+  "open" | "character" | "persona" | "lorebook" | "preset" | "skill" | "memory" | "lorebookEntry";
 
 export const REFERENCE_GROUP_ORDER: readonly ReferenceGroupId[] = [
   "open",
@@ -18,12 +20,39 @@ export const REFERENCE_GROUP_ORDER: readonly ReferenceGroupId[] = [
   "persona",
   "lorebook",
   "preset",
+  "skill",
+  "memory",
   "lorebookEntry",
 ];
 
-export type ReferenceItem = { key: string; group: ReferenceGroupId; ref: MariComposerReference };
+/** Whether a skill or memory is used on every turn, or on only when switched on. */
+export type ReferenceState = "always" | "on" | "off";
 
-type NamedRecord = { id?: unknown; name?: unknown; data?: unknown; comment?: unknown };
+export type ReferenceItem = {
+  key: string;
+  group: ReferenceGroupId;
+  ref: MariComposerReference;
+  /** A skill's or memory's switch, shown as the row's fact. */
+  state?: ReferenceState;
+};
+
+type NamedRecord = {
+  id?: unknown;
+  name?: unknown;
+  data?: unknown;
+  comment?: unknown;
+  origin?: unknown;
+  enabled?: unknown;
+  persistent?: unknown;
+};
+
+/** The picker's rows once a `/` token is open: a command (no reference) or a ranked reference. */
+export type CommandRow = { key: string; group: "command"; command: MariCommandId; score: number };
+export type PickerRow = RankedReferenceItem | CommandRow;
+
+export function isCommandRow(row: PickerRow | undefined): row is CommandRow {
+  return row?.group === "command";
+}
 
 /** The picker's rows from the lists the composer already loads for its ghost completion. */
 export function buildReferenceItems(sources: {
@@ -31,6 +60,8 @@ export function buildReferenceItems(sources: {
   personas?: readonly unknown[];
   lorebooks?: readonly unknown[];
   presets?: readonly unknown[];
+  skills?: readonly unknown[];
+  memories?: readonly unknown[];
 }): ReferenceItem[] {
   const items: ReferenceItem[] = [];
   const add = (group: Exclude<ReferenceGroupId, "open" | "lorebookEntry">, list: readonly unknown[] | undefined) => {
@@ -44,13 +75,23 @@ export function buildReferenceItems(sources: {
             ? record.name
             : ""
       ).trim();
-      if (label) items.push({ key: `${group}:${record.id}`, group, ref: { kind: group, id: record.id, label } });
+      if (!label) continue;
+      const item: ReferenceItem = { key: `${group}:${record.id}`, group, ref: { kind: group, id: record.id, label } };
+      if (group === "skill") item.state = record.origin === "builtin" ? "always" : record.enabled ? "on" : "off";
+      if (group === "memory") item.state = record.enabled ? "on" : "off";
+      items.push(item);
     }
   };
   add("character", sources.characters);
   add("persona", sources.personas);
   add("lorebook", sources.lorebooks);
   add("preset", sources.presets);
+  add("skill", sources.skills);
+  // A persistent memory is in every turn already; only the others are worth linking.
+  add(
+    "memory",
+    sources.memories?.filter((memory) => (memory as NamedRecord).persistent !== true),
+  );
   return items;
 }
 
@@ -132,7 +173,7 @@ export function rankReferenceItems(
 }
 
 /** The row to highlight first: the best match anywhere, the earliest row on a tie (the open editor's row leads). */
-export function defaultActiveIndex(rows: readonly RankedReferenceItem[]): number {
+export function defaultActiveIndex(rows: readonly { score: number }[]): number {
   let best = 0;
   rows.forEach((row, index) => {
     if (row.score < rows[best]!.score) best = index;

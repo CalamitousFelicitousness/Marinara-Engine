@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import type { MariComposerReference } from "../../../packages/shared/src/types/chat.js";
 import { activeToken } from "../../../packages/client/src/lib/composer-triggers.js";
+import { rankCommands, removeCommandToken } from "../../../packages/client/src/lib/mari-commands.js";
 import {
   addReference,
   applyReferencePick,
@@ -166,5 +167,66 @@ assert.deepEqual(addReference([jess], jess), [jess]);
 let many: readonly MariComposerReference[] = [];
 for (let i = 0; i < MAX_COMPOSER_REFERENCES + 3; i++) many = addReference(many, ref("preset", `r${i}`, `P${i}`));
 assert.equal(many.length, MAX_COMPOSER_REFERENCES);
+
+// commands: one list, ranked by id and alias
+const allCommands = ["new", "history", "skills", "memories", "context", "attach", "model", "permissions"] as const;
+assert.deepEqual(
+  rankCommands("", allCommands).map((command) => command.id),
+  [...allCommands],
+);
+assert.equal(rankCommands("me", allCommands)[0]!.id, "memories");
+assert.deepEqual(
+  rankCommands("clear", allCommands).map((command) => command.id),
+  ["new"],
+);
+assert.deepEqual(
+  rankCommands("zzz", allCommands).map((command) => command.id),
+  [],
+);
+// approvals only exists while it is available
+assert.ok(!rankCommands("", allCommands).some((command) => command.id === "approvals"));
+assert.ok(!rankCommands("approv", allCommands).some((command) => command.id === "approvals"));
+assert.equal(rankCommands("approv", [...allCommands, "approvals"])[0]!.id, "approvals");
+
+// skills and memories as rows: persistent memories are always in context, so they are not listed
+const linkables = buildReferenceItems({
+  skills: [
+    { id: "s1", name: "Characters handbook", origin: "builtin", enabled: true },
+    { id: "s2", name: "My skill", origin: "user", enabled: false },
+    { id: "s3", name: "Other skill", origin: "user", enabled: true },
+  ],
+  memories: [
+    { id: "m1", name: "Always known", persistent: true, enabled: true },
+    { id: "m2", name: "Sometimes known", persistent: false, enabled: false },
+  ],
+});
+assert.deepEqual(
+  linkables.map((item) => [item.key, item.group, item.ref.label, item.state]),
+  [
+    ["skill:s1", "skill", "Characters handbook", "always"],
+    ["skill:s2", "skill", "My skill", "off"],
+    ["skill:s3", "skill", "Other skill", "on"],
+    ["memory:m2", "memory", "Sometimes known", "off"],
+  ],
+);
+assert.deepEqual(
+  rankReferenceItems(linkables, "").map((row) => row.group),
+  ["skill", "skill", "skill", "memory"],
+);
+// `/cha` picks the skill like an `@` pick: the query becomes `@Label `, caret after the space
+const slashDraft = "/cha";
+const slashToken = activeToken(slashDraft, slashDraft.length)!;
+assert.equal(slashToken.trigger, "/");
+assert.equal(rankReferenceItems(linkables, slashToken.query)[0]!.ref.label, "Characters handbook");
+assert.deepEqual(applyReferencePick(slashDraft, slashToken, linkables[0]!.ref), {
+  value: "@Characters handbook ",
+  caret: 21,
+});
+// a command pick cuts the `/query` out and leaves the rest of the draft alone
+const commandDraft = "look at this\n/hist";
+const commandToken = activeToken(commandDraft, commandDraft.length)!;
+assert.deepEqual(removeCommandToken(commandDraft, commandToken), { value: "look at this\n", caret: 13 });
+const midDraft = "/hist and more";
+assert.deepEqual(removeCommandToken(midDraft, activeToken(midDraft, 5)!), { value: " and more", caret: 0 });
 
 console.log("Composer references client regression passed");

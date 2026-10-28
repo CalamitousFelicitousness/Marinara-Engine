@@ -2,13 +2,19 @@ import { ChevronRight } from "lucide-react";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { RESULT_TYPE_ICONS, resourceResultType } from "../../../lib/command-icons";
-import type { ReferenceGroupId, RankedReferenceItem } from "../../../lib/mari-composer-references";
+import { getMariCommand } from "../../../lib/mari-commands";
+import {
+  isCommandRow,
+  type PickerRow,
+  type ReferenceGroupId,
+  type ReferenceState,
+} from "../../../lib/mari-composer-references";
 import { MariRow } from "../mari-primitives";
 
 export type MariReferencePickerProps = {
   /** The listbox id; the textarea points at the active option with `aria-activedescendant`. */
   id: string;
-  rows: readonly RankedReferenceItem[];
+  rows: readonly PickerRow[];
   activeIndex: number;
   /** Showing one lorebook's entries instead of the groups. */
   drilled: boolean;
@@ -18,19 +24,28 @@ export type MariReferencePickerProps = {
 
 export const referenceOptionId = (listboxId: string, index: number) => `${listboxId}-option-${index}`;
 
+const STATE_FACT_KEYS: Record<ReferenceState, string> = {
+  always: "mari.composerReferences.state.always",
+  on: "mari.composerReferences.state.on",
+  off: "mari.composerReferences.state.off",
+};
+
 /**
- * The `@` picker above Professor Mari's composer: one column of grouped rows (characters, personas,
- * lorebooks, presets), narrow enough for a phone and her 24rem companion pane. The textarea keeps focus and
+ * The `@` / `/` picker above Professor Mari's composer: one column of grouped rows (commands, characters,
+ * personas, lorebooks, presets, skills, memories), narrow enough for a phone and her 24rem companion pane. The textarea keeps focus and
  * owns the keys (see `composerKeyAction`); the rows only draw the choice and take a tap or click.
  */
 export function MariReferencePicker({ id, rows, activeIndex, drilled, onPick, onDrill }: MariReferencePickerProps) {
   const { t } = useTranslation();
-  const groupLabels: Record<ReferenceGroupId, string> = {
+  const groupLabels: Record<ReferenceGroupId | "command", string> = {
+    command: t("mari.composerReferences.group.command"),
     open: t("mari.composerReferences.group.open"),
     character: t("mari.composerReferences.group.character"),
     persona: t("mari.composerReferences.group.persona"),
     lorebook: t("mari.composerReferences.group.lorebook"),
     preset: t("mari.composerReferences.group.preset"),
+    skill: t("mari.composerReferences.group.skill"),
+    memory: t("mari.composerReferences.group.memory"),
     lorebookEntry: t("mari.composerReferences.group.lorebookEntry"),
   };
   useEffect(() => {
@@ -38,7 +53,7 @@ export function MariReferencePicker({ id, rows, activeIndex, drilled, onPick, on
   }, [activeIndex, id]);
 
   // Rows arrive grouped; a heading starts each run.
-  const groups: Array<{ group: ReferenceGroupId; start: number; rows: RankedReferenceItem[] }> = [];
+  const groups: Array<{ group: ReferenceGroupId | "command"; start: number; rows: PickerRow[] }> = [];
   rows.forEach((row, index) => {
     const last = groups[groups.length - 1];
     if (last?.group === row.group) last.rows.push(row);
@@ -62,6 +77,22 @@ export function MariReferencePicker({ id, rows, activeIndex, drilled, onPick, on
           </p>
           {group.rows.map((row, offset) => {
             const index = group.start + offset;
+            if (isCommandRow(row)) {
+              const command = getMariCommand(row.command);
+              return (
+                <MariRow
+                  key={row.key}
+                  id={referenceOptionId(id, index)}
+                  role="option"
+                  aria-selected={index === activeIndex}
+                  slot={<command.Icon aria-hidden="true" />}
+                  title={t(command.labelKey)}
+                  fact={t(command.factKey)}
+                  state={index === activeIndex ? "selected" : undefined}
+                  onClick={() => onPick(index)}
+                />
+              );
+            }
             const Icon = RESULT_TYPE_ICONS[resourceResultType(row.ref.kind)];
             return (
               <MariRow
@@ -71,7 +102,13 @@ export function MariReferencePicker({ id, rows, activeIndex, drilled, onPick, on
                 aria-selected={index === activeIndex}
                 slot={<Icon aria-hidden="true" />}
                 title={row.ref.label}
-                fact={row.group === "open" ? t("mari.composerReferences.openFact") : undefined}
+                fact={
+                  row.group === "open"
+                    ? t("mari.composerReferences.openFact")
+                    : row.state
+                      ? t(STATE_FACT_KEYS[row.state])
+                      : undefined
+                }
                 state={index === activeIndex ? "selected" : undefined}
                 onClick={() => onPick(index)}
                 action={

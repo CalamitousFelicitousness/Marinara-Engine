@@ -158,6 +158,54 @@ try {
     }
   }
 
+  // #8402: appearance macros use the selected chat's variables before preview or dispatch.
+  const macroPersona = await characters.createPersona("Macro Mari", "Macro fixture", undefined, {
+    appearance: "An ordinary blue cloak.",
+    imageAppearanceEnabled: "true",
+    imageAppearance: "silver {{getvar::coat}} armor",
+  });
+  assert.ok(macroPersona);
+  const macroChat = await chats.create({
+    name: "Game appearance macro proof",
+    mode: "game",
+    characterIds: [],
+    personaId: macroPersona.id,
+  });
+  assert.ok(macroChat);
+  await chats.patchMetadata(macroChat.id, {
+    enableSpriteGeneration: true,
+    gameImageConnectionId: connection.id,
+    gameImageDynamicPromptEnabled: false,
+    macroVariables: { coat: "emerald velvet" },
+  });
+  const macroPayload = {
+    chatId: macroChat.id,
+    illustration: {
+      prompt: "Macro Mari waits beside a marble fountain in a quiet sunlit garden.",
+      characters: ["Macro Mari"],
+      slug: "macro-proof",
+    },
+    forceIllustration: true,
+    includeCharacterAppearance: true,
+    useAvatarReferences: false,
+    queueImageGenerationRequests: false,
+    imageSizes: { background: { width: 64, height: 64 } },
+  };
+  const macroPreview = await app.inject({
+    method: "POST",
+    url: "/api/game/generate-assets/preview",
+    payload: macroPayload,
+  });
+  assert.equal(macroPreview.statusCode, 200, macroPreview.body);
+  const macroGenerated = await app.inject({ method: "POST", url: "/api/game/generate-assets", payload: macroPayload });
+  assert.equal(macroGenerated.statusCode, 200, macroGenerated.body);
+  const macroPrompts = [macroPreview.json().items[0].prompt as string, imagePrompts.at(-1)!];
+  assert.ok(macroPrompts[1]!.startsWith(macroPrompts[0]!), "actual generation retains the preview appearance prompt");
+  for (const prompt of macroPrompts) {
+    assert.ok(prompt.includes("silver emerald velvet armor"), `selected-chat appearance macro is expanded: ${prompt}`);
+    assert.doesNotMatch(prompt, /\{\{getvar::coat\}\}/u);
+  }
+
   // #8396: details from the reported tracker appearance must survive every style profile.
   const reportedNpc = {
     name: "Yunyun Lian",

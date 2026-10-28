@@ -37,8 +37,10 @@ export function useMariEditorFields(
       const id = (event.target as Element).closest<HTMLElement>("[data-mari-field]")?.dataset.mariField;
       setActiveEditorField(id ? { id, label: fieldLabel(id) } : null);
     };
-    root.addEventListener("focusin", onFocusIn);
-    return () => root.removeEventListener("focusin", onFocusIn);
+    // The editor header (name, title inputs) sits outside the scroll root.
+    const focusRoot = root.closest<HTMLElement>(".mari-editor-shell") ?? root;
+    focusRoot.addEventListener("focusin", onFocusIn);
+    return () => focusRoot.removeEventListener("focusin", onFocusIn);
   }, [contentRef, ready, setActiveEditorField]);
 
   useEffect(() => {

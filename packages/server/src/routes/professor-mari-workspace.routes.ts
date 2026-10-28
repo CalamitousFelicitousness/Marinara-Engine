@@ -95,6 +95,7 @@ export const professorMariPromptSchema = z.object({
         .optional(),
       field: z.string().min(1).max(200).optional(),
       fieldId: z.string().min(1).max(200).optional(),
+      fieldDraft: z.object({ value: z.string().max(20_000), selection: z.string().max(4_000).optional() }).optional(),
       error: z.object({ message: z.string().min(1).max(2_000), code: z.string().max(200).optional() }).optional(),
       action: z.string().max(500).optional(),
       commandCenterResultId: z.string().min(1).max(256).optional(),

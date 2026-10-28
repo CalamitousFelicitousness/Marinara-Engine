@@ -786,7 +786,7 @@ interface UIState {
   /** The primary field currently focused in an open editor, for Mari omnibar handoff. Transient, never persisted. */
   activeEditorField: { id: string; label: string } | null;
   /** Prof. Mari asks the open editor to show this field: scroll to it and pulse it once. Transient. */
-  mariRevealField: { characterId: string; path: string; nonce: number } | null;
+  mariRevealField: { characterId: string; path: string } | null;
   /** The editor field a running Prof. Mari step is writing, for its working glow. Transient. */
   mariWorkingField: { characterId: string; path: string } | null;
   /**
@@ -1308,7 +1308,10 @@ interface UIState {
   setConnectionPanelSort: (sort: ConnectionPanelSort) => void;
   setAgentPanelSort: (sort: ResourcePanelSort) => void;
   setLibraryManualOrder: (kind: string, order: { active: boolean; ids: string[] }) => void;
-  openCharacterDetail: (id: string, options?: { preserveCharacterLibrary?: boolean; initialTab?: string }) => void;
+  openCharacterDetail: (
+    id: string,
+    options?: { preserveCharacterLibrary?: boolean; initialTab?: string; revealField?: string },
+  ) => void;
   closeCharacterDetail: () => void;
   openLorebookDetail: (id: string, options?: { initialTab?: string; entryId?: string; field?: string }) => void;
   closeLorebookDetail: () => void;
@@ -2495,7 +2498,7 @@ export const useUIStore = create<UIState>()(
 
         setSettingsTab: (tab) => set({ settingsTab: tab }),
         setActiveEditorField: (field) => set({ activeEditorField: field }),
-        revealMariField: (characterId, path) => set({ mariRevealField: { characterId, path, nonce: Date.now() } }),
+        revealMariField: (characterId, path) => set({ mariRevealField: { characterId, path } }),
         clearMariRevealField: () => set({ mariRevealField: null }),
         setMariWorkingField: (field) => set({ mariWorkingField: field }),
         setLastAppError: (error) => set({ lastAppError: error }),
@@ -2581,6 +2584,8 @@ export const useUIStore = create<UIState>()(
             return {
               characterDetailId: id,
               characterDetailInitialTab: options?.initialTab ?? null,
+              // In the same patch as the navigation, so a refused editor leave drops it too.
+              mariRevealField: options?.revealField ? { characterId: id, path: options.revealField } : null,
               lorebookDetailId: null,
               presetDetailId: null,
               connectionDetailId: null,

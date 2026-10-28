@@ -411,9 +411,9 @@ html[data-marinara-effects-paused="true"] .mari-workspace-glow-band::after {
 }
 
 /* Her mark on an editor field: a faint cyan edge while her step writes it, one pulse when she shows
-   it. Opacity only, no colour transitions; static with reduced motion. Decorative, so no ARIA. */
-[data-mari-field][data-mari-glow],
-[data-mari-field][data-mari-pulse] {
+   it. Opacity only, no colour transitions; static with reduced motion. Decorative, so no ARIA.
+   Always relative, so the mark never changes the field's layout mid-run. */
+[data-mari-field] {
   position: relative;
 }
 
@@ -1739,7 +1739,7 @@ html[data-marinara-effects-paused="true"] .mari-pull-overlay[data-mari-edge] .ma
 }
 
 .mari-field__head .mari-link {
-  min-height: 0;
+  min-height: 1.5rem;
   padding: 0.125rem 0.375rem;
   font-size: var(--mari-card-fact);
 }

@@ -159,6 +159,8 @@ export function useMariWorkspaceRun({
       useChatStore.getState().setMariPhase(chat.id, "thinking");
       let received = false;
       let sawDone = false;
+      // The tool call whose field glows; only its own end clears the glow.
+      let workingToolId: string | null = null;
       // Her provisional words for the round she is writing reach the store at most once a frame.
       let draft = "";
       const draftThrottle = rafThrottle<string>((value) => useChatStore.getState().setMariDraft(chat.id, value));
@@ -246,7 +248,10 @@ export function useMariWorkspaceRun({
             setWorkspaceTimeline((current) => upsertToolTimeline(current, toolCall));
             useChatStore.getState().setMariPhase(chat.id, "updating");
             const workingField = mariWorkingFieldFromTool(name, data?.input);
-            if (workingField) useUIStore.getState().setMariWorkingField(workingField);
+            if (workingField) {
+              workingToolId = toolCall.id;
+              useUIStore.getState().setMariWorkingField(workingField);
+            }
           } else if (event.type === "tool_update") {
             const data = asRecord(event.data);
             const name = typeof data?.name === "string" ? data.name : "tool";
@@ -261,7 +266,6 @@ export function useMariWorkspaceRun({
             };
             setWorkspaceTimeline((current) => upsertToolTimeline(current, toolCall));
           } else if (event.type === "tool_end") {
-            if (useUIStore.getState().mariWorkingField) useUIStore.getState().setMariWorkingField(null);
             const data = asRecord(event.data);
             const name = typeof data?.name === "string" ? data.name : "tool";
             const isError = data?.isError === true;
@@ -276,6 +280,10 @@ export function useMariWorkspaceRun({
               updatedAt: Date.now(),
             };
             setWorkspaceTimeline((current) => upsertToolTimeline(current, toolCall));
+            if (toolCall.id === workingToolId) {
+              workingToolId = null;
+              useUIStore.getState().setMariWorkingField(null);
+            }
           } else if (event.type === "suggestions") {
             const chips = Array.isArray(event.data) ? (event.data as MariSuggestionChip[]) : [];
             if (

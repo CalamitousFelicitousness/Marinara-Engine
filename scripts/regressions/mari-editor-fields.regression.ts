@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   characterPatchFieldId,
   editorFieldId,
+  hasMariField,
   mariWorkingFieldFromTool,
 } from "../../packages/client/src/lib/mari-editor-fields.js";
 
@@ -46,5 +47,24 @@ assert.equal(
   mariWorkingFieldFromTool("web_search", { action: "character.update", characterId: "c1", name: "X" }),
   null,
 );
+
+// The server's action aliases glow too.
+for (const action of ["characters.update", "Character.Update", " CHARACTERS.update "]) {
+  assert.deepEqual(
+    mariWorkingFieldFromTool("app_data", { action, characterId: "c1", patch: { scenario: "Storm" } }),
+    { characterId: "c1", path: "scenario" },
+    action,
+  );
+}
+
+// "Open at this field" only for fields the editor anchors (itself or its parent).
+assert.equal(hasMariField("data.first_mes"), true);
+assert.equal(hasMariField("data.extensions.backstory"), true);
+assert.equal(hasMariField("data.extensions.depth_prompt.role"), true);
+assert.equal(hasMariField("data.tags"), true);
+assert.equal(hasMariField("name"), true);
+assert.equal(hasMariField("data.extensions.talkativeness"), false);
+assert.equal(hasMariField("avatarPath"), false);
+assert.equal(hasMariField("data.extensions"), false);
 
 console.log("mari-editor-fields regression passed");

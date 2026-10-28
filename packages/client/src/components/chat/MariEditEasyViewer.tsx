@@ -26,6 +26,7 @@ import {
 import { UnifiedLineDiff } from "./MariUnifiedDiff";
 import { ResultTypeIcon } from "../command-center/ResultTypeIcon";
 import { openCharacterAtField } from "../../hooks/use-mari-editor-fields";
+import { hasMariField } from "../../lib/mari-editor-fields";
 import { useUIStore } from "../../stores/ui.store";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -298,7 +299,7 @@ export function MariEditEasyViewer({
                       <div key={field.path} className="mari-field">
                         <div className="mari-field__head">
                           <span className="mari-field__label">{field.label}</span>
-                          {openAtField ? (
+                          {openAtField && hasMariField(field.path) ? (
                             <button
                               type="button"
                               onClick={() => openAtField(field.path)}

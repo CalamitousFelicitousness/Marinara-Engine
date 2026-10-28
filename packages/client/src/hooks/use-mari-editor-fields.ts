@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { useUIStore } from "../stores/ui.store";
 import { fieldLabel } from "../lib/mari-edit-diff";
 import { findMariField } from "../lib/mari-editor-fields";
-import { hasEditorLeaveHandler } from "../lib/editor-leave";
+import { confirmEditorLeave } from "../lib/editor-leave";
 
 /**
  * Prof. Mari and the `[data-mari-field]` fields of one editor scroll root: reports the focused field,
@@ -19,6 +19,14 @@ export function useMariEditorFields(
   const reveal = useUIStore((s) => s.mariRevealField);
   const working = useUIStore((s) => s.mariWorkingField);
   const [offscreen, setOffscreen] = useState<"above" | "below" | null>(null);
+  const pulse = useRef<{ field: HTMLElement; timer: number } | null>(null);
+  const endPulse = useCallback(() => {
+    if (!pulse.current) return;
+    window.clearTimeout(pulse.current.timer);
+    delete pulse.current.field.dataset.mariPulse;
+    pulse.current = null;
+  }, []);
+  useEffect(() => endPulse, [endPulse]);
 
   useEffect(() => () => setActiveEditorField(null), [entityId, setActiveEditorField]);
 
@@ -27,7 +35,7 @@ export function useMariEditorFields(
     if (!root || !ready) return;
     const onFocusIn = (event: FocusEvent) => {
       const id = (event.target as Element).closest<HTMLElement>("[data-mari-field]")?.dataset.mariField;
-      if (id) setActiveEditorField({ id, label: fieldLabel(id) });
+      setActiveEditorField(id ? { id, label: fieldLabel(id) } : null);
     };
     root.addEventListener("focusin", onFocusIn);
     return () => root.removeEventListener("focusin", onFocusIn);
@@ -40,13 +48,13 @@ export function useMariEditorFields(
     const field = findMariField(root, reveal.path);
     if (!field) return;
     scrollToElement(field);
-    // Restart the pulse when it is still running from an earlier reveal.
-    delete field.dataset.mariPulse;
+    // A new reveal restarts the pulse. Not the effect's cleanup: clearing the request above re-runs
+    // this effect, and the pulse must still end.
+    endPulse();
     void field.offsetWidth;
     field.dataset.mariPulse = "";
-    // No cleanup: clearing the request above re-runs this effect, and the pulse must still end.
-    window.setTimeout(() => delete field.dataset.mariPulse, 1200);
-  }, [contentRef, ready, reveal, entityId, scrollToElement]);
+    pulse.current = { field, timer: window.setTimeout(endPulse, 1200) };
+  }, [contentRef, ready, reveal, entityId, scrollToElement, endPulse]);
 
   useEffect(() => {
     const root = contentRef.current;
@@ -76,14 +84,15 @@ export function useMariEditorFields(
   return { workingOffscreen: offscreen, revealWorkingField };
 }
 
-/** Opens a character at one field (`data.first_mes` or `first_mes`). False when the user stays in a dirty editor. */
-export function openCharacterAtField(characterId: string, path: string, leavePrompt: string): boolean {
+/** Opens a character, at one field when given (`data.first_mes` or `first_mes`). False when the user stays. */
+export function openCharacterAtField(characterId: string, path: string | undefined, leavePrompt: string): boolean {
   const ui = useUIStore.getState();
   // Already open: nothing is left, so no leave prompt.
-  if (ui.characterDetailId !== characterId) {
-    if (ui.editorDirty && !hasEditorLeaveHandler(ui) && !window.confirm(leavePrompt)) return false;
-    ui.openCharacterDetail(characterId);
+  if (ui.characterDetailId === characterId) {
+    if (path) ui.revealMariField(characterId, path);
+    return true;
   }
-  ui.revealMariField(characterId, path);
+  if (!confirmEditorLeave(ui, leavePrompt)) return false;
+  ui.openCharacterDetail(characterId, path ? { revealField: path } : undefined);
   return true;
 }

@@ -24,9 +24,8 @@ const CHARACTER_PATCH_ALIASES: Record<string, string> = {
   greeting: "first_mes",
   backstory: "extensions.backstory",
   appearance: "extensions.appearance",
-  about_me: "extensions.aboutMe",
-  "about-me": "extensions.aboutMe",
 };
+// The Character editor's `data-mari-field` ids.
 const CHARACTER_FIELD_IDS = new Set([
   "name",
   "summary",
@@ -44,8 +43,24 @@ const CHARACTER_FIELD_IDS = new Set([
   "creator",
   "extensions.backstory",
   "extensions.appearance",
-  "extensions.aboutMe",
+  "extensions.depth_prompt",
 ]);
+
+/** A change-card path whose field the Character editor anchors (itself or its parent field). */
+export function hasMariField(path: string): boolean {
+  const parts = editorFieldId(path).split(".");
+  return parts.some((_, end) => CHARACTER_FIELD_IDS.has(parts.slice(0, end + 1).join(".")));
+}
+
+/** The server's app_data action aliases (normalizeAppDataActionName): `Characters_Update` -> `character.update`. */
+function appDataAction(action: unknown): string {
+  if (typeof action !== "string") return "";
+  return action
+    .trim()
+    .toLowerCase()
+    .replace(/[-_\s]+/g, "")
+    .replace(/^characters\./, "character.");
+}
 
 /** A `character.update` patch key (`firstMes`, `backstory`) as its editor field id, or null for other keys. */
 export function characterPatchFieldId(key: string): string | null {
@@ -61,7 +76,7 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 /** The character field a running `app_data` step writes, from its tool input. */
 export function mariWorkingFieldFromTool(name: string, input: unknown): { characterId: string; path: string } | null {
   const args = asRecord(input);
-  if (name !== "app_data" || args?.action !== "character.update") return null;
+  if (!args || name !== "app_data" || appDataAction(args.action) !== "character.update") return null;
   const characterId = args.characterId ?? args.id;
   if (typeof characterId !== "string" || !characterId) return null;
   // The server reads fields top-level or inside one of these wrappers.

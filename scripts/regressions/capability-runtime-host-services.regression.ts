@@ -100,6 +100,7 @@ function fixturePackage(id: string, permissions: string[], source: string) {
 const fullSource = `export function activate(context) {
   context.api.registerService("host-services-full:runtime", context.api.runtime);
   context.api.registerService("host-services-full:value", { answer: 42 });
+  context.api.registerService("host-services-full:hidden", { secret: 1 }, { hostOnly: true });
   context.api.registerConversationCommand({
     commandType: "probe",
     tags: ["probe"],
@@ -154,6 +155,20 @@ try {
     } finally {
       release();
     }
+  }
+  // A service registered with `hostOnly` stays readable by the Engine, but no package reads it, not even its owner.
+  assert.deepEqual(getCapabilityService("host-services-full:hidden"), { secret: 1 });
+  assert.equal(reader.services?.get("host-services-full:hidden"), null);
+  assert.equal(full.services?.get("host-services-full:hidden"), null);
+  // The flag belongs to one registration: releasing the service clears it, so the same key without the flag is visible.
+  const releaseHidden = registerCapabilityService("host-services-flag:key", { n: 1 }, { hostOnly: true });
+  assert.equal(reader.services?.get("host-services-flag:key"), null);
+  releaseHidden();
+  const releaseOpen = registerCapabilityService("host-services-flag:key", { n: 2 });
+  try {
+    assert.deepEqual(reader.services?.get("host-services-flag:key"), { n: 2 });
+  } finally {
+    releaseOpen();
   }
 
   // ── commands use the host grammar and every package's registered tags ──

@@ -165,7 +165,7 @@ import { SpriteWandCleanupEditor } from "../ui/SpriteWandCleanupEditor";
 import { ExportFormatDialog, type ExportFormatChoice } from "../ui/ExportFormatDialog";
 import { EditorTabNavigation } from "../ui/EditorTabNavigation";
 import { useEditorSections } from "../../hooks/use-editor-sections";
-import { useMariEditorFields } from "../../hooks/use-mari-editor-fields";
+import { useMariCompanionEditor, useMariEditorFields } from "../../hooks/use-mari-editor-fields";
 import { useEditorLeaveSave } from "../../hooks/use-editor-leave-save";
 import { LazyEditorSection } from "../ui/LazyEditorSection";
 import { leaveWithoutSaving } from "../../lib/editor-leave";
@@ -436,12 +436,15 @@ export function CharacterEditor() {
     setActiveTab,
   );
   // Report the focused field to the omnibar so "make this warmer" knows the target; show Prof. Mari's fields.
+  // The content (and its scroll root) only renders when this holds; see the loading return below.
+  const editorReady = !isLoading && !!formData;
   const { workingOffscreen, revealWorkingField } = useMariEditorFields(
     contentRef,
     characterId,
-    !!formData,
+    editorReady,
     scrollToElement,
   );
+  useMariCompanionEditor(contentRef, editorReady);
   const [characterComment, setCharacterComment] = useState("");
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);

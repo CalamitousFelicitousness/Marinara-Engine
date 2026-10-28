@@ -6,7 +6,7 @@ import type {
 } from "@marinara-engine/shared";
 import type { OmnibarCategory, OmnibarResult } from "./omnibar-search";
 
-const RESOURCE_KIND_BY_CATEGORY: Partial<Record<OmnibarCategory, ProfessorMariContextResource["kind"]>> = {
+export const RESOURCE_KIND_BY_CATEGORY: Partial<Record<OmnibarCategory, ProfessorMariContextResource["kind"]>> = {
   chat: "chat",
   character: "character",
   persona: "persona",

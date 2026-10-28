@@ -182,6 +182,16 @@ export function normalizeMariWindowWidthRem(value: unknown): number {
     : MARI_WINDOW_WIDTH_DEFAULT_REM;
 }
 
+/** Companion panel width: never narrower than the phone view, so her tabs fit. */
+export const MARI_COMPANION_WIDTH_MIN_REM = 24;
+export const MARI_COMPANION_WIDTH_MAX_REM = 32;
+
+export function normalizeMariCompanionWidthRem(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(MARI_COMPANION_WIDTH_MIN_REM, Math.min(MARI_COMPANION_WIDTH_MAX_REM, Math.round(value * 2) / 2))
+    : MARI_COMPANION_WIDTH_MIN_REM;
+}
+
 export function normalizeConversationBackgroundImageOpacity(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value)
     ? Math.max(0, Math.min(100, Math.round(value)))
@@ -743,6 +753,12 @@ interface UIState {
   mariWindowHeightRem: number;
   /** Desktop window width, in rem. Only Professor Mari's window uses it. */
   mariWindowWidthRem: number;
+  /** Desktop: Prof. Mari docks as a companion panel beside an open editor (header toggle). */
+  mariCompanionDocked: boolean;
+  /** Companion panel width in rem. */
+  mariCompanionWidthRem: number;
+  /** Scroll root of the open editor that offers the companion panel. Not persisted. */
+  mariCompanionRoot: HTMLElement | null;
   omnibarWindowWidthRem: number;
   /** Search window height in rem; null sizes it to its results, as before. */
   omnibarWindowHeightRem: number | null;
@@ -786,7 +802,8 @@ interface UIState {
   /** The primary field currently focused in an open editor, for Mari omnibar handoff. Transient, never persisted. */
   activeEditorField: { id: string; label: string } | null;
   /** Prof. Mari asks the open editor to show this field: scroll to it and pulse it once. Transient. */
-  mariRevealField: { characterId: string; path: string } | null;
+  /** `scroll: false` pulses the field in place (companion hover). */
+  mariRevealField: { characterId: string; path: string; scroll?: boolean } | null;
   /** The editor field a running Prof. Mari step is writing, for its working glow. Transient. */
   mariWorkingField: { characterId: string; path: string } | null;
   /**
@@ -1249,7 +1266,7 @@ interface UIState {
   toggleRightPanel: (panel: Panel) => void;
   setSettingsTab: (tab: string) => void;
   setActiveEditorField: (field: { id: string; label: string } | null) => void;
-  revealMariField: (characterId: string, path: string) => void;
+  revealMariField: (characterId: string, path: string, options?: { scroll?: boolean }) => void;
   clearMariRevealField: () => void;
   setMariWorkingField: (field: { characterId: string; path: string } | null) => void;
   setLastAppError: (error: UIState["lastAppError"]) => void;
@@ -1278,6 +1295,9 @@ interface UIState {
   setMariEditViewMode: (mode: MariEditViewMode) => void;
   setMariWindowHeightRem: (height: number) => void;
   setMariWindowWidthRem: (width: number) => void;
+  setMariCompanionDocked: (docked: boolean) => void;
+  setMariCompanionWidthRem: (width: number) => void;
+  setMariCompanionRoot: (root: HTMLElement | null) => void;
   setOmnibarWindowWidthRem: (width: number) => void;
   setOmnibarWindowHeightRem: (height: number | null) => void;
   setMariAppearancePack: (packId: string) => void;
@@ -1891,6 +1911,8 @@ export function pickPersistedUIState(state: UIState) {
     mariEditViewMode: state.mariEditViewMode,
     mariWindowHeightRem: normalizeMariWindowHeightRem(state.mariWindowHeightRem),
     mariWindowWidthRem: normalizeMariWindowWidthRem(state.mariWindowWidthRem),
+    mariCompanionDocked: state.mariCompanionDocked,
+    mariCompanionWidthRem: state.mariCompanionWidthRem,
     omnibarWindowWidthRem: normalizeOmnibarWindowWidthRem(state.omnibarWindowWidthRem),
     omnibarWindowHeightRem: normalizeOmnibarWindowHeightRem(state.omnibarWindowHeightRem),
     mariAppearancePackId: getMariAppearancePack(state.mariAppearancePackId).id,
@@ -2137,6 +2159,9 @@ export const useUIStore = create<UIState>()(
         mariEditViewMode: "easy",
         mariWindowHeightRem: MARI_WINDOW_HEIGHT_DEFAULT_REM,
         mariWindowWidthRem: MARI_WINDOW_WIDTH_DEFAULT_REM,
+        mariCompanionDocked: true,
+        mariCompanionWidthRem: MARI_COMPANION_WIDTH_MIN_REM,
+        mariCompanionRoot: null,
         omnibarWindowWidthRem: OMNIBAR_WINDOW_WIDTH_DEFAULT_REM,
         omnibarWindowHeightRem: null,
         mariAppearancePackId: "basic",
@@ -2498,7 +2523,7 @@ export const useUIStore = create<UIState>()(
 
         setSettingsTab: (tab) => set({ settingsTab: tab }),
         setActiveEditorField: (field) => set({ activeEditorField: field }),
-        revealMariField: (characterId, path) => set({ mariRevealField: { characterId, path } }),
+        revealMariField: (characterId, path, options) => set({ mariRevealField: { characterId, path, ...options } }),
         clearMariRevealField: () => set({ mariRevealField: null }),
         setMariWorkingField: (field) => set({ mariWorkingField: field }),
         setLastAppError: (error) => set({ lastAppError: error }),
@@ -2527,6 +2552,9 @@ export const useUIStore = create<UIState>()(
         setMariEditViewMode: (mode) => set({ mariEditViewMode: mode }),
         setMariWindowHeightRem: (height) => set({ mariWindowHeightRem: normalizeMariWindowHeightRem(height) }),
         setMariWindowWidthRem: (width) => set({ mariWindowWidthRem: normalizeMariWindowWidthRem(width) }),
+        setMariCompanionDocked: (docked) => set({ mariCompanionDocked: docked }),
+        setMariCompanionWidthRem: (width) => set({ mariCompanionWidthRem: normalizeMariCompanionWidthRem(width) }),
+        setMariCompanionRoot: (root) => set({ mariCompanionRoot: root }),
         setOmnibarWindowWidthRem: (width) => set({ omnibarWindowWidthRem: normalizeOmnibarWindowWidthRem(width) }),
         setOmnibarWindowHeightRem: (height) => set({ omnibarWindowHeightRem: normalizeOmnibarWindowHeightRem(height) }),
         // A dated pack is never stored: picking it clears the opt-out, so the user's own pick returns after its window.
@@ -4187,6 +4215,8 @@ export const useUIStore = create<UIState>()(
           ...persisted,
           mariWindowHeightRem: normalizeMariWindowHeightRem(persisted.mariWindowHeightRem),
           mariWindowWidthRem: normalizeMariWindowWidthRem(persisted.mariWindowWidthRem),
+          mariCompanionDocked: persisted.mariCompanionDocked !== false,
+          mariCompanionWidthRem: normalizeMariCompanionWidthRem(persisted.mariCompanionWidthRem),
           omnibarWindowWidthRem: normalizeOmnibarWindowWidthRem(persisted.omnibarWindowWidthRem),
           omnibarWindowHeightRem: normalizeOmnibarWindowHeightRem(persisted.omnibarWindowHeightRem),
           mariAppearancePackId: getMariAppearancePack(persisted.mariAppearancePackId).id,

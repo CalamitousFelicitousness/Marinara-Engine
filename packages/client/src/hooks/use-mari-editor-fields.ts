@@ -49,7 +49,7 @@ export function useMariEditorFields(
     useUIStore.getState().clearMariRevealField();
     const field = findMariField(root, reveal.path);
     if (!field) return;
-    scrollToElement(field);
+    if (reveal.scroll !== false) scrollToElement(field);
     // A new reveal restarts the pulse. Not the effect's cleanup: clearing the request above re-runs
     // this effect, and the pulse must still end.
     endPulse();
@@ -84,6 +84,23 @@ export function useMariEditorFields(
   }, [working, entityId]);
 
   return { workingOffscreen: offscreen, revealWorkingField };
+}
+
+/**
+ * Lets Prof. Mari dock as a companion panel beside this editor (desktop) while
+ * it is mounted. `contentRef` is the scroll root holding `.mari-editor-content-inner`
+ * inside a `.mari-editor-shell` with a `.mari-editor-header`.
+ */
+export function useMariCompanionEditor(contentRef: RefObject<HTMLElement | null>, ready: boolean) {
+  useEffect(() => {
+    const root = contentRef.current;
+    if (!root || !ready) return;
+    const ui = useUIStore.getState();
+    ui.setMariCompanionRoot(root);
+    return () => {
+      if (useUIStore.getState().mariCompanionRoot === root) useUIStore.getState().setMariCompanionRoot(null);
+    };
+  }, [contentRef, ready]);
 }
 
 /** Opens a character, at one field when given (`data.first_mes` or `first_mes`). False when the user stays. */

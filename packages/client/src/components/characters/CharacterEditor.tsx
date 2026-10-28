@@ -10,6 +10,7 @@ import {
   useCallback,
   useId,
   useMemo,
+  useEffectEvent,
   type ChangeEvent,
   type ReactNode,
   type Ref,
@@ -76,6 +77,7 @@ import { CharacterCombatIconSection } from "./GameModeIconSection";
 import { showConfirmDialog, showPromptDialog } from "../../lib/app-dialogs";
 import { formatCardVersionTimestamp, getCardVersionTitle } from "../../lib/card-version-history";
 import { dataImageUrlToFile } from "../../lib/data-image-file";
+import { rebaseForm } from "../../lib/form-rebase";
 import { mergeEmbeddedCharacterCardFields } from "../../lib/character-import";
 import { parsePngCharacterCard } from "../../lib/png-parser";
 import { SpriteGenerationModal } from "../ui/SpriteGenerationModal";
@@ -497,23 +499,57 @@ export function CharacterEditor() {
     }
   }, [characterId]);
 
+  // The card as the form last loaded or saved it: the merge base for refetches.
+  const loadedDataRef = useRef<CharacterData | null>(null);
+  // A refetch while the form has unsaved edits (an approved Professor Mari
+  // change, an avatar upload) is merged in, so Save cannot write old values back.
+  const rebaseUnsavedEdits = useEffectEvent((server: CharacterData) => {
+    const base = loadedDataRef.current;
+    loadedDataRef.current = server;
+    if (!base || !formData) return;
+    const { merged, conflicts } = rebaseForm(base, formData, server);
+    setFormData(merged);
+    if (conflicts.length === 0) return;
+    const id = characterId;
+    toast.warning(localizeUi("ui.characters.charactereditor.changedElsewhereKeptYourEdits"), {
+      id: `character-rebase-${id}`,
+      duration: 12_000,
+      action: {
+        label: localizeUi("ui.characters.charactereditor.useTheNewVersion"),
+        onClick: () => {
+          // The toast can outlive a switch to another character.
+          if (useUIStore.getState().characterDetailId !== id) return;
+          updateFormData((prev) => rebaseForm(base, server, prev).merged);
+        },
+      },
+    });
+  });
+
   // Parse the character when it first loads, or when switching characters.
-  // Avoid overwriting unsaved local edits when a refetch follows avatar upload.
   useEffect(() => {
     if (!rawCharacter) return;
     const char = rawCharacter as ParsedCharacter;
     const isSwitchingCharacter = loadedCharacterIdRef.current !== char.id;
-    if (!isSwitchingCharacter && dirtyRef.current) return;
+    if (!isSwitchingCharacter && dirtyRef.current) {
+      try {
+        rebaseUnsavedEdits((typeof char.data === "string" ? JSON.parse(char.data) : char.data) as CharacterData);
+      } catch {
+        // Unreadable refetch: keep the unsaved form as it is.
+      }
+      return;
+    }
 
     loadedCharacterIdRef.current = char.id;
 
     try {
       const parsed = typeof char.data === "string" ? JSON.parse(char.data) : char.data;
+      loadedDataRef.current = parsed as CharacterData;
       setFormData(parsed as CharacterData);
       setCharacterComment(char.comment ?? "");
       setAvatarPreview(char.avatarPath);
       setDirtyState(false);
     } catch {
+      loadedDataRef.current = null;
       setFormData(null);
       setCharacterComment("");
       setAvatarPreview(null);

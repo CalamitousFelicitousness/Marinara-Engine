@@ -751,7 +751,7 @@ function createIllustrationAppearanceResolver(args: {
     });
     return resolveMacrosForPreview(
       appearance,
-      owner ? scopePromptMacroContextToCharacter(macroContext, owner) : macroContext,
+      owner ? { ...scopePromptMacroContextToCharacter(macroContext, owner), characterProfiles: [owner] } : macroContext,
     );
   };
 }

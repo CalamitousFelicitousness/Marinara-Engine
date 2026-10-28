@@ -367,6 +367,50 @@ try {
     );
   }
 
+  // A nested card field can contain a grouped block: it still describes only this owner.
+  for (let index = 0; index < cardIds.length; index += 1) {
+    await characters.update(cardIds[index]!, {
+      description: index === 0 ? "ASTER_ONLY" : "BOREAL_ONLY",
+      extensions: {
+        appearance: "[\n{{char}} wears {{description}} insignia\n]",
+        imageAppearanceEnabled: true,
+        imageAppearance: "{{appearance}} beside {{user}} with roster {{characters}}",
+      },
+    });
+  }
+  const groupedPayload = {
+    ...macroPayload,
+    chatId: scopedChats[0]!.chat.id,
+    illustration: {
+      prompt: "Aster and Boreal wait beside a marble fountain in a quiet sunlit garden.",
+      characters: ["Aster", "Boreal"],
+      slug: "grouped-owner-appearances",
+    },
+  };
+  const groupedPreview = await app.inject({
+    method: "POST",
+    url: "/api/game/generate-assets/preview",
+    payload: groupedPayload,
+  });
+  assert.equal(groupedPreview.statusCode, 200, groupedPreview.body);
+  const groupedGenerated = await app.inject({
+    method: "POST",
+    url: "/api/game/generate-assets",
+    payload: groupedPayload,
+  });
+  assert.equal(groupedGenerated.statusCode, 200, groupedGenerated.body);
+  for (const prompt of [groupedPreview.json().items[0].prompt as string, imagePrompts.at(-1)!]) {
+    for (const [name, own, other] of [
+      ["Aster", "ASTER_ONLY", "BOREAL_ONLY"],
+      ["Boreal", "BOREAL_ONLY", "ASTER_ONLY"],
+    ]) {
+      const line = prompt.split("\n").find((part) => part.startsWith(`${name}'s Appearance:`));
+      assert.ok(line?.includes(`${name} wears ${own}`), `${name}: grouped field keeps its owner`);
+      assert.ok(!line?.includes(other), `${name}: another owner's traits must not leak`);
+      assert.ok(line?.includes("roster Aster, Boreal"), `${name}: scalar roster stays complete`);
+    }
+  }
+
   // Capture the real storyboard planner request, not only its final image preview.
   replaceBuiltInAgentDefinitions([
     {
@@ -675,7 +719,7 @@ try {
   assert.ok(readFileSync(portraitFile).equals(Buffer.from(png, "base64")), "a later portrait replaces it again");
 
   console.info(
-    "Game image appearance route regression passed (5 plain-text and 7 macro preview/dispatch pairs; 2 historical storyboard planner cases).",
+    "Game image appearance route regression passed (5 plain-text and 8 macro preview/dispatch pairs; 2 historical storyboard planner cases).",
   );
   console.info("Character Tracker portrait regression passed (prompt assembly and the portrait route).");
 } finally {

@@ -1486,7 +1486,9 @@ const capabilityPackageManifestBaseSchema = z
 // 1.386: the Home browser view's openConnection(connectionId), and /api/generate/raw's debugMode prompt logging.
 // 1.387: `persistence.listChatSummaries(chatId)`: a chat's day, week, rolling and Game session summaries. Requires
 //        `chat-read`, like `listMessages`.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 387 } as const);
+// 1.388: `api.registerService(key, service, { hostOnly: true })` keeps a service out of `runtime.services.get`, so only
+//        the Engine reads it.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 388 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

@@ -14,7 +14,7 @@ import { type CharacterPreviewModel } from "../../../lib/character-preview";
 import { type LorebookPreviewModel } from "../../../lib/lorebook-preview";
 import { api, ApiError, getPrivilegedActionErrorMessage } from "../../../lib/api-client";
 import { isPersistentProfessorMariContext } from "../../../lib/professor-mari-presentation";
-import { type MariPermissionsMode } from "@marinara-engine/shared";
+import { type MariComposerReference, type MariPermissionsMode } from "@marinara-engine/shared";
 
 export const PROFESSOR_MARI_DRAFT_KEY = "__home_professor_mari__";
 export const PROFESSOR_MARI_ERROR_TOAST_DURATION_MS = 120_000;
@@ -429,6 +429,8 @@ export type ProfessorMariRecovery = {
   text: string;
   attachments: ProfessorMariAttachment[];
   context: ProfessorMariAskContext | null;
+  /** What the message linked with `@`; a retry links it again. */
+  references?: MariComposerReference[];
   kind: "provider" | "tool" | "context" | "general";
   /** What the provider or server said, shown under the error. */
   detail?: string;
@@ -462,5 +464,6 @@ export function retryOf(message: Message | undefined) {
     text: message?.content ?? "",
     attachments: message ? getProfessorMariAttachments(message) : [],
     context: (message && getProfessorMariMessageContext(message)) ?? null,
+    references: (message && toMessageExtra(message)?.references) || undefined,
   };
 }

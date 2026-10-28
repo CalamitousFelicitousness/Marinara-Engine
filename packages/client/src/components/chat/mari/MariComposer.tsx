@@ -22,13 +22,14 @@ import {
   Square,
   RotateCcw,
 } from "lucide-react";
-import type { MariPermissionsMode, Message } from "@marinara-engine/shared";
+import type { MariComposerReference, MariPermissionsMode, Message } from "@marinara-engine/shared";
 import {
   RefObject,
   Dispatch,
   SetStateAction,
   ChangeEvent,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent,
@@ -36,7 +37,13 @@ import {
 import { useTranslation } from "react-i18next";
 import { MariWorkspaceContextItem } from "../../../hooks/use-mari-workspace-context";
 import { ProfessorMariContextFacet } from "../../../lib/professor-mari-presentation";
-import { activeToken, composerKeyAction, type ComposerMark } from "../../../lib/composer-triggers";
+import { RESULT_TYPE_ICONS, resourceResultType } from "../../../lib/command-icons";
+import {
+  activeToken,
+  composerKeyAction,
+  type ComposerMark,
+  type ComposerPickerAction,
+} from "../../../lib/composer-triggers";
 import { cn } from "../../../lib/utils";
 import { useLocalizedUiText } from "../../../localization/use-localized-ui-text";
 import { useUIStore } from "../../../stores/ui.store";
@@ -55,6 +62,7 @@ import {
   MARI_PERMISSIONS_MODE_ICONS,
   MARI_PERMISSIONS_MODE_FACT_KEYS,
 } from "./mari-chat-helpers";
+import { MariReferencePicker, type MariReferencePickerProps } from "./MariReferencePicker";
 import { MariRuntimeRecovery } from "./MariRuntimeRecovery";
 import { CompactMarkdown, ProfessorMariAttachmentPreviews } from "./MariReplyContent";
 
@@ -87,7 +95,7 @@ type MariComposerProps = {
   handleOpenHistoryPicker: () => Promise<void>;
   handleSubmit: (
     overrideText?: string,
-    overrideRecovery?: Pick<ProfessorMariRecovery, "attachments" | "context" | "localMessageId"> & {
+    overrideRecovery?: Pick<ProfessorMariRecovery, "attachments" | "context" | "localMessageId" | "references"> & {
       reuseSavedMessage?: boolean;
     },
     overrideContext?: ProfessorMariAskContext | null,
@@ -126,10 +134,23 @@ type MariComposerProps = {
   workspaceTimelineActive: boolean;
   /** The `@` / `/` picker owns Arrow, Enter, Tab and Escape while it is open. */
   pickerOpen?: boolean;
-  onPickerAction?: (action: "picker-next" | "picker-prev" | "picker-accept" | "picker-close") => void;
+  onPickerAction?: (action: ComposerPickerAction) => void;
   onActiveTokenChange?: (token: ReturnType<typeof activeToken>) => void;
   /** Resolved `@` references to mark in the draft. */
   referenceMarks?: ComposerMark[];
+  /** The `@` picker's rows, its highlighted option, and the references picked so far (shown as chips). */
+  referenceUi?: {
+    picker: MariReferencePickerProps | null;
+    activeOptionId?: string;
+    canDrillIn: boolean;
+    canDrillOut: boolean;
+    /** A name just completed with Tab ends the draft: Tab again links it. */
+    canLinkCompletion?: boolean;
+    /** Where the caret goes after a pick; `n` makes the same position a new request. */
+    caretRequest: { pos: number; n: number } | null;
+    references: readonly MariComposerReference[];
+    onRemove: (reference: MariComposerReference) => void;
+  };
 };
 
 export function MariComposer({
@@ -195,6 +216,7 @@ export function MariComposer({
   pickerOpen = false,
   onPickerAction,
   onActiveTokenChange,
+  referenceUi,
 }: MariComposerProps) {
   const localize = useLocalizedUiText();
   const { t: localizeUi } = useTranslation();
@@ -212,6 +234,17 @@ export function MariComposer({
     tokenChangeRef.current?.(liveTokenRef.current);
   }, [liveTokenKey]);
   const trackCaret = (element: HTMLTextAreaElement) => setCaret(element.selectionStart ?? element.value.length);
+  // A pick rewrites the draft: put the caret after the new token before the next paint.
+  const caretRequest = referenceUi?.caretRequest ?? null;
+  useLayoutEffect(() => {
+    const textarea = floatingTextareaRef.current;
+    if (!caretRequest || !textarea) return;
+    textarea.setSelectionRange(caretRequest.pos, caretRequest.pos);
+    setCaret(caretRequest.pos);
+  }, [caretRequest, floatingTextareaRef]);
+  // The ghost may sit in an `@` token that ends the draft (a Tab there links it); the open picker replaces it.
+  const ghostInToken = liveToken?.trigger === "@" && liveToken.end === draft.length;
+  const ghostAvailable = Boolean(draftSuffix) && (!liveToken || ghostInToken);
   const ActivePermissionsModeIcon = MARI_PERMISSIONS_MODE_ICONS[permissionsMode];
   // The connection menu shows the chosen connection's models beside the list, like the chat input's
   // Connections menu. A narrow composer shows one step at a time: the list, then the chosen models.
@@ -355,7 +388,12 @@ export function MariComposer({
         data-busy={isBusy ? "true" : undefined}
         data-collapsed={workspaceTimelineActive ? "true" : undefined}
       >
-        {attachments.length > 0 || isReadingAttachments || composerContextFacets.length > 0 || oneShotContext?.query ? (
+        {pickerOpen && referenceUi?.picker ? <MariReferencePicker {...referenceUi.picker} /> : null}
+        {attachments.length > 0 ||
+        isReadingAttachments ||
+        composerContextFacets.length > 0 ||
+        oneShotContext?.query ||
+        (referenceUi?.references.length ?? 0) > 0 ? (
           <div className="mari-workspace-composer__context">
             <ProfessorMariAttachmentPreviews
               attachments={attachments}
@@ -386,13 +424,31 @@ export function MariComposer({
                 </button>
               </span>
             ) : null}
+            {referenceUi?.references.map((reference) => {
+              const Icon = RESULT_TYPE_ICONS[resourceResultType(reference.kind)];
+              return (
+                <span key={`${reference.kind}:${reference.id}`} className="mari-workspace-context-chip" data-reference>
+                  <Icon aria-hidden="true" />
+                  <span className="min-w-0 truncate">{reference.label}</span>
+                  <button
+                    type="button"
+                    onClick={() => referenceUi.onRemove(reference)}
+                    className="mari-workspace-context-chip__remove"
+                    aria-label={t("mari.composerReferences.remove", { name: reference.label })}
+                    title={t("mari.composerReferences.remove", { name: reference.label })}
+                  >
+                    <X size="0.625rem" aria-hidden="true" />
+                  </button>
+                </span>
+              );
+            })}
           </div>
         ) : null}
 
         <div className="relative flex min-w-0 flex-1 basis-full">
           <InlineDraftOverlay
             value={draft}
-            suffix={liveToken ? "" : draftSuffix}
+            suffix={ghostAvailable && !pickerOpen ? draftSuffix : ""}
             marks={[
               ...referenceMarks,
               ...(liveToken ? [{ start: liveToken.start, end: liveToken.end, tone: "pending" as const }] : []),
@@ -402,7 +458,7 @@ export function MariComposer({
             scrollTop={composerScroll.top}
             className="mari-workspace-composer__text"
             // The textarea is disabled while busy, so the suggestion is not tappable then either.
-            onAccept={isBusy ? undefined : acceptDraftCompletion}
+            onAccept={isBusy ? undefined : ghostInToken ? () => onPickerAction?.("ghost-link") : acceptDraftCompletion}
           />
           <textarea
             ref={floatingTextareaRef}
@@ -428,7 +484,11 @@ export function MariComposer({
                 ctrlKey: event.ctrlKey,
                 isComposing: event.nativeEvent.isComposing,
                 pickerOpen,
-                hasGhost: Boolean(draftSuffix) && !liveToken,
+                hasGhost: ghostAvailable,
+                inReferenceToken: ghostInToken,
+                canDrillIn: referenceUi?.canDrillIn,
+                canDrillOut: referenceUi?.canDrillOut,
+                canLinkCompletion: referenceUi?.canLinkCompletion,
                 enterToSend,
               });
               if (action === "none") return;
@@ -441,6 +501,8 @@ export function MariComposer({
                 onPickerAction?.(action);
               }
             }}
+            aria-controls={pickerOpen ? referenceUi?.picker?.id : undefined}
+            aria-activedescendant={pickerOpen ? referenceUi?.activeOptionId : undefined}
             rows={1}
             placeholder={t("home.professorMari.placeholder")}
             className="mari-workspace-composer__text mari-workspace-composer__input"

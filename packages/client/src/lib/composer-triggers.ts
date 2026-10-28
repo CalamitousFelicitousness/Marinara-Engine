@@ -27,6 +27,32 @@ function canOpenAt(text: string, index: number): boolean {
   return isWhitespace(prev) || OPENERS.includes(prev);
 }
 
+/** Ends a bare query: a name may hold spaces, but not a newline or a finished clause. */
+const REFERENCE_STOP = /[\n.,;:!?]/;
+/** A bare query is capped so a long paragraph after an `@` is not read as one name. */
+const MAX_BARE_QUERY = 64;
+
+/**
+ * The `@` the caret is typing after, when the query runs to the end of the draft: then a name may hold
+ * spaces (`@Fel Lock`), so no quotes are needed. Earlier in the text the token stays one word.
+ */
+function openBareReference(text: string, caret: number): ActiveComposerToken | null {
+  if (caret !== text.length) return null;
+  const lineStart = text.lastIndexOf("\n", caret - 1) + 1;
+  const floor = Math.max(lineStart, caret - 1 - MAX_BARE_QUERY);
+  for (let i = caret - 1; i >= floor; i--) {
+    const char = text[i]!;
+    if (char === "@" && canOpenAt(text, i)) {
+      if (text[i + 1] === '"') return null; // a quoted token that already closed
+      const query = text.slice(i + 1, caret);
+      if (REFERENCE_STOP.test(query) || /\s$/u.test(query)) return null;
+      return { trigger: "@", query, start: i, end: caret, quoted: false };
+    }
+    if (REFERENCE_STOP.test(char)) return null;
+  }
+  return null;
+}
+
 /** The trigger token the caret is inside or at the end of, or null. */
 export function activeToken(text: string, caret: number): ActiveComposerToken | null {
   if (caret < 0 || caret > text.length) return null;
@@ -44,7 +70,11 @@ export function activeToken(text: string, caret: number): ActiveComposerToken | 
     return { trigger: "@", query, start: i, end: close === -1 ? caret : close + 1, quoted: true };
   }
 
-  // Unquoted `@`: look inside the non-whitespace run the caret sits in.
+  // Unquoted `@` at the end of the draft: the name may hold spaces, so it needs no quotes.
+  const bare = openBareReference(text, caret);
+  if (bare) return bare;
+
+  // Unquoted `@` mid-text: look inside the non-whitespace run the caret sits in.
   let wordStart = caret;
   while (wordStart > 0 && !isWhitespace(text[wordStart - 1])) wordStart--;
   for (let i = wordStart; i < caret; i++) {
@@ -66,10 +96,11 @@ export function activeToken(text: string, caret: number): ActiveComposerToken | 
   return null;
 }
 
-/** `@Alice`, or `@"Alice in Wonderland"` when the label has whitespace or quotes (inner quotes dropped). */
+/** `@Alice`, or `@Alice in Wonderland`: a bare token may hold spaces, so no quotes are ever needed. */
 export function formatReferenceToken(label: string): string {
-  if (!/[\s"]/.test(label)) return `@${label}`;
-  return `@"${label.replace(/"/g, "").trim()}"`;
+  // Quotes and angle brackets would break the token; names are one line.
+  const name = label.replace(/["<>]/g, "").replace(/\s+/g, " ").trim();
+  return `@${name}`;
 }
 
 export type ComposerMark = { start: number; end: number; tone: "reference" | "pending" | "unresolved" };
@@ -107,11 +138,31 @@ export type ComposerKeyInput = {
   isComposing: boolean;
   pickerOpen: boolean;
   hasGhost: boolean;
+  /** The caret is in a live `@` token at the end of the draft: Tab on its ghost links the match, not just completes it. */
+  inReferenceToken?: boolean;
+  /** The picker's highlighted row is a lorebook that can show its entries (ArrowRight). */
+  canDrillIn?: boolean;
+  /** The picker is showing a lorebook's entries (ArrowLeft goes back). */
+  canDrillOut?: boolean;
+  /** A name was just completed with Tab and the caret is still at its end: Tab again links it. */
+  canLinkCompletion?: boolean;
   enterToSend: boolean;
 };
 
 export type ComposerKeyAction =
-  "picker-next" | "picker-prev" | "picker-accept" | "picker-close" | "ghost-accept" | "send" | "none";
+  | "picker-next"
+  | "picker-prev"
+  | "picker-accept"
+  | "picker-close"
+  | "picker-drill"
+  | "picker-back"
+  | "ghost-accept"
+  | "ghost-link"
+  | "send"
+  | "none";
+
+/** The actions the picker (or the linking ghost) handles; the composer routes them to its owner. */
+export type ComposerPickerAction = Exclude<ComposerKeyAction, "ghost-accept" | "send" | "none">;
 
 /** Who owns a key in the composer textarea. Priority: picker, then the ghost, then Send. */
 export function composerKeyAction(input: ComposerKeyInput): ComposerKeyAction {
@@ -121,8 +172,13 @@ export function composerKeyAction(input: ComposerKeyInput): ComposerKeyAction {
     if (input.key === "ArrowUp") return "picker-prev";
     if (input.key === "Enter" || input.key === "Tab") return "picker-accept";
     if (input.key === "Escape") return "picker-close";
+    if (input.key === "ArrowRight" && input.canDrillIn) return "picker-drill";
+    if (input.key === "ArrowLeft" && input.canDrillOut) return "picker-back";
   }
-  if (input.key === "Tab" && !input.shiftKey && input.hasGhost) return "ghost-accept";
+  if (input.key === "Tab" && !input.shiftKey && input.hasGhost)
+    return input.inReferenceToken ? "ghost-link" : "ghost-accept";
+  // Prose: the first Tab completes the name, the second (the ghost is gone now) links it.
+  if (input.key === "Tab" && !input.shiftKey && input.canLinkCompletion) return "ghost-link";
   if (input.key === "Enter" && !input.shiftKey && (input.enterToSend || input.metaKey || input.ctrlKey)) return "send";
   return "none";
 }

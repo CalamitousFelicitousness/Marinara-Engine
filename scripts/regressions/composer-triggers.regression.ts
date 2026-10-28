@@ -27,6 +27,9 @@ assert.equal(atEnd("@Alice "), null);
 assert.equal(activeToken("@Alice bob", 7), null);
 // quoted
 assert.deepEqual(atEnd('@"Alice in'), { trigger: "@", query: "Alice in", start: 0, end: 10, quoted: true });
+// A bare name may hold spaces when it runs to the end of the draft, so no quotes are needed.
+assert.deepEqual(atEnd("@Fel Lock"), { trigger: "@", query: "Fel Lock", start: 0, end: 9, quoted: false });
+assert.equal(atEnd("@Fel Lock, then"), null);
 assert.equal(atEnd('see @"Alice in Wonderland"'), null);
 assert.equal(activeToken('@"Alice in Wonderland" x', 21)?.query, "Alice in Wonderland");
 assert.equal(activeToken('@"Alice in Wonderland" x', 22), null);
@@ -44,8 +47,8 @@ assert.equal(atEnd("/help me"), null);
 
 // formatReferenceToken
 assert.equal(formatReferenceToken("Alice"), "@Alice");
-assert.equal(formatReferenceToken("Alice in Wonderland"), '@"Alice in Wonderland"');
-assert.equal(formatReferenceToken('The "Best" One'), '@"The Best One"');
+assert.equal(formatReferenceToken("Alice in Wonderland"), "@Alice in Wonderland");
+assert.equal(formatReferenceToken('The "Best" One'), "@The Best One");
 
 // composerKeyAction
 const base: ComposerKeyInput = {
@@ -70,6 +73,19 @@ assert.equal(act({ key: "Escape" }), "none");
 assert.equal(act({ key: "ArrowDown" }), "none");
 assert.equal(act({ key: "Tab", hasGhost: true }), "ghost-accept");
 assert.equal(act({ key: "Tab", hasGhost: true, shiftKey: true }), "none");
+// inside an @ token a single Tab links the match; prose Tab stays a plain completion
+assert.equal(act({ key: "Tab", hasGhost: true, inReferenceToken: true }), "ghost-link");
+assert.equal(act({ key: "Tab", hasGhost: true, inReferenceToken: false }), "ghost-accept");
+assert.equal(act({ key: "Tab", hasGhost: false, inReferenceToken: true }), "none");
+assert.equal(act({ key: "Tab", hasGhost: true, inReferenceToken: true, shiftKey: true }), "none");
+// an open picker outranks the ghost: its row replaces the suggestion
+assert.equal(act({ key: "Tab", pickerOpen: true, hasGhost: true, inReferenceToken: true }), "picker-accept");
+// lorebook drill-down: ArrowRight in, ArrowLeft out, only when the picker says so
+assert.equal(act({ key: "ArrowRight", pickerOpen: true, canDrillIn: true }), "picker-drill");
+assert.equal(act({ key: "ArrowRight", pickerOpen: true }), "none");
+assert.equal(act({ key: "ArrowRight", canDrillIn: true }), "none");
+assert.equal(act({ key: "ArrowLeft", pickerOpen: true, canDrillOut: true }), "picker-back");
+assert.equal(act({ key: "ArrowLeft", pickerOpen: true }), "none");
 assert.equal(act({ key: "Tab" }), "none");
 assert.equal(act({ key: "Enter", hasGhost: true }), "send");
 assert.equal(act({ key: "Enter", shiftKey: true }), "none");

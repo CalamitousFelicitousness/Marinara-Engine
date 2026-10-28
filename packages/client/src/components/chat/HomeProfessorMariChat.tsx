@@ -54,6 +54,7 @@ import { buildLorebookPreviewModel } from "../../lib/lorebook-preview";
 import { completeInline } from "../../lib/inline-completion";
 import { resolveMariRestStory, type MariStoryState } from "../../lib/mari-work-animations";
 import { lorebookKeys, useLorebooks } from "../../hooks/use-lorebooks";
+import { useMariComposerReferences } from "../../hooks/use-mari-composer-references";
 import { presetKeys, usePresets } from "../../hooks/use-presets";
 import { useMariWorkspaceContext } from "../../hooks/use-mari-workspace-context";
 import { useDialogFocusScope } from "../../hooks/use-dialog-focus-scope";
@@ -336,6 +337,19 @@ export function HomeProfessorMariChat({
     ],
     [completionCharacters.data, completionLorebooks.data, completionPersonas.data, completionPresets.data],
   );
+  // `@` links: the picker's picks, their marks in the draft, and what a send carries.
+  const composerReferences = useMariComposerReferences({
+    draft,
+    setDraft,
+    editorResource,
+    companionDocked: useUIStore((state) => state.mariCompanionDocked),
+    sources: {
+      characters: completionCharacters.data,
+      personas: completionPersonas.data,
+      lorebooks: completionLorebooks.data,
+      presets: completionPresets.data,
+    },
+  });
   const characterPreviewById = useMemo(() => {
     const previews = new Map<string, CharacterPreviewModel>();
     for (const item of completionCharacters.data ?? []) {
@@ -2296,7 +2310,7 @@ export function HomeProfessorMariChat({
   });
   const handleSubmit = async (
     overrideText?: string,
-    overrideRecovery?: Pick<ProfessorMariRecovery, "attachments" | "context" | "localMessageId"> & {
+    overrideRecovery?: Pick<ProfessorMariRecovery, "attachments" | "context" | "localMessageId" | "references"> & {
       /** A retry: reuse your message when the server already saved it, instead of sending it twice. */
       reuseSavedMessage?: boolean;
     },
@@ -2304,6 +2318,12 @@ export function HomeProfessorMariChat({
   ) => {
     const text = (overrideText ?? draft).trim();
     const submittedAttachments = overrideRecovery?.attachments ?? attachments;
+    // A chip or retry sends its own text; the composer's links belong to the composer's draft.
+    const submittedReferences = overrideRecovery
+      ? (overrideRecovery.references ?? [])
+      : overrideText !== undefined
+        ? []
+        : composerReferences.references;
     const submittedContext = overrideRecovery
       ? overrideRecovery.context
       : overrideContext !== undefined
@@ -2388,6 +2408,7 @@ export function HomeProfessorMariChat({
         submittedAttachments,
         existingUserMessageId,
         submittedContext,
+        submittedReferences,
       );
       // No answer at all is a failure like any other: the same red state and card, not a toast that leaves.
       if (!received && !hiddenDuringStream)
@@ -2404,6 +2425,7 @@ export function HomeProfessorMariChat({
           text: messageText,
           attachments: submittedAttachments,
           context: submittedContext,
+          references: [...submittedReferences],
           localMessageId,
         },
         runChatId ?? undefined,
@@ -2413,6 +2435,7 @@ export function HomeProfessorMariChat({
         // so the reload took your bubble away. Give it back in the composer, ahead of anything typed since.
         setDraft((current) => [text, current].filter((part) => part.trim()).join("\n\n"));
         setAttachments((current) => [...submittedAttachments, ...current]);
+        composerReferences.restoreReferences(submittedReferences);
         setRecoveryState((current) => current && { ...current, inComposer: true });
       });
     } finally {
@@ -3374,6 +3397,14 @@ export function HomeProfessorMariChat({
                           connectionOptions={connectionOptions}
                           draft={draft}
                           draftSuffix={draftSuffix}
+                          pickerOpen={composerReferences.pickerOpen}
+                          onPickerAction={composerReferences.onPickerAction}
+                          onActiveTokenChange={composerReferences.onActiveTokenChange}
+                          referenceMarks={composerReferences.referenceMarks}
+                          referenceUi={{
+                            ...composerReferences.referenceUi,
+                            canLinkCompletion: composerReferences.canLinkCompletion,
+                          }}
                           effectiveConnection={effectiveConnection}
                           effectiveConnectionId={effectiveConnectionId}
                           enterToSend={enterToSend}

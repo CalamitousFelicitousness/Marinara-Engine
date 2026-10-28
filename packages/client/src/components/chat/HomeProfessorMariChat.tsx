@@ -41,6 +41,7 @@ import {
   type MariWorkspaceStatus,
   type Message,
   type ProfessorMariAskContext,
+  type ProfessorMariContextResource,
   type ProfessorMariHandoff,
 } from "@marinara-engine/shared";
 import { useConnections } from "../../hooks/use-connections";
@@ -122,6 +123,8 @@ import {
   transcriptScrollAction,
 } from "../../lib/professor-mari-transcript-scroll";
 import { resolveProfessorMariContextBudget } from "../../lib/professor-mari-context-budget";
+import { heldCharacterFields, keptCharacterFields } from "../../lib/mari-editor-fields";
+import { fieldLabel } from "../../lib/mari-edit-diff";
 import { rafThrottle } from "../../lib/raf-throttle";
 import {
   cachedMariThread,
@@ -163,6 +166,7 @@ import {
   toMessageExtra,
   getProfessorMariMessageContext,
   persistentResourceContext,
+  retargetEditorContext,
   continuedThereByContext,
   classifyProfessorMariFailure,
   PROFESSOR_MARI_ATTACHMENT_MAX_BYTES,
@@ -241,6 +245,8 @@ type HomeProfessorMariChatProps = {
   onArrivalAction?: (action: MariArrivalAction) => void;
   /** N6 (R22): the handoff an arrival Fix card sends with; the only arrival path that carries the error text. */
   arrivalFixContext?: ProfessorMariAskContext | null;
+  /** The open editor beside her (omnibar); her pending context follows it when it changes. */
+  editorResource?: ProfessorMariContextResource | null;
   onChatWindowOpenChange?: (open: boolean) => void;
   onChatWindowExitComplete?: () => void;
 };
@@ -273,6 +279,7 @@ export function HomeProfessorMariChat({
   arrivalThread = null,
   onArrivalAction,
   arrivalFixContext = null,
+  editorResource = null,
   onChatWindowOpenChange,
   onChatWindowExitComplete,
 }: HomeProfessorMariChatProps) {
@@ -835,6 +842,20 @@ export function HomeProfessorMariChat({
   // Read when the history load lands, not when it starts: M9's arrival context can come in a commit
   // after this pane mounted, and the load must not then restore an older focus over it.
   const initialAskContextRef = useRef(initialAskContext);
+  // Companion mode keeps her open while the user switches or closes the editor beside her, so the
+  // context the next send carries must follow the editor, not stay on the one she was opened over.
+  const lastEditorResourceRef = useRef(editorResource);
+  useEffect(() => {
+    const previous = lastEditorResourceRef.current;
+    if (
+      previous?.kind === editorResource?.kind &&
+      previous?.id === editorResource?.id &&
+      previous?.label === editorResource?.label
+    )
+      return;
+    lastEditorResourceRef.current = editorResource;
+    setHandoffContext((current) => retargetEditorContext(current, previous, editorResource));
+  }, [editorResource]);
   useEffect(() => {
     initialAskContextRef.current = initialAskContext;
     if (initialAskContext) setHandoffContext(initialAskContext);
@@ -2627,6 +2648,78 @@ export function HomeProfessorMariChat({
   const answerAll = async (entries: ReadonlyArray<{ approval: MariWorkspacePendingApproval }>, keep: boolean) => {
     for (const { approval } of entries) await answerApproval(approval, keep);
   };
+
+  // Slice 5: her change to a character also shows in the editor's fields. The field's Keep and
+  // Not this one send the same replies as her card; Undo answers the same reviews as her receipt.
+  const fieldReviewActions = useRef<{
+    keep: () => boolean;
+    decline: (fieldId: string) => boolean;
+    undo: (ids: readonly string[]) => void;
+  } | null>(null);
+  // handleSubmit's own guards: when one holds, nothing is sent (it may open the connection menu).
+  const canSend = () => !isBusy && !regenerationInFlightRef.current && !isReadingAttachments && !!effectiveConnectionId;
+  fieldReviewActions.current = {
+    keep: () => {
+      const sent = canSend();
+      handleSuggestionSelect(MARI_AUTHORIZATION_ACCEPT_CHIP);
+      return sent;
+    },
+    decline: (fieldId) => {
+      const sent = canSend();
+      void handleSubmit(
+        `${MARI_AUTHORIZATION_DECLINE_CHIP.prompt} Propose the change again without the ${fieldLabel(fieldId)} field.`,
+      );
+      return sent;
+    },
+    undo: (ids) =>
+      void answerAll(
+        pendingChangeReviews.flatMap((approval) => (ids.includes(approval.id) ? [{ approval }] : [])),
+        false,
+      ),
+  };
+  useEffect(() => {
+    const publish = useUIStore.getState().setMariFieldReview;
+    const message = lastLoadedMessage;
+    if (isBusy) return publish({ mode: "busy" });
+    if (!message || message.role !== "assistant") return publish(null);
+    const actions = () => fieldReviewActions.current!;
+    if (pendingDeferredMutations) {
+      const fields = heldCharacterFields(lastLoadedMessageExtra?.mariHeldCalls);
+      const total =
+        lastLoadedMessageExtra?.mariHeldChanges?.reduce((sum, change) => sum + (change.fields?.length ?? 0), 0) ||
+        fields.length;
+      if (fields.length > 0) {
+        return publish({
+          mode: "waiting",
+          key: message.id,
+          fields,
+          total,
+          others: (lastLoadedMessageExtra?.mariHeldChanges ?? []).filter(
+            (change) => !fields.some((field) => field.characterId === change.id),
+          ).length,
+          keep: () => actions().keep(),
+          decline: (fieldId) => actions().decline(fieldId),
+        });
+      }
+    }
+    const kept = keptCharacterFields(latestActionResults, new Set(pendingChangeReviews.map(({ id }) => id)));
+    if (kept.fields.length === 0) return publish(null);
+    publish({
+      mode: "kept",
+      key: kept.reviewIds.join(","),
+      fields: kept.fields,
+      undoUntil: kept.undoUntil,
+      undo: () => actions().undo(kept.reviewIds),
+    });
+  }, [
+    isBusy,
+    lastLoadedMessage,
+    lastLoadedMessageExtra,
+    pendingDeferredMutations,
+    latestActionResults,
+    pendingChangeReviews,
+  ]);
+  useEffect(() => () => useUIStore.getState().setMariFieldReview(null), []);
   // M5a / slice 71 (F1): applied changes and answered prompts are "what changed"; everything still waiting
   // - a delete too, whose rows stay hidden until you choose - needs you. The deletes of one turn are one card.
   // Slice 74: a change her message has a receipt for shows as that receipt, which answers its reviews.

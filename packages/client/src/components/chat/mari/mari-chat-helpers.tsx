@@ -8,6 +8,7 @@ import {
   type MariWorkspaceStatus,
   type Message,
   type ProfessorMariAskContext,
+  type ProfessorMariContextResource,
 } from "@marinara-engine/shared";
 import { type CharacterPreviewModel } from "../../../lib/character-preview";
 import { type LorebookPreviewModel } from "../../../lib/lorebook-preview";
@@ -380,6 +381,31 @@ export function resolveContextLorebook(
       tags: [],
     }
   );
+}
+
+/**
+ * The editor beside Prof. Mari changed (companion mode). Context that pointed at the old editor
+ * follows it: its resource becomes the new editor (or goes when the editor closed), and the old
+ * editor's field is dropped. Anything else the user attached stays.
+ */
+export function retargetEditorContext(
+  context: ProfessorMariAskContext | null,
+  previous: ProfessorMariContextResource | null,
+  next: ProfessorMariContextResource | null,
+): ProfessorMariAskContext | null {
+  if (!context || !previous) return context;
+  const onOldEditor = context.resource?.kind === previous.kind && context.resource.id === previous.id;
+  const pickedOldEditor = context.commandCenterResultId === `${previous.kind}:${previous.id}`;
+  if (!onOldEditor && !pickedOldEditor && context.field === undefined && context.fieldId === undefined) return context;
+  // Fields only ever come from the open editor, so a field here belonged to the old one; the
+  // pick of the old editor's row ("Selected ...: Editing X") goes with it.
+  const { field: _field, fieldId: _fieldId, fieldDraft: _fieldDraft, resource, ...rest } = context;
+  if (pickedOldEditor) {
+    delete rest.commandCenterResultId;
+    delete rest.action;
+  }
+  if (!onOldEditor) return { ...rest, ...(resource ? { resource } : {}) };
+  return next ? { ...rest, resource: next } : rest;
 }
 
 export function persistentResourceContext(

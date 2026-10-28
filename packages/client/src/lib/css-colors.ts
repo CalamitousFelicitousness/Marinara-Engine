@@ -30,10 +30,13 @@ export function withCssPaintAlpha(value: string, alpha: string): string {
   const colorWithAlpha = (color: string) => `rgb(from ${color} r g b / ${alpha})`;
   if (!isCssGradient(value)) return colorWithAlpha(value);
 
+  const layers = splitTopLevelCommas(value);
+  if (layers.length > 1) return layers.map((layer) => withCssPaintAlpha(layer, alpha)).join(", ");
+
   const open = value.indexOf("(");
   const close = value.lastIndexOf(")");
   const stops = splitTopLevelCommas(value.slice(open + 1, close)).map((stop) => {
-    const color = readFunctionColor(stop) ?? stop.match(/^(?:#[0-9a-f]{3,8}\b|[a-z][a-z-]*)/i)?.[0];
+    const color = readFunctionColor(stop, true) ?? stop.match(/^(?:#[0-9a-f]{3,8}\b|[a-z][a-z-]*)/i)?.[0];
     // Keep directions, interpolation spaces, positions and transition hints intact.
     if (!color || !CSS.supports("color", color)) return stop;
     return colorWithAlpha(color) + stop.slice(color.length);
@@ -62,8 +65,8 @@ function splitTopLevelCommas(value: string): string[] {
   return parts.filter(Boolean);
 }
 
-function readFunctionColor(value: string): string | null {
-  if (!COLOR_FUNCTION_RE.test(value)) return null;
+function readFunctionColor(value: string, anyFunction = false): string | null {
+  if (!(anyFunction ? /^[a-z][a-z0-9-]*\(/i : COLOR_FUNCTION_RE).test(value)) return null;
 
   let depth = 0;
   for (let i = 0; i < value.length; i += 1) {

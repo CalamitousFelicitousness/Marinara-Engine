@@ -28,6 +28,8 @@ Set each color with the color field, or type a value:
 
 Set transparency with **Settings → Appearance → Roleplay → Roleplay Messages Background Opacity**. This slider replaces the transparency saved in character, persona, and applied preset background colors, including colors extracted from avatars. Your saved color values are kept unchanged. Name and dialogue colors are not affected.
 
+Explicit custom-theme background hooks and card CSS can still override the app's native bubble styling.
+
 ## Where your colors show
 
 Each color affects a different part of the chat:

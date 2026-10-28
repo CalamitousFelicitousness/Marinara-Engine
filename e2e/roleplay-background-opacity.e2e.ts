@@ -122,6 +122,7 @@ for (const theme of ["dark", "light"] as const) {
         await expect(bubble).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
         await expect(bubble).toHaveCSS("background-image", "none");
       }
+      await page.screenshot({ path: testInfo.outputPath(`roleplay-zero-${theme}.png`) });
       for (const key of ["ArrowRight", "End"]) {
         if (key === "ArrowRight") for (let step = 0; step < 10; step++) await slider.press(key);
         else await slider.press(key);
@@ -140,14 +141,12 @@ for (const theme of ["dark", "light"] as const) {
       // The setting must persist without changing saved card or historical persona colors.
       await page.reload();
       await expect.poll(async () => (await paintPixel(characterBubble))[3]).toBe(255);
-      expect(
-        (await (await request.get(`/api/characters/${fixture.character.id}`)).json()).data.extensions.boxColor,
-      ).toBe(characterColor);
-      expect(
-        (await (await request.get(`/api/chats/${fixture.chat.id}/messages`)).json()).find(
-          (message: { id: string }) => message.id === fixture.user.id,
-        ).extra.personaSnapshot.boxColor,
-      ).toBe(personaColor);
+      const savedCharacter = await (await request.get(`/api/characters/${fixture.character.id}`)).json();
+      expect(JSON.parse(savedCharacter.data).extensions.boxColor).toBe(characterColor);
+      const savedMessages = await (await request.get(`/api/chats/${fixture.chat.id}/messages`)).json();
+      const savedUser = savedMessages.find((message: { id: string }) => message.id === fixture.user.id);
+      const savedExtra = typeof savedUser.extra === "string" ? JSON.parse(savedUser.extra) : savedUser.extra;
+      expect(savedExtra.personaSnapshot.boxColor).toBe(personaColor);
 
       // Native preset fills, including all supported gradient types, use the same alpha.
       await page.evaluate(async () => {
@@ -165,6 +164,8 @@ for (const theme of ["dark", "light"] as const) {
         "linear-gradient(135deg, rgba(20, 40, 60, 0.1) 0% 10%, #aabbcc88 100%)",
         "radial-gradient(circle at center, rgba(20, 40, 60, 0.1), transparent)",
         "conic-gradient(from 45deg, hsl(20 40% 60% / 0.1), #aabbcc88)",
+        "linear-gradient(in oklab, light-dark(rgba(18,52,86,.1), rgba(86,52,18,.2)), color-mix(in srgb, red 20%, transparent))",
+        "linear-gradient(red, blue), linear-gradient(rgba(0,128,0,.1), yellow)",
       ]) {
         await page.evaluate(async (background) => {
           const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
@@ -173,9 +174,26 @@ for (const theme of ["dark", "light"] as const) {
         await expect
           .poll(() => characterBubble.evaluate((element) => getComputedStyle(element).backgroundImage))
           .toContain("gradient");
-        const image = await characterBubble.evaluate((element) => getComputedStyle(element).backgroundImage);
-        expect(image).toContain("0.5");
-        expect(image).not.toContain("0.1)");
+        const stopAlphas = await characterBubble.evaluate(async (element) => {
+          const { getCssGradientColorStops } = await import("/src/lib/css-colors.ts" as string);
+          const images = getComputedStyle(element).backgroundImage.split(
+            /,\s*(?=(?:repeating-)?(?:linear|radial|conic)-gradient\()/,
+          );
+          const colors = images
+            .flatMap((image) => getCssGradientColorStops(image, ""))
+            .filter((color: string) => CSS.supports("color", color));
+          return colors.map((color: string) => {
+            const canvas = document.createElement("canvas");
+            canvas.width = canvas.height = 1;
+            const context = canvas.getContext("2d")!;
+            context.fillStyle = color;
+            context.fillRect(0, 0, 1, 1);
+            return context.getImageData(0, 0, 1, 1).data[3];
+          });
+        });
+        // Browsers may expand a double-position stop into two separate color stops.
+        expect(stopAlphas.length).toBeGreaterThanOrEqual(2);
+        expect(stopAlphas).toEqual(Array(stopAlphas.length).fill(128));
       }
       await page.evaluate(async () => {
         const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
@@ -189,16 +207,58 @@ for (const theme of ["dark", "light"] as const) {
       await expect.poll(async () => (await paintPixel(characterBubble, "::after"))[3]).toBe(128);
       await page.evaluate(async () => {
         const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+        useUIStore.setState({ chatWidgetBackgroundColor: "" });
+      });
+      await expect.poll(async () => (await paintPixel(characterBubble, "::after"))[3]).toBe(128);
+      await page.evaluate(async () => {
+        const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
         useUIStore.setState({ chatFontOpacity: 0 });
       });
       await expect(characterBubble).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
       await expect.poll(async () => (await paintPixel(characterBubble, "::after"))[3]).toBe(0);
       await expect(characterBubble).toHaveCSS("opacity", "1");
+      // Explicit custom-theme hooks keep their priority over native picker colors.
+      await page.evaluate(async () => {
+        const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+        useUIStore.setState({ chatFontOpacity: 50, chatWidgetApplyShape: false, chatWidgetBackgroundColor: "#abcdef" });
+      });
+      const windowHook = await page.addStyleTag({ content: ":root { --mari-window-bg: rgba(80, 60, 40, 0.2); }" });
+      const chatHook = await page.addStyleTag({ content: ":root { --mari-chat-bg: linear-gradient(red, blue); }" });
+      await expect(characterBubble).toHaveCSS("background-image", "linear-gradient(rgb(255, 0, 0), rgb(0, 0, 255))");
+      await chatHook.evaluate((element) => element.remove());
+      await expect.poll(async () => (await paintPixel(characterBubble))[3]).toBe(51);
+      await windowHook.evaluate((element) => element.remove());
+      await expect.poll(async () => (await paintPixel(characterBubble))[3]).toBe(128);
       await page.evaluate(async () => {
         const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
         useUIStore.setState({ chatFontOpacity: 90, chatWidgetApplyColors: false, chatWidgetApplyShape: false });
       });
       await page.screenshot({ path: testInfo.outputPath(`roleplay-opacity-${theme}.png`) });
+      for (const [kind, id] of [
+        ["character", fixture.character.id],
+        ["persona", fixture.persona.id],
+      ] as const) {
+        await page.evaluate(
+          async ({ kind, id }) => {
+            const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+            const store = useUIStore.getState();
+            store.closeCharacterDetail();
+            store.closePersonaDetail();
+            store.setChatFontOpacity(50);
+            if (kind === "character") store.openCharacterDetail(id, { initialTab: "colors" });
+            else store.openPersonaDetail(id, { initialTab: "colors" });
+          },
+          { kind, id },
+        );
+        const preview = page.locator("[data-roleplay-color-preview]");
+        await expect(preview).toBeVisible();
+        await expect.poll(async () => (await paintPixel(preview))[3]).toBe(128);
+        await page.evaluate(async () => {
+          const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+          useUIStore.getState().setChatFontOpacity(0);
+        });
+        await expect.poll(async () => (await paintPixel(preview))[3]).toBe(0);
+      }
     } finally {
       await fixture.cleanup();
     }

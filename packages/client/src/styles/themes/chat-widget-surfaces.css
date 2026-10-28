@@ -85,9 +85,16 @@
 /* The Roleplay slider owns fill alpha, including authored RGBA and gradient stops.
    Keep text, avatars, borders and the other chat modes outside this override. */
 :root[data-chat-widget-apply-colors="true"] .mari-rp-bubble {
+  /* Explicit custom-theme hooks retain their author-defined paint and priority. */
   --mari-rp-preset-bg: var(
-    --mari-widget-custom-roleplay-background,
-    rgb(from var(--mari-chat-resolved-bg) r g b / var(--mari-rp-bubble-opacity))
+    --mari-chat-bg,
+    var(
+      --mari-window-bg,
+      var(
+        --mari-widget-custom-roleplay-background,
+        rgb(from var(--mari-chat-resolved-bg) r g b / var(--mari-rp-bubble-opacity))
+      )
+    )
   );
 }
 

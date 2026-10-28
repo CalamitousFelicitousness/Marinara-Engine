@@ -6,12 +6,20 @@ import {
   editorFieldId,
   hasMariField,
   mariWorkingFieldFromTool,
+  mariFieldDraft,
 } from "../../packages/client/src/lib/mari-editor-fields.js";
 
 // Change-card paths come from the row's `data` column.
 assert.equal(editorFieldId("data.first_mes"), "first_mes");
 assert.equal(editorFieldId("data.extensions.backstory"), "extensions.backstory");
 assert.equal(editorFieldId("description"), "description");
+assert.deepEqual(mariFieldDraft("description", "Make this warmer", 0, 9), {
+  fieldId: "description",
+  value: "Make this warmer",
+  selection: "Make this",
+});
+assert.deepEqual(mariFieldDraft("description", "Draft", 2, 2), { fieldId: "description", value: "Draft" });
+assert.equal(mariFieldDraft("tags", "half-typed", 0, 4), null, "a tag input is not the Tags field content");
 
 // Patch keys in every spelling the server accepts map to the editor id; unknown keys do not.
 assert.equal(characterPatchFieldId("firstMes"), "first_mes");

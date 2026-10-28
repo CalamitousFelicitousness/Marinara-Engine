@@ -7,6 +7,24 @@ export function editorFieldId(path: string): string {
   return path.replace(/^data\./, "");
 }
 
+// List fields: the focused input is one tag or greeting, not the field's content.
+const LIST_FIELD_IDS = new Set(["tags", "alternate_greetings"]);
+
+/** Capture the focused field's current text and selected text for a Prof. Mari handoff; null for list fields. */
+export function mariFieldDraft(
+  fieldId: string,
+  value: string,
+  selectionStart: number | null,
+  selectionEnd: number | null,
+): { fieldId: string; value: string; selection?: string } | null {
+  if (LIST_FIELD_IDS.has(fieldId)) return null;
+  const selection =
+    selectionStart !== null && selectionEnd !== null && selectionEnd > selectionStart
+      ? value.slice(selectionStart, selectionEnd)
+      : undefined;
+  return { fieldId, value, ...(selection ? { selection } : {}) };
+}
+
 /** The field for an id, or its closest anchored parent (`extensions.depth_prompt.role` -> the depth prompt). */
 export function findMariField(root: ParentNode, path: string): HTMLElement | null {
   const parts = editorFieldId(path).split(".");

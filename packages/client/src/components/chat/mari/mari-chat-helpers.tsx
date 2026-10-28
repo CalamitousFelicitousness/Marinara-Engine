@@ -399,7 +399,7 @@ export function retargetEditorContext(
   if (!onOldEditor && !pickedOldEditor && context.field === undefined && context.fieldId === undefined) return context;
   // Fields only ever come from the open editor, so a field here belonged to the old one; the
   // pick of the old editor's row ("Selected ...: Editing X") goes with it.
-  const { field: _field, fieldId: _fieldId, resource, ...rest } = context;
+  const { field: _field, fieldId: _fieldId, fieldDraft: _fieldDraft, resource, ...rest } = context;
   if (pickedOldEditor) {
     delete rest.commandCenterResultId;
     delete rest.action;

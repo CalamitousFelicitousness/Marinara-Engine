@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { useUIStore } from "../stores/ui.store";
 import { fieldLabel } from "../lib/mari-edit-diff";
-import { findMariField } from "../lib/mari-editor-fields";
+import { findMariField, mariFieldDraft } from "../lib/mari-editor-fields";
 import { confirmEditorLeave } from "../lib/editor-leave";
 
 /**
@@ -114,4 +114,19 @@ export function openCharacterAtField(characterId: string, path: string | undefin
   if (!confirmEditorLeave(ui, leavePrompt)) return false;
   ui.openCharacterDetail(characterId, path ? { revealField: path } : undefined);
   return true;
+}
+
+/** Store the focused editor field's current text and selection for the next Prof. Mari handoff. */
+export function captureMariFieldDraft() {
+  const active = document.activeElement;
+  if (
+    !(active instanceof HTMLTextAreaElement) &&
+    (!(active instanceof HTMLInputElement) || !["text", "search", "url"].includes(active.type))
+  )
+    return;
+  const fieldId = active.closest<HTMLElement>("[data-mari-field]")?.dataset.mariField;
+  if (!fieldId) return;
+  useUIStore
+    .getState()
+    .setMariFieldDraft(mariFieldDraft(fieldId, active.value, active.selectionStart, active.selectionEnd));
 }

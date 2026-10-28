@@ -801,6 +801,8 @@ interface UIState {
   regexDetailId: string | null;
   /** The primary field currently focused in an open editor, for Mari omnibar handoff. Transient, never persisted. */
   activeEditorField: { id: string; label: string } | null;
+  /** Current text of the field that had focus when the omnibar opened. Transient, never persisted. */
+  mariFieldDraft: { fieldId: string; value: string; selection?: string } | null;
   /** Prof. Mari asks the open editor to show this field: scroll to it and pulse it once. Transient. */
   /** `scroll: false` pulses the field in place (companion hover). */
   mariRevealField: { characterId: string; path: string; scroll?: boolean } | null;
@@ -1266,6 +1268,7 @@ interface UIState {
   toggleRightPanel: (panel: Panel) => void;
   setSettingsTab: (tab: string) => void;
   setActiveEditorField: (field: { id: string; label: string } | null) => void;
+  setMariFieldDraft: (draft: UIState["mariFieldDraft"]) => void;
   revealMariField: (characterId: string, path: string, options?: { scroll?: boolean }) => void;
   clearMariRevealField: () => void;
   setMariWorkingField: (field: { characterId: string; path: string } | null) => void;
@@ -2133,6 +2136,7 @@ export const useUIStore = create<UIState>()(
         trackerPanelSectionOrder: [...TRACKER_DATA_PANEL_SECTIONS],
         settingsTab: "general",
         activeEditorField: null,
+        mariFieldDraft: null,
         mariRevealField: null,
         mariWorkingField: null,
         lastAppError: null,
@@ -2523,6 +2527,7 @@ export const useUIStore = create<UIState>()(
 
         setSettingsTab: (tab) => set({ settingsTab: tab }),
         setActiveEditorField: (field) => set({ activeEditorField: field }),
+        setMariFieldDraft: (draft) => set({ mariFieldDraft: draft }),
         revealMariField: (characterId, path, options) => set({ mariRevealField: { characterId, path, ...options } }),
         clearMariRevealField: () => set({ mariRevealField: null }),
         setMariWorkingField: (field) => set({ mariWorkingField: field }),
@@ -3097,7 +3102,7 @@ export const useUIStore = create<UIState>()(
           // K6: mark the start of every real open (any trigger routes through
           // here) so the first-result-paint effect can measure against it.
           if (open && !get().omnibarOpen && get().debugMode) markOmnibarOpenStart();
-          set(open ? { omnibarOpen: true } : { omnibarOpen: false, omnibarSettings: null });
+          set(open ? { omnibarOpen: true } : { omnibarOpen: false, omnibarSettings: null, mariFieldDraft: null });
         },
         openOmnibarSettings: (controlId = null) => {
           if (!get().omnibarOpen && get().debugMode) markOmnibarOpenStart();

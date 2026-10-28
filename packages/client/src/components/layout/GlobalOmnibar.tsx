@@ -119,7 +119,7 @@ import { executeStateNavigation } from "../../lib/state-navigation";
 import { isPullHandoffPending, takePullHandoff } from "../../lib/pull-to-open";
 import { measureOmnibarFirstResultPaint } from "../../lib/omnibar-open-timing";
 import { confirmEditorLeave } from "../../lib/editor-leave";
-import { openCharacterAtField } from "../../hooks/use-mari-editor-fields";
+import { captureMariFieldDraft, openCharacterAtField } from "../../hooks/use-mari-editor-fields";
 import { cn } from "../../lib/utils";
 import { useLocalizedUiText } from "../../localization/use-localized-ui-text";
 import { useChatStore } from "../../stores/chat.store";
@@ -1200,6 +1200,8 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
     chatPendingForMariRef.current = context && !context.activeChat && activeChatId ? activeChatId : null;
     if (context) {
       setMariContext(context);
+      // One handoff per capture: a later Mari door in this session must not resend old text as current.
+      if (context.fieldDraft) useUIStore.getState().setMariFieldDraft(null);
       // The handoff lives in session state, not component state, so a task that
       // Mari finishes while the omnibar is shut is still waiting on reopen.
       setSessionValue("mariHandoff", {
@@ -1520,6 +1522,7 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
   const toggleMariPane = useEffectEvent(() => {
     // Beside an editor ⌘J keeps her there: refresh the screen context (focused field) and go to her composer.
     if (pane === "mari" && companion) {
+      captureMariFieldDraft();
       openProfessorMari(null, { arrival: true });
       requestAnimationFrame(() => dialogRef.current?.querySelector<HTMLElement>("textarea")?.focus());
     } else if (pane === "mari") leaveDetail();
@@ -1566,6 +1569,8 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
     // an id, so "focus id equals Fix row id" can also be true for a plain fallback focus (A5/N6).
     const fix = Boolean(options.fix);
     const source = fix ? ("chat-error" as const) : gameSetupStep ? ("game-setup" as const) : undefined;
+    // Read live: the companion's Cmd+J captures and hands off in the same keydown.
+    const fieldDraft = useUIStore.getState().mariFieldDraft;
     return buildProfessorMariCommandCenterContext(message, focusResult, [], focusResult?.id, {
       activeChat: openChat ? { id: openChat.id, label: openChat.name, mode: openChat.mode } : undefined,
       settingsLocation:
@@ -1574,6 +1579,8 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
           : undefined,
       field: gameSetupStep ?? activeEditorField?.label,
       fieldId: gameSetupStep ? undefined : activeEditorField?.id,
+      fieldDraft:
+        !gameSetupStep && fieldDraft?.fieldId === activeEditorField?.id ? (fieldDraft ?? undefined) : undefined,
       // Only the deliberate "fix this" handoff actually needs lastAppError's text; every other
       // Mari call (R22) must not carry it along just because an unrelated error happens to be live.
       error: fix && lastAppError ? { message: lastAppError.message, code: lastAppError.code } : undefined,

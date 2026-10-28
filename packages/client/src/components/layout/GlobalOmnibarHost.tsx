@@ -9,7 +9,7 @@ import {
   writeCommandCenterSessionState,
 } from "../../lib/command-center";
 import { isShortcutsHelpKey, isTypingTarget } from "../../lib/keyboard-shortcuts";
-import { mariFieldDraft } from "../../lib/mari-editor-fields";
+import { captureMariFieldDraft } from "../../hooks/use-mari-editor-fields";
 import { isModalOverlayOpen } from "../../lib/modal-overlay-registry";
 import { parseOmnibarScope } from "../../lib/omnibar-scope";
 import {
@@ -172,20 +172,6 @@ export function GlobalOmnibar() {
         event.preventDefault();
         ui.openModal("keyboard-shortcuts");
       }
-    };
-    const captureMariFieldDraft = () => {
-      const active = document.activeElement;
-      if (
-        !(active instanceof HTMLTextAreaElement) &&
-        (!(active instanceof HTMLInputElement) || !["text", "search", "url"].includes(active.type))
-      )
-        return;
-      const anchor = active.closest<HTMLElement>("[data-mari-field]");
-      const fieldId = anchor?.dataset.mariField;
-      if (!fieldId) return;
-      useUIStore
-        .getState()
-        .setMariFieldDraft(mariFieldDraft(fieldId, active.value, active.selectionStart, active.selectionEnd));
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);

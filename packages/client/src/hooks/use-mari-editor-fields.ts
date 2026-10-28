@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { useUIStore } from "../stores/ui.store";
 import { fieldLabel } from "../lib/mari-edit-diff";
-import { findMariField } from "../lib/mari-editor-fields";
+import { findMariField, mariFieldDraft } from "../lib/mari-editor-fields";
 import { confirmEditorLeave } from "../lib/editor-leave";
 
 /**
@@ -49,7 +49,7 @@ export function useMariEditorFields(
     useUIStore.getState().clearMariRevealField();
     const field = findMariField(root, reveal.path);
     if (!field) return;
-    scrollToElement(field);
+    if (reveal.scroll !== false) scrollToElement(field);
     // A new reveal restarts the pulse. Not the effect's cleanup: clearing the request above re-runs
     // this effect, and the pulse must still end.
     endPulse();
@@ -86,6 +86,23 @@ export function useMariEditorFields(
   return { workingOffscreen: offscreen, revealWorkingField };
 }
 
+/**
+ * Lets Prof. Mari dock as a companion panel beside this editor (desktop) while
+ * it is mounted. `contentRef` is the scroll root holding `.mari-editor-content-inner`
+ * inside a `.mari-editor-shell` with a `.mari-editor-header`.
+ */
+export function useMariCompanionEditor(contentRef: RefObject<HTMLElement | null>, ready: boolean) {
+  useEffect(() => {
+    const root = contentRef.current;
+    if (!root || !ready) return;
+    const ui = useUIStore.getState();
+    ui.setMariCompanionRoot(root);
+    return () => {
+      if (useUIStore.getState().mariCompanionRoot === root) useUIStore.getState().setMariCompanionRoot(null);
+    };
+  }, [contentRef, ready]);
+}
+
 /** Opens a character, at one field when given (`data.first_mes` or `first_mes`). False when the user stays. */
 export function openCharacterAtField(characterId: string, path: string | undefined, leavePrompt: string): boolean {
   const ui = useUIStore.getState();
@@ -97,4 +114,19 @@ export function openCharacterAtField(characterId: string, path: string | undefin
   if (!confirmEditorLeave(ui, leavePrompt)) return false;
   ui.openCharacterDetail(characterId, path ? { revealField: path } : undefined);
   return true;
+}
+
+/** Store the focused editor field's current text and selection for the next Prof. Mari handoff. */
+export function captureMariFieldDraft() {
+  const active = document.activeElement;
+  if (
+    !(active instanceof HTMLTextAreaElement) &&
+    (!(active instanceof HTMLInputElement) || !["text", "search", "url"].includes(active.type))
+  )
+    return;
+  const fieldId = active.closest<HTMLElement>("[data-mari-field]")?.dataset.mariField;
+  if (!fieldId) return;
+  useUIStore
+    .getState()
+    .setMariFieldDraft(mariFieldDraft(fieldId, active.value, active.selectionStart, active.selectionEnd));
 }

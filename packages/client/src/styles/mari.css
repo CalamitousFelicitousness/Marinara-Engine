@@ -4939,3 +4939,62 @@ html[data-marinara-effects-paused="true"] .mari-workspace-portrait img {
     opacity: 1;
   }
 }
+
+/* Slice 4: Prof. Mari as a companion panel beside an open editor (desktop). A solid floating
+   panel fixed at the left, 12px below the editor header; never a layout column. Placement vars
+   come from useMariCompanionPlacement. */
+[data-component="GlobalOmnibar"][data-pane="mari"][data-mari-companion] > .mari-companion-panel {
+  position: fixed;
+  top: var(--mari-companion-top, 7.5rem);
+  bottom: var(--mari-companion-bottom, 0.75rem);
+  left: var(--mari-companion-left, 0.75rem);
+  width: var(--mari-companion-width, 24rem);
+  height: auto;
+  max-width: none;
+  max-height: none;
+  border-radius: 1rem;
+  box-shadow:
+    0 0 0 1px var(--border),
+    0 1.5rem 3.75rem -0.75rem rgb(0 0 0 / 0.55);
+  pointer-events: auto;
+}
+
+.mari-companion-resize {
+  position: absolute;
+  inset-block: 1.5rem;
+  /* Physical: the panel is always at the left; the logical form compiles to :dir() rules. */
+  right: 0;
+  z-index: 60;
+  width: 0.6rem;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.mari-companion-resize::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: calc(50% - 1px);
+  width: 2px;
+  border-radius: 1px;
+  background: var(--border);
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.mari-companion-resize:hover::after,
+.mari-companion-resize:focus-visible::after,
+.mari-companion-resize[data-dragging]::after {
+  opacity: 1;
+}
+
+.mari-companion-resize:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mari-companion-resize::after {
+    transition: none;
+  }
+}

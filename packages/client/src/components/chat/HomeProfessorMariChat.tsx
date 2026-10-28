@@ -41,6 +41,7 @@ import {
   type MariWorkspaceStatus,
   type Message,
   type ProfessorMariAskContext,
+  type ProfessorMariContextResource,
   type ProfessorMariHandoff,
 } from "@marinara-engine/shared";
 import { useConnections } from "../../hooks/use-connections";
@@ -163,6 +164,7 @@ import {
   toMessageExtra,
   getProfessorMariMessageContext,
   persistentResourceContext,
+  retargetEditorContext,
   continuedThereByContext,
   classifyProfessorMariFailure,
   PROFESSOR_MARI_ATTACHMENT_MAX_BYTES,
@@ -241,6 +243,8 @@ type HomeProfessorMariChatProps = {
   onArrivalAction?: (action: MariArrivalAction) => void;
   /** N6 (R22): the handoff an arrival Fix card sends with; the only arrival path that carries the error text. */
   arrivalFixContext?: ProfessorMariAskContext | null;
+  /** The open editor beside her (omnibar); her pending context follows it when it changes. */
+  editorResource?: ProfessorMariContextResource | null;
   onChatWindowOpenChange?: (open: boolean) => void;
   onChatWindowExitComplete?: () => void;
 };
@@ -273,6 +277,7 @@ export function HomeProfessorMariChat({
   arrivalThread = null,
   onArrivalAction,
   arrivalFixContext = null,
+  editorResource = null,
   onChatWindowOpenChange,
   onChatWindowExitComplete,
 }: HomeProfessorMariChatProps) {
@@ -835,6 +840,20 @@ export function HomeProfessorMariChat({
   // Read when the history load lands, not when it starts: M9's arrival context can come in a commit
   // after this pane mounted, and the load must not then restore an older focus over it.
   const initialAskContextRef = useRef(initialAskContext);
+  // Companion mode keeps her open while the user switches or closes the editor beside her, so the
+  // context the next send carries must follow the editor, not stay on the one she was opened over.
+  const lastEditorResourceRef = useRef(editorResource);
+  useEffect(() => {
+    const previous = lastEditorResourceRef.current;
+    if (
+      previous?.kind === editorResource?.kind &&
+      previous?.id === editorResource?.id &&
+      previous?.label === editorResource?.label
+    )
+      return;
+    lastEditorResourceRef.current = editorResource;
+    setHandoffContext((current) => retargetEditorContext(current, previous, editorResource));
+  }, [editorResource]);
   useEffect(() => {
     initialAskContextRef.current = initialAskContext;
     if (initialAskContext) setHandoffContext(initialAskContext);

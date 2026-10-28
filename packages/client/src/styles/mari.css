@@ -3879,6 +3879,17 @@ details[open] > .mari-disclosure .mari-disclosure__chevron {
   flex: 1;
 }
 
+/* Narrow phones: Edit / Next on their own row, the two answers share the next one. */
+@media (max-width: 26.25rem) {
+  .mari-field-review__spacer {
+    flex-basis: 100%;
+  }
+
+  .mari-field-review__bar .mari-btn {
+    flex: 1;
+  }
+}
+
 .mari-field-review__bar svg,
 .mari-field-review-line svg {
   width: 0.875rem;
@@ -5059,7 +5070,7 @@ html[data-marinara-effects-paused="true"] .mari-workspace-portrait img {
 /* Slice 4: Prof. Mari as a companion panel beside an open editor (desktop). A solid floating
    panel fixed at the left, 12px below the editor header; never a layout column. Placement vars
    come from useMariCompanionPlacement. */
-[data-component="GlobalOmnibar"][data-pane="mari"][data-mari-companion] > .mari-companion-panel {
+[data-component="GlobalOmnibar"][data-pane="mari"][data-mari-companion="panel"] > .mari-companion-panel {
   position: fixed;
   top: var(--mari-companion-top, 7.5rem);
   bottom: var(--mari-companion-bottom, 0.75rem);
@@ -5112,5 +5123,142 @@ html[data-marinara-effects-paused="true"] .mari-workspace-portrait img {
 @media (prefers-reduced-motion: reduce) {
   .mari-companion-resize::after {
     transition: none;
+  }
+}
+
+/* Slice 6: below 1024px, with an editor open, Prof. Mari is a bottom sheet under it:
+   peek (title + status), half, full. Her chat stays mounted in every shape. */
+[data-component="GlobalOmnibar"][data-pane="mari"][data-mari-companion="sheet"] > .mari-companion-panel {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  height: 50dvh;
+  padding-bottom: env(safe-area-inset-bottom);
+  border-radius: 1rem 1rem 0 0;
+  box-shadow:
+    0 0 0 1px var(--border),
+    0 -0.75rem 2.5rem -0.75rem rgb(0 0 0 / 0.5);
+  pointer-events: auto;
+}
+
+[data-component="GlobalOmnibar"][data-pane="mari"][data-mari-companion="sheet"][data-mari-sheet-snap="full"]
+  > .mari-companion-panel {
+  height: calc(100dvh - 3.5rem - env(safe-area-inset-top));
+}
+
+/* Peek also while an editor field has the keyboard, so the sheet never covers that field. */
+[data-component="GlobalOmnibar"][data-pane="mari"][data-mari-companion="sheet"][data-mari-sheet-snap="peek"]
+  > .mari-companion-panel,
+html[data-mari-software-keyboard-open]
+  [data-component="GlobalOmnibar"][data-pane="mari"][data-mari-companion="sheet"]
+  > .mari-companion-panel:not(:has(.mari-workspace-composer__input:focus)) {
+  height: auto;
+}
+
+[data-mari-companion="sheet"][data-mari-sheet-snap="peek"] > .mari-companion-panel > :not(.mari-sheet-handle, header),
+[data-mari-companion="sheet"][data-mari-sheet-snap="peek"] > .mari-companion-panel .mari-omnibar-header-row,
+html[data-mari-software-keyboard-open]
+  [data-component="GlobalOmnibar"][data-pane="mari"][data-mari-companion="sheet"]
+  > .mari-companion-panel:not(:has(.mari-workspace-composer__input:focus))
+  > :not(.mari-sheet-handle, header),
+html[data-mari-software-keyboard-open]
+  [data-component="GlobalOmnibar"][data-pane="mari"][data-mari-companion="sheet"]
+  > .mari-companion-panel:not(:has(.mari-workspace-composer__input:focus))
+  .mari-omnibar-header-row {
+  display: none;
+}
+
+[data-mari-companion="sheet"] > .mari-companion-panel > header {
+  padding-top: 0;
+}
+
+/* Composer only while she has the keyboard: it rides right above it. */
+html[data-mari-software-keyboard-open]
+  [data-mari-companion="sheet"]
+  > .mari-companion-panel:has(.mari-workspace-composer__input:focus) {
+  top: calc(var(--mari-visual-viewport-offset-top, 0px) + var(--mari-visual-viewport-height, 100dvh));
+  bottom: auto;
+  height: auto;
+  padding-bottom: 0;
+  translate: 0 -100%;
+}
+
+html[data-mari-software-keyboard-open]
+  [data-mari-companion="sheet"]
+  > .mari-companion-panel:has(.mari-workspace-composer__input:focus)
+  :is(.mari-omnibar-header-row, [data-component="HomeProfessorMariChat.Transcript"], .mari-workspace-glow-band) {
+  display: none;
+}
+
+html[data-mari-software-keyboard-open]
+  [data-mari-companion="sheet"]
+  > .mari-companion-panel:has(.mari-workspace-composer__input:focus)
+  > header {
+  display: none;
+}
+
+html[data-mari-software-keyboard-open]
+  [data-mari-companion="sheet"]
+  > .mari-companion-panel:has(.mari-workspace-composer__input:focus)
+  .mari-workspace-composer-dock {
+  position: static;
+}
+
+[data-mari-sheet-host]::after {
+  content: "";
+  display: block;
+  height: var(--mari-sheet-pad, 0);
+}
+
+.mari-sheet-handle {
+  position: relative;
+  display: block;
+  flex-shrink: 0;
+  width: 100%;
+  height: 1.5rem;
+  touch-action: none;
+  cursor: grab;
+}
+
+.mari-sheet-handle::after {
+  content: "";
+  position: absolute;
+  top: 0.625rem;
+  left: 50%;
+  width: 2.5rem;
+  height: 0.25rem;
+  margin-left: -1.25rem;
+  border-radius: 1rem;
+  background: var(--muted-foreground);
+  opacity: 0.4;
+  transition: opacity 150ms ease;
+}
+
+.mari-sheet-handle:hover::after,
+.mari-sheet-handle:focus-visible::after {
+  opacity: 0.8;
+}
+
+.mari-sheet-handle:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-mari-companion="sheet"] > .mari-companion-panel {
+    animation: mari-sheet-in 200ms ease-out;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mari-sheet-handle::after {
+    transition: none;
+  }
+}
+
+@keyframes mari-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(1.5rem);
   }
 }

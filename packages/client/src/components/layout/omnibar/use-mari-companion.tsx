@@ -1,4 +1,12 @@
-import { useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type RefObject } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type PointerEvent,
+  type RefObject,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { useMatchMedia } from "../../../hooks/use-match-media";
 import {
@@ -11,6 +19,25 @@ import {
 const GAP_PX = 12;
 /** The editor's field column keeps at least this much room; the panel stops growing first. */
 const MIN_COLUMN_REM = 28;
+
+export type MariCompanionShape = "panel" | "sheet";
+export type MariSheetSnap = "peek" | "half" | "full";
+const SNAPS: MariSheetSnap[] = ["peek", "half", "full"];
+
+// The omnibar remounts per open: these outlive it, so one held change auto-peeks only once.
+let handledWaitingKey: string | null = null;
+let peekSheet: (() => void) | null = null;
+
+/** Drops the open sheet to peek and scrolls the editor to the first field of her held change.
+ *  False when she is not a sheet or the editor shows another character. */
+export function revealWaitingField(): boolean {
+  const ui = useUIStore.getState();
+  const field = ui.mariFieldReview?.mode === "waiting" ? ui.mariFieldReview.fields[0] : undefined;
+  if (!peekSheet || !field || ui.characterDetailId !== field.characterId) return false;
+  peekSheet();
+  ui.revealMariField(field.characterId, field.fieldId);
+  return true;
+}
 
 const remPx = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
 const halfRem = (value: number) => Math.floor(value * 2) / 2;
@@ -29,8 +56,52 @@ export function useMariCompanion(mariSurface: boolean, panelRef: RefObject<HTMLE
   const savedRem = useUIStore((s) => s.mariCompanionWidthRem);
   // Largest panel width the shell can draw; below the minimum the companion does not fit.
   const [maxRem, setMaxRem] = useState(MARI_COMPANION_WIDTH_MAX_REM);
-  const available = mariSurface && desktop && root !== null && maxRem >= MARI_COMPANION_WIDTH_MIN_REM;
+  // Slice 6: below 1024px the companion is a bottom sheet under the editor instead.
+  const available = mariSurface && root !== null && (!desktop || maxRem >= MARI_COMPANION_WIDTH_MIN_REM);
   const active = available && docked;
+  const shape: MariCompanionShape | null = active ? (desktop ? "panel" : "sheet") : null;
+  // The omnibar remounts per open, so every open starts at half height.
+  const [snap, setSnap] = useState<MariSheetSnap>("half");
+  const waitingKey = useUIStore((s) => (s.mariFieldReview?.mode === "waiting" ? s.mariFieldReview.key : null));
+
+  // A held change drops the sheet to peek, closes her keyboard and scrolls the first
+  // changed field into view. Typing in an editor field keeps its focus and place.
+  useEffect(() => {
+    if (shape !== "sheet") return;
+    peekSheet = () => setSnap("peek");
+    return () => {
+      peekSheet = null;
+    };
+  }, [shape]);
+  useEffect(() => {
+    if (shape !== "sheet" || !waitingKey || waitingKey === handledWaitingKey) return;
+    handledWaitingKey = waitingKey;
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement && root?.contains(focused)) {
+      setSnap("peek");
+      return;
+    }
+    if (focused instanceof HTMLElement && panelRef.current?.contains(focused)) focused.blur();
+    // Another character's change waits for its own editor.
+    if (!revealWaitingField()) handledWaitingKey = null;
+  }, [shape, waitingKey, root, panelRef]);
+
+  // The sheet covers the editor's bottom: a spacer as tall as the sheet ends the editor's
+  // scroll root (CSS `[data-mari-sheet-host]::after`), so every field can scroll above it.
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    if (!root || shape !== "sheet" || !panel) return;
+    root.dataset.mariSheetHost = "";
+    const pad = () => root.style.setProperty("--mari-sheet-pad", `${panel.offsetHeight}px`);
+    pad();
+    const observer = new ResizeObserver(pad);
+    observer.observe(panel);
+    return () => {
+      observer.disconnect();
+      delete root.dataset.mariSheetHost;
+      root.style.removeProperty("--mari-sheet-pad");
+    };
+  }, [root, shape, panelRef]);
   const drawnRem = Math.max(MARI_COMPANION_WIDTH_MIN_REM, Math.min(savedRem, maxRem));
 
   // A drag previews its width here and only saves on release.
@@ -106,7 +177,7 @@ export function useMariCompanion(mariSurface: boolean, panelRef: RefObject<HTMLE
     placeRef.current();
   };
 
-  return { available, active, drawnRem, maxRem, preview };
+  return { available, active, desktop, shape, snap, setSnap, drawnRem, maxRem, preview };
 }
 
 /** Width handle on the panel's right edge (drag or arrow keys). The panel is never dragged. */
@@ -169,6 +240,97 @@ export function MariCompanionResizeHandle({
       onPointerDown={onPointerDown}
       onKeyDown={onKeyDown}
       className="mari-companion-resize"
+    />
+  );
+}
+
+/** Grab strip on top of the phone/tablet sheet: tap steps peek, half, full; a drag
+ *  snaps to where it is let go; arrow keys grow or shrink it. */
+export function MariSheetHandle({
+  panelRef,
+  snap,
+  setSnap,
+}: {
+  panelRef: RefObject<HTMLElement | null>;
+  snap: MariSheetSnap;
+  setSnap: (snap: MariSheetSnap) => void;
+}) {
+  const { t } = useTranslation();
+  const drag = useRef<{ startY: number; moved: boolean } | null>(null);
+  const dragged = useRef(false);
+  const index = SNAPS.indexOf(snap);
+  const valueText = {
+    peek: t("omnibar.companion.sheetPeek", "Title only"),
+    half: t("omnibar.companion.sheetHalf", "Half height"),
+    full: t("omnibar.companion.sheetFull", "Full height"),
+  }[snap];
+
+  // Unmounting mid-drag must not leave the drag offset on her panel.
+  useEffect(() => {
+    const panel = panelRef.current;
+    return () => {
+      panel?.style.removeProperty("translate");
+    };
+  }, [panelRef]);
+
+  const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragged.current = false;
+    drag.current = { startY: event.clientY, moved: false };
+  };
+  const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const state = drag.current;
+    if (!state) return;
+    const dy = event.clientY - state.startY;
+    if (!state.moved && Math.abs(dy) < 6) return;
+    state.moved = true;
+    // Feedback for a pull down only; the panel snaps to its new height on release.
+    panelRef.current?.style.setProperty("translate", `0 ${Math.max(0, dy)}px`);
+  };
+  const onPointerEnd = (event: PointerEvent<HTMLDivElement>) => {
+    const state = drag.current;
+    drag.current = null;
+    panelRef.current?.style.removeProperty("translate");
+    if (!state?.moved || event.type === "pointercancel") return;
+    dragged.current = true;
+    const share = event.clientY / window.innerHeight;
+    setSnap(share > 0.75 ? "peek" : share > 0.35 ? "half" : "full");
+  };
+  const onClick = () => {
+    // A drag also ends in a click; only a tap steps.
+    if (dragged.current) {
+      dragged.current = false;
+      return;
+    }
+    setSnap(SNAPS[(index + 1) % SNAPS.length]!);
+  };
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const step = event.key === "ArrowUp" ? 1 : event.key === "ArrowDown" ? -1 : 0;
+    const next = SNAPS[index + step];
+    if (!step || !next) return;
+    event.preventDefault();
+    setSnap(next);
+  };
+
+  return (
+    <div
+      role="slider"
+      tabIndex={0}
+      className="mari-sheet-handle"
+      data-snap={snap}
+      aria-label={t("omnibar.companion.resize", "Resize Professor Mari")}
+      aria-orientation="vertical"
+      aria-valuemin={0}
+      aria-valuemax={SNAPS.length - 1}
+      aria-valuenow={index}
+      aria-valuetext={valueText}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerEnd}
+      onPointerCancel={onPointerEnd}
+      onClick={onClick}
+      onKeyDown={onKeyDown}
     />
   );
 }

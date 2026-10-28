@@ -23,7 +23,7 @@ import type {
 import { LOCAL_SIDECAR_CONNECTION_ID, matchOmnibarCapabilityAgentPackageIds } from "@marinara-engine/shared";
 import { api } from "../../lib/api-client";
 import { MARI_QUICK_CONNECTION, marisConnectionFor } from "../../lib/omnibar-aside-text";
-import { ChevronLeft, PanelLeft, Search, X } from "lucide-react";
+import { ChevronLeft, PanelBottom, PanelLeft, Search, X } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { checkReply } from "../../lib/reply-checkup";
@@ -158,7 +158,7 @@ import {
 } from "./omnibar/OmnibarChrome";
 import { buildOmnibarPreviewActions } from "./omnibar/omnibar-preview-actions";
 import { createOmnibarKeyHandlers } from "./omnibar/omnibar-keyboard";
-import { MariCompanionResizeHandle, useMariCompanion } from "./omnibar/use-mari-companion";
+import { MariCompanionResizeHandle, MariSheetHandle, useMariCompanion } from "./omnibar/use-mari-companion";
 import { useOmnibarEntityRows } from "./omnibar/use-omnibar-entity-rows";
 import { useOmnibarMessageSearch } from "./omnibar/use-omnibar-message-search";
 import { useOmnibarScreenContext } from "./omnibar/use-omnibar-screen-context";
@@ -966,8 +966,15 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
   const {
     available: companionAvailable,
     active: companion,
+    desktop: companionDesktop,
+    shape: companionShape,
+    snap: sheetSnap,
+    setSnap: setSheetSnap,
     ...companionSize
   } = useMariCompanion(mariSurface, dialogRef);
+  const dockLabel = companionDesktop
+    ? t("omnibar.companion.dock", "Keep Prof. Mari beside the editor")
+    : t("omnibar.companion.dockSheet", "Keep Prof. Mari below the editor");
   const lastCompanionRef = useRef(companion);
   useLayoutEffect(() => {
     if (lastCompanionRef.current === companion) return;
@@ -1988,7 +1995,8 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
       data-over-dialog={overDialog ? "true" : undefined}
       data-pane={pane}
       data-mode={pane === "mari" ? "work" : "find"}
-      data-mari-companion={companion ? "true" : undefined}
+      data-mari-companion={companionShape ?? undefined}
+      data-mari-sheet-snap={companionShape === "sheet" ? sheetSnap : undefined}
       className={
         companion
           ? "pointer-events-none fixed inset-0 z-(--mari-layer-omnibar)"
@@ -2009,7 +2017,13 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
         role={companion ? "complementary" : "dialog"}
         aria-modal={companion ? undefined : "true"}
         aria-labelledby={companion ? undefined : "global-omnibar-title"}
-        aria-label={companion ? t("omnibar.companion.label", "Professor Mari, beside the editor") : undefined}
+        aria-label={
+          companionShape === "sheet"
+            ? t("omnibar.companion.sheetLabel", "Professor Mari, below the editor")
+            : companion
+              ? t("omnibar.companion.label", "Professor Mari, beside the editor")
+              : undefined
+        }
         ref={dialogRef}
         data-component="GlobalOmnibar.Panel"
         style={
@@ -2039,7 +2053,10 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
           aria-hidden="true"
           className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-44 bg-[radial-gradient(120%_100%_at_12%_0%,oklch(0.72_0.16_255/0.12),transparent_60%),radial-gradient(120%_100%_at_88%_0%,oklch(0.73_0.21_345/0.11),transparent_60%)]"
         />
-        {companion ? <MariCompanionResizeHandle panelRef={dialogRef} {...companionSize} /> : null}
+        {companionShape === "panel" ? <MariCompanionResizeHandle panelRef={dialogRef} {...companionSize} /> : null}
+        {companionShape === "sheet" ? (
+          <MariSheetHandle panelRef={dialogRef} snap={sheetSnap} setSnap={setSheetSnap} />
+        ) : null}
         <h2 id="global-omnibar-title" className="sr-only">
           {mariSurface ? t("commandCenter.workTitle", "Professor Mari") : t("omnibar.title", "Search Marinara")}
         </h2>
@@ -2189,11 +2206,11 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
                 type="button"
                 onClick={() => setCompanionDocked(!companion)}
                 aria-pressed={companion}
-                aria-label={t("omnibar.companion.dock", "Keep Prof. Mari beside the editor")}
-                title={t("omnibar.companion.dock", "Keep Prof. Mari beside the editor")}
+                aria-label={dockLabel}
+                title={dockLabel}
                 className={cn("omnibar-settings-menu__trigger", companion && "omnibar-settings-menu__trigger--open")}
               >
-                <PanelLeft size={14} />
+                {companionDesktop ? <PanelLeft size={14} /> : <PanelBottom size={14} />}
               </button>
             ) : null}
             {mariSurface ? <OmnibarSettingsButton open={settingsOpen} onOpen={() => openSettings()} /> : null}

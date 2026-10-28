@@ -15,6 +15,7 @@ import { api, isPassiveStreamDisconnect } from "../../../lib/api-client";
 import { awaitMariPermissionsModeWrites } from "../../../lib/mari-permissions-write-chain";
 import { describeProfessorMariError } from "../../../lib/professor-mari-errors";
 import { RafThrottle, rafThrottle } from "../../../lib/raf-throttle";
+import { mariWorkingFieldFromTool } from "../../../lib/mari-editor-fields";
 import { useChatStore } from "../../../stores/chat.store";
 import { shownMariAppearancePack, useUIStore } from "../../../stores/ui.store";
 import {
@@ -244,6 +245,8 @@ export function useMariWorkspaceRun({
             };
             setWorkspaceTimeline((current) => upsertToolTimeline(current, toolCall));
             useChatStore.getState().setMariPhase(chat.id, "updating");
+            const workingField = mariWorkingFieldFromTool(name, data?.input);
+            if (workingField) useUIStore.getState().setMariWorkingField(workingField);
           } else if (event.type === "tool_update") {
             const data = asRecord(event.data);
             const name = typeof data?.name === "string" ? data.name : "tool";
@@ -258,6 +261,7 @@ export function useMariWorkspaceRun({
             };
             setWorkspaceTimeline((current) => upsertToolTimeline(current, toolCall));
           } else if (event.type === "tool_end") {
+            if (useUIStore.getState().mariWorkingField) useUIStore.getState().setMariWorkingField(null);
             const data = asRecord(event.data);
             const name = typeof data?.name === "string" ? data.name : "tool";
             const isError = data?.isError === true;
@@ -334,6 +338,7 @@ export function useMariWorkspaceRun({
         clearDraft();
         workspaceAbortRef.current = null;
         setWorkspaceActive(false);
+        if (useUIStore.getState().mariWorkingField) useUIStore.getState().setMariWorkingField(null);
         setWorkspaceRunClock((clock) => clock && { ...clock, endedAt: Date.now() });
         useChatStore.getState().setAbortController(chat.id, null);
         useChatStore.getState().setMariPhase(chat.id, "idle");

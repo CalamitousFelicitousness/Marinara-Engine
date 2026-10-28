@@ -1656,10 +1656,12 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
     const resource = action.resource;
     if (!resource) return;
     if (resource.kind === "character") {
-      if (!confirmLeaveEditor()) return;
-      ui().openCharacterDetail(resource.id, {
-        ...(action.kind === "open-field" ? { initialTab: action.field === "Greeting" ? "convo" : "card" } : {}),
-      });
+      // Already open: nothing is left, so no leave prompt; the editor just shows the field.
+      if (ui().characterDetailId !== resource.id) {
+        if (!confirmLeaveEditor()) return;
+        ui().openCharacterDetail(resource.id);
+      }
+      if (action.kind === "open-field" && action.fieldId) ui().revealMariField(resource.id, action.fieldId);
       onClose();
       return;
     }

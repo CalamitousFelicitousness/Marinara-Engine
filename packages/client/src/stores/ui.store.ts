@@ -785,6 +785,10 @@ interface UIState {
   regexDetailId: string | null;
   /** The primary field currently focused in an open editor, for Mari omnibar handoff. Transient, never persisted. */
   activeEditorField: { id: string; label: string } | null;
+  /** Prof. Mari asks the open editor to show this field: scroll to it and pulse it once. Transient. */
+  mariRevealField: { characterId: string; path: string; nonce: number } | null;
+  /** The editor field a running Prof. Mari step is writing, for its working glow. Transient. */
+  mariWorkingField: { characterId: string; path: string } | null;
   /**
    * The most recent recoverable app failure, so the omnibar can answer "fix this".
    * `retry` is a serializable target the omnibar maps to a real action, never a
@@ -1245,6 +1249,9 @@ interface UIState {
   toggleRightPanel: (panel: Panel) => void;
   setSettingsTab: (tab: string) => void;
   setActiveEditorField: (field: { id: string; label: string } | null) => void;
+  revealMariField: (characterId: string, path: string) => void;
+  clearMariRevealField: () => void;
+  setMariWorkingField: (field: { characterId: string; path: string } | null) => void;
   setLastAppError: (error: UIState["lastAppError"]) => void;
   setSettingsTargetControlId: (controlId: string | null) => void;
   requestHome: (request: HomeRequest) => void;
@@ -2101,6 +2108,8 @@ export const useUIStore = create<UIState>()(
         trackerPanelSectionOrder: [...TRACKER_DATA_PANEL_SECTIONS],
         settingsTab: "general",
         activeEditorField: null,
+        mariRevealField: null,
+        mariWorkingField: null,
         lastAppError: null,
         settingsTargetControlId: null,
         homeRequest: null,
@@ -2486,6 +2495,9 @@ export const useUIStore = create<UIState>()(
 
         setSettingsTab: (tab) => set({ settingsTab: tab }),
         setActiveEditorField: (field) => set({ activeEditorField: field }),
+        revealMariField: (characterId, path) => set({ mariRevealField: { characterId, path, nonce: Date.now() } }),
+        clearMariRevealField: () => set({ mariRevealField: null }),
+        setMariWorkingField: (field) => set({ mariWorkingField: field }),
         setLastAppError: (error) => set({ lastAppError: error }),
         setSettingsTargetControlId: (controlId) => set({ settingsTargetControlId: controlId }),
         requestHome: (homeRequest) => set({ homeRequest }),

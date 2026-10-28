@@ -23,10 +23,20 @@ import {
   RotateCcw,
 } from "lucide-react";
 import type { MariPermissionsMode, Message } from "@marinara-engine/shared";
-import { RefObject, Dispatch, SetStateAction, ChangeEvent, useState, type KeyboardEvent } from "react";
+import {
+  RefObject,
+  Dispatch,
+  SetStateAction,
+  ChangeEvent,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { MariWorkspaceContextItem } from "../../../hooks/use-mari-workspace-context";
 import { ProfessorMariContextFacet } from "../../../lib/professor-mari-presentation";
+import { activeToken, composerKeyAction } from "../../../lib/composer-triggers";
 import { cn } from "../../../lib/utils";
 import { useLocalizedUiText } from "../../../localization/use-localized-ui-text";
 import { useUIStore } from "../../../stores/ui.store";
@@ -114,6 +124,10 @@ type MariComposerProps = {
   stopWorkspace: () => Promise<void>;
   suggestionQuestion: string | null;
   workspaceTimelineActive: boolean;
+  /** The `@` / `/` picker owns Arrow, Enter, Tab and Escape while it is open. */
+  pickerOpen?: boolean;
+  onPickerAction?: (action: "picker-next" | "picker-prev" | "picker-accept" | "picker-close") => void;
+  onActiveTokenChange?: (token: ReturnType<typeof activeToken>) => void;
 };
 
 export function MariComposer({
@@ -175,10 +189,26 @@ export function MariComposer({
   stopWorkspace,
   suggestionQuestion,
   workspaceTimelineActive,
+  pickerOpen = false,
+  onPickerAction,
+  onActiveTokenChange,
 }: MariComposerProps) {
   const localize = useLocalizedUiText();
   const { t: localizeUi } = useTranslation();
   const { t } = useTranslation();
+  // Where the caret sits in the draft, so a live `@` / `/` token can be found.
+  const [caret, setCaret] = useState(draft.length);
+  const liveToken = activeToken(draft, Math.min(caret, draft.length));
+  const liveTokenKey = liveToken ? `${liveToken.trigger}:${liveToken.start}:${liveToken.end}:${liveToken.query}` : "";
+  // Report only when the token itself changes; the ref keeps the latest callback without re-firing on each render.
+  const tokenChangeRef = useRef(onActiveTokenChange);
+  tokenChangeRef.current = onActiveTokenChange;
+  const liveTokenRef = useRef(liveToken);
+  liveTokenRef.current = liveToken;
+  useEffect(() => {
+    tokenChangeRef.current?.(liveTokenRef.current);
+  }, [liveTokenKey]);
+  const trackCaret = (element: HTMLTextAreaElement) => setCaret(element.selectionStart ?? element.value.length);
   const ActivePermissionsModeIcon = MARI_PERMISSIONS_MODE_ICONS[permissionsMode];
   // The connection menu shows the chosen connection's models beside the list, like the chat input's
   // Connections menu. A narrow composer shows one step at a time: the list, then the chosen models.
@@ -357,21 +387,24 @@ export function MariComposer({
         ) : null}
 
         <div className="relative flex min-w-0 flex-1 basis-full">
-          <InlineGhostText
-            value={draft}
-            suffix={draftSuffix}
-            multiline
-            scrollLeft={composerScroll.left}
-            scrollTop={composerScroll.top}
-            className="mari-workspace-composer__text"
-            // The textarea is disabled while busy, so the suggestion is not tappable then either.
-            onAccept={isBusy ? undefined : acceptDraftCompletion}
-          />
+          {liveToken ? null : (
+            <InlineGhostText
+              value={draft}
+              suffix={draftSuffix}
+              multiline
+              scrollLeft={composerScroll.left}
+              scrollTop={composerScroll.top}
+              className="mari-workspace-composer__text"
+              // The textarea is disabled while busy, so the suggestion is not tappable then either.
+              onAccept={isBusy ? undefined : acceptDraftCompletion}
+            />
+          )}
           <textarea
             ref={floatingTextareaRef}
             value={draft}
             onChange={(event) => {
               setDraft(event.target.value);
+              trackCaret(event.currentTarget);
               if (mobileFocusMode) event.currentTarget.scrollIntoView({ block: "end" });
             }}
             onScroll={(event) => {
@@ -379,17 +412,28 @@ export function MariComposer({
               event.currentTarget.toggleAttribute("data-scrolled", scrollTop > 0);
               setComposerScroll({ left: scrollLeft, top: scrollTop });
             }}
+            onSelect={(event) => trackCaret(event.currentTarget)}
+            onKeyUp={(event) => trackCaret(event.currentTarget)}
+            onClick={(event) => trackCaret(event.currentTarget)}
             onKeyDown={(event) => {
-              if (event.key === "Tab" && !event.shiftKey && draftSuffix) {
-                event.preventDefault();
-                acceptDraftCompletion();
-                return;
-              }
-              const shouldSend =
-                event.key === "Enter" && !event.shiftKey && (enterToSend || event.metaKey || event.ctrlKey);
-              if (shouldSend) {
-                event.preventDefault();
-                void handleSubmit();
+              const action = composerKeyAction({
+                key: event.key,
+                shiftKey: event.shiftKey,
+                metaKey: event.metaKey,
+                ctrlKey: event.ctrlKey,
+                isComposing: event.nativeEvent.isComposing,
+                pickerOpen,
+                hasGhost: Boolean(draftSuffix) && !liveToken,
+                enterToSend,
+              });
+              if (action === "none") return;
+              event.preventDefault();
+              if (action === "ghost-accept") acceptDraftCompletion();
+              else if (action === "send") void handleSubmit();
+              else {
+                // In companion mode the first Escape closes only the picker, not the omnibar behind it.
+                if (action === "picker-close") event.stopPropagation();
+                onPickerAction?.(action);
               }
             }}
             rows={1}

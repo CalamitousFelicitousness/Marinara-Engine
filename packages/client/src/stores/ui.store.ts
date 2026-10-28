@@ -35,6 +35,7 @@ import { readUIPersistence, UI_PERSISTENCE, UI_PERSISTENCE_HOST_COPY } from "../
 import { addApprovedRemoteImageUrl, normalizeApprovedRemoteImageUrls } from "../lib/remote-images";
 import { normalizeChatWidgetFont } from "../lib/font-family";
 import type { ChatWizardDefaults, ChatWizardMode } from "../lib/chat-wizard-defaults";
+import type { MariFieldReview } from "../lib/mari-editor-fields";
 import {
   readSeasonalPreview,
   seasonalThemeFor,
@@ -808,6 +809,9 @@ interface UIState {
   mariRevealField: { characterId: string; path: string; scroll?: boolean } | null;
   /** The editor field a running Prof. Mari step is writing, for its working glow. Transient. */
   mariWorkingField: { characterId: string; path: string } | null;
+  /** Her change to a character as the editor shows it in the fields: waiting for Keep, or kept
+   * with Undo. Published by her open chat, which owns the replies. Transient. */
+  mariFieldReview: MariFieldReview | null;
   /**
    * The most recent recoverable app failure, so the omnibar can answer "fix this".
    * `retry` is a serializable target the omnibar maps to a real action, never a
@@ -1272,6 +1276,7 @@ interface UIState {
   revealMariField: (characterId: string, path: string, options?: { scroll?: boolean }) => void;
   clearMariRevealField: () => void;
   setMariWorkingField: (field: { characterId: string; path: string } | null) => void;
+  setMariFieldReview: (review: MariFieldReview | null) => void;
   setLastAppError: (error: UIState["lastAppError"]) => void;
   setSettingsTargetControlId: (controlId: string | null) => void;
   requestHome: (request: HomeRequest) => void;
@@ -2139,6 +2144,7 @@ export const useUIStore = create<UIState>()(
         mariFieldDraft: null,
         mariRevealField: null,
         mariWorkingField: null,
+        mariFieldReview: null,
         lastAppError: null,
         settingsTargetControlId: null,
         homeRequest: null,
@@ -2531,6 +2537,7 @@ export const useUIStore = create<UIState>()(
         revealMariField: (characterId, path, options) => set({ mariRevealField: { characterId, path, ...options } }),
         clearMariRevealField: () => set({ mariRevealField: null }),
         setMariWorkingField: (field) => set({ mariWorkingField: field }),
+        setMariFieldReview: (review) => set({ mariFieldReview: review }),
         setLastAppError: (error) => set({ lastAppError: error }),
         setSettingsTargetControlId: (controlId) => set({ settingsTargetControlId: controlId }),
         requestHome: (homeRequest) => set({ homeRequest }),

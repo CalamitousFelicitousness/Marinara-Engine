@@ -3725,14 +3725,16 @@ details[open] > .mari-disclosure .mari-disclosure__chevron {
 }
 
 /* Old words struck and muted on a faint red; new words underlined on a faint green: two marks, not colour only. */
-.mari-receipt del {
+.mari-receipt del,
+.mari-field-review del {
   border-radius: 2px;
   background: color-mix(in srgb, var(--destructive) 12%, transparent);
   color: var(--muted-foreground);
   text-decoration: line-through 1px;
 }
 
-.mari-receipt ins {
+.mari-receipt ins,
+.mari-field-review ins {
   border-radius: 2px;
   background: color-mix(in srgb, var(--mari-ins-line) 18%, transparent);
   text-decoration: underline 1px var(--mari-ins-line);
@@ -3791,6 +3793,120 @@ details[open] > .mari-disclosure .mari-disclosure__chevron {
   background: color-mix(in srgb, var(--foreground) 4%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--foreground) 6%, transparent);
   padding: 0.5rem 0.6rem;
+}
+
+/* Slice 5: her change waiting in the editor field itself. The field's own box, her card's two
+   diff marks; a faint static ring in her "waiting" gold. No motion. */
+.mari-field-review {
+  border-radius: 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--mari-workspace-gold) 35%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mari-workspace-gold) 7%, transparent);
+  background: var(--secondary);
+  color: var(--foreground);
+  font-size: 0.875rem;
+  line-height: 1.7;
+  outline: none;
+}
+
+.mari-field-review:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.mari-field-review__strip {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.75rem 0;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.mari-field-review__strip img,
+.mari-field-review-line img {
+  width: 1.25rem;
+  height: 1.25rem;
+  image-rendering: pixelated;
+  object-fit: cover;
+  object-position: top;
+}
+
+.mari-field-review__strip b {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.mari-field-review__count {
+  margin-inline-start: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.mari-field-review__text {
+  padding: 0.55rem 0.75rem 0.75rem;
+}
+
+/* The diff is the field's text here, not a quoted box. */
+.mari-field-review__text .mari-receipt__box {
+  background: none;
+  box-shadow: none;
+  padding: 0;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.mari-field-review__text .mari-receipt__box--old {
+  padding: 0.35rem 0.55rem;
+  background: color-mix(in srgb, var(--destructive) 5%, transparent);
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--destructive) 45%, transparent);
+}
+
+.mari-field-review__conflict,
+.mari-field-review__note {
+  margin: 0 0.75rem 0.55rem;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.mari-field-review__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 0.75rem;
+  border-top: 1px solid var(--mari-divider);
+}
+
+.mari-field-review__spacer {
+  flex: 1;
+}
+
+.mari-field-review__bar svg,
+.mari-field-review-line svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.mari-field-review-line {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.mari-field-review-line .mari-link {
+  min-height: 1.5rem;
+  padding-inline: 0.4rem;
+  font-size: 0.75rem;
+}
+
+@media (pointer: coarse) {
+  .mari-field-review__bar .mari-btn,
+  .mari-field-review__bar .mari-link {
+    min-height: 2.75rem;
+    padding-inline: 0.9rem;
+    font-size: 0.875rem;
+  }
 }
 
 .mari-receipt__entry-name {

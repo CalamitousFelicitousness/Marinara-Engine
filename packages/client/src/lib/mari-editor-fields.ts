@@ -97,17 +97,146 @@ export function mariWorkingFieldFromTool(name: string, input: unknown): { charac
   if (!args || name !== "app_data" || appDataAction(args.action) !== "character.update") return null;
   const characterId = args.characterId ?? args.id;
   if (typeof characterId !== "string" || !characterId) return null;
-  // The server reads fields top-level or inside one of these wrappers.
-  const fields = {
+  for (const key of Object.keys(characterPatchValues(args))) {
+    const path = characterPatchFieldId(key);
+    if (path) return { characterId, path };
+  }
+  return null;
+}
+
+/** The patch a `character.update` sends. The server reads fields top-level or inside one of
+ * these wrappers; an `extensions` object counts as `extensions.<key>` fields. */
+function characterPatchValues(args: Record<string, unknown>): Record<string, unknown> {
+  const fields: Record<string, unknown> = {
     ...args,
     ...asRecord(args.character),
     ...asRecord(args.card),
     ...asRecord(args.data),
     ...asRecord(args.patch),
   };
-  for (const key of Object.keys(fields)) {
-    const path = characterPatchFieldId(key);
-    if (path) return { characterId, path };
+  for (const [key, value] of Object.entries(asRecord(fields.extensions) ?? {})) fields[`extensions.${key}`] = value;
+  return fields;
+}
+
+/** Text fields the in-field review shows, in editor order (Metadata, Card, Dialogue, Advanced). */
+export const MARI_REVIEW_FIELD_ORDER = [
+  "creator_notes",
+  "summary",
+  "description",
+  "personality",
+  "extensions.backstory",
+  "extensions.appearance",
+  "scenario",
+  "first_mes",
+  "mes_example",
+  "system_prompt",
+  "post_history_instructions",
+] as const;
+
+const reviewRank = (fieldId: string) => (MARI_REVIEW_FIELD_ORDER as readonly string[]).indexOf(fieldId);
+
+export interface MariReviewField {
+  characterId: string;
+  fieldId: string;
+}
+
+/** Her change to a character as the editor shows it in the fields: waiting for Keep, or kept
+ * with Undo. Her open chat publishes it and owns the replies. */
+export type MariFieldReview =
+  /** She is working on a reply. */
+  | { mode: "busy" }
+  | {
+      mode: "waiting";
+      /** The held message id. */
+      key: string;
+      /** Text fields she proposes, full values, in editor order. */
+      fields: Array<MariReviewField & { value: string }>;
+      /** Fields the whole change sets, for "Keep all N". */
+      total: number;
+      /** Held changes to other records that Keep also applies. */
+      others: number;
+      /** False when nothing was sent. */
+      keep: () => boolean;
+      /** Decline the whole change and ask her to propose it again without this field. */
+      decline: (fieldId: string) => boolean;
+    }
+  | {
+      mode: "kept";
+      /** The review ids Undo answers. */
+      key: string;
+      fields: MariReviewField[];
+      undoUntil: string | null;
+      undo: () => void;
+    };
+
+/** The text fields a held turn's raw calls (`mariHeldCalls`) would write, full values, editor
+ * order. The card's `mariHeldChanges` cut values to 400 characters, so the diff reads these. */
+export function heldCharacterFields(heldCalls: unknown): Array<MariReviewField & { value: string }> {
+  if (!Array.isArray(heldCalls)) return [];
+  const fields: Array<MariReviewField & { value: string }> = [];
+  for (const raw of heldCalls) {
+    const call = asRecord(raw);
+    const args = asRecord(call?.arguments);
+    if (call?.name !== "app_data" || !args || appDataAction(args.action) !== "character.update") continue;
+    const characterId = args.characterId ?? args.id;
+    if (typeof characterId !== "string" || !characterId) continue;
+    for (const [key, value] of Object.entries(characterPatchValues(args))) {
+      const fieldId = characterPatchFieldId(key);
+      if (!fieldId || typeof value !== "string" || reviewRank(fieldId) < 0) continue;
+      const known = fields.findIndex((field) => field.characterId === characterId && field.fieldId === fieldId);
+      // A later call to the same field wins, as it would when the calls run in order.
+      if (known >= 0) fields.splice(known, 1);
+      fields.push({ characterId, fieldId, value });
+    }
   }
-  return null;
+  return fields.sort((a, b) => reviewRank(a.fieldId) - reviewRank(b.fieldId));
+}
+
+/** The text fields of an applied character change that can still be undone (a review of it is
+ * still pending), from her turn's action results. */
+export function keptCharacterFields(
+  results: ReadonlyArray<{
+    resource: { kind: string; id: string };
+    status: string;
+    changedFields: string[];
+    reviewId?: string;
+    reviewIds?: string[];
+    undoUntil?: string;
+  }>,
+  pendingIds: ReadonlySet<string>,
+): { reviewIds: string[]; fields: MariReviewField[]; undoUntil: string | null } {
+  const reviewIds: string[] = [];
+  const fields: MariReviewField[] = [];
+  const deadlines: string[] = [];
+  for (const result of results) {
+    const ids = (result.reviewIds?.length ? result.reviewIds : result.reviewId ? [result.reviewId] : []).filter((id) =>
+      pendingIds.has(id),
+    );
+    if (result.resource.kind !== "character" || result.status !== "updated" || ids.length === 0) continue;
+    reviewIds.push(...ids);
+    if (result.undoUntil) deadlines.push(result.undoUntil);
+    for (const changed of result.changedFields) {
+      const fieldId = editorFieldId(changed);
+      if (reviewRank(fieldId) < 0 || fields.some((field) => field.fieldId === fieldId)) continue;
+      fields.push({ characterId: result.resource.id, fieldId });
+    }
+  }
+  fields.sort((a, b) => reviewRank(a.fieldId) - reviewRank(b.fieldId));
+  return { reviewIds, fields, undoUntil: deadlines.sort()[0] ?? null };
+}
+
+/** A field's value in a character card (`description`, `extensions.backstory`), as text. */
+export function characterFieldValue(data: unknown, fieldId: string): string {
+  let value: unknown = data;
+  for (const part of fieldId.split(".")) value = asRecord(value)?.[part];
+  return typeof value === "string" ? value : "";
+}
+
+export function withCharacterFieldValue<T>(data: T, fieldId: string, value: unknown): T {
+  const [head, ...rest] = fieldId.split(".");
+  const record = asRecord(data) ?? {};
+  return {
+    ...record,
+    [head!]: rest.length ? withCharacterFieldValue(record[head!], rest.join("."), value) : value,
+  } as T;
 }

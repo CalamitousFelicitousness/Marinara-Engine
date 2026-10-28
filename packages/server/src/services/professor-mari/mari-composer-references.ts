@@ -7,8 +7,10 @@ import type { MariWorkspaceContextRow } from "../storage/mari-workspace-context.
 import { renderMariWorkspaceContextPrompt } from "./mari-workspace-context-prompt.js";
 import { formatMariReadTruncation, stringifyOutput } from "./workspace-agent.service.js";
 
-/** The read each kind resolves through. Anything outside this list is refused, never read. */
-export const COMPOSER_REFERENCE_READ_ACTIONS: Record<MariComposerReference["kind"], string> = {
+type ReferenceKind = MariComposerReference["kind"];
+
+/** Kinds that resolve through one app_data read with the reference's id. */
+const SINGLE_READ_ACTIONS = {
   character: "character.get",
   persona: "persona.get",
   lorebook: "lorebook.get",
@@ -16,7 +18,18 @@ export const COMPOSER_REFERENCE_READ_ACTIONS: Record<MariComposerReference["kind
   preset: "preset.get",
   skill: "skill.get",
   memory: "instruction.get",
-};
+  agent: "agent.get",
+} as const satisfies Partial<Record<ReferenceKind, string>>;
+
+/** How many of a chat's latest messages `@chat` carries. */
+const CHAT_REFERENCE_MESSAGES = 30;
+
+/** Every kind that can be linked. Anything outside this list is refused, never read. */
+const COMPOSER_REFERENCE_KINDS: ReadonlySet<string> = new Set<ReferenceKind>([
+  ...(Object.keys(SINGLE_READ_ACTIONS) as ReferenceKind[]),
+  "chat",
+  "doc",
+]);
 
 /** The most characters of linked payload one message carries, whatever the model's context. */
 export const COMPOSER_REFERENCE_BUDGET_CAP = 60_000;
@@ -32,6 +45,8 @@ export function composerReferenceBudget(maxContext: number | null | undefined): 
 
 export type ComposerReferenceReader = {
   executeAction(envelope: Record<string, unknown>): Promise<MariDbCommandResult>;
+  /** A canonical doc as `docs_read` shows it; throws when the path is refused or missing. Only `doc` links need it. */
+  readDoc?(path: string): Promise<string>;
 };
 
 export type ResolvedComposerReferences = {
@@ -44,7 +59,7 @@ export type ResolvedComposerReferences = {
 };
 
 function isComposerReferenceKind(kind: unknown): kind is MariComposerReference["kind"] {
-  return typeof kind === "string" && Object.hasOwn(COMPOSER_REFERENCE_READ_ACTIONS, kind);
+  return typeof kind === "string" && COMPOSER_REFERENCE_KINDS.has(kind);
 }
 
 /** A stored `extra.references`, minus anything malformed or of an unknown kind. */
@@ -66,7 +81,41 @@ export function composerReferenceTitle(reference: MariComposerReference): string
 
 /** The read that gets a reference again, in the words Mari uses: `app_data character.get X`. */
 function rereadHint(reference: MariComposerReference): string {
-  return `app_data ${COMPOSER_REFERENCE_READ_ACTIONS[reference.kind]} ${reference.id}`;
+  if (reference.kind === "chat") return `app_data chat.messages ${reference.id}`;
+  if (reference.kind === "doc") return `docs_read ${reference.id}`;
+  return `app_data ${SINGLE_READ_ACTIONS[reference.kind]} ${reference.id}`;
+}
+
+/** One reference's text, or null when it cannot be read (missing, deleted, refused). */
+async function readReference(
+  reader: ComposerReferenceReader,
+  reference: MariComposerReference,
+  sessionId: string,
+): Promise<{ text: string; truncation?: MariDbCommandResult["truncation"] } | null> {
+  const run = async (envelope: Record<string, unknown>) => {
+    const result = await reader.executeAction({ ...envelope, sessionId });
+    return result.ok === false || result.output == null ? null : result;
+  };
+  if (reference.kind === "doc") {
+    return reader.readDoc ? { text: await reader.readDoc(reference.id) } : null;
+  }
+  if (reference.kind === "chat") {
+    const header = await run({ action: "chat.get", id: reference.id });
+    if (!header) return null;
+    // --tail with --last takes the newest messages; a chat with none still links by its header.
+    const messages = await run({
+      action: "chat.messages",
+      chatId: reference.id,
+      tail: true,
+      last: CHAT_REFERENCE_MESSAGES,
+    });
+    return {
+      text: [stringifyOutput(header.output), ...(messages ? ["", stringifyOutput(messages.output)] : [])].join("\n"),
+      truncation: header.truncation ?? messages?.truncation,
+    };
+  }
+  const result = await run({ action: SINGLE_READ_ACTIONS[reference.kind], id: reference.id });
+  return result ? { text: stringifyOutput(result.output), truncation: result.truncation } : null;
 }
 
 /** Reads each reference once, in order, spending the budget; the first that does not fit and all after it drop to a note. */
@@ -94,24 +143,20 @@ export async function resolveComposerReferences(
       resolved.notes.push(`${title} (not sent: over this message's budget; read with ${rereadHint(reference)})`);
       continue;
     }
-    let result: MariDbCommandResult | null = null;
+    let read: Awaited<ReturnType<typeof readReference>> = null;
     try {
-      result = await reader.executeAction({
-        action: COMPOSER_REFERENCE_READ_ACTIONS[reference.kind],
-        id: reference.id,
-        sessionId,
-      });
+      read = await readReference(reader, reference, sessionId);
     } catch {
       // Treated as not found below.
     }
-    if (!result || result.ok === false || result.output == null) {
+    if (!read) {
       resolved.notes.push(`${title}: not found; it may have been deleted`);
       continue;
     }
-    const truncationNote = formatMariReadTruncation(result.truncation);
+    const truncationNote = formatMariReadTruncation(read.truncation);
     const content = [
       ...(reference.kind === "lorebookEntry" && reference.parentId ? [`(in lorebook id ${reference.parentId})`] : []),
-      stringifyOutput(result.output),
+      read.text,
       ...(truncationNote ? ["", truncationNote] : []),
     ].join("\n");
     const cost = title.length + content.length;

@@ -10,6 +10,8 @@ import {
   completedNameAt,
   linkCompletedReference,
   defaultActiveIndex,
+  isSlashLinkable,
+  REFERENCE_GROUP_ORDER,
   locateReferenceTokens,
   MAX_COMPOSER_REFERENCES,
   maskReferenceQuery,
@@ -228,5 +230,39 @@ const commandToken = activeToken(commandDraft, commandDraft.length)!;
 assert.deepEqual(removeCommandToken(commandDraft, commandToken), { value: "look at this\n", caret: 13 });
 const midDraft = "/hist and more";
 assert.deepEqual(removeCommandToken(midDraft, activeToken(midDraft, 5)!), { value: " and more", caret: 0 });
+
+// chats, agents and docs: groups after memory and before entries; a doc row carries its path
+const more = buildReferenceItems({
+  skills: [{ id: "s1", name: "Handbook", origin: "builtin" }],
+  memories: [{ id: "m1", name: "Memo", enabled: true }],
+  chats: [
+    { id: "t1", name: "Trip planning" },
+    { id: "t2", name: "  " },
+  ],
+  agents: [{ id: "a1", name: "Continuity" }, { name: "no id" }],
+  docs: [
+    { path: "docs/FAQ.md", title: "Frequently asked questions" },
+    { path: "README.md", title: " " },
+  ],
+});
+assert.deepEqual(
+  rankReferenceItems(more, "").map((row) => row.key),
+  ["skill:s1", "memory:m1", "chat:t1", "agent:a1", "doc:docs/FAQ.md", "doc:README.md"],
+);
+assert.deepEqual(REFERENCE_GROUP_ORDER.slice(-4), ["chat", "agent", "doc", "lorebookEntry"]);
+const docRow = more.find((item) => item.key === "doc:docs/FAQ.md")!;
+assert.deepEqual(docRow.ref, ref("doc", "docs/FAQ.md", "Frequently asked questions"));
+assert.equal(docRow.detail, "docs/FAQ.md");
+assert.equal(
+  more.find((item) => item.key === "doc:README.md")!.ref.label,
+  "README.md",
+  "no title falls back to the path",
+);
+assert.equal(more.find((item) => item.key === "chat:t1")!.detail, undefined);
+// `/` still lists only skills and memories to link
+assert.deepEqual(
+  more.filter(isSlashLinkable).map((item) => item.key),
+  ["skill:s1", "memory:m1"],
+);
 
 console.log("Composer references client regression passed");

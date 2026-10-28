@@ -10,6 +10,7 @@ import {
   completedNameAt,
   defaultActiveIndex,
   isCommandRow,
+  isSlashLinkable,
   linkCompletedReference,
   locateReferenceTokens,
   MAX_COMPOSER_REFERENCES,
@@ -28,6 +29,9 @@ type Sources = {
   presets?: readonly unknown[];
   skills?: readonly unknown[];
   memories?: readonly unknown[];
+  chats?: readonly unknown[];
+  agents?: readonly unknown[];
+  docs?: readonly unknown[];
 };
 
 const SOURCE_BY_KIND = {
@@ -37,7 +41,13 @@ const SOURCE_BY_KIND = {
   preset: "presets",
   skill: "skills",
   memory: "memories",
+  chat: "chats",
+  agent: "agents",
+  doc: "docs",
 } as const;
+
+// Picks only: the ghost completes plain names, and `/` lists skills and memories.
+const PICK_ONLY_GROUPS: ReadonlySet<string> = new Set(["skill", "memory", "chat", "agent", "doc"]);
 
 /**
  * What the user linked with `@` in Professor Mari's composer: the picker's rows and highlight, the picks
@@ -77,7 +87,7 @@ export function useMariComposerReferences({
     setPicked((current) => pruneReferences(draft, current));
   }, [draft]);
 
-  const { characters, personas, lorebooks, presets, skills, memories } = sources;
+  const { characters, personas, lorebooks, presets, skills, memories, chats, agents, docs } = sources;
   const items = useMemo(() => {
     // The open editor's row leads; its record is not listed again under its group.
     const open = companionDocked ? referenceFromResource(editorResource) : null;
@@ -88,9 +98,24 @@ export function useMariComposerReferences({
       presets,
       skills,
       memories,
+      chats,
+      agents,
+      docs,
     }).filter((item) => !open || item.ref.kind !== open.ref.kind || item.ref.id !== open.ref.id);
     return [...(open ? [open] : []), ...listed];
-  }, [characters, companionDocked, editorResource, lorebooks, memories, personas, presets, skills]);
+  }, [
+    agents,
+    characters,
+    chats,
+    companionDocked,
+    docs,
+    editorResource,
+    lorebooks,
+    memories,
+    personas,
+    presets,
+    skills,
+  ]);
   const knownKeys = useMemo(() => new Set(items.map((item) => `${item.ref.kind}:${item.ref.id}`)), [items]);
   const isUnresolved = (ref: MariComposerReference) =>
     ref.kind in SOURCE_BY_KIND &&
@@ -114,7 +139,7 @@ export function useMariComposerReferences({
         score: command.score,
       }));
       // Commands still run at the cap; only the links stop.
-      const linkable = atCap ? [] : items.filter((item) => item.group === "skill" || item.group === "memory");
+      const linkable = atCap ? [] : items.filter(isSlashLinkable);
       return [...commands, ...rankReferenceItems(linkable, token.query)];
     }
     if (token?.trigger !== "@") return [];
@@ -129,8 +154,8 @@ export function useMariComposerReferences({
   const pickerOpen = rows.length > 0 && (token?.trigger === "/" || !atCap) && dismissedKey !== tokenKey;
   // Prose: the first Tab completed a name and it still ends the draft, so a second Tab links it. A name
   // already written as `@Name` is not at a boundary, so it does not count twice.
-  // The ghost never suggests a skill or memory, so a name that ends the draft is not one of theirs.
-  const nameItems = useMemo(() => items.filter((item) => item.group !== "skill" && item.group !== "memory"), [items]);
+  // The ghost never suggests a pick-only kind, so a name that ends the draft is not one of theirs.
+  const nameItems = useMemo(() => items.filter((item) => !PICK_ONLY_GROUPS.has(item.group)), [items]);
   const labels = useMemo(() => nameItems.map((item) => item.ref.label), [nameItems]);
   const canLinkCompletion = !pickerOpen && !token && !atCap && completedNameAt(draft, labels) !== null;
   const moveKey = `${tokenKey}|${activeDrill?.id ?? ""}`;

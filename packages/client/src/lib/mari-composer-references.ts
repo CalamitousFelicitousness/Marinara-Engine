@@ -12,7 +12,17 @@ const ROWS_PER_GROUP = 8;
 const ENTRY_ROWS = 30;
 
 export type ReferenceGroupId =
-  "open" | "character" | "persona" | "lorebook" | "preset" | "skill" | "memory" | "lorebookEntry";
+  | "open"
+  | "character"
+  | "persona"
+  | "lorebook"
+  | "preset"
+  | "skill"
+  | "memory"
+  | "chat"
+  | "agent"
+  | "doc"
+  | "lorebookEntry";
 
 export const REFERENCE_GROUP_ORDER: readonly ReferenceGroupId[] = [
   "open",
@@ -22,6 +32,9 @@ export const REFERENCE_GROUP_ORDER: readonly ReferenceGroupId[] = [
   "preset",
   "skill",
   "memory",
+  "chat",
+  "agent",
+  "doc",
   "lorebookEntry",
 ];
 
@@ -34,6 +47,8 @@ export type ReferenceItem = {
   ref: MariComposerReference;
   /** A skill's or memory's switch, shown as the row's fact. */
   state?: ReferenceState;
+  /** A doc's path, shown as the row's fact. */
+  detail?: string;
 };
 
 type NamedRecord = {
@@ -45,6 +60,11 @@ type NamedRecord = {
   enabled?: unknown;
   persistent?: unknown;
 };
+
+/** Only skills and memories are linkable from `/`; the other kinds are `@` picks. */
+export function isSlashLinkable(item: Pick<ReferenceItem, "group">): boolean {
+  return item.group === "skill" || item.group === "memory";
+}
 
 /** The picker's rows once a `/` token is open: a command (no reference) or a ranked reference. */
 export type CommandRow = { key: string; group: "command"; command: MariCommandId; score: number };
@@ -62,9 +82,16 @@ export function buildReferenceItems(sources: {
   presets?: readonly unknown[];
   skills?: readonly unknown[];
   memories?: readonly unknown[];
+  chats?: readonly unknown[];
+  agents?: readonly unknown[];
+  /** The canonical docs: `path` is the id, `title` the label. */
+  docs?: readonly unknown[];
 }): ReferenceItem[] {
   const items: ReferenceItem[] = [];
-  const add = (group: Exclude<ReferenceGroupId, "open" | "lorebookEntry">, list: readonly unknown[] | undefined) => {
+  const add = (
+    group: Exclude<ReferenceGroupId, "open" | "lorebookEntry" | "doc">,
+    list: readonly unknown[] | undefined,
+  ) => {
     for (const raw of list ?? []) {
       const record = raw as NamedRecord;
       if (typeof record.id !== "string") continue;
@@ -92,6 +119,14 @@ export function buildReferenceItems(sources: {
     "memory",
     sources.memories?.filter((memory) => (memory as NamedRecord).persistent !== true),
   );
+  add("chat", sources.chats);
+  add("agent", sources.agents);
+  for (const raw of sources.docs ?? []) {
+    const { path, title } = raw as { path?: unknown; title?: unknown };
+    if (typeof path !== "string" || !path) continue;
+    const label = (typeof title === "string" ? title : "").trim() || path;
+    items.push({ key: `doc:${path}`, group: "doc", ref: { kind: "doc", id: path, label }, detail: path });
+  }
   return items;
 }
 

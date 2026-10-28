@@ -52,7 +52,12 @@ import {
   formatCapabilityAgentGroundingLines,
   PROFESSOR_MARI_AGENT_CATALOG_KNOWLEDGE,
 } from "./official-agent-knowledge.js";
-import { formatDocumentationGroundingExcerpts, searchCanonicalDocumentation } from "./documentation-tools.js";
+import {
+  formatDocumentationGroundingExcerpts,
+  formatDocumentationRead,
+  readCanonicalDocumentation,
+  searchCanonicalDocumentation,
+} from "./documentation-tools.js";
 import { QUICK_ANSWER_SETTINGS_LABELS } from "./quick-answer-settings-labels.js";
 import {
   GENERATION_PARAMETER_SEND_KEYS,
@@ -118,6 +123,7 @@ import { WorkspaceCommands } from "./workspace-commands.js";
 import { activeHandbookIds, parseHandbookTurn, renderActiveHandbooksPrompt } from "./sticky-handbooks.js";
 import { mariWorkspaceSessionId } from "./mari-session.js";
 import {
+  type ComposerReferenceReader,
   composerReferenceBudget,
   composerReferenceLedgerLine,
   parseComposerReferences,
@@ -4854,7 +4860,7 @@ export class ProfessorMariWorkspaceService {
     });
     try {
       const resolved = await resolveComposerReferences(
-        getMariDbService(this.app.db),
+        this.composerReferenceReader(),
         currentReferences,
         composerReferenceBudget(connection.maxContext),
         mariWorkspaceSessionId(current?.chatId),
@@ -4867,6 +4873,16 @@ export class ProfessorMariWorkspaceService {
       logger.warn(err, "Professor Mari: failed to read linked references");
       return { prompt: null, linkedHandbookIds: [] };
     }
+  }
+
+  /** The db's app_data reads, plus the canonical docs `docs_read` serves. */
+  private composerReferenceReader(): ComposerReferenceReader {
+    const db = getMariDbService(this.app.db);
+    const root = this.commands.workspaceRoot;
+    return {
+      executeAction: (envelope) => db.executeAction(envelope),
+      readDoc: async (path) => formatDocumentationRead(await readCanonicalDocumentation(root, path, undefined, 16_000)),
+    };
   }
 
   private async buildAttachedContextPrompt(chatId: string): Promise<string | null> {

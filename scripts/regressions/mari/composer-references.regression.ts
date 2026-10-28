@@ -105,6 +105,110 @@ try {
     `@character "Alice" (id ${alice}), linked 2 turns ago; re-read with app_data character.get ${alice}`,
   );
 
+  // --- Chats, agents and docs: each reads what Mari would, with its own re-read hint.
+  const { createAgentsStorage } = await import("../../../packages/server/src/services/storage/agents.storage.js");
+  const agentRow = await createAgentsStorage(db).create({
+    type: "composer-ref-agent",
+    name: "Continuity",
+    description: "Keeps the story straight.",
+    phase: "post_processing",
+    promptTemplate: "Check continuity.",
+    connectionId: null,
+    settings: {},
+  } as never);
+  const agentRef: Reference = { kind: "agent", id: agentRow!.id, label: "Continuity" };
+  const refChat = await createChatsStorage(db).create({
+    name: "Trip planning",
+    mode: "conversation",
+    characterIds: [],
+  });
+  for (let i = 1; i <= 35; i++) {
+    await createChatsStorage(db).createMessage({
+      chatId: refChat!.id,
+      role: i % 2 ? "user" : "assistant",
+      characterId: null,
+      content: `trip message ${i}`,
+    });
+  }
+  const chatRef: Reference = { kind: "chat", id: refChat!.id, label: "Trip planning" };
+  const docRef: Reference = { kind: "doc", id: "docs/FAQ.md", label: "FAQ" };
+  const docReads: string[] = [];
+  const docSpy = {
+    executeAction: spy.executeAction,
+    readDoc: async (path: string) => {
+      docReads.push(path);
+      if (path === "docs/boom.md") throw new Error("docs_read path is outside the canonical user documentation set");
+      return `Source: ${path}\nHeading: FAQ\n\nAnswers.`;
+    },
+  };
+  reads.length = 0;
+  const more = await resolveComposerReferences(
+    docSpy,
+    [
+      agentRef,
+      chatRef,
+      docRef,
+      { kind: "agent", id: "no-such-agent", label: "Gone" },
+      { kind: "chat", id: "no-such-chat", label: "Gone" },
+    ],
+    60_000,
+  );
+  assert.deepEqual(reads, ["agent.get", "chat.get", "chat.messages", "agent.get", "chat.get"]);
+  assert.deepEqual(docReads, ["docs/FAQ.md"]);
+  const directAgent = await service.executeAction({ action: "agent.get", id: agentRow!.id, sessionId: "x" });
+  assert.equal(more.payloads[0]!.label, `@agent "Continuity" (id ${agentRow!.id})`);
+  assert.equal(more.payloads[0]!.content, JSON.stringify(directAgent.output, null, 2));
+  const directHeader = await service.executeAction({ action: "chat.get", id: refChat!.id, sessionId: "x" });
+  const directMessages = await service.executeAction({
+    action: "chat.messages",
+    chatId: refChat!.id,
+    tail: true,
+    last: 30,
+    sessionId: "x",
+  });
+  assert.deepEqual((directMessages.output as { messages: unknown[] }).messages.length, 30);
+  const chatPayload = more.payloads[1]!.content;
+  assert.ok(chatPayload.startsWith(JSON.stringify(directHeader.output, null, 2)), "chat payload leads with the header");
+  assert.ok(chatPayload.endsWith(JSON.stringify(directMessages.output, null, 2)), "then the last 30 messages");
+  assert.match(chatPayload, /trip message 35/);
+  assert.match(chatPayload, /trip message 6\b/);
+  assert.doesNotMatch(chatPayload, /trip message 5\b/);
+  assert.equal(more.payloads[2]!.label, `@doc "FAQ" (id docs/FAQ.md)`);
+  assert.equal(more.payloads[2]!.content, "Source: docs/FAQ.md\nHeading: FAQ\n\nAnswers.");
+  assert.deepEqual(more.notes, [
+    `@agent "Gone" (id no-such-agent): not found; it may have been deleted`,
+    `@chat "Gone" (id no-such-chat): not found; it may have been deleted`,
+  ]);
+  // A doc the reader refuses, or no doc reader at all, is a visible note and never a throw.
+  const refusedDoc = await resolveComposerReferences(
+    docSpy,
+    [{ kind: "doc", id: "docs/boom.md", label: "Boom" }],
+    60_000,
+  );
+  assert.deepEqual(refusedDoc.notes, [`@doc "Boom" (id docs/boom.md): not found; it may have been deleted`]);
+  const noDocReader = await resolveComposerReferences(spy, [docRef], 60_000);
+  assert.equal(noDocReader.notes.length, 1);
+  assert.match(noDocReader.notes[0]!, /not found/);
+  // Ledger lines carry each kind's own re-read.
+  assert.equal(
+    composerReferenceLedgerLine(chatRef, 1),
+    `@chat "Trip planning" (id ${refChat!.id}), linked 1 turn ago; re-read with app_data chat.messages ${refChat!.id}`,
+  );
+  assert.equal(
+    composerReferenceLedgerLine(agentRef, 2),
+    `@agent "Continuity" (id ${agentRow!.id}), linked 2 turns ago; re-read with app_data agent.get ${agentRow!.id}`,
+  );
+  assert.equal(
+    composerReferenceLedgerLine(docRef, 1),
+    `@doc "FAQ" (id docs/FAQ.md), linked 1 turn ago; re-read with docs_read docs/FAQ.md`,
+  );
+  // Stored links of the new kinds parse back; hand-typed junk kinds still do not.
+  assert.deepEqual(parseComposerReferences([chatRef, agentRef, docRef, { kind: "file", id: "x", label: "x" }]), [
+    chatRef,
+    agentRef,
+    docRef,
+  ]);
+
   // --- The real prompt: turn 1 carries the payload, turn 2 only the ledger.
   await createAppSettingsStorage(db).set("mari-runtime", "classic");
   const chats = createChatsStorage(db);

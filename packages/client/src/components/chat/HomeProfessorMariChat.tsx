@@ -46,7 +46,7 @@ import {
 } from "@marinara-engine/shared";
 import { useConnections } from "../../hooks/use-connections";
 import { useTrackAchievement } from "../../hooks/use-achievements";
-import { chatKeys } from "../../hooks/use-chats";
+import { chatKeys, useChats } from "../../hooks/use-chats";
 import { characterKeys, useCharacters, usePersonas } from "../../hooks/use-characters";
 import { getCharacterDisplayIdentity } from "../../lib/character-display";
 import { buildCharacterPreviewModel, type CharacterPreviewModel } from "../../lib/character-preview";
@@ -55,6 +55,8 @@ import { completeInline } from "../../lib/inline-completion";
 import { resolveMariRestStory, type MariStoryState } from "../../lib/mari-work-animations";
 import { lorebookKeys, useLorebooks } from "../../hooks/use-lorebooks";
 import { useMariComposerReferences } from "../../hooks/use-mari-composer-references";
+import { useMariDocs } from "../../hooks/use-mari-docs";
+import { useAgentConfigs } from "../../hooks/use-agents";
 import type { MariCommandId } from "../../lib/mari-commands";
 import { presetKeys, usePresets } from "../../hooks/use-presets";
 import { useMariWorkspaceContext } from "../../hooks/use-mari-workspace-context";
@@ -323,6 +325,9 @@ export function HomeProfessorMariChat({
   const completionPersonas = usePersonas();
   const completionLorebooks = useLorebooks();
   const completionPresets = usePresets();
+  const referenceChats = useChats();
+  const referenceAgents = useAgentConfigs();
+  const referenceDocs = useMariDocs();
   const completionCandidates = useMemo(
     () => [
       // A character's display name lives inside its card data, not on the row —
@@ -2622,6 +2627,9 @@ export function HomeProfessorMariChat({
       presets: completionPresets.data,
       skills,
       memories,
+      chats: referenceChats.data,
+      agents: referenceAgents.data,
+      docs: referenceDocs.data,
     },
     onCommand: runComposerCommand,
     availableCommands,

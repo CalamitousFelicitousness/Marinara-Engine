@@ -967,7 +967,8 @@ export interface ConversationSceneRequest {
 
 /** A resource the user linked from Professor Mari's composer with `@`; the server resolves it once, beside that message. */
 export interface MariComposerReference {
-  kind: "character" | "persona" | "lorebook" | "lorebookEntry" | "preset" | "skill" | "memory";
+  kind:
+    "character" | "persona" | "lorebook" | "lorebookEntry" | "preset" | "skill" | "memory" | "chat" | "doc" | "agent";
   id: string;
   label: string;
   /** A lorebook entry's lorebook id. */

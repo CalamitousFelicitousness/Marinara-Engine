@@ -46,6 +46,9 @@ export function MariReferencePicker({ id, rows, activeIndex, drilled, onPick, on
     preset: t("mari.composerReferences.group.preset"),
     skill: t("mari.composerReferences.group.skill"),
     memory: t("mari.composerReferences.group.memory"),
+    chat: t("mari.composerReferences.group.chat"),
+    agent: t("mari.composerReferences.group.agent"),
+    doc: t("mari.composerReferences.group.doc"),
     lorebookEntry: t("mari.composerReferences.group.lorebookEntry"),
   };
   useEffect(() => {
@@ -107,7 +110,7 @@ export function MariReferencePicker({ id, rows, activeIndex, drilled, onPick, on
                     ? t("mari.composerReferences.openFact")
                     : row.state
                       ? t(STATE_FACT_KEYS[row.state])
-                      : undefined
+                      : row.detail
                 }
                 state={index === activeIndex ? "selected" : undefined}
                 onClick={() => onPick(index)}

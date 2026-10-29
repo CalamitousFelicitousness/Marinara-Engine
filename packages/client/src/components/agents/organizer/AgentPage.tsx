@@ -104,19 +104,19 @@ export function AgentPage({
         className="aspect-[8/3] rounded-2xl border border-[var(--border)]"
       />
 
-      <header className="relative -mt-8 flex flex-wrap items-end gap-4 px-2 sm:-mt-10 sm:px-4">
+      <header className="relative mt-3 flex flex-wrap items-end gap-4 px-2 sm:px-4">
         <AgentIcon
           entry={entry}
-          className="h-20 w-20 rounded-2xl ring-4 ring-[var(--marinara-editor-bg,var(--background))] sm:h-24 sm:w-24"
+          className="-mt-12 h-20 w-20 rounded-2xl ring-4 ring-[var(--marinara-editor-bg,var(--background))] sm:-mt-14 sm:h-24 sm:w-24"
         />
         <div className="min-w-0 flex-1 pb-1">
           <p className="text-xs font-semibold text-[var(--muted-foreground)]">
             {localizeUi(sectionLabelKey(section))} · {localizeUi(typeLabelKey(type))}
           </p>
-          <h2 className="truncate text-2xl font-bold text-[var(--foreground)]">{manifest.name}</h2>
+          <h2 className="text-2xl font-bold break-words text-[var(--foreground)]">{manifest.name}</h2>
           <p className="text-sm text-[var(--muted-foreground)]">{taglineOf(entry)}</p>
         </div>
-        <div className="flex items-center gap-2 pb-1">
+        <div className="flex items-center gap-2 pb-1 max-sm:w-full max-sm:justify-end">
           <AgentAction entry={entry} size="lg" />
           {update && type === "app" && (
             <button

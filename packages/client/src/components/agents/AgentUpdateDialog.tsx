@@ -70,7 +70,7 @@ export function AgentUpdateDialog({
 
   const summary = done
     ? [
-        localizeUi("ui.agents.agentupdatedialog.updatedCount", { count: updated }),
+        updated > 0 && localizeUi("ui.agents.agentupdatedialog.updatedCount", { count: updated }),
         failed > 0 && localizeUi("ui.agents.agentupdatedialog.failedCount", { count: failed }),
         restartNames.length > 0 &&
           localizeUi("ui.agents.agentupdatedialog.namesNeedRestart", {
@@ -187,7 +187,7 @@ export function AgentUpdateDialog({
                     </button>
                   </div>
                 )}
-                <div className="mt-1.5 flex items-center justify-between gap-2 pl-[46px]">
+                <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 pl-[46px] [&>button]:whitespace-nowrap">
                   {notes.length > 0 ? (
                     <button
                       type="button"

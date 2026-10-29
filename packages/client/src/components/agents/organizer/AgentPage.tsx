@@ -1,4 +1,4 @@
-import { ArrowUpRight, Check, ExternalLink } from "lucide-react";
+import { ArrowUpRight, Check, ExternalLink, House, MoreHorizontal, Plus } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { cn } from "../../../lib/utils";
 import { useUIStore } from "../../../stores/ui.store";
@@ -239,6 +239,7 @@ export function AgentPage({
               <ol className="grid gap-3 sm:grid-cols-3">
                 {HOW_TO_STEPS.map((step) => (
                   <li key={step} className="overflow-hidden rounded-xl border border-[var(--border)] text-sm">
+                    <StepPicture entry={entry} type={type} step={step} />
                     <div className="flex gap-3 p-3">
                       <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--marinara-chat-chrome-highlight-bg,var(--accent))] text-xs font-bold text-[var(--foreground)]">
                         {step}
@@ -328,5 +329,109 @@ export function AgentPage({
         </div>
       </div>
     </article>
+  );
+}
+
+const RING =
+  "ring-2 ring-[var(--marinara-chat-chrome-accent,var(--primary))] ring-offset-2 ring-offset-[color-mix(in_srgb,var(--foreground)_5%,var(--card))]";
+const BOX = "rounded-lg border border-[var(--border)] bg-[var(--card)]";
+
+function Bar({ width, accent }: { width: string; accent?: boolean }) {
+  const color = accent
+    ? "bg-[color-mix(in_srgb,var(--marinara-chat-chrome-accent,var(--primary))_45%,transparent)]"
+    : "bg-[color-mix(in_srgb,var(--foreground)_18%,transparent)]";
+  return <span className={cn("block h-1.5 rounded-full", color)} style={{ width }} />;
+}
+
+/** A small drawing of the control each how-to step names, built from the app's own colours. */
+function StepPicture({ entry, type, step }: { entry: OrganizerEntry; type: "app" | "game" | "agent"; step: number }) {
+  const { t: localizeUi } = useUiTranslation();
+  const name = entry.manifest.name;
+  const icon = <AgentIcon entry={entry} className="h-7 w-7 rounded-lg p-0.5" />;
+  const nameLabel = <span className="min-w-0 truncate text-xs font-semibold text-[var(--foreground)]">{name}</span>;
+  let picture;
+  if (step === 1) {
+    picture = (
+      <div className={cn(BOX, "flex w-full max-w-60 items-center gap-2 p-2")}>
+        {icon}
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          {nameLabel}
+          <Bar width="70%" />
+        </div>
+        <span className={cn("shrink-0 rounded-full bg-[var(--foreground)] px-3 py-1 text-xs font-bold text-[var(--background)]", RING)}>
+          {localizeUi("ui.agents.organizer.get")}
+        </span>
+      </div>
+    );
+  } else if (type === "app" && step === 2) {
+    picture = (
+      <div className={cn(BOX, "flex w-full max-w-60 items-center gap-1 p-1.5")}>
+        <span className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs text-[var(--muted-foreground)]">
+          <House className="h-3.5 w-3.5" />
+          {localizeUi("ui.agents.organizer.home")}
+        </span>
+        <span className={cn("flex min-w-0 items-center gap-1.5 rounded-md bg-[var(--marinara-chat-chrome-highlight-bg,var(--accent))] px-2 py-1", RING)}>
+          <AgentIcon entry={entry} className="h-5 w-5 rounded-md p-0.5" />
+          {nameLabel}
+        </span>
+      </div>
+    );
+  } else if (type === "app") {
+    picture = (
+      <div className="relative w-full max-w-60">
+        <div className={cn(BOX, "flex items-center gap-2 p-2")}>
+          {icon}
+          {nameLabel}
+          <MoreHorizontal className="ml-auto h-4 w-4 shrink-0 text-[var(--muted-foreground)]" />
+        </div>
+        <span className={cn(BOX, "absolute -bottom-6 right-1 px-3 py-1 text-xs font-semibold text-[var(--foreground)] shadow-md", RING)}>
+          {localizeUi("ui.panels.agentspanel.remove")}
+        </span>
+      </div>
+    );
+  } else if (step === 2) {
+    picture = (
+      <div className={cn(BOX, "w-full max-w-60 p-2")}>
+        <p className="mb-1.5 text-[0.625rem] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+          {localizeUi("navigation.topbar.agents")}
+        </p>
+        <div className="flex items-center gap-2">
+          {icon}
+          {nameLabel}
+          <span className={cn("ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[var(--background)]", RING)}>
+            <Plus className="h-3.5 w-3.5 text-[var(--background)]" strokeWidth={3} />
+          </span>
+        </div>
+      </div>
+    );
+  } else {
+    // Step 3: the chat goes on, with the agent working (agent) or the game started (game).
+    picture = (
+      <div className="flex w-full max-w-60 flex-col gap-1.5">
+        <div className={cn(BOX, "flex w-3/4 flex-col gap-1 p-2")}>
+          <Bar width="90%" />
+          <Bar width="60%" />
+        </div>
+        <div className={cn(BOX, "flex w-3/4 flex-col items-end gap-1 self-end p-2", type === "game" && RING)}>
+          <Bar width="80%" accent />
+          {type === "game" && nameLabel}
+        </div>
+        {type === "agent" && (
+          <span className={cn(BOX, "flex items-center gap-1.5 self-start rounded-full py-0.5 pl-0.5 pr-2.5", RING)}>
+            <AgentIcon entry={entry} className="h-5 w-5 rounded-full p-0.5" />
+            {nameLabel}
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--marinara-chat-chrome-accent,var(--primary))]" />
+          </span>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div
+      aria-hidden="true"
+      className="flex h-32 items-center justify-center bg-[color-mix(in_srgb,var(--foreground)_5%,var(--card))] px-4"
+    >
+      {picture}
+    </div>
   );
 }

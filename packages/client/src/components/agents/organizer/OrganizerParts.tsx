@@ -17,6 +17,10 @@ import {
 /** Everything a page needs from the Organizer shell, so pages stay plain renderers. */
 export interface OrganizerActions {
   installedById: ReadonlyMap<string, InstalledCapabilityPackage>;
+  /** Chats with agents on that use each package, by package id. */
+  chatCountById: ReadonlyMap<string, number>;
+  /** First agent of each package, by package id, for its Settings button. */
+  settingsAgentById: ReadonlyMap<string, string>;
   /** Package id whose install/update/uninstall is running. */
   busyId: string | null;
   /** Any package action or bulk run is in flight. */

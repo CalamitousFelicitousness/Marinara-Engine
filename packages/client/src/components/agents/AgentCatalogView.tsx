@@ -17,6 +17,7 @@ import {
 import { toast } from "sonner";
 import type { CapabilityCatalogPackage } from "@marinara-engine/shared";
 import {
+  useCapabilityAgentRegistry,
   useCapabilityCatalog,
   useInstallAllCapabilityPackages,
   useInstallCapabilityPackage,
@@ -25,6 +26,8 @@ import {
   useUninstallCapabilityPackage,
 } from "../../hooks/use-capability-packages";
 import { useCustomAgentRepositories } from "../../hooks/use-custom-agent-repositories";
+import { useChats } from "../../hooks/use-chats";
+import { parseChatMetadata } from "../../lib/chat-display";
 import { ApiError, getPrivilegedActionErrorMessage } from "../../lib/api-client";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { cn } from "../../lib/utils";
@@ -88,6 +91,33 @@ export function AgentCatalogView() {
   const mainRef = useRef<HTMLElement>(null);
 
   const installedById = useMemo(() => new Map((installed.data ?? []).map((item) => [item.id, item])), [installed.data]);
+  const chats = useChats();
+  const capabilityAgents = useCapabilityAgentRegistry();
+  // Chats that run each package: a chat lists agent ids (or the package id), and only counts with agents on.
+  const chatCountById = useMemo(() => {
+    const packageByAgent = new Map(
+      (capabilityAgents.data ?? []).flatMap((agent) => (agent.packageId ? [[agent.id, agent.packageId] as const] : [])),
+    );
+    const counts = new Map<string, number>();
+    for (const chat of chats.data ?? []) {
+      const metadata = parseChatMetadata(chat.metadata);
+      if (metadata.enableAgents !== true || !Array.isArray(metadata.activeAgentIds)) continue;
+      const packageIds = new Set(
+        metadata.activeAgentIds
+          .filter((id: unknown): id is string => typeof id === "string")
+          .map((id: string) => packageByAgent.get(id) ?? id),
+      );
+      for (const id of packageIds) counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+    return counts;
+  }, [capabilityAgents.data, chats.data]);
+  const settingsAgentById = useMemo(() => {
+    const ids = new Map<string, string>();
+    for (const agent of capabilityAgents.data ?? []) {
+      if (agent.packageId && !ids.has(agent.packageId)) ids.set(agent.packageId, agent.id);
+    }
+    return ids;
+  }, [capabilityAgents.data]);
   const all = useMemo(() => catalog.data?.packages ?? [], [catalog.data]);
   const entries = useMemo(
     () => (modeFilter === "all" ? all : all.filter((entry) => packageModes(entry.manifest.id).includes(modeFilter))),
@@ -290,6 +320,8 @@ export function AgentCatalogView() {
 
   const actions: OrganizerActions = {
     installedById,
+    chatCountById,
+    settingsAgentById,
     busyId,
     pending: packageActionPending,
     install: (entry) => void handleInstall(entry),

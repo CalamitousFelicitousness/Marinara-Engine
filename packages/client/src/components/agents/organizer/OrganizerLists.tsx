@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ArrowUpDown, ChevronDown, ChevronRight } from "lucide-react";
 import { compareCapabilityPackageVersions } from "@marinara-engine/shared";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { useCapabilityPackageReleaseNotes } from "../../../hooks/use-capability-packages";
@@ -7,6 +7,7 @@ import { cn } from "../../../lib/utils";
 import { AgentReleaseNoteList } from "../AgentReleaseNoteList";
 import {
   formatBytes,
+  checkReasonOf,
   hasUpdate,
   sectionHintKey,
   sectionLabelKey,
@@ -24,7 +25,57 @@ function PageHeader({ title, hint, children }: { title: string; hint?: string; c
         <h2 className="text-xl font-bold text-[var(--foreground)]">{title}</h2>
         {hint && <p className="text-sm text-[var(--muted-foreground)]">{hint}</p>}
       </div>
-      {children}
+      {children && <div className="flex items-center gap-3">{children}</div>}
+    </div>
+  );
+}
+
+type SortKey = "store" | "name-asc" | "name-desc" | "newest" | "size";
+
+const SORT_LABEL_KEYS: Record<SortKey, string> = {
+  store: "ui.agents.organizer.sortStore",
+  "name-asc": "ui.panels.backgroundpicker.aZ",
+  "name-desc": "ui.panels.backgroundpicker.zA",
+  newest: "ui.agents.organizer.sortInstalled",
+  size: "ui.agents.organizer.sortSize",
+};
+
+function sortEntries(
+  entries: readonly OrganizerEntry[],
+  key: SortKey,
+  installedAt: (id: string) => string = () => "",
+): readonly OrganizerEntry[] {
+  if (key === "store") return entries;
+  return [...entries].sort((a, b) =>
+    key === "size"
+      ? b.artifact.bytes - a.artifact.bytes
+      : key === "newest"
+        ? installedAt(b.manifest.id).localeCompare(installedAt(a.manifest.id))
+        : (key === "name-desc" ? -1 : 1) * a.manifest.name.localeCompare(b.manifest.name),
+  );
+}
+
+function SortSelect({ value, keys, onChange }: { value: SortKey; keys: SortKey[]; onChange: (key: SortKey) => void }) {
+  const { t: localizeUi } = useUiTranslation();
+  return (
+    <div className="relative">
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value as SortKey)}
+        title={localizeUi("ui.panels.agentspanel.sortOrder")}
+        aria-label={localizeUi("ui.panels.agentspanel.sortOrder")}
+        className="mari-chrome-field mari-chrome-sort-field mari-accent-animated h-9 appearance-none py-0 pl-2.5 pr-7 text-xs"
+      >
+        {keys.map((key) => (
+          <option key={key} value={key}>
+            {localizeUi(SORT_LABEL_KEYS[key])}
+          </option>
+        ))}
+      </select>
+      <ArrowUpDown
+        size="0.625rem"
+        className="mari-chrome-field-icon mari-chrome-sort-icon mari-accent-animated pointer-events-none absolute right-2 top-1/2 -translate-y-1/2"
+      />
     </div>
   );
 }
@@ -35,9 +86,12 @@ function EmptyLine({ children }: { children: ReactNode }) {
 
 export function SectionPage({ section, entries }: { section: OrganizerSectionId; entries: readonly OrganizerEntry[] }) {
   const { t: localizeUi } = useUiTranslation();
+  const [sort, setSort] = useState<SortKey>("store");
+  const sorted = sortEntries(entries, sort);
   return (
     <div>
       <PageHeader title={localizeUi(sectionLabelKey(section))} hint={localizeUi(sectionHintKey(section))}>
+        <SortSelect value={sort} keys={["store", "name-asc", "name-desc", "size"]} onChange={setSort} />
         <span className="text-xs text-[var(--muted-foreground)]">
           {localizeUi("ui.agents.organizer.agentCount", { count: entries.length })}
         </span>
@@ -46,7 +100,7 @@ export function SectionPage({ section, entries }: { section: OrganizerSectionId;
         <EmptyLine>{localizeUi("ui.agents.organizer.emptySection")}</EmptyLine>
       ) : (
         <ul className="grid gap-x-6 md:grid-cols-2">
-          {entries.map((entry) => (
+          {sorted.map((entry) => (
             <AgentRow key={entry.manifest.id} entry={entry} withMenu />
           ))}
         </ul>
@@ -56,15 +110,22 @@ export function SectionPage({ section, entries }: { section: OrganizerSectionId;
 }
 
 export function InstalledPage({ entries }: { entries: readonly OrganizerEntry[] }) {
-  const { installedById } = useOrganizer();
+  const { installedById, chatCountById } = useOrganizer();
   const { t: localizeUi } = useUiTranslation();
-  const rows = entries.filter((entry) => installedById.has(entry.manifest.id));
+  const [sort, setSort] = useState<SortKey>("name-asc");
+  const rows = sortEntries(
+    entries.filter((entry) => installedById.has(entry.manifest.id)),
+    sort,
+    (id) => installedById.get(id)?.installedAt ?? "",
+  );
   return (
     <div>
       <PageHeader
         title={localizeUi("ui.agents.organizer.installedTitle")}
         hint={localizeUi("ui.agents.organizer.agentCount", { count: rows.length })}
-      />
+      >
+        <SortSelect value={sort} keys={["name-asc", "name-desc", "newest", "size"]} onChange={setSort} />
+      </PageHeader>
       {rows.length === 0 ? (
         <EmptyLine>{localizeUi("ui.agents.organizer.emptyInstalled")}</EmptyLine>
       ) : (
@@ -86,6 +147,21 @@ export function InstalledPage({ entries }: { entries: readonly OrganizerEntry[] 
                         {" "}
                         → {entry.manifest.version}
                       </span>
+                    )}
+                    {(chatCountById.get(entry.manifest.id) ?? 0) > 0 && (
+                      <>
+                        {" "}
+                        · {localizeUi("ui.agents.organizer.onInChats", { count: chatCountById.get(entry.manifest.id) })}
+                      </>
+                    )}
+                    {checkReasonOf(installed) !== null && (
+                      <>
+                        {" "}
+                        ·{" "}
+                        <span className="font-semibold text-red-500">
+                          {localizeUi("ui.agents.organizer.needsCheck")}
+                        </span>
+                      </>
                     )}
                   </>
                 }

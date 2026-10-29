@@ -1,9 +1,11 @@
-import { ArrowLeft, ArrowUpRight, Check, ChevronRight, ExternalLink } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Check, ChevronRight, ExternalLink, Settings } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { cn } from "../../../lib/utils";
+import { useUIStore } from "../../../stores/ui.store";
 import { AgentVersionHistory } from "../AgentVersionHistory";
 import {
   formatBytes,
+  checkReasonOf,
   hasUpdate,
   MODE_BADGES,
   packageModes,
@@ -53,11 +55,14 @@ export function AgentPage({
   entries: readonly OrganizerEntry[];
   customSource: boolean;
 }) {
-  const { installedById, go, open } = useOrganizer();
+  const { installedById, chatCountById, settingsAgentById, go, open } = useOrganizer();
+  const openAgentDetail = useUIStore((state) => state.openAgentDetail);
   const { t: localizeUi } = useUiTranslation();
   const { manifest } = entry;
   const installed = installedById.get(manifest.id);
   const update = hasUpdate(entry, installed);
+  const checkReason = checkReasonOf(installed);
+  const settingsAgentId = installed ? settingsAgentById.get(manifest.id) : undefined;
   const section = sectionOf(entry);
   const type = typeOf(entry);
   const modes = packageModes(manifest.id);
@@ -128,11 +133,31 @@ export function AgentPage({
               {localizeUi("ui.agents.organizer.open")}
             </button>
           )}
+          {settingsAgentId && (
+            <button
+              type="button"
+              className={cn(SECONDARY_ACTION, "inline-flex h-10 w-10 items-center justify-center p-0")}
+              onClick={() => openAgentDetail(settingsAgentId)}
+              aria-label={localizeUi("ui.agents.organizer.settings")}
+              title={localizeUi("ui.agents.organizer.settings")}
+            >
+              <Settings size="1rem" aria-hidden="true" />
+            </button>
+          )}
           <MenuButton entry={entry} className="h-10 w-10" />
         </div>
       </header>
+      {checkReason !== null && (
+        <p
+          role="alert"
+          className="mt-4 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-[var(--foreground)]"
+        >
+          <span className="font-semibold text-red-500">{localizeUi("ui.agents.organizer.needsCheck")}</span> ·{" "}
+          {checkReason || localizeUi("ui.agents.organizer.needsCheckHint")}
+        </p>
+      )}
 
-      <dl className="mt-6 grid grid-cols-2 gap-4 rounded-2xl border border-[var(--border)] px-4 py-3 sm:grid-cols-3 lg:grid-cols-6">
+      <dl className="mt-6 grid grid-cols-2 gap-4 rounded-2xl border border-[var(--border)] px-4 py-3 sm:grid-cols-3 lg:auto-cols-fr lg:grid-flow-col">
         <Fact label={localizeUi("ui.agents.organizer.facts.type")}>{localizeUi(typeLabelKey(type))}</Fact>
         <Fact label={localizeUi("ui.agents.organizer.facts.worksIn")}>
           {modes.length > 0 ? (
@@ -161,6 +186,11 @@ export function AgentPage({
         <Fact label={localizeUi("ui.agents.organizer.facts.engine")}>
           {localizeUi("ui.agents.organizer.facts.engineValue", { version: manifest.engine.min })}
         </Fact>
+        {installed && (
+          <Fact label={localizeUi("ui.agents.organizer.facts.usedIn")}>
+            {localizeUi("ui.agents.organizer.facts.chatCount", { count: chatCountById.get(manifest.id) ?? 0 })}
+          </Fact>
+        )}
         <Fact label={localizeUi("ui.agents.organizer.facts.size")}>{formatBytes(entry.artifact.bytes)}</Fact>
         <Fact label={localizeUi("ui.agents.organizer.facts.source")}>
           {localizeUi(customSource ? "ui.agents.organizer.facts.custom" : "ui.agents.organizer.facts.official")}

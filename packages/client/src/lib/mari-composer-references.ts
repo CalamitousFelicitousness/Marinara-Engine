@@ -1,7 +1,13 @@
 // Pure logic behind Professor Mari's `@` reference picker: which rows exist, how a query ranks them, how a
 // pick is written into the draft, and which picked references are still in the text.
 import type { MariComposerReference, ProfessorMariContextResource } from "@marinara-engine/shared";
+import type { CSSProperties } from "react";
+import { buildCharacterPreviewModel } from "./character-preview";
 import { getCharacterDisplayIdentity } from "./character-display";
+import { chatResultType } from "./command-icons";
+import { buildLorebookPreviewModel } from "./lorebook-preview";
+import { resolvePresetArtwork } from "./preset-artwork";
+import { getAvatarCropStyle } from "./utils";
 import { formatReferenceToken, type ActiveComposerToken } from "./composer-triggers";
 import type { MariCommandId } from "./mari-commands";
 
@@ -49,6 +55,15 @@ export type ReferenceItem = {
   state?: ReferenceState;
   /** A doc's path, shown as the row's fact. */
   detail?: string;
+  /** The row's face, read the way the omnibar and her reply rows read it; no face shows the kind's icon. */
+  media?: ReferenceMedia;
+};
+
+export type ReferenceFace = { src?: string; avatarCropStyle?: CSSProperties };
+/** An image (avatar or artwork), or for a chat the faces of who is in it with its mode as the badge. */
+export type ReferenceMedia = ReferenceFace & {
+  faces?: readonly ReferenceFace[];
+  chatMode?: ReturnType<typeof chatResultType>;
 };
 
 type NamedRecord = {
@@ -59,7 +74,64 @@ type NamedRecord = {
   origin?: unknown;
   enabled?: unknown;
   persistent?: unknown;
+  avatarPath?: unknown;
+  avatarCrop?: unknown;
+  imagePath?: unknown;
+  author?: unknown;
+  mode?: unknown;
+  characterIds?: unknown;
 };
+
+const text = (value: unknown) => (typeof value === "string" && value.trim() ? value : undefined);
+
+function referenceMedia(
+  group: ReferenceGroupId,
+  raw: unknown,
+  faceById: ReadonlyMap<string, ReferenceFace>,
+): ReferenceMedia | undefined {
+  const record = raw as NamedRecord;
+  switch (group) {
+    case "character": {
+      const character = buildCharacterPreviewModel(raw);
+      return character?.avatarSrc
+        ? { src: character.avatarSrc, avatarCropStyle: character.avatarCropStyle }
+        : undefined;
+    }
+    case "persona": {
+      const src = text(record.avatarPath);
+      return src
+        ? { src, avatarCropStyle: getAvatarCropStyle(record.avatarCrop as Parameters<typeof getAvatarCropStyle>[0]) }
+        : undefined;
+    }
+    case "lorebook": {
+      const src = buildLorebookPreviewModel(raw as Parameters<typeof buildLorebookPreviewModel>[0]).imageSrc;
+      return src ? { src } : undefined;
+    }
+    case "preset": {
+      const src = resolvePresetArtwork({
+        name: text(record.name) ?? "",
+        author: text(record.author) ?? null,
+        imagePath: text(record.imagePath) ?? null,
+      });
+      return src ? { src } : undefined;
+    }
+    case "agent": {
+      const src = text(record.imagePath);
+      return src ? { src } : undefined;
+    }
+    case "chat": {
+      // Who is in it, like her reply rows: stacked faces, the first one standing in when there is one.
+      const ids = Array.isArray(record.characterIds) ? record.characterIds : [];
+      const faces = ids.flatMap((id) => {
+        const face = typeof id === "string" ? faceById.get(id) : undefined;
+        return face ? [face] : [];
+      });
+      return { ...faces[0], faces, chatMode: chatResultType(text(record.mode)) };
+    }
+    default:
+      return undefined;
+  }
+}
 
 /** Only skills and memories are linkable from `/`; the other kinds are `@` picks. */
 export function isSlashLinkable(item: Pick<ReferenceItem, "group">): boolean {
@@ -88,6 +160,7 @@ export function buildReferenceItems(sources: {
   docs?: readonly unknown[];
 }): ReferenceItem[] {
   const items: ReferenceItem[] = [];
+  const faceById = new Map<string, ReferenceFace>();
   const add = (
     group: Exclude<ReferenceGroupId, "open" | "lorebookEntry" | "doc">,
     list: readonly unknown[] | undefined,
@@ -104,6 +177,9 @@ export function buildReferenceItems(sources: {
       ).trim();
       if (!label) continue;
       const item: ReferenceItem = { key: `${group}:${record.id}`, group, ref: { kind: group, id: record.id, label } };
+      const media = referenceMedia(group, raw, faceById);
+      if (media) item.media = media;
+      if (group === "character" && media?.src) faceById.set(record.id, media);
       if (group === "skill") item.state = record.origin === "builtin" ? "always" : record.enabled ? "on" : "off";
       if (group === "memory") item.state = record.enabled ? "on" : "off";
       items.push(item);

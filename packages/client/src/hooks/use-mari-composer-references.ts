@@ -101,8 +101,15 @@ export function useMariComposerReferences({
       chats,
       agents,
       docs,
-    }).filter((item) => !open || item.ref.kind !== open.ref.kind || item.ref.id !== open.ref.id);
-    return [...(open ? [open] : []), ...listed];
+    });
+    const same = (item: (typeof listed)[number]) =>
+      open !== null && item.ref.kind === open.ref.kind && item.ref.id === open.ref.id;
+    // It keeps the listed row's face.
+    const openMedia = listed.find(same)?.media;
+    return [
+      ...(open ? [openMedia ? { ...open, media: openMedia } : open] : []),
+      ...listed.filter((item) => !same(item)),
+    ];
   }, [
     agents,
     characters,

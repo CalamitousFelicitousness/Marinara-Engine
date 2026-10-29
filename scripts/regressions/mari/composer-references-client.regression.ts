@@ -266,3 +266,28 @@ assert.deepEqual(
 );
 
 console.log("Composer references client regression passed");
+
+// Faces: each kind's image as the omnibar reads it; a chat shows who is in it, badged with its mode.
+const faced = buildReferenceItems({
+  characters: [
+    { id: "c1", data: { name: "Ann" }, avatarPath: "/a/ann.png" },
+    { id: "c2", data: { name: "Bo" } },
+  ],
+  personas: [{ id: "p1", name: "Me", avatarPath: "/a/me.png" }],
+  lorebooks: [{ id: "l1", name: "World", imagePath: "/a/world.png" }],
+  presets: [{ id: "s1", name: "Plain" }],
+  chats: [{ id: "h1", name: "Talk", mode: "roleplay", characterIds: ["c1", "c2", "gone"] }],
+  agents: [{ id: "g1", name: "Agent", imagePath: "/a/agent.png" }],
+  skills: [{ id: "k1", name: "Decisions", origin: "builtin" }],
+});
+const mediaOf = (key: string) => faced.find((item) => item.key === key)?.media;
+assert.equal(mediaOf("character:c1")?.src, "/a/ann.png");
+assert.equal(mediaOf("character:c2"), undefined);
+assert.equal(mediaOf("persona:p1")?.src, "/a/me.png");
+assert.equal(mediaOf("lorebook:l1")?.src, "/a/world.png");
+assert.equal(mediaOf("preset:s1"), undefined);
+assert.equal(mediaOf("agent:g1")?.src, "/a/agent.png");
+assert.equal(mediaOf("skill:k1"), undefined);
+assert.equal(mediaOf("chat:h1")?.src, "/a/ann.png");
+assert.equal(mediaOf("chat:h1")?.faces?.length, 1);
+assert.equal(mediaOf("chat:h1")?.chatMode, "roleplay");

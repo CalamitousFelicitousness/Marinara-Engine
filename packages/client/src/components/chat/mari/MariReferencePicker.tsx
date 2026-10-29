@@ -1,7 +1,7 @@
 import { ChevronRight } from "lucide-react";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { RESULT_TYPE_ICONS, resourceResultType } from "../../../lib/command-icons";
+import { resourceResultType } from "../../../lib/command-icons";
 import { getMariCommand } from "../../../lib/mari-commands";
 import {
   isCommandRow,
@@ -9,6 +9,7 @@ import {
   type ReferenceGroupId,
   type ReferenceState,
 } from "../../../lib/mari-composer-references";
+import { ResultTypeIcon } from "../../command-center/ResultTypeIcon";
 import { MariRow } from "../mari-primitives";
 
 export type MariReferencePickerProps = {
@@ -96,14 +97,23 @@ export function MariReferencePicker({ id, rows, activeIndex, drilled, onPick, on
                 />
               );
             }
-            const Icon = RESULT_TYPE_ICONS[resourceResultType(row.ref.kind)];
+            const media = row.media;
             return (
               <MariRow
                 key={row.key}
                 id={referenceOptionId(id, index)}
                 role="option"
                 aria-selected={index === activeIndex}
-                slot={<Icon aria-hidden="true" />}
+                // Its avatar or artwork, badged with its kind, as in the omnibar and her reply rows.
+                slot={
+                  <ResultTypeIcon
+                    type={media?.chatMode ?? resourceResultType(row.ref.kind)}
+                    src={media?.src}
+                    kind="avatar"
+                    avatarCropStyle={media?.avatarCropStyle}
+                    faces={media?.faces}
+                  />
+                }
                 title={row.ref.label}
                 fact={
                   row.group === "open"

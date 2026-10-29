@@ -6264,7 +6264,7 @@
   "ui.agents.organizer.steps.agent.step3": "{{name}} works in the background while you chat.",
   "ui.agents.organizer.steps.app.step1": "Tap Get. {{name}} installs in a few seconds.",
   "ui.agents.organizer.steps.app.step2": "Open {{name}} from its tab on Home.",
-  "ui.agents.organizer.steps.app.step3": "{{name}} keeps its own data. Uninstall it any time here.",
+  "ui.agents.organizer.steps.app.step3": "{{name}} keeps its own data, and you can uninstall it here.",
   "ui.agents.organizer.steps.game.step1": "Tap Get to add {{name}}.",
   "ui.agents.organizer.steps.game.step2": "In a chat, open the Agents panel and press + next to {{name}}.",
   "ui.agents.organizer.steps.game.step3": "Ask the character to play {{name}}, and take turns.",

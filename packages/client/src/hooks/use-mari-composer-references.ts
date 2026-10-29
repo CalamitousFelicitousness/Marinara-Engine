@@ -119,10 +119,17 @@ export function useMariComposerReferences({
     });
     const same = (item: (typeof listed)[number]) =>
       open !== null && item.ref.kind === open.ref.kind && item.ref.id === open.ref.id;
-    // It keeps the listed row's face.
-    const openMedia = listed.find(same)?.media;
+    // It keeps the listed row's face and name: the editor's label is its context chip ("Editing Raven"),
+    // and the link's token should read `@Raven`.
+    const listedOpen = listed.find(same);
     return [
-      ...(open ? [openMedia ? { ...open, media: openMedia } : open] : []),
+      ...(open
+        ? [
+            listedOpen
+              ? { ...open, ref: { ...open.ref, label: listedOpen.ref.label }, media: listedOpen.media ?? open.media }
+              : open,
+          ]
+        : []),
       ...listed.filter((item) => !same(item)),
     ];
   }, [

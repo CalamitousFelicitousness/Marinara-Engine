@@ -95,7 +95,7 @@ A few rules keep the chat working:
 
 - **Pins.** While automation is on, each row in the **Characters** list shows a pin to the left of its eye. Click it to pin the character as they are now, on or off; automation then leaves them alone. Toggling an eye by hand pins that character too, so the next reply does not undo your choice. A pinned row's pin shows in your accent color; click it again to unpin. Turning automation **Off** clears every pin.
 - **The narrator stays active.** The appointed **Narrator** from **Roleplay Commands** is never turned off.
-- **No answer keeps the list.** In **Decision model** mode, if the model gives no answer for every character, the Character Tracker's last scene is used instead, when there is one. A model that thinks first does not answer before the reply unless **Also gate agents that run before the reply** is on, so the tracker stands in. If neither has an answer, the list stays as it is.
+- **No answer keeps the list.** In **Decision model** mode, if the model gives no answer for every character, the Character Tracker's last scene is used instead, when there is one. A model that thinks first does not answer before the reply unless **Also gate agents that run before the reply** is on, so the tracker stands in. So does a cast too big to fit the Decision model's input even by name alone, which is not asked at all. If neither has an answer, the list stays as it is.
 - **Nobody active is not an option.** A result that would turn everyone off is ignored.
 - **A Character Activity agent wins.** A chat with a custom agent using the **Character Activity** result type keeps that agent in charge, and automation does nothing.
 

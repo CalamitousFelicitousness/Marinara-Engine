@@ -358,7 +358,12 @@ function StepPicture({ entry, type, step }: { entry: OrganizerEntry; type: "app"
           {nameLabel}
           <Bar width="70%" />
         </div>
-        <span className={cn("shrink-0 rounded-full bg-[var(--foreground)] px-3 py-1 text-xs font-bold text-[var(--background)]", RING)}>
+        <span
+          className={cn(
+            "shrink-0 rounded-full bg-[var(--foreground)] px-3 py-1 text-xs font-bold text-[var(--background)]",
+            RING,
+          )}
+        >
           {localizeUi("ui.agents.organizer.get")}
         </span>
       </div>
@@ -370,7 +375,12 @@ function StepPicture({ entry, type, step }: { entry: OrganizerEntry; type: "app"
           <House className="h-3.5 w-3.5" />
           {localizeUi("ui.agents.organizer.home")}
         </span>
-        <span className={cn("flex min-w-0 items-center gap-1.5 rounded-md bg-[var(--marinara-chat-chrome-highlight-bg,var(--accent))] px-2 py-1", RING)}>
+        <span
+          className={cn(
+            "flex min-w-0 items-center gap-1.5 rounded-md bg-[var(--marinara-chat-chrome-highlight-bg,var(--accent))] px-2 py-1",
+            RING,
+          )}
+        >
           <AgentIcon entry={entry} className="h-5 w-5 rounded-md p-0.5" />
           {nameLabel}
         </span>
@@ -384,7 +394,13 @@ function StepPicture({ entry, type, step }: { entry: OrganizerEntry; type: "app"
           {nameLabel}
           <MoreHorizontal className="ml-auto h-4 w-4 shrink-0 text-[var(--muted-foreground)]" />
         </div>
-        <span className={cn(BOX, "absolute -bottom-6 right-1 px-3 py-1 text-xs font-semibold text-[var(--foreground)] shadow-md", RING)}>
+        <span
+          className={cn(
+            BOX,
+            "absolute -bottom-6 right-1 px-3 py-1 text-xs font-semibold text-[var(--foreground)] shadow-md",
+            RING,
+          )}
+        >
           {localizeUi("ui.agents.agentcatalogview.uninstall")}
         </span>
       </div>
@@ -398,7 +414,12 @@ function StepPicture({ entry, type, step }: { entry: OrganizerEntry; type: "app"
         <div className="flex items-center gap-2">
           {icon}
           {nameLabel}
-          <span className={cn("ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[var(--background)]", RING)}>
+          <span
+            className={cn(
+              "ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[var(--background)]",
+              RING,
+            )}
+          >
             <Plus className="h-3.5 w-3.5 text-[var(--background)]" strokeWidth={3} />
           </span>
         </div>

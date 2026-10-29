@@ -425,6 +425,11 @@ export function AgentCatalogView() {
     target.kind === page.kind &&
     (target.kind !== "section" || (page.kind === "section" && page.id === target.id));
   const showAside = page.kind !== "agent" || Boolean(results);
+  const backLabel = agentEntry
+    ? localizeUi("ui.agents.organizer.backToSection", {
+        section: localizeUi(sectionLabelKey(sectionOf(agentEntry))),
+      })
+    : localizeUi("capabilities.actions.backToAgents");
 
   const searchField = (
     <div className="relative">
@@ -525,10 +530,10 @@ export function AgentCatalogView() {
         <header className="relative z-10 flex shrink-0 items-center gap-3 border-b border-[var(--border)]/50 bg-[var(--card)]/90 px-3 py-2 backdrop-blur-md md:px-6 md:py-3">
           <button
             type="button"
-            onClick={closeAgentCatalog}
+            onClick={agentEntry ? () => go({ kind: "section", id: sectionOf(agentEntry) }) : closeAgentCatalog}
             className="mari-chrome-control h-9 w-9 shrink-0 rounded-xl p-0 md:h-10 md:w-10"
-            title={localizeUi("capabilities.actions.backToAgents")}
-            aria-label={localizeUi("capabilities.actions.backToAgents")}
+            title={backLabel}
+            aria-label={backLabel}
           >
             <ArrowLeft size="1rem" />
           </button>

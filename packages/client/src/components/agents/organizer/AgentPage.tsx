@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowUpRight, Check, ExternalLink, Home } from "lucide-react";
+import { ArrowUpRight, Check, ExternalLink } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { cn } from "../../../lib/utils";
 import { useUIStore } from "../../../stores/ui.store";
@@ -72,7 +72,7 @@ export function AgentPage({
   /** How-to step pictures by package type, from the store data. */
   howTo?: Record<string, string[]>;
 }) {
-  const { installedById, chatCountById, settingsAgentById, go, open } = useOrganizer();
+  const { installedById, chatCountById, settingsAgentById, open } = useOrganizer();
   const openAgentDetail = useUIStore((state) => state.openAgentDetail);
   const { t: localizeUi } = useUiTranslation();
   const { manifest } = entry;
@@ -108,29 +108,6 @@ export function AgentPage({
           className="aspect-[16/8] max-h-[380px] w-full shadow-none! sm:aspect-[16/6]"
         />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[70%] bg-gradient-to-t from-[var(--marinara-editor-bg,var(--background))] to-transparent" />
-        <div className="absolute left-4 top-4 flex gap-2">
-          <button
-            type="button"
-            className={cn(SECONDARY_ACTION, "inline-flex h-10 w-10 items-center justify-center p-0 backdrop-blur")}
-            onClick={() => go({ kind: "section", id: section })}
-            aria-label={localizeUi("ui.agents.organizer.backToSection", {
-              section: localizeUi(sectionLabelKey(section)),
-            })}
-          >
-            <ArrowLeft size="1rem" aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            className={cn(
-              SECONDARY_ACTION,
-              "inline-flex h-10 items-center gap-2 px-3 text-sm font-semibold backdrop-blur",
-            )}
-            onClick={() => go({ kind: "home" })}
-          >
-            <Home size="0.9rem" aria-hidden="true" />
-            {localizeUi("ui.agents.organizer.title")}
-          </button>
-        </div>
       </div>
 
       <div className="mx-auto max-w-5xl px-4 md:px-6">

@@ -173,6 +173,10 @@ export function useMariComposerReferences({
       return withoutFuzzyNoise([...commands, ...rankReferenceItems(linkable, token.query)]);
     }
     if (token?.trigger !== "@") return [];
+    // At the cap no link can be added, but a field pick links nothing: only the fields stay.
+    if (atCap) {
+      return token.query ? rankFieldRows(editorFields, token.query) : editorFields.map((field) => fieldRow(field, 0));
+    }
     if (activeDrill?.kind === "fields") {
       const open = items.find((item) => item.group === "open");
       if (!open) return [];
@@ -194,7 +198,8 @@ export function useMariComposerReferences({
     return withoutFuzzyNoise([...lead, ...fields, ...ranked.slice(lead.length)]);
   }, [activeDrill, atCap, availableCommands, editorFields, entries.data, items, token]);
 
-  const pickerOpen = rows.length > 0 && (token?.trigger === "/" || !atCap) && dismissedKey !== tokenKey;
+  // The rows already hold only what the cap allows (commands, fields).
+  const pickerOpen = rows.length > 0 && dismissedKey !== tokenKey;
   // Prose: the first Tab completed a name and it still ends the draft, so a second Tab links it. A name
   // already written as `@Name` is not at a boundary, so it does not count twice.
   // The ghost never suggests a pick-only kind, so a name that ends the draft is not one of theirs.

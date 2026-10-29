@@ -105,7 +105,6 @@ try {
     assert.ok(note.startsWith(`@character "Alice" (id ${alice}) (not sent: over this message's budget;`), note);
     assert.ok(note.endsWith(`read with app_data character.get ${alice})`), note);
   }
-  // A kind outside the allowlist is refused, not read.
   // A character linked with the onboarding handbook also sends its onboarding block; without it, it does not.
   reads.length = 0;
   const withOnboarding = await resolveComposerReferences(
@@ -118,7 +117,34 @@ try {
   assert.match(withOnboarding.payloads[0]!.content, /app_data character\.onboarding\.get:/);
   assert.match(withOnboarding.payloads[0]!.content, /The card has no onboarding yet\./);
   assert.doesNotMatch(resolved.payloads[0]!.content, /onboarding\.get/);
+  // A failed onboarding read (refused or thrown) still sends the character, with a line saying so.
+  for (const fail of [
+    async () => ({ ok: false, error: "nope" }) as never,
+    async () => {
+      throw new Error("store down");
+    },
+  ]) {
+    const flaky = {
+      executeAction: (envelope: Record<string, unknown>) =>
+        envelope.action === "character.onboarding.get" ? fail() : service.executeAction(envelope),
+    };
+    const partial = await resolveComposerReferences(
+      flaky,
+      [aliceRef, { kind: "skill", id: "builtin-onboarding", label: "Interactive Onboarding" }],
+      60_000,
+    );
+    assert.equal(partial.payloads.length, 1, "the character is still sent");
+    assert.match(partial.payloads[0]!.content, /"name": "Alice"/);
+    assert.match(
+      partial.payloads[0]!.content,
+      new RegExp(
+        `app_data character.onboarding.get: could not be read; re-read with app_data character.onboarding.get ${alice}`,
+      ),
+    );
+    assert.ok(!partial.notes.some((note) => note.includes("not found")), "not reported as deleted");
+  }
 
+  // A kind outside the allowlist is refused, not read.
   const readsBefore = reads.length;
   const refused = await resolveComposerReferences(
     spy,

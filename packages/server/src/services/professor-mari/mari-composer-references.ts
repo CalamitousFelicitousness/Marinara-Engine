@@ -120,17 +120,27 @@ async function readReference(
   }
   const result = await run({ action: SINGLE_READ_ACTIONS[reference.kind], id: reference.id });
   if (!result) return null;
-  const onboarding =
-    withOnboarding && reference.kind === "character"
-      ? await run({ action: "character.onboarding.get", characterId: reference.id })
-      : null;
-  return {
-    text: [
-      stringifyOutput(result.output),
-      ...(onboarding ? ["", "app_data character.onboarding.get:", stringifyOutput(onboarding.output)] : []),
-    ].join("\n"),
-    truncation: result.truncation ?? onboarding?.truncation,
-  };
+  const onboarding = withOnboarding && reference.kind === "character" ? await onboardingLines(run, reference.id) : [];
+  return { text: [stringifyOutput(result.output), ...onboarding].join("\n"), truncation: result.truncation };
+}
+
+/** The onboarding block a character linked with the onboarding handbook carries, with its own truncation
+ * note; a failed read says so (the character itself was read) instead of dropping it silently. */
+async function onboardingLines(
+  run: (envelope: Record<string, unknown>) => Promise<MariDbCommandResult | null>,
+  characterId: string,
+): Promise<string[]> {
+  const heading = "app_data character.onboarding.get:";
+  try {
+    const read = await run({ action: "character.onboarding.get", characterId });
+    if (read) {
+      const truncationNote = formatMariReadTruncation(read.truncation);
+      return ["", heading, stringifyOutput(read.output), ...(truncationNote ? ["", truncationNote] : [])];
+    }
+  } catch (err) {
+    logger.warn(err, "Professor Mari: failed to read a linked character's onboarding");
+  }
+  return ["", `${heading} could not be read; re-read with app_data character.onboarding.get ${characterId}`];
 }
 
 /** Reads each reference once, in order, spending the budget; the first that does not fit and all after it drop to a note. */

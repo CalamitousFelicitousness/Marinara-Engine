@@ -2106,7 +2106,7 @@ export function AgentEditor() {
 
   return (
     <div className="mari-editor-shell mari-editor-legacy-bridge flex flex-1 flex-col overflow-hidden">
-      {storeEntry?.store?.bannerUrl && (
+      {(storeEntry?.store?.bannerSmallUrl ?? storeEntry?.store?.bannerUrl) && (
         <div className="relative h-20 shrink-0 sm:h-28">
           <StoreBanner entry={storeEntry} sizes="100vw" className="h-full w-full shadow-none!" />
           <div className="pointer-events-none absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-[var(--marinara-editor-bg,var(--background))] to-transparent" />

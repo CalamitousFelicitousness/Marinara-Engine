@@ -2107,7 +2107,7 @@ export function AgentEditor() {
   return (
     <div className="mari-editor-shell mari-editor-legacy-bridge flex flex-1 flex-col overflow-hidden">
       {(storeEntry?.store?.bannerSmallUrl ?? storeEntry?.store?.bannerUrl) && (
-        <div className="relative h-20 shrink-0 sm:h-28">
+        <div className="relative aspect-[16/7] max-h-[300px] w-full shrink-0 sm:aspect-[16/5]">
           <StoreBanner entry={storeEntry} sizes="100vw" className="h-full w-full shadow-none!" />
           <div className="pointer-events-none absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-[var(--marinara-editor-bg,var(--background))] to-transparent" />
         </div>
@@ -2122,7 +2122,7 @@ export function AgentEditor() {
         >
           <ArrowLeft size="1.125rem" />
         </button>
-        <div className="mari-editor-icon-tile">
+        <div className={cn("mari-editor-icon-tile", storeEntry?.store?.iconUrl && "h-14! w-14! rounded-2xl!")}>
           {storeEntry?.store?.iconUrl ? (
             <span className="flex h-[70%] w-[70%]">
               <AgentArtwork imageUrl={storeEntry.store.iconUrl} alt="" iconSize="1.125rem" />

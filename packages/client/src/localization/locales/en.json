@@ -6189,6 +6189,8 @@
   "ui.agents.organizer.eyebrow": "Download and manage",
   "ui.agents.organizer.facts.anyMode": "Any mode",
   "ui.agents.organizer.facts.custom": "Custom source",
+  "ui.agents.organizer.facts.engine": "Needs Engine",
+  "ui.agents.organizer.facts.engineValue": "{{version}} or newer",
   "ui.agents.organizer.facts.official": "Official",
   "ui.agents.organizer.facts.size": "Size",
   "ui.agents.organizer.facts.source": "Source",

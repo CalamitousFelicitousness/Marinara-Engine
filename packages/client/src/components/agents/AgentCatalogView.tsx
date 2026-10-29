@@ -79,7 +79,9 @@ export function AgentCatalogView() {
   const customRepositories = useCustomAgentRepositories();
   const [query, setQuery] = useState("");
   const [modeFilter, setModeFilter] = useState<AgentModeFilterValue>("all");
-  const [page, setPage] = useState<OrganizerPage>({ kind: "home" });
+  const [page, setPage] = useState<OrganizerPage>(() =>
+    initialPackageId ? { kind: "agent", id: initialPackageId } : { kind: "home" },
+  );
   const [menu, setMenu] = useState<{ entry: OrganizerEntry | null; x: number; y: number } | null>(null);
   const [bulkProgress, setBulkProgress] = useState<BulkActionProgress | null>(null);
   const [customRepositoriesOpen, setCustomRepositoriesOpen] = useState(false);
@@ -501,6 +503,7 @@ export function AgentCatalogView() {
             className="mari-chrome-control h-9 w-9 shrink-0 p-0 md:h-10 md:w-10"
             aria-label={localizeUi("ui.agents.organizer.moreActions")}
             aria-haspopup="menu"
+            aria-expanded={menu?.entry === null}
             onClick={(event) => openMenu(null, event)}
           >
             {bulkActionPending ? (

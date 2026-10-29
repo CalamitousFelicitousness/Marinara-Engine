@@ -7135,6 +7135,7 @@ const withStoreListing = (store: CapabilityStoreListing | undefined) => (store ?
 const storeCache = new Map<string, { at: number; listings: CapabilityStoreListings }>();
 
 /** A sidecar path as an absolute https URL on the sidecar's own origin, or undefined. */
+// Same host, not same repo: on raw.githubusercontent.com any repo passes. Images only, so that is fine.
 function resolveStoreAssetUrl(path: string | undefined, storeUrl: string): string | undefined {
   if (!path) return undefined;
   try {
@@ -7193,6 +7194,11 @@ export const capabilityPackageManager = {
     fetchCatalog: typeof safeFetch = safeFetch,
     previewCatalogUrl: string | null = PREVIEW_CATALOG_URL,
   ): Promise<StampedCapabilityCatalog> {
+    // Started first so a slow sidecar overlaps the catalog fetch; readStoreListings never rejects.
+    const storesPromise = Promise.all([
+      readStoreListings(STORE_URL, fetchCatalog),
+      readStoreListings(resolveCapabilityReleaseNotesUrl(previewCatalogUrl, "store.json"), fetchCatalog),
+    ]);
     const response = await fetchCatalogDocument(CATALOG_URL, fetchCatalog);
     if (!response.ok) throw new Error(`Catalog request failed with HTTP ${response.status}`);
     // Per-entry tolerant: a catalog entry built for a NEWER Engine (unknown
@@ -7224,10 +7230,7 @@ export const capabilityPackageManager = {
       );
       return false;
     });
-    const [publishedStore, previewStore] = await Promise.all([
-      readStoreListings(STORE_URL, fetchCatalog),
-      readStoreListings(resolveCapabilityReleaseNotesUrl(previewCatalogUrl, "store.json"), fetchCatalog),
-    ]);
+    const [publishedStore, previewStore] = await storesPromise;
     const decorate = (
       entry: CapabilityCatalogPackage,
       sourceUrl: string,

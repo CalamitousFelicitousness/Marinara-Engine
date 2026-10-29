@@ -132,7 +132,7 @@ export function AgentPage({
         </div>
       </header>
 
-      <dl className="mt-6 grid grid-cols-2 gap-4 rounded-2xl border border-[var(--border)] px-4 py-3 sm:grid-cols-5">
+      <dl className="mt-6 grid grid-cols-2 gap-4 rounded-2xl border border-[var(--border)] px-4 py-3 sm:grid-cols-3 lg:grid-cols-6">
         <Fact label={localizeUi("ui.agents.organizer.facts.type")}>{localizeUi(typeLabelKey(type))}</Fact>
         <Fact label={localizeUi("ui.agents.organizer.facts.worksIn")}>
           {modes.length > 0 ? (
@@ -157,6 +157,9 @@ export function AgentPage({
           {installed && update
             ? localizeUi("ui.agents.organizer.versionChange", { from: installed.version, to: manifest.version })
             : (installed?.version ?? manifest.version)}
+        </Fact>
+        <Fact label={localizeUi("ui.agents.organizer.facts.engine")}>
+          {localizeUi("ui.agents.organizer.facts.engineValue", { version: manifest.engine.min })}
         </Fact>
         <Fact label={localizeUi("ui.agents.organizer.facts.size")}>{formatBytes(entry.artifact.bytes)}</Fact>
         <Fact label={localizeUi("ui.agents.organizer.facts.source")}>

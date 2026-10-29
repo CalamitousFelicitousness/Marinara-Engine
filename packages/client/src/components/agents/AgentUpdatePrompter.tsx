@@ -137,6 +137,12 @@ export function AgentUpdatePrompter({
 
   const restartNeeded = Object.values(results).some((result) => result.status === "updated" && result.restartRequired);
 
+  // Leaving after a run that needs a restart keeps the old reminder toast.
+  const leave = (updates: CapabilityPackageUpdate[]) => {
+    if (restartNeeded) toast.info(localizeUi("ui.agents.agentupdateprompter.updatesAppliedRestartRequired"));
+    void finish(updates);
+  };
+
   if (!prompted) return null;
 
   return (
@@ -159,7 +165,7 @@ export function AgentUpdatePrompter({
         const update = prompted.find((item) => item.id === id);
         if (update && phase === "done") void run([update]);
       }}
-      onClose={() => void finish(prompted)}
+      onClose={() => leave(prompted)}
       onRestart={
         restartNeeded
           ? () => {
@@ -174,7 +180,7 @@ export function AgentUpdatePrompter({
           : undefined
       }
       onShowInOrganizer={(id) => {
-        void finish(prompted);
+        leave(prompted);
         openAgentCatalog(id);
       }}
     />

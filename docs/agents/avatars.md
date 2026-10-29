@@ -6,11 +6,11 @@ Live2D models are not supported. Live2D's licence needs a separate agreement wit
 
 ## Downloading the agents
 
-Both agents are in **Download Agents** for every install, under the **Roleplay** and **Game** filters. They need Marinara Engine 2.5.1 or newer.
+Both agents are in **Agent Organizer** for every install, under the **Roleplay** and **Game** filters. They need Marinara Engine 2.5.1 or newer.
 
 **2D Avatars** and **3D Avatars** are separate downloads, so you can install only the one you want. Both work for characters and personas in Roleplay and Game chats.
 
-1. Open **Agents → Download Agents** and install **2D Avatars**, **3D Avatars**, or both. Neither needs a restart.
+1. Open **Agents → Agent Organizer** and install **2D Avatars**, **3D Avatars**, or both. Neither needs a restart.
 2. Set up each avatar on the agent's page in **Agents**. See [Setting up an avatar](#setting-up-an-avatar).
 3. In a Roleplay or Game chat, open **Chat Settings → Agents → Misc Agents** and add the agent.
 

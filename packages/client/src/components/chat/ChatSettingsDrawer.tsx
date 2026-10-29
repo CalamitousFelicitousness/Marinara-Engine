@@ -7142,6 +7142,7 @@ export function ChatSettingsDrawer({
                         key={mode}
                         type="button"
                         onClick={() => setAutoActiveCharactersMode(mode)}
+                        aria-pressed={autoActiveCharactersMode === mode}
                         className={cn(
                           "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors",
                           index === 0 && "rounded-l-lg",
@@ -7161,9 +7162,11 @@ export function ChatSettingsDrawer({
                         ? localizeUi("ui.chat.chatsettingsdrawer.autoActiveCharacters.decisionHint")
                         : localizeUi("ui.chat.chatsettingsdrawer.autoActiveCharacters.decisionMissingHint")
                       : autoActiveCharactersMode === "tracker"
-                        ? characterTrackerEnabled
-                          ? localizeUi("ui.chat.chatsettingsdrawer.autoActiveCharacters.trackerHint")
-                          : localizeUi("ui.chat.chatsettingsdrawer.autoActiveCharacters.trackerMissingHint")
+                        ? !characterTrackerEnabled
+                          ? localizeUi("ui.chat.chatsettingsdrawer.autoActiveCharacters.trackerMissingHint")
+                          : activeManualTrackerTypes.has(BUILT_IN_AGENT_IDS.CHARACTER_TRACKER)
+                            ? localizeUi("ui.chat.chatsettingsdrawer.autoActiveCharacters.trackerManualHint")
+                            : localizeUi("ui.chat.chatsettingsdrawer.autoActiveCharacters.trackerHint")
                         : localizeUi("ui.chat.chatsettingsdrawer.autoActiveCharacters.offHint")}
                   </p>
                 </div>

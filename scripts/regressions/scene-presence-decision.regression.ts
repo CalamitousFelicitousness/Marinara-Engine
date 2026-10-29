@@ -151,6 +151,7 @@ const { characterDataSchema } = await import("../../packages/shared/dist/index.j
 let probabilities: Record<string, number> = {};
 let decisionFails = false;
 const decisionCalls: string[][] = [];
+let lastDecisionState: { recent_messages?: Array<{ role: string; name?: string }> } = {};
 
 const provider = createServer(async (request, response) => {
   const chunks: Buffer[] = [];
@@ -158,6 +159,7 @@ const provider = createServer(async (request, response) => {
   const body = JSON.parse(Buffer.concat(chunks).toString() || "{}");
   if (request.url?.endsWith("/systemone")) {
     decisionCalls.push(Object.keys(body.questions ?? {}));
+    lastDecisionState = body.state ?? {};
     if (decisionFails) {
       response.writeHead(500, { "content-type": "application/json" });
       response.end(JSON.stringify({ error: "fixture decision failure" }));
@@ -279,6 +281,13 @@ try {
   await chats.patchMetadata(chat.id, { autoActiveCharacterPins: [kurt!] });
   probabilities = { [narrator!]: 0, [logan!]: 0.95, [kurt!]: 0.95, [rogue!]: 0.05 };
   await turn("Kurt teleports in.");
+  const replies = (lastDecisionState.recent_messages ?? []).filter((message) => message.role === "assistant");
+  assert(replies.length > 0, "the transcript includes the last reply");
+  // Merged replies are saved under the first character's id; naming them by it would claim that character spoke.
+  assert(
+    replies.every((message) => message.name === "the narrator"),
+    "merged replies are the narrator's",
+  );
   assert.deepEqual(await inactive(), [kurt!, rogue!].sort(), "pinned Kurt stays inactive, Rogue leaves");
   await chats.patchMetadata(chat.id, { autoActiveCharacterPins: [] });
 

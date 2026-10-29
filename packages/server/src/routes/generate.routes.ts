@@ -55,6 +55,7 @@ import {
   presentFromDecision,
   presentFromTracker,
   scenePresenceQuestions,
+  SCENE_PRESENCE_TRANSCRIPT_DEPTH,
   scenePresenceState,
 } from "../services/generation/scene-presence-decision.js";
 import {
@@ -3025,7 +3026,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         chatMode === "roleplay" &&
         groupGenerationMode === "merged" &&
         allCharacterIds.length > 1 &&
-        eligibleCharacterActivityConfigs.length === 0 &&
+        // Any activity agent on this chat owns the list, even on a turn its cadence or keywords skip.
+        !characterActivityAgentConfigs.some((config) => perChatAgentSet.has(config.type)) &&
         !input.continueMessageId &&
         !input.impersonate
       ) {
@@ -3064,15 +3066,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 about: character.description || character.personality || undefined,
               }));
               const namesById = new Map(candidates.map((candidate) => [candidate.id, candidate.name]));
+              // Merged replies are saved under the first character's id, so naming them by that
+              // id would tell the model that character spoke and is present. They're the narrator's.
               const transcript = chatMessages
                 .filter((message: any) => message.role === "user" || message.role === "assistant")
+                .slice(-SCENE_PRESENCE_TRANSCRIPT_DEPTH)
                 .map((message: any) => ({
                   role: message.role as string,
-                  name:
-                    message.role === "user"
-                      ? personaName
-                      : (typeof message.characterId === "string" && namesById.get(message.characterId)) ||
-                        "the narrator",
+                  name: message.role === "user" ? personaName : "the narrator",
                   content: roleplayAgentText(
                     conversationPromptHistoryContent(message, chatMode),
                     message,

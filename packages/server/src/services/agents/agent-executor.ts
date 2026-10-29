@@ -276,7 +276,10 @@ export function buildAgentPromptMacroContext(
   return {
     user: value(context.persona?.name?.trim() || "User"),
     char: value(characters.join(", ") || "Assistant"),
-    characters: characters.map(value),
+    characters: (context.chatCharacters?.map((character) => character.name) ?? characters).map(value),
+    groupCharacters: (
+      context.chatCharacters?.filter((character) => character.active).map((character) => character.name) ?? characters
+    ).map(value),
     variables: {},
     agentData: context.previousOutput ? { [context.previousOutput.agentType]: value(context.previousOutput.text) } : {},
     worldState: context.gameState

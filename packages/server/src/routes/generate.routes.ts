@@ -6189,6 +6189,10 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           gameState,
           currentLocation: agentCurrentLocationFromProjection(ownerSpatialProjection),
           characters: charInfo,
+          chatCharacters: allCharacterIds.flatMap((id) => {
+            const profile = historyMacroProfilesById.get(id);
+            return profile ? [{ id, name: profile.name, active: characterIds.includes(id) }] : [];
+          }),
           characterTrackerHistory: characterTrackerHistory as unknown as AgentContext["characterTrackerHistory"],
           persona:
             personaName !== "User"

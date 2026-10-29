@@ -7,7 +7,7 @@ export interface MacroContext {
   userPhonetic?: string;
   char: string;
   charPhonetic?: string;
-  /** Character names in the current prompt scope (used by {{characters}}) */
+  /** Full chat character roster, including inactive members (used by {{characters}}). */
   characters: string[];
   /** Full active chat character roster (used by {{group}} when the prompt is scoped to one responder) */
   groupCharacters?: string[];
@@ -2331,7 +2331,7 @@ function planConditionOperand(
   if (/^-?\d+(?:\.\d+)?$/u.test(token)) return token;
   const key = normalizeConditionKey(token);
   if (!PLAN_FIXED_OPERAND_NAMES.has(key)) return null;
-  const group = (ctx.characterProfiles?.length ?? 0) > 1 || ctx.characters.length > 1;
+  const group = (ctx.characterProfiles?.length ?? ctx.characters.length) > 1;
   if (group && PLAN_PER_CHARACTER_OPERAND_NAMES.has(key)) return null;
   return resolveConditionalOperand(raw, ctx, options);
 }

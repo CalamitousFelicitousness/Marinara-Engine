@@ -158,6 +158,14 @@ type MariComposerProps = {
   };
 };
 
+/** The link hint names the input the device has: Tab, a tap, or both. */
+function linkHintKey() {
+  if (window.matchMedia("(pointer: coarse)").matches) return "mari.composerReferences.linkHintTouch";
+  // A touch laptop reports a fine pointer but can still be tapped, so it gets both words.
+  if (window.matchMedia("(any-pointer: coarse)").matches) return "mari.composerReferences.linkHintHybrid";
+  return "mari.composerReferences.linkHint";
+}
+
 export function MariComposer({
   workspaceStatus,
   refreshWorkspaceStatus,
@@ -269,6 +277,10 @@ export function MariComposer({
   // The ghost may sit in an `@` token that ends the draft (a Tab there links it); the open picker replaces it.
   const ghostInToken = liveToken?.trigger === "@" && liveToken.end === draft.length;
   const ghostAvailable = Boolean(draftSuffix) && (!liveToken || ghostInToken);
+  // A completed name ends the draft and a second Tab would link it: say so where the ghost was, and let a
+  // tap link it, since touch screens have no Tab.
+  const linkHint = Boolean(referenceUi?.canLinkCompletion) && !ghostAvailable && !pickerOpen && !isBusy;
+  const linkHintText = linkHint ? t(linkHintKey()) : "";
   const ActivePermissionsModeIcon = MARI_PERMISSIONS_MODE_ICONS[permissionsMode];
   // The connection menu shows the chosen connection's models beside the list, like the chat input's
   // Connections menu. A narrow composer shows one step at a time: the list, then the chosen models.
@@ -472,7 +484,8 @@ export function MariComposer({
         <div className="relative flex min-w-0 flex-1 basis-full">
           <InlineDraftOverlay
             value={draft}
-            suffix={ghostAvailable && !pickerOpen ? draftSuffix : ""}
+            suffix={linkHintText || (ghostAvailable && !pickerOpen ? draftSuffix : "")}
+            hint={linkHint}
             marks={[
               ...referenceMarks,
               ...(liveToken ? [{ start: liveToken.start, end: liveToken.end, tone: "pending" as const }] : []),
@@ -482,7 +495,13 @@ export function MariComposer({
             scrollTop={composerScroll.top}
             className="mari-workspace-composer__text"
             // The textarea is disabled while busy, so the suggestion is not tappable then either.
-            onAccept={isBusy ? undefined : ghostInToken ? () => onPickerAction?.("ghost-link") : acceptDraftCompletion}
+            onAccept={
+              isBusy
+                ? undefined
+                : ghostInToken || linkHint
+                  ? () => onPickerAction?.("ghost-link")
+                  : acceptDraftCompletion
+            }
           />
           <textarea
             ref={floatingTextareaRef}
@@ -525,6 +544,8 @@ export function MariComposer({
                 onPickerAction?.(action);
               }
             }}
+            // The overlay is hidden from screen readers, so the field itself carries the hint.
+            aria-description={linkHintText || undefined}
             aria-controls={pickerOpen ? referenceUi?.picker?.id : undefined}
             aria-activedescendant={pickerOpen ? referenceUi?.activeOptionId : undefined}
             rows={1}

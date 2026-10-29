@@ -411,6 +411,25 @@ export function retargetEditorContext(
   return next ? { ...rest, resource: next } : rest;
 }
 
+/**
+ * An `@` field pick beside the editor: that field replaces the one she had (and its captured text),
+ * and a context without a resource gains the open editor's.
+ */
+export function withEditorField(
+  context: ProfessorMariAskContext | null,
+  editor: ProfessorMariContextResource | null,
+  field: { id: string; label: string; draft?: { value: string; selection?: string } },
+): ProfessorMariAskContext {
+  const { fieldDraft: _fieldDraft, ...rest } = context ?? { source: "character-editor", capability: "edit" };
+  return {
+    ...rest,
+    ...(!rest.resource && editor ? { resource: editor } : {}),
+    field: field.label,
+    fieldId: field.id,
+    ...(field.draft ? { fieldDraft: field.draft } : {}),
+  };
+}
+
 export function persistentResourceContext(
   context: ProfessorMariAskContext | null | undefined,
 ): ProfessorMariAskContext | null {

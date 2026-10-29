@@ -142,10 +142,35 @@ export function isSlashLinkable(item: Pick<ReferenceItem, "group">): boolean {
 
 /** The picker's rows once a `/` token is open: a command (no reference) or a ranked reference. */
 export type CommandRow = { key: string; group: "command"; command: MariCommandId; score: number };
-export type PickerRow = RankedReferenceItem | CommandRow;
+/** A field of the editor she is docked beside: picking it makes it her field, not a link. */
+export type FieldRow = { key: string; group: "field"; field: { id: string; label: string }; score: number };
+export type PickerRow = RankedReferenceItem | CommandRow | FieldRow;
 
 export function isCommandRow(row: PickerRow | undefined): row is CommandRow {
   return row?.group === "command";
+}
+
+export function isFieldRow(row: PickerRow | undefined): row is FieldRow {
+  return row?.group === "field";
+}
+
+/** A row that links a record (not a command or a field). */
+export function isLinkRow(row: PickerRow | undefined): row is RankedReferenceItem {
+  return row !== undefined && !isCommandRow(row) && !isFieldRow(row);
+}
+
+/** The docked editor's fields matching a typed query, best first; none until something is typed. */
+export function rankFieldRows(fields: readonly { id: string; label: string }[], query: string): FieldRow[] {
+  if (!maskReferenceQuery(query).trim()) return [];
+  const scored: Array<FieldRow & { index: number }> = [];
+  fields.forEach((field, index) => {
+    const score = referenceMatchScore(field.label, query);
+    if (score !== null) scored.push({ key: `field:${field.id}`, group: "field", field, score, index });
+  });
+  return scored
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .slice(0, ROWS_PER_GROUP)
+    .map(({ index: _index, ...row }) => row);
 }
 
 /** The picker's rows from the lists the composer already loads for its ghost completion. */

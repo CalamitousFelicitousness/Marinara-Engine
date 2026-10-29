@@ -10,7 +10,10 @@ import {
   completedNameAt,
   linkCompletedReference,
   defaultActiveIndex,
+  isFieldRow,
+  isLinkRow,
   isSlashLinkable,
+  rankFieldRows,
   REFERENCE_GROUP_ORDER,
   locateReferenceTokens,
   MAX_COMPOSER_REFERENCES,
@@ -319,5 +322,31 @@ assert.deepEqual(
   ["command:history"],
 );
 assert.equal(withoutFuzzyNoise([{ key: "skill:k1", score: 40 }]).length, 1);
+
+// Docked beside an editor, a typed `@` query lists its fields; picking one is not a link.
+{
+  const fields = [
+    { id: "description", label: "Description" },
+    { id: "scenario", label: "Scenario" },
+    { id: "first_mes", label: "First message" },
+  ];
+  assert.deepEqual(rankFieldRows(fields, "@"), [], "no field rows before a query is typed");
+  const scen = rankFieldRows(fields, "@scen");
+  assert.deepEqual(
+    scen.map((row) => row.field.id),
+    ["scenario"],
+  );
+  assert.equal(scen[0]!.key, "field:scenario");
+  assert.ok(isFieldRow(scen[0]) && !isLinkRow(scen[0]), "a field row links nothing");
+  assert.deepEqual(
+    rankFieldRows(fields, "@first").map((row) => row.field.id),
+    ["first_mes"],
+  );
+  const [character] = rankReferenceItems(
+    buildReferenceItems({ characters: [{ id: "c1", data: { name: "Scenario Bot" } }] }),
+    "scen",
+  );
+  assert.ok(character && isLinkRow(character), "a record row is a link");
+}
 
 console.log("Composer references client regression passed");

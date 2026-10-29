@@ -127,7 +127,7 @@ import {
   transcriptScrollAction,
 } from "../../lib/professor-mari-transcript-scroll";
 import { resolveProfessorMariContextBudget } from "../../lib/professor-mari-context-budget";
-import { heldCharacterFields, keptCharacterFields } from "../../lib/mari-editor-fields";
+import { heldCharacterFields, keptCharacterFields, mariFieldDraft, mariFieldText } from "../../lib/mari-editor-fields";
 import { fieldLabel } from "../../lib/mari-edit-diff";
 import { rafThrottle } from "../../lib/raf-throttle";
 import {
@@ -171,6 +171,7 @@ import {
   getProfessorMariMessageContext,
   persistentResourceContext,
   retargetEditorContext,
+  withEditorField,
   continuedThereByContext,
   classifyProfessorMariFailure,
   PROFESSOR_MARI_ATTACHMENT_MAX_BYTES,
@@ -2621,6 +2622,17 @@ export function HomeProfessorMariChat({
       setPermissionsMenuOpen(true);
     } else openPendingApprovals();
   };
+  // An `@` field pick: she takes that field (its text as it is now) and the editor shows it.
+  const focusEditorField = (field: { id: string; label: string }) => {
+    const ui = useUIStore.getState();
+    const root = ui.mariCompanionRoot?.closest<HTMLElement>(".mari-editor-shell") ?? ui.mariCompanionRoot;
+    const value = root ? mariFieldText(root, field.id) : null;
+    const captured = value === null ? null : mariFieldDraft(field.id, value, null, null);
+    setHandoffContext((current) =>
+      withEditorField(current, editorResource, { ...field, ...(captured ? { draft: { value: captured.value } } : {}) }),
+    );
+    if (editorResource?.kind === "character") ui.revealMariField(editorResource.id, field.id);
+  };
   const composerReferences = useMariComposerReferences({
     draft,
     setDraft,
@@ -2638,6 +2650,7 @@ export function HomeProfessorMariChat({
       docs: referenceDocs.data,
     },
     onCommand: runComposerCommand,
+    onField: focusEditorField,
     availableCommands,
   });
 

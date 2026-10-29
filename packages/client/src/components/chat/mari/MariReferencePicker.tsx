@@ -1,14 +1,9 @@
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Pencil } from "lucide-react";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { resourceResultType } from "../../../lib/command-icons";
 import { getMariCommand } from "../../../lib/mari-commands";
-import {
-  isCommandRow,
-  type PickerRow,
-  type ReferenceGroupId,
-  type ReferenceState,
-} from "../../../lib/mari-composer-references";
+import { isCommandRow, isFieldRow, type PickerRow, type ReferenceState } from "../../../lib/mari-composer-references";
 import { ResultTypeIcon } from "../../command-center/ResultTypeIcon";
 import { MariRow } from "../mari-primitives";
 
@@ -38,8 +33,9 @@ const STATE_FACT_KEYS: Record<ReferenceState, string> = {
  */
 export function MariReferencePicker({ id, rows, activeIndex, drilled, onPick, onDrill }: MariReferencePickerProps) {
   const { t } = useTranslation();
-  const groupLabels: Record<ReferenceGroupId | "command", string> = {
+  const groupLabels: Record<PickerRow["group"], string> = {
     command: t("mari.composerReferences.group.command"),
+    field: t("mari.composerReferences.group.field"),
     open: t("mari.composerReferences.group.open"),
     character: t("mari.composerReferences.group.character"),
     persona: t("mari.composerReferences.group.persona"),
@@ -57,7 +53,7 @@ export function MariReferencePicker({ id, rows, activeIndex, drilled, onPick, on
   }, [activeIndex, id]);
 
   // Rows arrive grouped; a heading starts each run.
-  const groups: Array<{ group: ReferenceGroupId | "command"; start: number; rows: PickerRow[] }> = [];
+  const groups: Array<{ group: PickerRow["group"]; start: number; rows: PickerRow[] }> = [];
   rows.forEach((row, index) => {
     const last = groups[groups.length - 1];
     if (last?.group === row.group) last.rows.push(row);
@@ -92,6 +88,22 @@ export function MariReferencePicker({ id, rows, activeIndex, drilled, onPick, on
                   slot={<command.Icon aria-hidden="true" />}
                   title={t(command.labelKey)}
                   fact={t(command.factKey)}
+                  state={index === activeIndex ? "selected" : undefined}
+                  onClick={() => onPick(index)}
+                />
+              );
+            }
+            if (isFieldRow(row)) {
+              return (
+                <MariRow
+                  key={row.key}
+                  id={referenceOptionId(id, index)}
+                  role="option"
+                  aria-selected={index === activeIndex}
+                  // The pencil of her context row's field chip, which this pick sets.
+                  slot={<Pencil aria-hidden="true" />}
+                  title={row.field.label}
+                  fact={t("mari.composerReferences.fieldFact")}
                   state={index === activeIndex ? "selected" : undefined}
                   onClick={() => onPick(index)}
                 />

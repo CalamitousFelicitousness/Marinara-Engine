@@ -11,6 +11,8 @@ import {
   completedNameAt,
   defaultActiveIndex,
   isCommandRow,
+  isFieldRow,
+  isLinkRow,
   isSlashLinkable,
   linkCompletedReference,
   locateReferenceTokens,
@@ -18,11 +20,14 @@ import {
   MAX_COMPOSER_REFERENCES,
   applyReferencePick,
   pruneReferences,
+  rankFieldRows,
   rankReferenceItems,
   referenceFromResource,
   withoutFuzzyNoise,
   type PickerRow,
 } from "../lib/mari-composer-references";
+import { listMariFields } from "../lib/mari-editor-fields";
+import { useUIStore } from "../stores/ui.store";
 import { useLorebookEntries } from "./use-lorebooks";
 
 type Sources = {
@@ -55,7 +60,8 @@ const PICK_ONLY_GROUPS: ReadonlySet<string> = new Set(["skill", "memory", "chat"
 /**
  * What the user linked with `@` in Professor Mari's composer: the picker's rows and highlight, the picks
  * (dropped when their token text is edited away), the marks drawn over the draft, and the references to send.
- * A `/` token lists her commands (run through `onCommand`) beside the skills and memories to link.
+ * A `/` token lists her commands (run through `onCommand`) beside the skills and memories to link. Docked beside
+ * an editor, a typed `@` query also lists its fields; a field pick goes to `onField` and links nothing.
  */
 export function useMariComposerReferences({
   draft,
@@ -64,6 +70,7 @@ export function useMariComposerReferences({
   editorResource,
   companionDocked,
   onCommand,
+  onField,
   availableCommands,
 }: {
   draft: string;
@@ -73,6 +80,8 @@ export function useMariComposerReferences({
   companionDocked: boolean;
   /** Runs the command a `/` row picked; its `/query` text is already gone from the draft. */
   onCommand: (id: MariCommandId) => void;
+  /** Makes a picked editor field hers; its `@query` text is already gone from the draft. */
+  onField: (field: { id: string; label: string }) => void;
   availableCommands: readonly MariCommandId[];
 }) {
   const listboxId = useId();
@@ -139,6 +148,7 @@ export function useMariComposerReferences({
   const tokenKey = token ? `${token.start}:${token.end}:${token.query}` : "";
   const activeDrill = drill && drill.tokenKey === tokenKey ? drill : null;
   const entries = useLorebookEntries(activeDrill?.id ?? null);
+  const companionRoot = useUIStore((state) => state.mariCompanionRoot);
   const atCap = references.length >= MAX_COMPOSER_REFERENCES;
   const rows = useMemo<PickerRow[]>(() => {
     if (token?.trigger === "/") {
@@ -158,8 +168,15 @@ export function useMariComposerReferences({
       if (!book) return [];
       return [{ ...book, score: 0 }, ...rankReferenceItems(buildEntryItems(book.ref, entries.data), "")];
     }
-    return rankReferenceItems(items, token.query);
-  }, [activeDrill, atCap, availableCommands, entries.data, items, token]);
+    const ranked = rankReferenceItems(items, token.query);
+    // Read when the query changes, so the list is the editor as it is now (its header holds the name).
+    const editor = companionDocked ? (companionRoot?.closest(".mari-editor-shell") ?? companionRoot) : null;
+    const fields = editor ? rankFieldRows(listMariFields(editor), token.query) : [];
+    if (fields.length === 0) return ranked;
+    // Right under the open editor's row: it is the same editor.
+    const lead = ranked.filter((row) => row.group === "open");
+    return withoutFuzzyNoise([...lead, ...fields, ...ranked.slice(lead.length)]);
+  }, [activeDrill, atCap, availableCommands, companionDocked, companionRoot, entries.data, items, token]);
 
   const pickerOpen = rows.length > 0 && (token?.trigger === "/" || !atCap) && dismissedKey !== tokenKey;
   // Prose: the first Tab completed a name and it still ends the draft, so a second Tab links it. A name
@@ -179,6 +196,13 @@ export function useMariComposerReferences({
       setDraft(removed.value);
       setCaretRequest((current) => ({ pos: removed.caret, n: (current?.n ?? 0) + 1 }));
       onCommand(row.command);
+      return;
+    }
+    if (isFieldRow(row)) {
+      const removed = removeCommandToken(draft, token);
+      setDraft(removed.value);
+      setCaretRequest((current) => ({ pos: removed.caret, n: (current?.n ?? 0) + 1 }));
+      onField(row.field);
       return;
     }
     if (atCap) return;
@@ -202,7 +226,7 @@ export function useMariComposerReferences({
       if (rows.length > 0) {
         const shown = token ? `${maskReferenceQuery(token.query)}${completeInline(token.query, labels)}` : "";
         const ghosted = rows.find(
-          (row) => !isCommandRow(row) && row.ref.label.toLocaleLowerCase() === shown.toLocaleLowerCase(),
+          (row) => isLinkRow(row) && row.ref.label.toLocaleLowerCase() === shown.toLocaleLowerCase(),
         );
         pick(ghosted ?? rows[defaultActiveIndex(rows)]);
       } else {

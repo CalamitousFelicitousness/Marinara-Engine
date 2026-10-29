@@ -1,6 +1,27 @@
 // Links Prof. Mari to real editor fields. An editor field carries `data-mari-field="<id>"`, where the
 // id is the key `fieldLabel` takes (`description`, `first_mes`, `extensions.backstory`) and the server's
 // quick edit reads as `fieldId`. A change-card path is the same id under the row's `data.` column.
+import { fieldLabel } from "./mari-edit-diff";
+
+/** The anchored fields under `root` in page order, once each, labelled as her change cards label them. */
+export function listMariFields(root: ParentNode): Array<{ id: string; label: string }> {
+  const seen = new Set<string>();
+  const fields: Array<{ id: string; label: string }> = [];
+  for (const element of root.querySelectorAll<HTMLElement>("[data-mari-field]")) {
+    const id = element.dataset.mariField;
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    fields.push({ id, label: fieldLabel(id) });
+  }
+  return fields;
+}
+
+/** A field's current text (unsaved edits included), for a handoff that names it without focusing it. */
+export function mariFieldText(root: ParentNode, id: string): string | null {
+  const field = findMariField(root, id);
+  const input = field?.matches("textarea, input") ? field : field?.querySelector("textarea, input");
+  return input instanceof HTMLTextAreaElement || input instanceof HTMLInputElement ? input.value : null;
+}
 
 /** `data.extensions.backstory` -> `extensions.backstory`. */
 export function editorFieldId(path: string): string {

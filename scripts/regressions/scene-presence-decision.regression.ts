@@ -3,9 +3,23 @@
  *
  * Pins keep their state, the narrator stays active, nobody-active and no-change leave the
  * chat alone, and both sources (Decision model answers, Character Tracker present list)
- * report "no data" as null rather than "nobody here".
+ * report "no data" as null rather than "nobody here". Then real generate runs prove the
+ * wiring: the Decision model sets the list, a pin holds, a failing Decision model falls back
+ * to the tracker's last scene, and with the setting off or in Individual mode nothing is asked.
  */
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { createServer } from "node:http";
+import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const dir = mkdtempSync(join(tmpdir(), "marinara-scene-presence-"));
+process.env.DATA_DIR = dir;
+process.env.FILE_STORAGE_DIR = join(dir, "storage");
+process.env.NODE_ENV = "test";
+process.env.MARINARA_LITE = "true";
+process.env.LOG_LEVEL = "silent";
 
 const { chooseSceneCharacters, presentFromDecision, presentFromTracker, scenePresenceQuestions, scenePresenceState } =
   await import("../../packages/server/src/services/generation/scene-presence-decision.js");
@@ -121,4 +135,193 @@ assert.equal(
   "no tracker data, no empty field",
 );
 
-console.log("scene-presence-decision regression passed");
+// ── the real route ─────────────────────────────────────────────────────────────
+
+const requireServer = createRequire(new URL("../../packages/server/package.json", import.meta.url));
+const Fastify = requireServer("fastify") as typeof import("fastify").default;
+const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
+const { generateRoutes } = await import("../../packages/server/src/routes/generate.routes.js");
+const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
+const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
+const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
+const { createPromptsStorage } = await import("../../packages/server/src/services/storage/prompts.storage.js");
+const { createGameStateStorage } = await import("../../packages/server/src/services/storage/game-state.storage.js");
+const { characterDataSchema } = await import("../../packages/shared/dist/index.js");
+
+let probabilities: Record<string, number> = {};
+let decisionFails = false;
+const decisionCalls: string[][] = [];
+
+const provider = createServer(async (request, response) => {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) chunks.push(Buffer.from(chunk));
+  const body = JSON.parse(Buffer.concat(chunks).toString() || "{}");
+  if (request.url?.endsWith("/systemone")) {
+    decisionCalls.push(Object.keys(body.questions ?? {}));
+    if (decisionFails) {
+      response.writeHead(500, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: "fixture decision failure" }));
+      return;
+    }
+    const out: Record<string, { type: "noul"; noul: number }> = {};
+    for (const id of Object.keys(body.questions ?? {})) out[id] = { type: "noul", noul: probabilities[id] ?? 0 };
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ answers: out }));
+    return;
+  }
+  const content = "The scene goes on.";
+  if (!body.stream) {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify({ choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }] }),
+    );
+    return;
+  }
+  response.writeHead(200, { "content-type": "text/event-stream" });
+  response.end(
+    `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content }, finish_reason: null }] })}\n\n` +
+      `data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
+  );
+});
+
+const db = await getDB();
+const chats = createChatsStorage(db);
+const app = Fastify();
+app.decorate("db", db);
+app.decorate("activeGenerations", new Map());
+await app.register(generateRoutes, { prefix: "/api/generate" });
+
+try {
+  await new Promise<void>((done) => provider.listen(0, "127.0.0.1", done));
+  const address = provider.address();
+  assert(address && typeof address === "object");
+  const baseUrl = `http://127.0.0.1:${address.port}/v1`;
+  const connections = createConnectionsStorage(db);
+  const chatConnection = await connections.create({
+    name: "Chat fixture",
+    provider: "custom",
+    baseUrl,
+    model: "fixture",
+    apiKey: "fixture",
+    maxContext: 8192,
+    maxTokensOverride: 256,
+  });
+  assert(chatConnection);
+  const decision = await connections.create({
+    name: "Decision fixture",
+    provider: "decision",
+    decisionSource: "custom",
+    baseUrl,
+    model: "jev-latest",
+    maxStateTokens: 3500,
+    defaultForAgents: true,
+  });
+  assert(decision);
+
+  const characters = createCharactersStorage(db);
+  const cast = await Promise.all(
+    ["Narrator", "Logan", "Kurt", "Rogue"].map((name) => characters.create(characterDataSchema.parse({ name }))),
+  );
+  assert(cast.every(Boolean));
+  const [narrator, logan, kurt, rogue] = (cast as Array<{ id: string }>).map((character) => character.id);
+
+  const presets = createPromptsStorage(db);
+  const preset = await presets.create({ name: "Scene fixture", parameters: { maxTokens: 256, maxContext: 8192 } });
+  assert(preset);
+  await presets.createSection({ presetId: preset.id, identifier: "rules", name: "Rules", content: "Narrate." });
+  await presets.createSection({
+    presetId: preset.id,
+    identifier: "history",
+    name: "Chat History",
+    isMarker: true,
+    markerConfig: { type: "chat_history" },
+  });
+
+  const chat = await chats.create({
+    name: "Scene proof",
+    mode: "roleplay",
+    characterIds: [narrator!, logan!, kurt!, rogue!],
+    connectionId: chatConnection.id,
+    promptPresetId: preset.id,
+  });
+  assert(chat);
+  await chats.patchMetadata(chat.id, {
+    enableAgents: false,
+    enableMemoryRecall: false,
+    groupChatMode: "merged",
+    roleplayCommandNarratorId: narrator,
+    autoActiveCharacters: "decision",
+  });
+
+  const turn = async (text: string) => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/generate/",
+      payload: { chatId: chat.id, userMessage: text },
+    });
+    assert.equal(response.statusCode, 200, response.body);
+    assert(!response.body.includes('"type":"error"'), response.body);
+    return response.body;
+  };
+  const inactive = async () => {
+    const metadata = JSON.parse(String((await chats.getById(chat.id))!.metadata));
+    return [...(metadata.inactiveCharacterIds ?? [])].sort();
+  };
+
+  // 1. The Decision model sets the cast; the narrator stays active.
+  probabilities = { [narrator!]: 0, [logan!]: 0.95, [kurt!]: 0.05, [rogue!]: 0.9 };
+  const body = await turn("Logan and Rogue argue in the hangar.");
+  assert.equal(decisionCalls.length, 1, "one batched decision request");
+  assert.deepEqual(await inactive(), [kurt!], "Kurt is not in the scene");
+  assert.match(body, /"inactiveCharacterIds"/u, "the client gets the change live");
+
+  // 2. A pinned character keeps its state whatever the Decision model says.
+  await chats.patchMetadata(chat.id, { autoActiveCharacterPins: [kurt!] });
+  probabilities = { [narrator!]: 0, [logan!]: 0.95, [kurt!]: 0.95, [rogue!]: 0.05 };
+  await turn("Kurt teleports in.");
+  assert.deepEqual(await inactive(), [kurt!, rogue!].sort(), "pinned Kurt stays inactive, Rogue leaves");
+  await chats.patchMetadata(chat.id, { autoActiveCharacterPins: [] });
+
+  // 3. A failing Decision model falls back to the tracker's last scene.
+  const lastAssistant = (await chats.listMessages(chat.id)).filter((message) => message.role === "assistant").at(-1)!;
+  const stateStore = createGameStateStorage(db);
+  const stateId = await stateStore.create({
+    chatId: chat.id,
+    messageId: lastAssistant.id,
+    swipeIndex: 0,
+    date: null,
+    time: null,
+    location: "Hangar",
+    weather: null,
+    temperature: null,
+    worldCustomFields: [],
+    presentCharacters: [
+      { characterId: rogue!, name: "Rogue", mood: "calm" },
+      { characterId: "npc-guard", name: "Guard", mood: "bored" },
+    ],
+    recentEvents: [],
+    personaStats: null,
+    playerStats: null,
+  } as never);
+  await stateStore.commit(stateId, chat.id);
+  decisionFails = true;
+  await turn("Who is still here?");
+  assert.deepEqual(await inactive(), [logan!, kurt!].sort(), "the tracker saw only Rogue");
+  decisionFails = false;
+
+  // 4. Off, or Individual mode: nothing is asked and nothing changes.
+  const asked = decisionCalls.length;
+  await chats.patchMetadata(chat.id, { autoActiveCharacters: "off" });
+  await turn("Quiet.");
+  await chats.patchMetadata(chat.id, { autoActiveCharacters: "decision", groupChatMode: "individual" });
+  await turn("Still quiet.");
+  assert.equal(decisionCalls.length, asked, "no decision request when off or in Individual mode");
+  assert.deepEqual(await inactive(), [logan!, kurt!].sort(), "the list is untouched");
+
+  console.log("scene-presence-decision regression passed");
+} finally {
+  await app.close();
+  await new Promise<void>((done) => provider.close(() => done()));
+  await closeDB();
+  rmSync(dir, { recursive: true, force: true });
+}

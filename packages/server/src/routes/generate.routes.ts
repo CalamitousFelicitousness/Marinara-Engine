@@ -51,6 +51,13 @@ import {
   type SmartOrderCandidate,
 } from "../services/generation/smart-group-decision.js";
 import {
+  chooseSceneCharacters,
+  presentFromDecision,
+  presentFromTracker,
+  scenePresenceQuestions,
+  scenePresenceState,
+} from "../services/generation/scene-presence-decision.js";
+import {
   activationQuestionSettings,
   bypassActivationQuestion,
   evaluateActivationQuestions,
@@ -3006,6 +3013,125 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               allCharacterIds.length,
             );
           }
+        }
+      }
+
+      // ── Automated active characters (Merged Roleplay groups) ──
+      // Keeps the active list equal to who is in the scene. A custom "Choose active chat
+      // characters" agent owns the choice when the chat has one. Every failure keeps the list.
+      const autoActiveMode = chatMeta.autoActiveCharacters;
+      if (
+        (autoActiveMode === "decision" || autoActiveMode === "tracker") &&
+        chatMode === "roleplay" &&
+        groupGenerationMode === "merged" &&
+        allCharacterIds.length > 1 &&
+        eligibleCharacterActivityConfigs.length === 0 &&
+        !input.continueMessageId &&
+        !input.impersonate
+      ) {
+        try {
+          const snapshot = (await rawSelectedGameStateSnapshotPromise) as Record<string, unknown> | null;
+          const trackedPresent = presentFromTracker(
+            parseJsonField<unknown[]>(snapshot?.presentCharacters, []),
+            allCharacterIds,
+          );
+          let presentIds = trackedPresent;
+          let source = "tracker";
+          if (autoActiveMode === "decision") {
+            const backend = await resolveDecisionBackend(
+              {
+                getLocalDefault: () => appSettings.get(DECISION_SETTINGS_KEYS.localDefault),
+                getThinkingPreGeneration: async () =>
+                  (await appSettings.get(DECISION_SETTINGS_KEYS.thinkingPreGeneration)) === "true",
+                getDefaultConnection: () => connections.getDefaultForDecision(),
+                getConnectionWithKey: (id) => connections.getWithKey(id),
+                debugMode: requestDebug,
+              },
+              generationSignal,
+            );
+            // Choosing the cast sits in front of the reply, so a reasoning model defers here
+            // like any pre-generation gate, and the tracker's last scene stands in.
+            if (backend && !backend.deferPreGeneration) {
+              const sceneCharacters = await loadCharacterPromptInfo({
+                chars,
+                characterIds: allCharacterIds,
+                chatMode,
+                chatId: input.chatId,
+              });
+              const candidates = sceneCharacters.map((character) => ({
+                id: character.id,
+                name: character.name,
+                about: character.description || character.personality || undefined,
+              }));
+              const namesById = new Map(candidates.map((candidate) => [candidate.id, candidate.name]));
+              const transcript = chatMessages
+                .filter((message: any) => message.role === "user" || message.role === "assistant")
+                .map((message: any) => ({
+                  role: message.role as string,
+                  name:
+                    message.role === "user"
+                      ? personaName
+                      : (typeof message.characterId === "string" && namesById.get(message.characterId)) ||
+                        "the narrator",
+                  content: roleplayAgentText(
+                    conversationPromptHistoryContent(message, chatMode),
+                    message,
+                    agentWhisperNames,
+                  ),
+                }));
+              const answers = await backend.ask(
+                scenePresenceState(
+                  transcript,
+                  candidates,
+                  (trackedPresent ?? []).map((id) => namesById.get(id) ?? id),
+                  backend.maxStateTokens,
+                ),
+                scenePresenceQuestions(candidates),
+              );
+              const decided = answers ? presentFromDecision(answers, backend.calibration.defaultThreshold) : null;
+              if (decided) {
+                presentIds = decided;
+                source = "decision";
+              }
+              if (answers)
+                logger.debug(
+                  "[auto-active] Decision model scene for chat %s: %s",
+                  input.chatId,
+                  candidates.map((candidate) => `${candidate.name}=${answers.get(candidate.id)?.toFixed(3)}`).join(" "),
+                );
+            }
+          }
+          if (generationSignal.aborted) throw new Error("Generation aborted");
+          const nextInactiveIds = chooseSceneCharacters({
+            candidateIds: allCharacterIds,
+            presentIds,
+            currentInactiveIds: Array.isArray(chatMeta.inactiveCharacterIds) ? chatMeta.inactiveCharacterIds : [],
+            pinnedIds: Array.isArray(chatMeta.autoActiveCharacterPins) ? chatMeta.autoActiveCharacterPins : [],
+            narratorId:
+              typeof chatMeta.roleplayCommandNarratorId === "string" &&
+              allCharacterIds.includes(chatMeta.roleplayCommandNarratorId)
+                ? chatMeta.roleplayCommandNarratorId
+                : null,
+          });
+          if (nextInactiveIds) {
+            const updatedChat = await chats.patchMetadata(
+              input.chatId,
+              (current) => ({ ...current, inactiveCharacterIds: nextInactiveIds }),
+              { touchUpdatedAt: false },
+            );
+            if (updatedChat) chatMeta = roomGenerationMetadata(parseExtra(updatedChat.metadata));
+            characterIds = resolveActiveCharacterIds(allCharacterIds, chatMeta, { mode: chatMode, allowEmpty: true });
+            sendSseEvent(reply, { type: "metadata_patch", data: { inactiveCharacterIds: nextInactiveIds } });
+            logger.info(
+              "[auto-active] %s set %d of %d chat character(s) active",
+              source,
+              characterIds.length,
+              allCharacterIds.length,
+            );
+          }
+        } catch (error) {
+          if (generationSignal.aborted) throw error;
+          logger.warn({ err: error, chatId: input.chatId }, "[auto-active] Could not update active characters");
         }
       }
 

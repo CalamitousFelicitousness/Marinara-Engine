@@ -17,6 +17,10 @@ import {
 /** Everything a page needs from the Organizer shell, so pages stay plain renderers. */
 export interface OrganizerActions {
   installedById: ReadonlyMap<string, InstalledCapabilityPackage>;
+  /** Chats with agents on that use each package, by package id. */
+  chatCountById: ReadonlyMap<string, number>;
+  /** First agent of each package, by package id, for its Settings button. */
+  settingsAgentById: ReadonlyMap<string, string>;
   /** Package id whose install/update/uninstall is running. */
   busyId: string | null;
   /** Any package action or bulk run is in flight. */
@@ -45,7 +49,7 @@ export function AgentIcon({ entry, className }: { entry: OrganizerEntry; classNa
   return (
     <span
       className={cn(
-        "flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[color-mix(in_srgb,var(--foreground)_7%,transparent)]",
+        "flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[color-mix(in_srgb,var(--foreground)_12%,var(--card))] shadow-[0_1px_3px_rgb(0_0_0/0.3),inset_0_0_0_1px_color-mix(in_srgb,var(--foreground)_10%,transparent)]",
         className ?? "h-12 w-12",
       )}
     >
@@ -59,7 +63,19 @@ export function AgentIcon({ entry, className }: { entry: OrganizerEntry; classNa
 }
 
 /** Get, Update or Open; nothing for an installed non-app that is current. */
-export function AgentAction({ entry, size = "sm" }: { entry: OrganizerEntry; size?: "sm" | "lg" }) {
+// White pill for buttons that sit on store artwork, like the featured cards.
+const LIGHT_ACTION =
+  "inline-flex items-center justify-center rounded-full bg-white text-black shadow-sm transition-colors hover:bg-white/85 disabled:opacity-60";
+
+export function AgentAction({
+  entry,
+  size = "sm",
+  light = false,
+}: {
+  entry: OrganizerEntry;
+  size?: "sm" | "lg";
+  light?: boolean;
+}) {
   const { installedById, busyId, pending, install, open } = useOrganizer();
   const { t: localizeUi } = useUiTranslation();
   const installed = installedById.get(entry.manifest.id);
@@ -67,7 +83,7 @@ export function AgentAction({ entry, size = "sm" }: { entry: OrganizerEntry; siz
   const stop = (event: MouseEvent) => event.stopPropagation();
   if (busyId === entry.manifest.id) {
     return (
-      <span className={cn(SECONDARY_ACTION, sizing, "pointer-events-none")} role="status">
+      <span className={cn(light ? LIGHT_ACTION : SECONDARY_ACTION, sizing, "pointer-events-none")} role="status">
         <Loader2 size="0.85rem" className="animate-spin" aria-hidden="true" />
         <span className="sr-only">{localizeUi("ui.agents.organizer.working")}</span>
       </span>
@@ -77,7 +93,7 @@ export function AgentAction({ entry, size = "sm" }: { entry: OrganizerEntry; siz
     return (
       <button
         type="button"
-        className={cn(PRIMARY_ACTION, sizing, "font-semibold")}
+        className={cn(light ? LIGHT_ACTION : PRIMARY_ACTION, sizing, "font-semibold")}
         disabled={pending}
         onClick={(event) => {
           stop(event);
@@ -95,7 +111,7 @@ export function AgentAction({ entry, size = "sm" }: { entry: OrganizerEntry; siz
     return (
       <button
         type="button"
-        className={cn(SECONDARY_ACTION, sizing, "gap-1 font-semibold")}
+        className={cn(light ? LIGHT_ACTION : SECONDARY_ACTION, sizing, "gap-1 font-semibold")}
         onClick={(event) => {
           stop(event);
           open(entry);

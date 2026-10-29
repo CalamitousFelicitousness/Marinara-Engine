@@ -61,6 +61,14 @@ export function iconOf(entry: OrganizerEntry, installed?: InstalledCapabilityPac
   return entry.store?.iconUrl ?? entry.iconUrl;
 }
 
+/** Why an installed package needs a look (may be empty), or null when it runs fine. */
+export function checkReasonOf(installed?: InstalledCapabilityPackage): string | null {
+  // Start errors are runtime text for developers; readiness errors are written for users.
+  if (installed?.status === "error") return "";
+  if (installed?.readiness === "error") return installed.readinessError ?? "";
+  return null;
+}
+
 export function hasUpdate(entry: OrganizerEntry, installed?: InstalledCapabilityPackage): boolean {
   return Boolean(installed && compareCapabilityPackageVersions(entry.manifest.version, installed.version) > 0);
 }

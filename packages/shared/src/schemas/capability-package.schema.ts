@@ -2134,6 +2134,15 @@ export const capabilityStoreEntrySchema = z.object({
   previews: z.array(z.string().min(1).max(512)).max(4).optional(),
 });
 
+/** A starter kit: a named set of packages the Organizer installs together. */
+export const capabilityStoreKitSchema = z.object({
+  id: z.string().trim().min(1).max(80),
+  name: z.string().trim().min(1).max(80),
+  tagline: z.string().trim().max(160).default(""),
+  packages: z.array(z.string().min(1).max(80)).min(1).max(20),
+});
+export type CapabilityStoreKit = z.infer<typeof capabilityStoreKitSchema>;
+
 /** Store data as the Engine serves it: image paths resolved to absolute URLs. */
 export interface CapabilityStoreListing {
   section: CapabilityStoreSection;
@@ -2146,6 +2155,10 @@ export interface CapabilityStoreListing {
 }
 export type StampedCapabilityCatalog = Omit<CapabilityCatalog, "packages"> & {
   packages: StampedCapabilityCatalogPackage[];
+  /** Starter kits from the published store sidecar; packages not in the catalog are dropped. */
+  kits?: CapabilityStoreKit[];
+  /** How-to step pictures by package type ("agent", "app", "game"), as absolute URLs. */
+  howTo?: Record<string, string[]>;
 };
 export type InstalledCapabilityPackage = z.infer<typeof installedCapabilityPackageSchema>;
 export type PackagedAgentDefinition = z.infer<typeof packagedAgentDefinitionSchema>;

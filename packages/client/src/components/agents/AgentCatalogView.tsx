@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import {
   ArrowLeft,
+  Check,
+  ChevronRight,
   Download,
   GitFork,
   Home,
@@ -17,6 +19,7 @@ import {
 import { toast } from "sonner";
 import type { CapabilityCatalogPackage } from "@marinara-engine/shared";
 import {
+  useCapabilityAgentRegistry,
   useCapabilityCatalog,
   useInstallAllCapabilityPackages,
   useInstallCapabilityPackage,
@@ -25,6 +28,8 @@ import {
   useUninstallCapabilityPackage,
 } from "../../hooks/use-capability-packages";
 import { useCustomAgentRepositories } from "../../hooks/use-custom-agent-repositories";
+import { useChats } from "../../hooks/use-chats";
+import { parseChatMetadata } from "../../lib/chat-display";
 import { ApiError, getPrivilegedActionErrorMessage } from "../../lib/api-client";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { cn } from "../../lib/utils";
@@ -36,6 +41,7 @@ import { AgentModeFilter, type AgentModeFilterValue } from "./AgentModeFilter";
 import { CustomAgentRepositoriesModal } from "./CustomAgentRepositoriesModal";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import {
+  checkReasonOf,
   hasUpdate,
   ORGANIZER_SECTIONS,
   packageModes,
@@ -45,7 +51,7 @@ import {
   type OrganizerEntry,
   type OrganizerPage,
 } from "./organizer/organizer-model";
-import { IconStack, OrganizerContext, type OrganizerActions } from "./organizer/OrganizerParts";
+import { AgentIcon, IconStack, OrganizerContext, type OrganizerActions } from "./organizer/OrganizerParts";
 import { OrganizerHome } from "./organizer/OrganizerHome";
 import { InstalledPage, SearchResults, SectionPage, UpdatesPage } from "./organizer/OrganizerLists";
 import { AgentPage } from "./organizer/AgentPage";
@@ -79,6 +85,13 @@ export function AgentCatalogView() {
   const customRepositories = useCustomAgentRepositories();
   const [query, setQuery] = useState("");
   const [modeFilter, setModeFilter] = useState<AgentModeFilterValue>("all");
+  const [openSections, setOpenSections] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleSection = (section: string) =>
+    setOpenSections((current) => {
+      const next = new Set(current);
+      if (!next.delete(section)) next.add(section);
+      return next;
+    });
   const [page, setPage] = useState<OrganizerPage>(() =>
     initialPackageId ? { kind: "agent", id: initialPackageId } : { kind: "home" },
   );
@@ -88,6 +101,33 @@ export function AgentCatalogView() {
   const mainRef = useRef<HTMLElement>(null);
 
   const installedById = useMemo(() => new Map((installed.data ?? []).map((item) => [item.id, item])), [installed.data]);
+  const chats = useChats();
+  const capabilityAgents = useCapabilityAgentRegistry();
+  // Chats that run each package: a chat lists agent ids (or the package id), and only counts with agents on.
+  const chatCountById = useMemo(() => {
+    const packageByAgent = new Map(
+      (capabilityAgents.data ?? []).flatMap((agent) => (agent.packageId ? [[agent.id, agent.packageId] as const] : [])),
+    );
+    const counts = new Map<string, number>();
+    for (const chat of chats.data ?? []) {
+      const metadata = parseChatMetadata(chat.metadata);
+      if (metadata.enableAgents !== true || !Array.isArray(metadata.activeAgentIds)) continue;
+      const packageIds = new Set(
+        metadata.activeAgentIds
+          .filter((id: unknown): id is string => typeof id === "string")
+          .map((id: string) => packageByAgent.get(id) ?? id),
+      );
+      for (const id of packageIds) counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+    return counts;
+  }, [capabilityAgents.data, chats.data]);
+  const settingsAgentById = useMemo(() => {
+    const ids = new Map<string, string>();
+    for (const agent of capabilityAgents.data ?? []) {
+      if (agent.packageId && !ids.has(agent.packageId)) ids.set(agent.packageId, agent.id);
+    }
+    return ids;
+  }, [capabilityAgents.data]);
   const all = useMemo(() => catalog.data?.packages ?? [], [catalog.data]);
   const entries = useMemo(
     () => (modeFilter === "all" ? all : all.filter((entry) => packageModes(entry.manifest.id).includes(modeFilter))),
@@ -290,6 +330,8 @@ export function AgentCatalogView() {
 
   const actions: OrganizerActions = {
     installedById,
+    chatCountById,
+    settingsAgentById,
     busyId,
     pending: packageActionPending,
     install: (entry) => void handleInstall(entry),
@@ -393,6 +435,11 @@ export function AgentCatalogView() {
     target.kind === page.kind &&
     (target.kind !== "section" || (page.kind === "section" && page.id === target.id));
   const showAside = page.kind !== "agent" || Boolean(results);
+  const backLabel = agentEntry
+    ? localizeUi("ui.agents.organizer.backToSection", {
+        section: localizeUi(sectionLabelKey(sectionOf(agentEntry))),
+      })
+    : localizeUi("capabilities.actions.backToAgents");
 
   const searchField = (
     <div className="relative">
@@ -451,7 +498,13 @@ export function AgentCatalogView() {
     content = <SearchResults query={query.trim()} entries={results} />;
   } else if (page.kind === "agent") {
     content = agentEntry ? (
-      <AgentPage entry={agentEntry} entries={all} customSource={catalog.data?.provenance?.kind === "custom"} />
+      <AgentPage
+        key={agentEntry.manifest.id}
+        entry={agentEntry}
+        entries={all}
+        customSource={catalog.data?.provenance?.kind === "custom"}
+        howTo={catalog.data?.howTo}
+      />
     ) : (
       <p className="py-10 text-center text-sm text-[var(--muted-foreground)]">
         {localizeUi("ui.agents.organizer.agentMissing")}
@@ -464,7 +517,19 @@ export function AgentCatalogView() {
   } else if (page.kind === "section") {
     content = <SectionPage section={page.id} entries={entries.filter((entry) => sectionOf(entry) === page.id)} />;
   } else {
-    content = <OrganizerHome entries={entries} onUpdateAll={() => void handleUpdateAll()} />;
+    content = (
+      <OrganizerHome
+        entries={entries}
+        kits={(catalog.data?.kits ?? []).map((kit) => ({
+          ...kit,
+          entries: all.filter((entry) => kit.packages.includes(entry.manifest.id)),
+        }))}
+        onUpdateAll={() => void handleUpdateAll()}
+        onInstallKit={(kitEntries) =>
+          void handleInstallAll(kitEntries.filter((entry) => !installedById.has(entry.manifest.id)))
+        }
+      />
+    );
   }
 
   return (
@@ -476,10 +541,10 @@ export function AgentCatalogView() {
         <header className="relative z-10 flex shrink-0 items-center gap-3 border-b border-[var(--border)]/50 bg-[var(--card)]/90 px-3 py-2 backdrop-blur-md md:px-6 md:py-3">
           <button
             type="button"
-            onClick={closeAgentCatalog}
+            onClick={agentEntry ? () => go({ kind: "section", id: sectionOf(agentEntry) }) : closeAgentCatalog}
             className="mari-chrome-control h-9 w-9 shrink-0 rounded-xl p-0 md:h-10 md:w-10"
-            title={localizeUi("capabilities.actions.backToAgents")}
-            aria-label={localizeUi("capabilities.actions.backToAgents")}
+            title={backLabel}
+            aria-label={backLabel}
           >
             <ArrowLeft size="1rem" />
           </button>
@@ -565,23 +630,75 @@ export function AgentCatalogView() {
                 <div className="space-y-0.5">
                   {sectionCounts.map(({ section, entries: sectionEntries }) => {
                     const target = { kind: "section", id: section } as const;
+                    const expanded = openSections.has(section);
+                    const sectionLabel = localizeUi(sectionLabelKey(section));
                     return (
-                      <button
-                        key={section}
-                        type="button"
-                        onClick={() => go(target)}
-                        aria-current={isCurrent(target) ? "page" : undefined}
-                        className={cn(
-                          "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-[var(--sidebar-accent)]",
-                          isCurrent(target) && "bg-[var(--marinara-chat-chrome-highlight-bg)] font-semibold",
+                      <div key={section}>
+                        <div className="flex items-center">
+                          <button
+                            type="button"
+                            onClick={() => go(target)}
+                            aria-current={isCurrent(target) ? "page" : undefined}
+                            className={cn(
+                              "flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-[var(--sidebar-accent)]",
+                              isCurrent(target) && "bg-[var(--marinara-chat-chrome-highlight-bg)] font-semibold",
+                            )}
+                          >
+                            <IconStack entries={sectionEntries} />
+                            <span className="min-w-0 flex-1 truncate">{sectionLabel}</span>
+                            <span className="text-xs tabular-nums text-[var(--muted-foreground)]">
+                              {sectionEntries.length}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => toggleSection(section)}
+                            aria-expanded={expanded}
+                            aria-label={localizeUi("ui.agents.organizer.showSectionAgents", { section: sectionLabel })}
+                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--muted-foreground)] hover:bg-[var(--sidebar-accent)]"
+                          >
+                            <ChevronRight
+                              size="0.9rem"
+                              aria-hidden="true"
+                              className={cn("transition-transform", expanded && "rotate-90")}
+                            />
+                          </button>
+                        </div>
+                        {expanded && (
+                          <ul className="mb-1 ml-5 space-y-0.5 border-l border-[var(--border)] pl-2">
+                            {sectionEntries.map((entry) => {
+                              const installed = installedById.get(entry.manifest.id);
+                              return (
+                                <li key={entry.manifest.id}>
+                                  <button
+                                    type="button"
+                                    onClick={() => go({ kind: "agent", id: entry.manifest.id })}
+                                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors hover:bg-[var(--sidebar-accent)]"
+                                  >
+                                    <AgentIcon entry={entry} className="h-7 w-7 rounded-lg" />
+                                    <span className="min-w-0 flex-1 truncate">{entry.manifest.name}</span>
+                                    {checkReasonOf(installed) !== null ? (
+                                      <span className="text-xs font-semibold text-[var(--marinara-app-accent-static)]">
+                                        {localizeUi("ui.agents.organizer.needsCheck")}
+                                      </span>
+                                    ) : hasUpdate(entry, installed) ? (
+                                      <span className="text-xs font-semibold text-[var(--marinara-chat-chrome-highlight-text,var(--primary))]">
+                                        {localizeUi("ui.agents.agentcatalogview.update")}
+                                      </span>
+                                    ) : installed ? (
+                                      <Check
+                                        size="0.85rem"
+                                        className="text-[var(--muted-foreground)]"
+                                        aria-label={localizeUi("ui.agents.organizer.installed")}
+                                      />
+                                    ) : null}
+                                  </button>
+                                </li>
+                              );
+                            })}
+                          </ul>
                         )}
-                      >
-                        <IconStack entries={sectionEntries} />
-                        <span className="min-w-0 flex-1 truncate">{localizeUi(sectionLabelKey(section))}</span>
-                        <span className="text-xs tabular-nums text-[var(--muted-foreground)]">
-                          {sectionEntries.length}
-                        </span>
-                      </button>
+                      </div>
                     );
                   })}
                 </div>
@@ -623,7 +740,7 @@ export function AgentCatalogView() {
                 ))}
               </div>
             </div>
-            <div className="mx-auto w-full max-w-6xl p-4 md:p-6">{content}</div>
+            <div className={cn(page.kind !== "agent" && "mx-auto w-full max-w-6xl p-4 md:p-6")}>{content}</div>
           </main>
         </div>
 

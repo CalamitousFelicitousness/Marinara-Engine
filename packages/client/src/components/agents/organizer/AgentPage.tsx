@@ -243,7 +243,7 @@ export function AgentPage({
                       {step}
                     </span>
                     <span className="text-[var(--foreground)]">
-                      {localizeUi(`ui.agents.organizer.steps.${type}.step${step}`)}
+                      {localizeUi(`ui.agents.organizer.steps.${type}.step${step}`, { name: manifest.name })}
                     </span>
                   </div>
                 </li>

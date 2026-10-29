@@ -271,7 +271,7 @@ export function MariComposer({
   const ghostAvailable = Boolean(draftSuffix) && (!liveToken || ghostInToken);
   // A completed name ends the draft and a second Tab would link it: say so where the ghost was, and let a
   // tap link it, since touch screens have no Tab.
-  const linkHint = referenceUi?.canLinkCompletion && !ghostAvailable && !pickerOpen && !isBusy;
+  const linkHint = Boolean(referenceUi?.canLinkCompletion) && !ghostAvailable && !pickerOpen && !isBusy;
   const linkHintText = linkHint
     ? t(
         window.matchMedia("(pointer: coarse)").matches
@@ -483,7 +483,7 @@ export function MariComposer({
           <InlineDraftOverlay
             value={draft}
             suffix={linkHintText || (ghostAvailable && !pickerOpen ? draftSuffix : "")}
-            hint={Boolean(linkHint)}
+            hint={linkHint}
             marks={[
               ...referenceMarks,
               ...(liveToken ? [{ start: liveToken.start, end: liveToken.end, tone: "pending" as const }] : []),

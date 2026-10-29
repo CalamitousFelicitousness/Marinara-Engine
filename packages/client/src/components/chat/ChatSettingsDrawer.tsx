@@ -6690,6 +6690,18 @@ export function ChatSettingsDrawer({
                               )}
                             </div>
                           </button>
+                          {/* Left of the eye, so a pin appearing never shifts the row's other buttons. */}
+                          {autoActiveCharactersMode !== "off" && autoActiveCharacterPins.includes(c.id) && (
+                            <button
+                              type="button"
+                              onClick={() => unpinCharacter(c.id)}
+                              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[var(--primary)] transition-colors hover:bg-[var(--accent)]"
+                              title={localizeUi("ui.chat.chatsettingsdrawer.autoActiveCharacters.unpin")}
+                              aria-label={localizeUi("ui.chat.chatsettingsdrawer.autoActiveCharacters.unpin")}
+                            >
+                              <Pin size="0.6875rem" />
+                            </button>
+                          )}
                           {supportsCharacterActivityToggle && (
                             <button
                               onClick={() => toggleCharacterActivity(c.id)}
@@ -6708,17 +6720,6 @@ export function ChatSettingsDrawer({
                               ) : (
                                 <Eye size="0.6875rem" />
                               )}
-                            </button>
-                          )}
-                          {autoActiveCharactersMode !== "off" && autoActiveCharacterPins.includes(c.id) && (
-                            <button
-                              type="button"
-                              onClick={() => unpinCharacter(c.id)}
-                              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[var(--primary)] transition-colors hover:bg-[var(--accent)]"
-                              title={localizeUi("ui.chat.chatsettingsdrawer.autoActiveCharacters.unpin")}
-                              aria-label={localizeUi("ui.chat.chatsettingsdrawer.autoActiveCharacters.unpin")}
-                            >
-                              <Pin size="0.6875rem" />
                             </button>
                           )}
                           {/* The interactive-onboarding marker, now an action:

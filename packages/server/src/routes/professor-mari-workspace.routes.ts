@@ -152,7 +152,11 @@ export const professorMariPromptSchema = z.object({
           "agent",
         ]),
         id: z.string().min(1).max(200),
-        label: z.string().min(1).max(200),
+        // A long record name or doc heading is cut, not a reason to refuse the whole message.
+        label: z
+          .string()
+          .min(1)
+          .transform((label) => label.slice(0, 200)),
         parentId: z.string().max(200).optional(),
       }),
     )

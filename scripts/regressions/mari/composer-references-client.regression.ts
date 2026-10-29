@@ -114,6 +114,17 @@ assert.deepEqual(
   [{ kind: "lorebookEntry", id: "e1", label: "The Hat", parentId: "l1" }],
 );
 
+// a big lorebook: the unfiltered list stops at 30 entries; typing reaches the rest
+const bigBook = buildEntryItems(
+  { id: "l2" },
+  Array.from({ length: 40 }, (_, i) => ({ id: `e${i + 1}`, name: `Entry ${i + 1}` })),
+);
+assert.equal(rankReferenceItems(bigBook, "").length, 30);
+assert.deepEqual(
+  rankReferenceItems(bigBook, "Entry 31").map((row) => row.ref.id),
+  ["e31"],
+);
+
 // picking writes the token over the live @ token
 const draft = "tell me about @Jes now";
 const token = activeToken(draft, 18)!;
@@ -182,6 +193,15 @@ assert.deepEqual(linkCompletedReference("tell me about Jessica", ["Jessica"], [p
   ref: plainJess,
 });
 assert.equal(linkCompletedReference("about Jessica", ["Jessica"], [jessica]), null);
+// the second Tab writes the reference's own token, so a name typed in another case stays linked
+const typedLower = linkCompletedReference("about jessica", ["Jessica"], [plainJess])!;
+assert.deepEqual(typedLower, { value: "about @Jessica", caret: 14, ref: plainJess });
+assert.deepEqual(locateReferenceTokens(typedLower.value, [plainJess]), [{ start: 6, end: 14 }]);
+// a label the token cleans up (quotes, doubled spaces) still finds its token after the link
+const quoted = ref("character", "c7", 'The  "Duke"');
+const linkedQuoted = linkCompletedReference('meet The  "Duke"', ['The  "Duke"'], [quoted])!;
+assert.equal(linkedQuoted.value, "meet @The Duke");
+assert.deepEqual(locateReferenceTokens(linkedQuoted.value, [quoted]), [{ start: 5, end: 14 }]);
 // the ghost always completes the whole label, so a bare prefix is not a completion
 assert.equal(linkCompletedReference("about Jess", ["Jessica"], [jessica]), null);
 assert.equal(linkCompletedReference("nothing here", ["Jessica"], [jessica]), null);

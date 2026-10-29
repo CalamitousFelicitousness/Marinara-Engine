@@ -26,11 +26,21 @@ try {
     await import("../../../packages/server/src/services/professor-mari/workspace-message-store.js");
   const { handbookTurnFromResults } =
     await import("../../../packages/server/src/services/professor-mari/sticky-handbooks.js");
+  const { professorMariPromptSchema } =
+    await import("../../../packages/server/src/routes/professor-mari-workspace.routes.js");
   const { getMariDbService } = await import("../../../packages/server/src/services/mari-db/mari-db.service.js");
   const { createChatsStorage } = await import("../../../packages/server/src/services/storage/chats.storage.js");
   const { createAppSettingsStorage } =
     await import("../../../packages/server/src/services/storage/app-settings.storage.js");
   type Reference = ReturnType<typeof parseComposerReferences>[number];
+
+  // --- A label past 200 characters (a long name or doc heading) is cut, not a reason to refuse the message.
+  const longLabel = professorMariPromptSchema.parse({
+    chatId: "c",
+    message: "hi",
+    references: [{ kind: "character", id: "a", label: "x".repeat(250) }],
+  });
+  assert.equal(longLabel.references?.[0]?.label.length, 200);
 
   // --- The budget: a quarter of the context in tokens x4 chars, capped; 60k when the connection has none.
   assert.equal(composerReferenceBudget(undefined), 60_000);
@@ -187,10 +197,15 @@ try {
   // A doc the reader refuses, or no doc reader at all, is a visible note and never a throw.
   const refusedDoc = await resolveComposerReferences(
     docSpy,
-    [{ kind: "doc", id: "docs/boom.md", label: "Boom" }],
+    [{ kind: "doc", id: "docs/boom.md", label: "Boom" }, docRef],
     60_000,
   );
   assert.deepEqual(refusedDoc.notes, [`@doc "Boom" (id docs/boom.md): not found; it may have been deleted`]);
+  assert.deepEqual(
+    refusedDoc.payloads.map((payload) => payload.label),
+    [`@doc "FAQ" (id docs/FAQ.md)`],
+    "a throwing read does not stop the links after it",
+  );
   const noDocReader = await resolveComposerReferences(spy, [docRef], 60_000);
   assert.equal(noDocReader.notes.length, 1);
   assert.match(noDocReader.notes[0]!, /not found/);

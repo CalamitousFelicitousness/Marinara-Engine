@@ -90,7 +90,7 @@ export function useMariComposerReferences({
   const [picked, setPicked] = useState<readonly MariComposerReference[]>([]);
   const [dismissedKey, setDismissedKey] = useState<string | null>(null);
   // ArrowRight on a lorebook lists its entries; on the open editor's row, that editor's fields.
-  const [drill, setDrill] = useState<{ kind: "lorebook" | "fields"; id: string; tokenKey: string } | null>(null);
+  const [drill, setDrill] = useState<{ kind: "lorebook" | "fields"; id: string; key: string } | null>(null);
   const [moved, setMoved] = useState<{ key: string; index: number } | null>(null);
   const [caretRequest, setCaretRequest] = useState<{ pos: number; n: number } | null>(null);
 
@@ -148,7 +148,9 @@ export function useMariComposerReferences({
   });
 
   const tokenKey = token ? `${token.start}:${token.end}:${token.query}` : "";
-  const activeDrill = drill && drill.tokenKey === tokenKey ? drill : null;
+  // A drill belongs to its `@`, not its text: typing narrows the list inside it.
+  const drillKey = token ? `${token.trigger}:${token.start}` : "";
+  const activeDrill = drill && drill.key === drillKey ? drill : null;
   const entries = useLorebookEntries(activeDrill?.kind === "lorebook" ? activeDrill.id : null);
   const companionRoot = useUIStore((state) => state.mariCompanionRoot);
   // Read again as the token changes, so the list is the editor as it is now (its header holds the name).
@@ -173,12 +175,15 @@ export function useMariComposerReferences({
     if (activeDrill?.kind === "fields") {
       const open = items.find((item) => item.group === "open");
       if (!open) return [];
-      return [{ ...open, score: 0 }, ...editorFields.map((field) => fieldRow(field, 0))];
+      const fields = token.query
+        ? rankFieldRows(editorFields, token.query)
+        : editorFields.map((field) => fieldRow(field, 0));
+      return [{ ...open, score: 0 }, ...fields];
     }
     if (activeDrill) {
       const book = items.find((item) => item.ref.kind === "lorebook" && item.ref.id === activeDrill.id);
       if (!book) return [];
-      return [{ ...book, score: 0 }, ...rankReferenceItems(buildEntryItems(book.ref, entries.data), "")];
+      return [{ ...book, score: 0 }, ...rankReferenceItems(buildEntryItems(book.ref, entries.data), token.query)];
     }
     const ranked = rankReferenceItems(items, token.query);
     const fields = rankFieldRows(editorFields, token.query);
@@ -226,7 +231,12 @@ export function useMariComposerReferences({
   };
   const drillInto = (row: PickerRow | undefined) => {
     if (!isLinkRow(row) || !drillable(row)) return;
-    setDrill({ kind: row.group === "lorebook" ? "lorebook" : "fields", id: row.ref.id, tokenKey });
+    setDrill({ kind: row.group === "lorebook" ? "lorebook" : "fields", id: row.ref.id, key: drillKey });
+    // What found the book (`@lore`) is not what its entries are called: start the list from a bare `@`.
+    if (token?.query) {
+      setDraft(draft.slice(0, token.start + 1) + draft.slice(token.end));
+      setCaretRequest((current) => ({ pos: token.start + 1, n: (current?.n ?? 0) + 1 }));
+    }
   };
 
   const onPickerAction = (action: ComposerPickerAction) => {

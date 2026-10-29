@@ -4,6 +4,7 @@
 // and can re-read. Built-in skills are not injected: they open as a sticky handbook this turn instead.
 import type { MariComposerReference, MariDbCommandResult } from "@marinara-engine/shared";
 import type { MariWorkspaceContextRow } from "../storage/mari-workspace-context.storage.js";
+import { logger } from "../../lib/logger.js";
 import { renderMariWorkspaceContextPrompt } from "./mari-workspace-context-prompt.js";
 import { formatMariReadTruncation, stringifyOutput } from "./workspace-agent.service.js";
 
@@ -146,8 +147,9 @@ export async function resolveComposerReferences(
     let read: Awaited<ReturnType<typeof readReference>> = null;
     try {
       read = await readReference(reader, reference, sessionId);
-    } catch {
-      // Treated as not found below.
+    } catch (err) {
+      // Shown to her as not found below; the log keeps the cause (a refused doc, a failing store).
+      logger.warn(err, "Professor Mari: failed to read linked %s reference", reference.kind);
     }
     if (!read) {
       resolved.notes.push(`${title}: not found; it may have been deleted`);

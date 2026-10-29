@@ -391,10 +391,11 @@ export function linkCompletedReference(
   const lower = found.label.trim().toLowerCase();
   const ref = refs.find((item) => item.label.trim().toLowerCase() === lower);
   if (!ref) return null;
-  const typed = draft.slice(found.start, found.start + found.label.length);
+  // The reference's own token, not the typed casing: the draft is searched for exactly this text.
+  const token = formatReferenceToken(ref.label);
   return {
-    value: `${draft.slice(0, found.start)}@${typed}${draft.slice(found.start + found.label.length)}`,
-    caret: found.start + 1 + typed.length,
+    value: `${draft.slice(0, found.start)}${token}${draft.slice(found.start + found.label.length)}`,
+    caret: found.start + token.length,
     ref,
   };
 }

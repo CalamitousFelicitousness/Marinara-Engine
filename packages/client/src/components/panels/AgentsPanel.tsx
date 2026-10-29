@@ -376,7 +376,9 @@ export function AgentsPanel() {
   const activeChat = useChatStore((state) => state.activeChat);
   const updateChatMetadata = useUpdateChatMetadata();
   const activeChatAgentIds = useMemo(() => {
-    const ids = activeChat ? parseChatMetadata(activeChat.metadata).activeAgentIds : undefined;
+    const metadata = activeChat ? parseChatMetadata(activeChat.metadata) : {};
+    // Agents switched off for the chat do not run, so none count as in it; + turns them back on.
+    const ids = metadata.enableAgents === true ? metadata.activeAgentIds : undefined;
     return new Set(Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : []);
   }, [activeChat]);
   // A chat stores either the agent's id or its type; built-in rows use the type as id.
@@ -401,7 +403,15 @@ export function AgentsPanel() {
       toast.success(localizeUi("commandCenter.actions.removedFromChat", { name: agent.name }), {
         action: {
           label: localizeUi("ui.chat.chatresourcedropoverlay.undo"),
-          onClick: () => updateChatMetadata.mutate({ id: chat.id, activeAgentIds: previous }),
+          // Put back only what this action removed, so a later removal stays.
+          onClick: () => {
+            const current = useChatStore.getState().activeChat;
+            if (current?.id !== chat.id) return;
+            const ids = parseChatMetadata(current.metadata).activeAgentIds;
+            const now = Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : [];
+            const removed = previous.filter((id) => !next.includes(id) && !now.includes(id));
+            updateChatMetadata.mutate({ id: chat.id, activeAgentIds: [...now, ...removed] });
+          },
         },
       });
     },
@@ -485,7 +495,8 @@ export function AgentsPanel() {
       agent.name.toLowerCase().includes(agentSearchQuery) ||
       agent.description.toLowerCase().includes(agentSearchQuery) ||
       agent.category.toLowerCase().includes(agentSearchQuery);
-    return matchesMode && matchesSearch;
+    // Home screen apps open from their Home tab, so the panel lists chat agents only.
+    return agent.category !== "app" && matchesMode && matchesSearch;
   };
   const getAgentFilterData = (agent: AgentConfigRow) => ({
     type: agent.type,
@@ -495,10 +506,8 @@ export function AgentsPanel() {
       ? builtInCategory(agent.type, availableBuiltInAgents.find((entry) => entry.id === agent.type)?.category ?? "misc")
       : "custom",
   });
-  // Home screen apps open from their Home tab, so the panel lists chat agents only.
   const panelBuiltInAgents = visibleBuiltInDisplayAgents.filter(
-    (agent) =>
-      agent.category !== "app" && !folderedAgentIds.has(agent.id) && matchesAgentFilters({ ...agent, type: agent.id }),
+    (agent) => !folderedAgentIds.has(agent.id) && matchesAgentFilters({ ...agent, type: agent.id }),
   );
   const agentCategorySections: Array<{
     key: string;

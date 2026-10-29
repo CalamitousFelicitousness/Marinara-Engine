@@ -7150,7 +7150,10 @@ function resolveStoreAssetUrl(path: string | undefined, storeUrl: string): strin
  * malformed document yields no listings and the Organizer falls back to catalog
  * categories. Each entry is parsed on its own so one bad entry drops only itself.
  */
-async function readStoreListings(storeUrl: string | null, fetchStore: typeof safeFetch): Promise<CapabilityStoreListings> {
+async function readStoreListings(
+  storeUrl: string | null,
+  fetchStore: typeof safeFetch,
+): Promise<CapabilityStoreListings> {
   const listings: CapabilityStoreListings = new Map();
   if (!storeUrl) return listings;
   const cached = storeCache.get(storeUrl);

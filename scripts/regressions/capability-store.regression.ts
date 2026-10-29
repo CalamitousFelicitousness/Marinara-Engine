@@ -37,7 +37,11 @@ const notFound = () => new Response("404: Not Found", { status: 404, headers: { 
 try {
   const { capabilityPackageManager, resetCapabilityReleaseNotesCache } =
     await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
-  const catalog = { schemaVersion: 1, generatedAt: "2026-08-01T00:00:00.000Z", packages: [entry("chess"), entry("poker")] };
+  const catalog = {
+    schemaVersion: 1,
+    generatedAt: "2026-08-01T00:00:00.000Z",
+    packages: [entry("chess"), entry("poker")],
+  };
   const serve = (store: () => Response) =>
     (async (url: string | URL) => (String(url).endsWith("/store.json") ? store() : json(catalog))) as never;
 

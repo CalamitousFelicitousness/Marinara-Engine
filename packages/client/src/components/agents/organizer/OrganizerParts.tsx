@@ -49,7 +49,7 @@ export function AgentIcon({ entry, className }: { entry: OrganizerEntry; classNa
   return (
     <span
       className={cn(
-        "flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[color-mix(in_srgb,var(--foreground)_7%,transparent)]",
+        "flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[color-mix(in_srgb,var(--foreground)_12%,var(--card))] shadow-[0_1px_3px_rgb(0_0_0/0.3),inset_0_0_0_1px_color-mix(in_srgb,var(--foreground)_10%,transparent)]",
         className ?? "h-12 w-12",
       )}
     >

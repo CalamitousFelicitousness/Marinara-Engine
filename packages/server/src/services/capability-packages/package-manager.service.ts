@@ -7134,7 +7134,7 @@ export function resetCapabilityReleaseNotesCache() {
 
 type CapabilityStoreListings = Map<string, CapabilityStoreListing>;
 const withStoreListing = (store: CapabilityStoreListing | undefined) => (store ? { store } : {});
-type StoreData = { listings: CapabilityStoreListings; kits: CapabilityStoreKit[]; howTo: Record<string, string[]> };
+type StoreData = { listings: CapabilityStoreListings; kits: CapabilityStoreKit[] };
 const storeCache = new Map<string, { at: number } & StoreData>();
 
 /** A sidecar path as an absolute https URL on the sidecar's own origin, or undefined. */
@@ -7157,8 +7157,7 @@ function resolveStoreAssetUrl(path: string | undefined, storeUrl: string): strin
 async function readStoreListings(storeUrl: string | null, fetchStore: typeof safeFetch): Promise<StoreData> {
   const listings: CapabilityStoreListings = new Map();
   const kits: CapabilityStoreKit[] = [];
-  const howTo: Record<string, string[]> = {};
-  if (!storeUrl) return { listings, kits, howTo };
+  if (!storeUrl) return { listings, kits };
   const cached = storeCache.get(storeUrl);
   if (cached && Date.now() - cached.at < RELEASE_NOTES_TTL_MS) return cached;
   try {
@@ -7170,7 +7169,6 @@ async function readStoreListings(storeUrl: string | null, fetchStore: typeof saf
           packages: z.record(z.string().max(80), z.unknown()),
           // Optional extras parse on their own below, so a bad one never drops the listings.
           kits: z.unknown().optional(),
-          howTo: z.unknown().optional(),
         })
         .safeParse(await response.json());
       for (const [id, raw] of Object.entries(document.success ? document.data.packages : {})) {
@@ -7194,16 +7192,6 @@ async function readStoreListings(storeUrl: string | null, fetchStore: typeof saf
         const kit = capabilityStoreKitSchema.safeParse(raw);
         if (kit.success) kits.push(kit.data);
       }
-      const howToDoc = z
-        .record(z.string().max(20), z.unknown())
-        .safeParse(document.success ? (document.data.howTo ?? {}) : {});
-      for (const [type, raw] of Object.entries(howToDoc.success ? howToDoc.data : {})) {
-        const parsed = z.array(z.string().min(1).max(512)).max(3).safeParse(raw);
-        if (!parsed.success) continue;
-        const paths = parsed.data;
-        const urls = paths.flatMap((path) => resolveStoreAssetUrl(path, storeUrl) ?? []);
-        if (urls.length === paths.length) howTo[type] = urls;
-      }
       if (!document.success) logger.warn("Ignoring an Agent store document this Engine cannot parse: %s", storeUrl);
     } else if (response.status !== 404) {
       logger.warn("Agent store request failed with HTTP %d", response.status);
@@ -7211,8 +7199,8 @@ async function readStoreListings(storeUrl: string | null, fetchStore: typeof saf
   } catch (error) {
     logger.warn(error, "Could not read Agent store data; continuing without it");
   }
-  storeCache.set(storeUrl, { at: Date.now(), listings, kits, howTo });
-  return { listings, kits, howTo };
+  storeCache.set(storeUrl, { at: Date.now(), listings, kits });
+  return { listings, kits };
 }
 
 export const capabilityPackageManager = {
@@ -7298,7 +7286,6 @@ export const capabilityPackageManager = {
       provenance: { kind: isOfficialCatalogUrl(CATALOG_URL) ? "official" : "custom", url: CATALOG_URL },
       packages,
       ...(kits.length ? { kits } : {}),
-      ...(Object.keys(publishedStore.howTo).length ? { howTo: publishedStore.howTo } : {}),
     };
   },
 

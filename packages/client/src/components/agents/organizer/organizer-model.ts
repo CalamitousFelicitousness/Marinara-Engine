@@ -52,13 +52,14 @@ export function taglineOf(entry: OrganizerEntry): string {
   return sentence.length > 90 ? `${sentence.slice(0, 89)}…` : sentence;
 }
 
-/** Apps show their Home tab icon once installed; everything else the store icon, then the cover. */
+/** The store logo first; an installed app without one shows its Home tab icon, then the cover. */
 export function iconOf(entry: OrganizerEntry, installed?: InstalledCapabilityPackage): string | undefined {
+  if (entry.store?.iconUrl) return entry.store.iconUrl;
   const tabIcon = installed?.manifest.contributions?.homeBrowserTab?.iconPaths?.[0];
   if (installed && tabIcon && isAppCapabilityPackage(installed.manifest)) {
     return capabilityPackageAssetUrl(installed.id, installed.version, tabIcon);
   }
-  return entry.store?.iconUrl ?? entry.iconUrl;
+  return entry.iconUrl;
 }
 
 /** Why an installed package needs a look (may be empty), or null when it runs fine. */

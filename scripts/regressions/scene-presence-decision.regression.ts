@@ -148,6 +148,28 @@ assert.equal(
   "a list naming no attached character is no data: NPCs only and wrong ids look the same",
 );
 
+const { decideSceneCharacters } =
+  await import("../../packages/server/src/services/generation/scene-presence.service.js");
+const unreadable = await decideSceneCharacters({
+  mode: "tracker",
+  chatId: "chat",
+  candidateIds: ids,
+  trackedPresentCharacters: [{ characterId: "kurt", name: "Kurt" }],
+  // No card could be read, as with a missing row or a card with no name.
+  loadIdentities: async () => [],
+  currentInactiveIds: [],
+  pinnedIds: [],
+  narratorId: "narrator",
+  getBackend: async () => null,
+  loadCandidates: async () => [],
+  buildTranscript: () => [],
+});
+assert.deepEqual(
+  unreadable.inactiveIds,
+  ["logan", "rogue"],
+  "a card whose name could not be read still matches by its id",
+);
+
 // ── questions and state ─────────────────────────────────────────────────────────
 
 const candidates = [

@@ -48,7 +48,7 @@ export interface ScenePresenceResult {
 export async function decideSceneCharacters(input: ScenePresenceInput): Promise<ScenePresenceResult> {
   const tracked = input.trackedPresentCharacters;
   const trackedPresent =
-    Array.isArray(tracked) && tracked.length > 0 ? presentFromTracker(tracked, await input.loadIdentities()) : null;
+    Array.isArray(tracked) && tracked.length > 0 ? presentFromTracker(tracked, await trackerIdentities(input)) : null;
   let presentIds = trackedPresent;
   let source: ScenePresenceResult["source"] = "tracker";
 
@@ -100,4 +100,10 @@ export async function decideSceneCharacters(input: ScenePresenceInput): Promise<
     }),
     source,
   };
+}
+
+/** Every candidate, so a card whose name could not be read still matches by its id. */
+async function trackerIdentities(input: ScenePresenceInput): Promise<ScenePresenceIdentity[]> {
+  const loaded = new Map((await input.loadIdentities()).map((identity) => [identity.id, identity]));
+  return input.candidateIds.map((id) => loaded.get(id) ?? { id, name: "", nameAliases: [] });
 }

@@ -12,6 +12,7 @@
 import { estimateTextTokens, normalizeTextForMatch } from "@marinara-engine/shared";
 import { buildDecisionState, type DecisionMessage } from "./agent-activation-questions.js";
 import type { NoulQuestion } from "../decision/system-one.client.js";
+import { parseTrackerCastCharacterId } from "../../routes/generate/generate-route-utils.js";
 
 export interface ScenePresenceCandidate {
   id: string;
@@ -26,9 +27,6 @@ export interface ScenePresenceIdentity {
   name: string;
   nameAliases: string[];
 }
-
-/** How the tracker writes one member of a multi-character card (`buildTrackerCastCharacterId`). */
-const TRACKER_CAST_ID_SEPARATOR = ":cast:";
 
 /** The same transcript Smart response order reads. */
 export const SCENE_PRESENCE_TRANSCRIPT_DEPTH = 5;
@@ -116,11 +114,11 @@ export function presentFromTracker(presentCharacters: unknown, identities: Scene
     if (!entry || typeof entry !== "object") continue;
     const { characterId, name } = entry as { characterId?: unknown; name?: unknown };
     const idKey = typeof characterId === "string" ? characterId.trim().toLowerCase() : "";
-    const castIndex = idKey.indexOf(TRACKER_CAST_ID_SEPARATOR);
+    const castCardId = parseTrackerCastCharacterId(characterId)?.cardId.toLowerCase();
     const nameKey = normalizeTextForMatch(name);
     const id =
       idsByKey.get(idKey) ??
-      (castIndex > 0 ? idsByKey.get(idKey.slice(0, castIndex)) : undefined) ??
+      (castCardId ? idsByKey.get(castCardId) : undefined) ??
       idsByName.get(nameKey) ??
       idsByAlias.get(nameKey) ??
       idsByName.get(normalizeTextForMatch(characterId)) ??

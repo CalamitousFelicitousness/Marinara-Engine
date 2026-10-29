@@ -272,11 +272,14 @@ export function MariComposer({
   // A completed name ends the draft and a second Tab would link it: say so where the ghost was, and let a
   // tap link it, since touch screens have no Tab.
   const linkHint = Boolean(referenceUi?.canLinkCompletion) && !ghostAvailable && !pickerOpen && !isBusy;
+  // A touch laptop reports a fine pointer but can still be tapped, so it gets both words.
   const linkHintText = linkHint
     ? t(
         window.matchMedia("(pointer: coarse)").matches
           ? "mari.composerReferences.linkHintTouch"
-          : "mari.composerReferences.linkHint",
+          : window.matchMedia("(any-pointer: coarse)").matches
+            ? "mari.composerReferences.linkHintHybrid"
+            : "mari.composerReferences.linkHint",
       )
     : "";
   const ActivePermissionsModeIcon = MARI_PERMISSIONS_MODE_ICONS[permissionsMode];

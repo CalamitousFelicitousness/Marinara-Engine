@@ -136,7 +136,7 @@ Type `@` in the message box to point her at something in your library, so she do
 - When her window sits beside an editor, the first row, **Open beside me**, links what that editor has open.
 - Beside the character editor, the **Open beside me** row has a › (or press ArrowRight) that lists that editor's **Fields**, and typing after `@` lists the matching ones directly. Picking one (`@scen` → Scenario) switches the field she works on, the same as clicking into it before you open her. It replaces the field chip in her context row, and the editor scrolls to that field. A field is not a link, so no `@` text stays in your message. **Onboarding** is one field for the whole block: while it is her field, each message sends what `character.onboarding.get` returns (the questions, any problems, and a sample persona), so she starts from the block as it is saved.
 - A picked name is highlighted in your message and shows as a chip above the message box. Edit or delete the name and the link goes with it; the chip's **×** removes the link but keeps your text.
-- In ordinary text, **Tab** completes a name she suggests in grey. A small **Tab to link** hint then shows after it: press **Tab** again, or click the hint, to turn the name into a link. On a touch screen, tap the grey name to complete it, then tap **Tap to link**.
+- In ordinary text, **Tab** completes a name she suggests in grey. A small **Tab to link** hint then shows after it: press **Tab** again, or click the hint, to turn the name into a link. On a touch screen, tap the grey name to complete it, then tap **Tap to link** (**Tab or tap to link** on a touch laptop).
 
 What each link sends:
 

@@ -9,7 +9,7 @@
  *
  * Everything here is pure, so the rules are pinned by a regression without a model.
  */
-import { estimateTextTokens } from "@marinara-engine/shared";
+import { estimateTextTokens, normalizeTextForMatch } from "@marinara-engine/shared";
 import { buildDecisionState, type DecisionMessage } from "./agent-activation-questions.js";
 import type { NoulQuestion } from "../decision/system-one.client.js";
 
@@ -19,6 +19,16 @@ export interface ScenePresenceCandidate {
   /** Description or personality, already shortened. */
   about?: string;
 }
+
+/** An attached card as the tracker may name it. */
+export interface ScenePresenceIdentity {
+  id: string;
+  name: string;
+  nameAliases: string[];
+}
+
+/** How the tracker writes one member of a multi-character card (`buildTrackerCastCharacterId`). */
+const TRACKER_CAST_ID_SEPARATOR = ":cast:";
 
 /** The same transcript Smart response order reads. */
 export const SCENE_PRESENCE_TRANSCRIPT_DEPTH = 5;
@@ -87,17 +97,53 @@ export function presentFromDecision(
  * Chat character ids in the Character Tracker's present characters, or null when it has no
  * list to read. An empty list is "no data", as the tracker merge treats it, not "nobody here".
  *
- * A list naming no attached character is no data too: the tracker model writes the ids, so
- * a scene of NPCs only looks the same as ids it got wrong, and keeping the cast costs less
- * than sending it away.
+ * The tracker model writes the ids, and the merge only fixes them against active cards, so a
+ * card that walks in while inactive is listed as an NPC under a made-up id, often its name,
+ * and can keep it after it is active again. Each entry is matched by its id, then a cast id's
+ * card, then its name, then a card's name aliases; a name two cards share matches neither.
+ *
+ * A list naming no attached character is no data too: a scene of NPCs only looks the same as
+ * ids and names it got wrong, and keeping the cast costs less than sending it away.
  */
-export function presentFromTracker(presentCharacters: unknown, candidateIds: string[]): string[] | null {
+export function presentFromTracker(presentCharacters: unknown, identities: ScenePresenceIdentity[]): string[] | null {
   if (!Array.isArray(presentCharacters) || presentCharacters.length === 0) return null;
-  const candidates = new Set(candidateIds);
-  const present = presentCharacters
-    .map((entry) => (entry && typeof entry === "object" ? (entry as { characterId?: unknown }).characterId : null))
-    .filter((id): id is string => typeof id === "string" && candidates.has(id));
-  return present.length > 0 ? present : null;
+  const idsByKey = new Map(identities.map((identity) => [identity.id.trim().toLowerCase(), identity.id]));
+  const idsByName = uniqueKeys(identities.map((identity) => [identity.id, [identity.name]]));
+  const idsByAlias = uniqueKeys(identities.map((identity) => [identity.id, identity.nameAliases]));
+
+  const present = new Set<string>();
+  for (const entry of presentCharacters) {
+    if (!entry || typeof entry !== "object") continue;
+    const { characterId, name } = entry as { characterId?: unknown; name?: unknown };
+    const idKey = typeof characterId === "string" ? characterId.trim().toLowerCase() : "";
+    const castIndex = idKey.indexOf(TRACKER_CAST_ID_SEPARATOR);
+    const nameKey = normalizeTextForMatch(name);
+    const id =
+      idsByKey.get(idKey) ??
+      (castIndex > 0 ? idsByKey.get(idKey.slice(0, castIndex)) : undefined) ??
+      idsByName.get(nameKey) ??
+      idsByAlias.get(nameKey) ??
+      idsByName.get(normalizeTextForMatch(characterId)) ??
+      idsByAlias.get(normalizeTextForMatch(characterId));
+    if (id) present.add(id);
+  }
+  return present.size > 0 ? [...present] : null;
+}
+
+/** Normalized names to card ids, leaving out any name more than one card answers to. */
+function uniqueKeys(entries: Array<[id: string, names: string[]]>): Map<string, string> {
+  const idsByKey = new Map<string, string>();
+  const shared = new Set<string>();
+  for (const [id, names] of entries) {
+    for (const name of names) {
+      const key = normalizeTextForMatch(name);
+      if (!key) continue;
+      if (idsByKey.has(key) && idsByKey.get(key) !== id) shared.add(key);
+      else idsByKey.set(key, id);
+    }
+  }
+  for (const key of shared) idsByKey.delete(key);
+  return idsByKey;
 }
 
 /**

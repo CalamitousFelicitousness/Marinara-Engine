@@ -623,6 +623,7 @@ import {
   resolveGroupGenerationMode,
   resolveGroupIndividualHistorySpeaker,
   resolveRoleplaySummaryTail,
+  resolveCharacterIdentityMap,
   resolveCharacterNameMap,
   resolveChatSpeakerNames,
   resolvePromptCharacterIdsForTarget,
@@ -3032,6 +3033,10 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             chatId: input.chatId,
             candidateIds: allCharacterIds,
             trackedPresentCharacters: parseJsonField<unknown[]>(snapshot?.presentCharacters, []),
+            loadIdentities: async () =>
+              [...(await resolveCharacterIdentityMap(allCharacterIds, (id) => chars.getById(id, input.chatId)))].map(
+                ([id, identity]) => ({ id, ...identity }),
+              ),
             currentInactiveIds: Array.isArray(chatMeta.inactiveCharacterIds) ? chatMeta.inactiveCharacterIds : [],
             pinnedIds: Array.isArray(chatMeta.autoActiveCharacterPins) ? chatMeta.autoActiveCharacterPins : [],
             narratorId:

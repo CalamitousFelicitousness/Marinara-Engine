@@ -16,6 +16,7 @@ import {
   scenePresenceQuestions,
   scenePresenceState,
   type ScenePresenceCandidate,
+  type ScenePresenceIdentity,
 } from "./scene-presence-decision.js";
 
 export interface ScenePresenceInput {
@@ -25,6 +26,8 @@ export interface ScenePresenceInput {
   candidateIds: string[];
   /** The tracker snapshot's raw `presentCharacters`. */
   trackedPresentCharacters: unknown;
+  /** Every attached card's name and aliases, inactive ones too; only called when the tracker has a list. */
+  loadIdentities: () => Promise<ScenePresenceIdentity[]>;
   currentInactiveIds: string[];
   pinnedIds: string[];
   narratorId: string | null;
@@ -43,7 +46,9 @@ export interface ScenePresenceResult {
 }
 
 export async function decideSceneCharacters(input: ScenePresenceInput): Promise<ScenePresenceResult> {
-  const trackedPresent = presentFromTracker(input.trackedPresentCharacters, input.candidateIds);
+  const tracked = input.trackedPresentCharacters;
+  const trackedPresent =
+    Array.isArray(tracked) && tracked.length > 0 ? presentFromTracker(tracked, await input.loadIdentities()) : null;
   let presentIds = trackedPresent;
   let source: ScenePresenceResult["source"] = "tracker";
 

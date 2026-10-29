@@ -97,18 +97,53 @@ assert.equal(
   "a partial answer is no data: an unanswered character is not turned off",
 );
 
-assert.equal(presentFromTracker(undefined, ids), null, "no tracker list is no data");
-assert.equal(presentFromTracker([], ids), null, "an empty tracker list is no data, as the tracker merge treats it");
+const identities = [
+  { id: "narrator", name: "Narrator", nameAliases: [] },
+  { id: "logan", name: "Logan", nameAliases: ["Wolverine"] },
+  { id: "kurt", name: "Kurt Wagner", nameAliases: ["Nightcrawler", "Kurt"] },
+  { id: "rogue", name: "Rogue", nameAliases: ["Kurt"] },
+];
+assert.equal(presentFromTracker(undefined, identities), null, "no tracker list is no data");
+assert.equal(
+  presentFromTracker([], identities),
+  null,
+  "an empty tracker list is no data, as the tracker merge treats it",
+);
 assert.deepEqual(
   presentFromTracker(
     [{ characterId: "kurt", name: "Kurt" }, { characterId: "npc-guard", name: "Guard" }, { name: "No id" }, null],
-    ids,
+    identities,
   ),
   ["kurt"],
-  "only attached characters count; NPCs and entries without an id are skipped",
+  "an attached id counts; NPCs and unmatched names are skipped",
 );
 assert.deepEqual(
-  presentFromTracker([{ characterId: "npc-guard", name: "Guard" }, { characterId: "Kurt", name: "Kurt" }], ids),
+  presentFromTracker([{ characterId: "npc-rogue", name: "rogue" }], identities),
+  ["rogue"],
+  "a card that walked in while inactive is found by its name under the made-up id",
+);
+assert.deepEqual(
+  presentFromTracker([{ characterId: "Logan", name: "" }], identities),
+  ["logan"],
+  "a name written as the id is found",
+);
+assert.deepEqual(
+  presentFromTracker([{ characterId: "npc-1", name: "Wolverine" }], identities),
+  ["logan"],
+  "a card's name alias is found",
+);
+assert.deepEqual(
+  presentFromTracker([{ characterId: "LOGAN:cast:jean grey", name: "Jean Grey" }], identities),
+  ["logan"],
+  "a cast member's id points at its card",
+);
+assert.equal(
+  presentFromTracker([{ characterId: "npc-2", name: "Kurt" }], identities),
+  null,
+  "an alias two cards share matches neither; with nothing else listed, that is no data",
+);
+assert.equal(
+  presentFromTracker([{ characterId: "npc-guard", name: "Guard" }], identities),
   null,
   "a list naming no attached character is no data: NPCs only and wrong ids look the same",
 );
@@ -254,7 +289,11 @@ try {
 
   const characters = createCharactersStorage(db);
   const cast = await Promise.all(
-    ["Narrator", "Logan", "Kurt", "Rogue"].map((name) => characters.create(characterDataSchema.parse({ name }))),
+    ["Narrator", "Logan", "Kurt", "Rogue"].map((name) =>
+      characters.create(
+        characterDataSchema.parse({ name, extensions: name === "Rogue" ? { nameAliases: ["Anna Marie"] } : {} }),
+      ),
+    ),
   );
   assert(cast.every(Boolean));
   const [narrator, logan, kurt, rogue] = (cast as Array<{ id: string }>).map((character) => character.id);
@@ -337,7 +376,8 @@ try {
     temperature: null,
     worldCustomFields: [],
     presentCharacters: [
-      { characterId: rogue!, name: "Rogue", mood: "calm" },
+      // Rogue as the tracker lists a card that walked in while inactive: an NPC id and her alias.
+      { characterId: "npc-anna-marie", name: "Anna Marie", mood: "calm" },
       { characterId: "npc-guard", name: "Guard", mood: "bored" },
     ],
     recentEvents: [],

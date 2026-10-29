@@ -58,7 +58,7 @@ function sortEntries(
 function SortSelect({ value, keys, onChange }: { value: SortKey; keys: SortKey[]; onChange: (key: SortKey) => void }) {
   const { t: localizeUi } = useUiTranslation();
   return (
-    <div className="relative">
+    <div className="relative shrink-0">
       <select
         value={value}
         onChange={(event) => onChange(event.target.value as SortKey)}
@@ -99,7 +99,7 @@ export function SectionPage({ section, entries }: { section: OrganizerSectionId;
       {entries.length === 0 ? (
         <EmptyLine>{localizeUi("ui.agents.organizer.emptySection")}</EmptyLine>
       ) : (
-        <ul className="grid gap-x-6 md:grid-cols-2">
+        <ul className="grid grid-cols-[minmax(0,1fr)] gap-x-6 xl:grid-cols-2">
           {sorted.map((entry) => (
             <AgentRow key={entry.manifest.id} entry={entry} withMenu />
           ))}
@@ -262,7 +262,7 @@ export function SearchResults({ query, entries }: { query: string; entries: read
       {entries.length === 0 ? (
         <EmptyLine>{localizeUi("ui.agents.agentcatalogview.noMatchingAgents")}</EmptyLine>
       ) : (
-        <ul className="grid gap-x-6 md:grid-cols-2">
+        <ul className="grid grid-cols-[minmax(0,1fr)] gap-x-6 xl:grid-cols-2">
           {entries.map((entry) => (
             <AgentRow key={entry.manifest.id} entry={entry} withMenu />
           ))}

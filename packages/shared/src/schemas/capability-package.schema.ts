@@ -2157,8 +2157,6 @@ export type StampedCapabilityCatalog = Omit<CapabilityCatalog, "packages"> & {
   packages: StampedCapabilityCatalogPackage[];
   /** Starter kits from the published store sidecar; packages not in the catalog are dropped. */
   kits?: CapabilityStoreKit[];
-  /** How-to step pictures by package type ("agent", "app", "game"), as absolute URLs. */
-  howTo?: Record<string, string[]>;
 };
 export type InstalledCapabilityPackage = z.infer<typeof installedCapabilityPackageSchema>;
 export type PackagedAgentDefinition = z.infer<typeof packagedAgentDefinitionSchema>;

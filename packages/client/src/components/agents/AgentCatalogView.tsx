@@ -503,7 +503,6 @@ export function AgentCatalogView() {
         entry={agentEntry}
         entries={all}
         customSource={catalog.data?.provenance?.kind === "custom"}
-        howTo={catalog.data?.howTo}
       />
     ) : (
       <p className="py-10 text-center text-sm text-[var(--muted-foreground)]">

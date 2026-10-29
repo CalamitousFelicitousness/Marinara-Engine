@@ -198,7 +198,7 @@ export function OrganizerHome({
                 </button>
               )}
             </div>
-            <ul className="grid gap-x-6 xl:grid-cols-2">
+            <ul className="grid grid-cols-[minmax(0,1fr)] gap-x-6 xl:grid-cols-2">
               {shelf.slice(0, SHELF_SIZE).map((entry) => (
                 <AgentRow key={entry.manifest.id} entry={entry} />
               ))}

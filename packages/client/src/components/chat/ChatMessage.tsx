@@ -2732,9 +2732,7 @@ export const ChatMessage = memo(function ChatMessage({
   const personaScenario = msgPersona ? msgPersona.scenario : personaInfo?.scenario;
   const macroCharacters = useMemo(() => {
     if (scopedCharacterMap?.size) {
-      const candidates = Array.from(scopedCharacterMap.values()).filter(
-        (candidate): candidate is NonNullable<typeof candidate> => !!candidate,
-      );
+      const candidates = Array.from(scopedCharacterMap, ([id, character]) => ({ ...character, id }));
       if (candidates.length > 0) return candidates;
     }
     return charName ? [{ name: charName }] : [];
@@ -2755,6 +2753,7 @@ export const ChatMessage = memo(function ChatMessage({
         },
         primaryCharacter: primaryCharInfo ?? { name: charName },
         characters: macroCharacters,
+        inactiveCharacterIds: isRoleplay ? parseChatMetadata(activeChatMetadata).inactiveCharacterIds : undefined,
       };
       // #3164: seed display randomness by message identity, not content — a
       // content-based seed re-rolls every {{random}}/{{roll}} on each streamed
@@ -2773,6 +2772,8 @@ export const ChatMessage = memo(function ChatMessage({
       return resolveDisplayMacros(text);
     },
     [
+      activeChatMetadata,
+      isRoleplay,
       applyToAIOutput,
       scopedRegexMode,
       presetVariables,

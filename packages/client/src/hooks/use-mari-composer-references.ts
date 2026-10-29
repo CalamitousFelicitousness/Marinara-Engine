@@ -27,6 +27,7 @@ import {
   withoutFuzzyNoise,
   type PickerRow,
 } from "../lib/mari-composer-references";
+import { fieldLabel } from "../lib/mari-edit-diff";
 import { listMariFields } from "../lib/mari-editor-fields";
 import { useUIStore } from "../stores/ui.store";
 import { useLorebookEntries } from "./use-lorebooks";
@@ -156,7 +157,7 @@ export function useMariComposerReferences({
   // Read again as the token changes, so the list is the editor as it is now (its header holds the name).
   const editorFields = useMemo(() => {
     const editor = companionDocked ? (companionRoot?.closest(".mari-editor-shell") ?? companionRoot) : null;
-    return editor && tokenKey ? listMariFields(editor) : [];
+    return editor && tokenKey ? listMariFields(editor, fieldLabel) : [];
   }, [companionDocked, companionRoot, tokenKey]);
   const atCap = references.length >= MAX_COMPOSER_REFERENCES;
   const rows = useMemo<PickerRow[]>(() => {

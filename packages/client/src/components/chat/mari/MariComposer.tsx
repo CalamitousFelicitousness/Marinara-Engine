@@ -269,6 +269,9 @@ export function MariComposer({
   // The ghost may sit in an `@` token that ends the draft (a Tab there links it); the open picker replaces it.
   const ghostInToken = liveToken?.trigger === "@" && liveToken.end === draft.length;
   const ghostAvailable = Boolean(draftSuffix) && (!liveToken || ghostInToken);
+  // A completed name ends the draft and a second Tab would link it: say so where the ghost was, and let a
+  // tap link it, since touch screens have no Tab.
+  const linkHint = referenceUi?.canLinkCompletion && !ghostAvailable && !pickerOpen && !isBusy;
   const ActivePermissionsModeIcon = MARI_PERMISSIONS_MODE_ICONS[permissionsMode];
   // The connection menu shows the chosen connection's models beside the list, like the chat input's
   // Connections menu. A narrow composer shows one step at a time: the list, then the chosen models.
@@ -472,7 +475,18 @@ export function MariComposer({
         <div className="relative flex min-w-0 flex-1 basis-full">
           <InlineDraftOverlay
             value={draft}
-            suffix={ghostAvailable && !pickerOpen ? draftSuffix : ""}
+            suffix={
+              linkHint
+                ? t(
+                    window.matchMedia("(pointer: coarse)").matches
+                      ? "mari.composerReferences.linkHintTouch"
+                      : "mari.composerReferences.linkHint",
+                  )
+                : ghostAvailable && !pickerOpen
+                  ? draftSuffix
+                  : ""
+            }
+            hint={Boolean(linkHint)}
             marks={[
               ...referenceMarks,
               ...(liveToken ? [{ start: liveToken.start, end: liveToken.end, tone: "pending" as const }] : []),
@@ -482,7 +496,13 @@ export function MariComposer({
             scrollTop={composerScroll.top}
             className="mari-workspace-composer__text"
             // The textarea is disabled while busy, so the suggestion is not tappable then either.
-            onAccept={isBusy ? undefined : ghostInToken ? () => onPickerAction?.("ghost-link") : acceptDraftCompletion}
+            onAccept={
+              isBusy
+                ? undefined
+                : ghostInToken || linkHint
+                  ? () => onPickerAction?.("ghost-link")
+                  : acceptDraftCompletion
+            }
           />
           <textarea
             ref={floatingTextareaRef}

@@ -18,6 +18,7 @@ export function InlineDraftOverlay({
   scrollLeft = 0,
   scrollTop = 0,
   style,
+  hint,
   onAccept,
 }: {
   value: string;
@@ -29,6 +30,8 @@ export function InlineDraftOverlay({
   scrollTop?: number;
   /** Extra inline styles, e.g. a field's computed font and padding when classes can't be repeated. */
   style?: CSSProperties;
+  /** Draws the suffix as a small hint pill ("Tab to link") instead of grey completion text. */
+  hint?: boolean;
   /** Makes the suffix tappable. Called on pointer down, so the field never loses focus. */
   onAccept?: () => void;
 }) {
@@ -56,11 +59,16 @@ export function InlineDraftOverlay({
       {suffix ? (
         <span
           className={cn(
-            "text-[var(--muted-foreground)]/55",
+            // A hint is not text that will be typed in, so it reads as a pill. It only follows the text,
+            // so its own size and margin can't move the marks before it.
+            hint
+              ? "ml-1.5 rounded bg-[var(--accent)]/60 px-1.5 text-[0.75em] text-[var(--muted-foreground)]"
+              : "text-[var(--muted-foreground)]/55",
             // Right padding cancelled by margin widens the tap target without moving the text,
             // and an invisible ::after stretches it to a 44px-tall touch target.
             onAccept &&
-              "pointer-events-auto relative -mr-2 cursor-pointer rounded-r py-1 pr-2 after:absolute after:inset-x-0 after:-inset-y-2 after:content-[''] pointer-coarse:bg-[var(--accent)]/60",
+              "pointer-events-auto relative cursor-pointer after:absolute after:inset-x-0 after:-inset-y-2 after:content-['']",
+            onAccept && !hint && "-mr-2 rounded-r py-1 pr-2 pointer-coarse:bg-[var(--accent)]/60",
           )}
           onPointerDown={
             onAccept

@@ -69,6 +69,8 @@ export function InlineDraftOverlay({
             onAccept &&
               "pointer-events-auto relative cursor-pointer after:absolute after:inset-x-0 after:-inset-y-2 after:content-['']",
             onAccept && !hint && "-mr-2 rounded-r py-1 pr-2 pointer-coarse:bg-[var(--accent)]/60",
+            // The pill is small text, so its hit area reaches past it on every side.
+            onAccept && hint && "after:-inset-x-2 after:-inset-y-3",
           )}
           onPointerDown={
             onAccept

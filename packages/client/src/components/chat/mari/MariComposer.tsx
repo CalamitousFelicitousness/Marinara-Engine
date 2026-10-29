@@ -272,6 +272,13 @@ export function MariComposer({
   // A completed name ends the draft and a second Tab would link it: say so where the ghost was, and let a
   // tap link it, since touch screens have no Tab.
   const linkHint = referenceUi?.canLinkCompletion && !ghostAvailable && !pickerOpen && !isBusy;
+  const linkHintText = linkHint
+    ? t(
+        window.matchMedia("(pointer: coarse)").matches
+          ? "mari.composerReferences.linkHintTouch"
+          : "mari.composerReferences.linkHint",
+      )
+    : "";
   const ActivePermissionsModeIcon = MARI_PERMISSIONS_MODE_ICONS[permissionsMode];
   // The connection menu shows the chosen connection's models beside the list, like the chat input's
   // Connections menu. A narrow composer shows one step at a time: the list, then the chosen models.
@@ -475,17 +482,7 @@ export function MariComposer({
         <div className="relative flex min-w-0 flex-1 basis-full">
           <InlineDraftOverlay
             value={draft}
-            suffix={
-              linkHint
-                ? t(
-                    window.matchMedia("(pointer: coarse)").matches
-                      ? "mari.composerReferences.linkHintTouch"
-                      : "mari.composerReferences.linkHint",
-                  )
-                : ghostAvailable && !pickerOpen
-                  ? draftSuffix
-                  : ""
-            }
+            suffix={linkHintText || (ghostAvailable && !pickerOpen ? draftSuffix : "")}
             hint={Boolean(linkHint)}
             marks={[
               ...referenceMarks,
@@ -545,6 +542,8 @@ export function MariComposer({
                 onPickerAction?.(action);
               }
             }}
+            // The overlay is hidden from screen readers, so the field itself carries the hint.
+            aria-description={linkHintText || undefined}
             aria-controls={pickerOpen ? referenceUi?.picker?.id : undefined}
             aria-activedescendant={pickerOpen ? referenceUi?.activeOptionId : undefined}
             rows={1}

@@ -50,14 +50,8 @@ import {
   smartOrderState,
   type SmartOrderCandidate,
 } from "../services/generation/smart-group-decision.js";
-import {
-  chooseSceneCharacters,
-  presentFromDecision,
-  presentFromTracker,
-  scenePresenceQuestions,
-  SCENE_PRESENCE_TRANSCRIPT_DEPTH,
-  scenePresenceState,
-} from "../services/generation/scene-presence-decision.js";
+import { SCENE_PRESENCE_TRANSCRIPT_DEPTH } from "../services/generation/scene-presence-decision.js";
+import { decideSceneCharacters } from "../services/generation/scene-presence.service.js";
 import {
   activationQuestionSettings,
   bypassActivationQuestion,
@@ -3033,42 +3027,47 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
       ) {
         try {
           const snapshot = (await rawSelectedGameStateSnapshotPromise) as Record<string, unknown> | null;
-          const trackedPresent = presentFromTracker(
-            parseJsonField<unknown[]>(snapshot?.presentCharacters, []),
-            allCharacterIds,
-          );
-          let presentIds = trackedPresent;
-          let source = "tracker";
-          if (autoActiveMode === "decision") {
-            const backend = await resolveDecisionBackend(
-              {
-                getLocalDefault: () => appSettings.get(DECISION_SETTINGS_KEYS.localDefault),
-                getThinkingPreGeneration: async () =>
-                  (await appSettings.get(DECISION_SETTINGS_KEYS.thinkingPreGeneration)) === "true",
-                getDefaultConnection: () => connections.getDefaultForDecision(),
-                getConnectionWithKey: (id) => connections.getWithKey(id),
-                debugMode: requestDebug,
-              },
-              generationSignal,
-            );
-            // Choosing the cast sits in front of the reply, so a reasoning model defers here
-            // like any pre-generation gate, and the tracker's last scene stands in.
-            if (backend && !backend.deferPreGeneration) {
-              const sceneCharacters = await loadCharacterPromptInfo({
-                chars,
-                characterIds: allCharacterIds,
-                chatMode,
-                chatId: input.chatId,
-              });
-              const candidates = sceneCharacters.map((character) => ({
+          const { inactiveIds: nextInactiveIds, source } = await decideSceneCharacters({
+            mode: autoActiveMode,
+            chatId: input.chatId,
+            candidateIds: allCharacterIds,
+            trackedPresentCharacters: parseJsonField<unknown[]>(snapshot?.presentCharacters, []),
+            currentInactiveIds: Array.isArray(chatMeta.inactiveCharacterIds) ? chatMeta.inactiveCharacterIds : [],
+            pinnedIds: Array.isArray(chatMeta.autoActiveCharacterPins) ? chatMeta.autoActiveCharacterPins : [],
+            narratorId:
+              typeof chatMeta.roleplayCommandNarratorId === "string" &&
+              allCharacterIds.includes(chatMeta.roleplayCommandNarratorId)
+                ? chatMeta.roleplayCommandNarratorId
+                : null,
+            getBackend: () =>
+              resolveDecisionBackend(
+                {
+                  getLocalDefault: () => appSettings.get(DECISION_SETTINGS_KEYS.localDefault),
+                  getThinkingPreGeneration: async () =>
+                    (await appSettings.get(DECISION_SETTINGS_KEYS.thinkingPreGeneration)) === "true",
+                  getDefaultConnection: () => connections.getDefaultForDecision(),
+                  getConnectionWithKey: (id) => connections.getWithKey(id),
+                  debugMode: requestDebug,
+                },
+                generationSignal,
+              ),
+            loadCandidates: async () =>
+              (
+                await loadCharacterPromptInfo({
+                  chars,
+                  characterIds: allCharacterIds,
+                  chatMode,
+                  chatId: input.chatId,
+                })
+              ).map((character) => ({
                 id: character.id,
                 name: character.name,
                 about: character.description || character.personality || undefined,
-              }));
-              const namesById = new Map(candidates.map((candidate) => [candidate.id, candidate.name]));
-              // Merged replies are saved under the first character's id, so naming them by that
-              // id would tell the model that character spoke and is present. They're the narrator's.
-              const transcript = chatMessages
+              })),
+            // Merged replies are saved under the first character's id, so naming them by that
+            // id would tell the model that character spoke and is present. They're the narrator's.
+            buildTranscript: () =>
+              chatMessages
                 .filter((message: any) => message.role === "user" || message.role === "assistant")
                 .slice(-SCENE_PRESENCE_TRANSCRIPT_DEPTH)
                 .map((message: any) => ({
@@ -3079,41 +3078,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     message,
                     agentWhisperNames,
                   ),
-                }));
-              const answers = await backend.ask(
-                scenePresenceState(
-                  transcript,
-                  candidates,
-                  (trackedPresent ?? []).map((id) => namesById.get(id) ?? id),
-                  backend.maxStateTokens,
-                ),
-                scenePresenceQuestions(candidates),
-              );
-              const decided = answers ? presentFromDecision(answers, backend.calibration.defaultThreshold) : null;
-              if (decided) {
-                presentIds = decided;
-                source = "decision";
-              }
-              if (answers)
-                logger.debug(
-                  "[auto-active] Decision model scene for chat %s: %s",
-                  input.chatId,
-                  candidates.map((candidate) => `${candidate.name}=${answers.get(candidate.id)?.toFixed(3)}`).join(" "),
-                );
-            }
-          }
-          if (generationSignal.aborted) throw new Error("Generation aborted");
-          const nextInactiveIds = chooseSceneCharacters({
-            candidateIds: allCharacterIds,
-            presentIds,
-            currentInactiveIds: Array.isArray(chatMeta.inactiveCharacterIds) ? chatMeta.inactiveCharacterIds : [],
-            pinnedIds: Array.isArray(chatMeta.autoActiveCharacterPins) ? chatMeta.autoActiveCharacterPins : [],
-            narratorId:
-              typeof chatMeta.roleplayCommandNarratorId === "string" &&
-              allCharacterIds.includes(chatMeta.roleplayCommandNarratorId)
-                ? chatMeta.roleplayCommandNarratorId
-                : null,
+                })),
           });
+          if (generationSignal.aborted) throw new Error("Generation aborted");
           if (nextInactiveIds) {
             const updatedChat = await chats.patchMetadata(
               input.chatId,

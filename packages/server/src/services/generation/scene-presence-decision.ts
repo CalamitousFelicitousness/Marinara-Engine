@@ -23,33 +23,42 @@ export interface ScenePresenceCandidate {
 /** The same transcript Smart response order reads. */
 export const SCENE_PRESENCE_TRANSCRIPT_DEPTH = 5;
 
-/** Per candidate, so one long card cannot crowd the transcript out of the budget. */
-const CANDIDATE_ABOUT_CHARS = 300;
+/**
+ * Per-candidate `about` lengths, tried in order until the roster fits: one long card cannot
+ * crowd the transcript out, and a big cast falls back to names alone.
+ */
+const CANDIDATE_ABOUT_CHARS = [300, 100, 0] as const;
+
+/** The least transcript worth asking about; below this the question is not asked. */
+const TRANSCRIPT_FLOOR_TOKENS = 256;
 
 /**
  * The state every question is asked against: the recent transcript, the cast, and who the
  * Character Tracker last saw, which keeps presence steady between turns.
+ *
+ * Null when even the names leave too little room for the transcript in `maxStateTokens`;
+ * the caller then skips the Decision model rather than send a state it cannot read.
  */
 export function scenePresenceState(
   messages: DecisionMessage[],
   candidates: ScenePresenceCandidate[],
   lastTrackedPresent: string[],
   maxStateTokens: number,
-): Record<string, unknown> {
-  const roster = candidates.map((candidate) => ({
-    name: candidate.name,
-    ...(candidate.about ? { about: candidate.about.slice(0, CANDIDATE_ABOUT_CHARS) } : {}),
-  }));
-  const extra = {
-    candidates: roster,
-    ...(lastTrackedPresent.length > 0 ? { last_tracked_present: lastTrackedPresent } : {}),
-  };
-  const transcript = buildDecisionState(
-    messages,
-    SCENE_PRESENCE_TRANSCRIPT_DEPTH,
-    Math.max(256, maxStateTokens - estimateTextTokens(JSON.stringify(extra))),
-  );
-  return { ...transcript, ...extra };
+): Record<string, unknown> | null {
+  for (const aboutChars of CANDIDATE_ABOUT_CHARS) {
+    const roster = candidates.map((candidate) => ({
+      name: candidate.name,
+      ...(candidate.about && aboutChars > 0 ? { about: candidate.about.slice(0, aboutChars) } : {}),
+    }));
+    const extra = {
+      candidates: roster,
+      ...(lastTrackedPresent.length > 0 ? { last_tracked_present: lastTrackedPresent } : {}),
+    };
+    const transcriptBudget = maxStateTokens - estimateTextTokens(JSON.stringify(extra));
+    if (transcriptBudget < TRANSCRIPT_FLOOR_TOKENS) continue;
+    return { ...buildDecisionState(messages, SCENE_PRESENCE_TRANSCRIPT_DEPTH, transcriptBudget), ...extra };
+  }
+  return null;
 }
 
 /** One question per candidate, keyed by character id. */
@@ -60,10 +69,18 @@ export function scenePresenceQuestions(candidates: ScenePresenceCandidate[]): No
   }));
 }
 
-/** Ids the Decision model judged present, or null when it gave no answers at all. */
-export function presentFromDecision(answers: Map<string, number>, threshold: number): string[] | null {
-  if (answers.size === 0) return null;
-  return [...answers].filter(([, p]) => p >= threshold).map(([id]) => id);
+/**
+ * Ids the Decision model judged present, or null unless it answered for every candidate.
+ * A missing answer (malformed, or timed out) is silence, not absence, so a partial set is
+ * not used: it would turn off whoever went unanswered.
+ */
+export function presentFromDecision(
+  answers: Map<string, number>,
+  threshold: number,
+  candidateIds: string[],
+): string[] | null {
+  if (candidateIds.length === 0 || !candidateIds.every((id) => answers.has(id))) return null;
+  return candidateIds.filter((id) => answers.get(id)! >= threshold);
 }
 
 /**

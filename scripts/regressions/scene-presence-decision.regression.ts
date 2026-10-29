@@ -69,7 +69,8 @@ assert.deepEqual(choose({ presentIds: [] }), ["logan", "kurt", "rogue"], "an emp
 
 // ── sources ─────────────────────────────────────────────────────────────────────
 
-assert.equal(presentFromDecision(new Map(), 0.5), null, "no answers is no data");
+const asked = ["logan", "kurt", "rogue"];
+assert.equal(presentFromDecision(new Map(), 0.5, asked), null, "no answers is no data");
 assert.deepEqual(
   presentFromDecision(
     new Map([
@@ -78,9 +79,22 @@ assert.deepEqual(
       ["rogue", 0.2],
     ]),
     0.5,
+    asked,
   ),
   ["logan", "kurt"],
   "answers at or over the threshold are present",
+);
+assert.equal(
+  presentFromDecision(
+    new Map([
+      ["logan", 0.9],
+      ["kurt", 0.9],
+    ]),
+    0.5,
+    asked,
+  ),
+  null,
+  "a partial answer is no data: an unanswered character is not turned off",
 );
 
 assert.equal(presentFromTracker(undefined, ids), null, "no tracker list is no data");
@@ -122,6 +136,7 @@ const state = scenePresenceState(
   ["Logan"],
   4000,
 );
+assert(state, "a small cast fits the state");
 assert.deepEqual(state.last_tracked_present, ["Logan"], "the tracker's last scene is in the state");
 assert.equal(
   (state.candidates as Array<{ about?: string }>)[0]!.about!.length,
@@ -130,9 +145,26 @@ assert.equal(
 );
 assert.equal((state.recent_messages as unknown[]).length, 2, "the transcript is in the state");
 assert.equal(
-  "last_tracked_present" in scenePresenceState([], candidates, [], 4000),
+  "last_tracked_present" in scenePresenceState([], candidates, [], 4000)!,
   false,
   "no tracker data, no empty field",
+);
+
+const bigCast = Array.from({ length: 40 }, (_, index) => ({
+  id: `c${index}`,
+  name: `Character ${index}`,
+  about: "y".repeat(300),
+}));
+const squeezed = scenePresenceState([{ role: "user", content: "Hello." }], bigCast, [], 1000);
+assert(squeezed, "a big cast still fits with shorter cards");
+assert(
+  (squeezed.candidates as Array<{ about?: string }>).every((candidate) => (candidate.about?.length ?? 0) <= 100),
+  "a big cast drops to shorter cards rather than starving the transcript",
+);
+assert.equal(
+  scenePresenceState([], bigCast, [], 300),
+  null,
+  "when even the names leave no room for the transcript, the Decision model is not asked",
 );
 
 // ── the real route ─────────────────────────────────────────────────────────────

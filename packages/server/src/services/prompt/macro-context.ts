@@ -812,7 +812,13 @@ export async function buildPromptMacroContext(input: BuildPromptMacroContextInpu
   const chat = input.chatId && input.db ? await createChatsStorage(input.db).getById(input.chatId) : null;
   // Only the names cross into the full roster: inactive profiles must not enter
   // grouped card expansion, reference discovery, or lorebook macro sources.
-  const rosterIds = chat?.characterIds !== undefined ? parseCharacterIds(chat.characterIds) : input.characterIds;
+  // Game callers supply the party scope, including legacy sessions whose chat row was not mirrored.
+  const rosterIds =
+    chat?.mode === "game"
+      ? (input.groupCharacterIds ?? input.characterIds)
+      : chat?.characterIds !== undefined
+        ? parseCharacterIds(chat.characterIds)
+        : input.characterIds;
   const rosterNames =
     rosterIds.length === input.characterIds.length && rosterIds.every((id, index) => id === input.characterIds[index])
       ? characterMacroData.names

@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
-import { characterDataSchema, resolveMacros, type AgentContext } from "../../packages/shared/src/index.js";
+import {
+  characterDataSchema,
+  planDecisionStatements,
+  resolveMacros,
+  type AgentContext,
+} from "../../packages/shared/src/index.js";
 import {
   buildMessageMacroContext,
   createInputMacroResolverForChat,
@@ -21,7 +26,8 @@ const { createCharactersStorage } = await import("../../packages/server/src/serv
 const { createPromptsStorage } = await import("../../packages/server/src/services/storage/prompts.storage.js");
 const { buildPromptMacroContext, scopePromptMacroContextToCharacter } =
   await import("../../packages/server/src/services/prompt/macro-context.js");
-const { renderAgentPromptTemplate } = await import("../../packages/server/src/services/agents/agent-executor.js");
+const { buildAgentPromptMacroContext, renderAgentPromptTemplate } =
+  await import("../../packages/server/src/services/agents/agent-executor.js");
 
 const sent: string[] = [];
 const provider = createServer(async (request, response) => {
@@ -132,6 +138,25 @@ try {
         undefined,
         "inactive fields do not trigger referenced-card discovery",
       );
+      if (scopedIds.length === 1) {
+        const decisions = [
+          '{{#if char == "Alpha" && decision:"Active reader"}}yes{{/if}}',
+          '{{#if char == "Hidden" && decision:"Inactive reader"}}no{{/if}}',
+          '{{#if description == "ALPHA_ACTIVE_CARD" && decision:"Active card"}}yes{{/if}}',
+        ].join("\n");
+        assert.deepEqual([...planDecisionStatements(decisions, ctx).statements], ["Active reader", "Active card"]);
+        assert.ok(
+          planDecisionStatements(decisions, { ...ctx, characterProfiles: undefined }).statements.has("Inactive reader"),
+          "without explicit reader profiles a larger roster remains conservatively unknown",
+        );
+        assert.ok(
+          planDecisionStatements(decisions, {
+            ...ctx,
+            characterProfiles: [{ name: "Alpha" }, { name: "Beta" }],
+          }).statements.has("Inactive reader"),
+          "a multi-reader prompt still defers per-character operands",
+        );
+      }
       const betaContext = scopePromptMacroContextToCharacter(ctx, { name: "Beta" });
       assert.equal(resolveMacros(template, betaContext), "CREW: Alpha, Hidden, Beta. OTHER ACTIVE: Alpha.");
     }
@@ -212,6 +237,34 @@ try {
     assert.equal(resolveMacros("{{characters}}", removed), "Alpha, Beta");
     await characters.update(hidden.id, { name: "Hidden" });
   }
+  const paddedAgent = {
+    chatId: "padded-roster",
+    chatMode: "roleplay",
+    recentMessages: [],
+    mainResponse: null,
+    characters: [{ id: "alpha", name: "  Alpha & <A>  ", description: "ACTIVE_CARD" }],
+    chatCharacters: [
+      { id: "alpha", name: "  Alpha & <A>  ", active: true },
+      { id: "empty", name: "", active: true },
+      { id: "whitespace", name: "  \t ", active: true },
+      { id: "hidden", name: "  Hidden & <H>  ", active: false },
+      { id: "beta", name: "  Beta  ", active: true },
+    ],
+    persona: null,
+    memory: {},
+    writableLorebookIds: null,
+    chatSummary: null,
+  } satisfies AgentContext;
+  const cleanAgent = buildAgentPromptMacroContext(paddedAgent);
+  assert.deepEqual(cleanAgent.characters, ["Alpha & <A>", "Hidden & <H>", "Beta"]);
+  assert.deepEqual(cleanAgent.groupCharacters, ["Alpha & <A>", "Beta"]);
+  assert.equal(resolveMacros("{{characters}}|{{group}}", cleanAgent), "Alpha & <A>, Hidden & <H>, Beta|Beta");
+  const escapedAgent = buildAgentPromptMacroContext(paddedAgent, { escapeValues: true });
+  assert.deepEqual(escapedAgent.characters, ["Alpha &amp; &lt;A&gt;", "Hidden &amp; &lt;H&gt;", "Beta"]);
+  assert.deepEqual(escapedAgent.groupCharacters, ["Alpha &amp; &lt;A&gt;", "Beta"]);
+  const fallbackAgent = buildAgentPromptMacroContext({ ...paddedAgent, chatCharacters: undefined });
+  assert.deepEqual(fallbackAgent.characters, ["Alpha & <A>"]);
+  assert.equal(resolveMacros("{{group}}", fallbackAgent), "");
   const detached = await buildPromptMacroContext({ db, characterIds: [alpha.id], personaName: "User" });
   assert.equal(
     resolveMacros(template, detached),

@@ -4563,6 +4563,29 @@ details[open] > .mari-disclosure .mari-disclosure__chevron {
   line-height: 1.5;
 }
 
+/* Marks behind the draft. Paint only: no padding, margin, border or font change, or the marks would
+   drift from the textarea's glyphs. The spread box-shadow fakes a little padding without moving text. */
+.mari-composer-mark {
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  border-radius: 0.25rem;
+}
+
+.mari-composer-mark--reference {
+  background: color-mix(in srgb, var(--marinara-app-accent-solid) 18%, transparent);
+  box-shadow: 0 0 0 0.125rem color-mix(in srgb, var(--marinara-app-accent-solid) 18%, transparent);
+}
+
+.mari-composer-mark--pending {
+  text-decoration: underline dotted color-mix(in srgb, var(--marinara-app-accent-solid) 70%, transparent) 1px;
+  text-underline-offset: 0.2em;
+}
+
+.mari-composer-mark--unresolved {
+  background: color-mix(in srgb, var(--warning) 20%, transparent);
+  box-shadow: 0 0 0 0.125rem color-mix(in srgb, var(--warning) 20%, transparent);
+}
+
 .mari-workspace-composer__input {
   display: block;
   width: 100%;
@@ -4792,6 +4815,48 @@ details[open] > .mari-disclosure .mari-disclosure__chevron {
 .mari-composer-menu__popover .mari-row[data-mode="bypass"] .mari-row__slot {
   background: color-mix(in srgb, var(--destructive) 12%, transparent);
   color: var(--destructive);
+}
+
+/* The `@` picker spans the composer (a phone, or her 24rem companion pane): one column, one row per record. */
+.mari-reference-picker {
+  right: 0;
+  left: 0;
+  width: auto;
+  max-height: min(18rem, calc(100dvh - 12rem));
+}
+
+.mari-reference-picker .mari-composer-menu__head {
+  padding-block-start: 0.5rem;
+}
+
+.mari-reference-picker__drill {
+  display: grid;
+  width: 2.75rem;
+  min-height: 2.625rem;
+  flex: none;
+  place-items: center;
+  align-self: stretch;
+  border-radius: var(--mari-composer-inner-radius);
+  color: var(--muted-foreground);
+}
+
+.mari-reference-picker__drill:hover {
+  background: var(--mari-hover);
+  color: var(--foreground);
+}
+
+.mari-reference-picker__drill > svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+/* A linked record's chip carries the accent its mark in the draft has. */
+.mari-workspace-composer .mari-workspace-context-chip[data-reference] {
+  background: color-mix(in srgb, var(--marinara-app-accent-solid) 18%, transparent);
+}
+
+.mari-workspace-composer .mari-workspace-context-chip[data-reference] > svg {
+  color: var(--marinara-app-accent-solid);
 }
 
 .mari-composer-menu__divider {

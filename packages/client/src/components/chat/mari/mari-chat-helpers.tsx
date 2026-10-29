@@ -14,7 +14,7 @@ import { type CharacterPreviewModel } from "../../../lib/character-preview";
 import { type LorebookPreviewModel } from "../../../lib/lorebook-preview";
 import { api, ApiError, getPrivilegedActionErrorMessage } from "../../../lib/api-client";
 import { isPersistentProfessorMariContext } from "../../../lib/professor-mari-presentation";
-import { type MariPermissionsMode } from "@marinara-engine/shared";
+import { type MariComposerReference, type MariPermissionsMode } from "@marinara-engine/shared";
 
 export const PROFESSOR_MARI_DRAFT_KEY = "__home_professor_mari__";
 export const PROFESSOR_MARI_ERROR_TOAST_DURATION_MS = 120_000;
@@ -313,6 +313,7 @@ export function createLocalUserMessage(
   content: string,
   attachments: ProfessorMariAttachment[] = [],
   context: ProfessorMariAskContext | null = null,
+  references: readonly MariComposerReference[] = [],
 ): Message {
   return {
     id: `${LOCAL_MESSAGE_ID_PREFIX}${Date.now()}`,
@@ -328,6 +329,8 @@ export function createLocalUserMessage(
       tokenCount: null,
       generationInfo: null,
       ...(attachments.length > 0 ? { attachments } : {}),
+      // The bubble marks what you linked before the server's copy replaces it.
+      ...(references.length > 0 ? { references: [...references] } : {}),
       professorMariContext: context,
     },
   };
@@ -408,6 +411,31 @@ export function retargetEditorContext(
   return next ? { ...rest, resource: next } : rest;
 }
 
+/**
+ * An `@` field pick beside the editor: that field replaces the one she had (and its captured text),
+ * and the context's resource becomes the open editor.
+ */
+export function withEditorField(
+  context: ProfessorMariAskContext | null,
+  editor: ProfessorMariContextResource | null,
+  field: { id: string; label: string; draft?: { value: string; selection?: string } },
+): ProfessorMariAskContext {
+  const { fieldDraft: _fieldDraft, ...rest } = context ?? { source: "character-editor", capability: "edit" };
+  // Fields only come from the open editor, so a context on another record moves to it, and a pick of
+  // that other record goes with it (as retargetEditorContext does).
+  if (editor && rest.resource && (rest.resource.kind !== editor.kind || rest.resource.id !== editor.id)) {
+    delete rest.commandCenterResultId;
+    delete rest.action;
+  }
+  return {
+    ...rest,
+    ...(editor ? { resource: editor } : {}),
+    field: field.label,
+    fieldId: field.id,
+    ...(field.draft ? { fieldDraft: field.draft } : {}),
+  };
+}
+
 export function persistentResourceContext(
   context: ProfessorMariAskContext | null | undefined,
 ): ProfessorMariAskContext | null {
@@ -429,6 +457,8 @@ export type ProfessorMariRecovery = {
   text: string;
   attachments: ProfessorMariAttachment[];
   context: ProfessorMariAskContext | null;
+  /** What the message linked with `@`; a retry links it again. */
+  references?: MariComposerReference[];
   kind: "provider" | "tool" | "context" | "general";
   /** What the provider or server said, shown under the error. */
   detail?: string;
@@ -462,5 +492,6 @@ export function retryOf(message: Message | undefined) {
     text: message?.content ?? "",
     attachments: message ? getProfessorMariAttachments(message) : [],
     context: (message && getProfessorMariMessageContext(message)) ?? null,
+    references: (message && toMessageExtra(message)?.references) || undefined,
   };
 }

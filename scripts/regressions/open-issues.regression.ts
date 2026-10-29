@@ -5647,12 +5647,16 @@ assert.match(
   /enterToSendProfessorMari/u,
   "Professor Mari must read her persisted Send on Enter preference",
 );
-// One composer since the floating-mode branch was removed (f27ce165b).
+// One composer since the floating-mode branch was removed (f27ce165b). Its keys route through
+// composerKeyAction (#7913), which composer-triggers.regression.ts checks case by case.
 assert.equal(
-  mariChatAllSource.match(
-    /event\.key === "Enter" &&\s*!event\.shiftKey &&\s*\(enterToSend \|\| event\.metaKey \|\| event\.ctrlKey\)/gu,
-  )?.length,
+  mariChatAllSource.match(/composerKeyAction\(\{/gu)?.length,
   1,
+  "Professor Mari's composer must route its keys through composerKeyAction",
+);
+assert.match(
+  readFileSync(new URL("../../packages/client/src/lib/composer-triggers.ts", import.meta.url), "utf8"),
+  /input\.key === "Enter" &&\s*!input\.shiftKey &&\s*\(input\.enterToSend \|\| input\.metaKey \|\| input\.ctrlKey\)/u,
   "Professor Mari's composer must preserve Shift+Enter and require the configured send shortcut",
 );
 assert.match(professorMariHomeSource, /toggleProfessorChatSelection/u);

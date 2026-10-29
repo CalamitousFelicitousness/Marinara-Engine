@@ -7,6 +7,7 @@ import {
   MariSuggestionChip,
   MariGuidedPlanStep,
   Chat,
+  MariComposerReference,
 } from "@marinara-engine/shared";
 import { useQueryClient } from "@tanstack/react-query";
 import { RefObject, Dispatch, SetStateAction, useCallback } from "react";
@@ -107,7 +108,7 @@ export function useMariWorkspaceRun({
   const failRun = useCallback(
     (
       error: unknown,
-      retry: Pick<ProfessorMariRecovery, "text" | "attachments" | "context" | "localMessageId">,
+      retry: Pick<ProfessorMariRecovery, "text" | "attachments" | "context" | "localMessageId" | "references">,
       // The chat this send created or used: the captured `chatId` is still null on a first send.
       runChatId: string | null = chatId,
     ) => {
@@ -131,6 +132,7 @@ export function useMariWorkspaceRun({
       attachments: ProfessorMariAttachment[] = [],
       existingUserMessageId?: string,
       context: ProfessorMariAskContext | null = handoffContext,
+      references: readonly MariComposerReference[] = [],
     ) => {
       // A mode change immediately before send must not race its PUTs: the run
       // resolves the mode server-side, so the WHOLE shared write chain - the
@@ -195,6 +197,7 @@ export function useMariWorkspaceRun({
             debugMode: useUIStore.getState().debugMode,
             attachments,
             context: context ?? undefined,
+            references: references.length > 0 ? references : undefined,
             existingUserMessageId,
             // Flavors her voice only while the dated pack is the one on screen.
             seasonalPackId: shownPack.season ? shownPack.id : undefined,

@@ -2137,7 +2137,7 @@ function OnboardingTab({
   };
 
   return (
-    <div>
+    <div data-mari-field="extensions.onboarding">
       <SectionHeader
         title={localizeUi("editor.tabs.onboarding")}
         subtitle={localizeUi("ui.characters.onboarding.subtitle")}

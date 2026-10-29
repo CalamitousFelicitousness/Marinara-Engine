@@ -2,13 +2,35 @@
 // id is the key `fieldLabel` takes (`description`, `first_mes`, `extensions.backstory`) and the server's
 // quick edit reads as `fieldId`. A change-card path is the same id under the row's `data.` column.
 
+/** The anchored fields under `root` in page order, once each, named by `label` (her change cards' `fieldLabel`;
+ * passed in so this module stays free of the diff code). */
+export function listMariFields(root: ParentNode, label: (id: string) => string): Array<{ id: string; label: string }> {
+  const seen = new Set<string>();
+  const fields: Array<{ id: string; label: string }> = [];
+  for (const element of root.querySelectorAll<HTMLElement>("[data-mari-field]")) {
+    const id = element.dataset.mariField;
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    fields.push({ id, label: label(id) });
+  }
+  return fields;
+}
+
+/** A field's current text (unsaved edits included), for a handoff that names it without focusing it. */
+export function mariFieldText(root: ParentNode, id: string): string | null {
+  const field = findMariField(root, id);
+  const input = field?.matches("textarea, input") ? field : field?.querySelector("textarea, input");
+  return input instanceof HTMLTextAreaElement || input instanceof HTMLInputElement ? input.value : null;
+}
+
 /** `data.extensions.backstory` -> `extensions.backstory`. */
 export function editorFieldId(path: string): string {
   return path.replace(/^data\./, "");
 }
 
-// List fields: the focused input is one tag or greeting, not the field's content.
-const LIST_FIELD_IDS = new Set(["tags", "alternate_greetings"]);
+// List and block fields: the focused input is one tag, greeting or onboarding question, not the field's
+// content. The server reads the onboarding block itself (`character.onboarding.get`).
+const LIST_FIELD_IDS = new Set(["tags", "alternate_greetings", "extensions.onboarding"]);
 
 /** Capture the focused field's current text and selected text for a Prof. Mari handoff; null for list fields. */
 export function mariFieldDraft(
@@ -62,6 +84,7 @@ const CHARACTER_FIELD_IDS = new Set([
   "extensions.backstory",
   "extensions.appearance",
   "extensions.depth_prompt",
+  "extensions.onboarding",
 ]);
 
 /** A change-card path whose field the Character editor anchors (itself or its parent field). */

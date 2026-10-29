@@ -9003,7 +9003,7 @@
   "ui.chat.peekpromptmodal.decisionsUnanswered": "Decision statements without an answer for this turn yet: {{count}}. This preview shows them as no. They are asked when a reply is generated.",
   "ui.chat.peekpromptmodal.estTokens": "est. tokens",
   "ui.chat.peekpromptmodal.find.count": "{{current}} of {{count}}",
-  "ui.chat.peekpromptmodal.find.fullPrompt": "Showing the full prompt. Clear Find to return to sections.",
+  "ui.chat.peekpromptmodal.find.fullPrompt": "Clear Find to return to sections.",
   "ui.chat.peekpromptmodal.find.input": "Find in prompt",
   "ui.chat.peekpromptmodal.find.label": "Find",
   "ui.chat.peekpromptmodal.find.next": "Next match (Enter)",

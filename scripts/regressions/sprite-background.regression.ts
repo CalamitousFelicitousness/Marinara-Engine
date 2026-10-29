@@ -114,6 +114,7 @@ for (let yPos = 16; yPos < 24; yPos++) {
   for (let xPos = 16; xPos < 24; xPos++) setPixel(chromaPixels, width, xPos, yPos, [0, 255, 0, 255]);
 }
 setPixel(chromaPixels, width, 5, 5, [0, 80, 0, 255]);
+// The wide halo leaves the left red edge without original key-matte neighbors within three pixels.
 for (let yPos = 14; yPos < 27; yPos++) {
   for (let xPos = 2; xPos < 10; xPos++) setPixel(chromaPixels, width, xPos, yPos, [0, 72, 0, 255]);
 }
@@ -244,6 +245,51 @@ for (let yPos = 0; yPos < detailHeight; yPos++) {
     }
   }
 }
+
+// Textured opaque gold stays intact beyond the three-pixel matte-neighbor band.
+const textureWidth = 64;
+const texturePixels = solidImage(textureWidth, textureWidth, [0, 255, 0, 255]);
+for (let yPos = 8; yPos < 56; yPos++) {
+  for (let xPos = 8; xPos < 56; xPos++) {
+    const color: [number, number, number, number] = (xPos + yPos) % 2 ? [210, 172, 76, 255] : [220, 180, 80, 255];
+    setPixel(texturePixels, textureWidth, xPos, yPos, color);
+  }
+}
+const textureOutput = await decodeRaw(
+  (await removeUniformSpriteBackgroundPng(await encodeRaw(texturePixels, textureWidth, textureWidth), 35)).buffer,
+);
+for (let yPos = 11; yPos < 53; yPos++) {
+  for (let xPos = 11; xPos < 53; xPos++) {
+    const matteDistance = Math.min(xPos - 7, 56 - xPos, yPos - 7, 56 - yPos);
+    if (matteDistance > 16) continue;
+    assert.deepEqual(
+      pixelAt(textureOutput.data, textureWidth, xPos, yPos),
+      pixelAt(texturePixels, textureWidth, xPos, yPos),
+      `opaque textured gold ${matteDistance}px from the matte must retain RGBA at ${xPos},${yPos}`,
+    );
+  }
+}
+
+// A real four-pixel half-red/half-green band stays connected to the matte during cleanup.
+const wideBlendPixels = solidImage(width, height, [0, 255, 0, 255]);
+for (let yPos = 8; yPos < 32; yPos++) {
+  for (let xPos = 8; xPos < 30; xPos++) {
+    setPixel(wideBlendPixels, width, xPos, yPos, xPos < 12 ? [128, 127, 0, 255] : [255, 0, 0, 255]);
+  }
+}
+const wideBlendOutput = await decodeRaw(
+  (await removeUniformSpriteBackgroundPng(await encodeRaw(wideBlendPixels, width, height), 35)).buffer,
+);
+const wideBlendEdge = pixelAt(wideBlendOutput.data, width, 11, 20);
+assert.ok(
+  wideBlendEdge.alpha >= 120 && wideBlendEdge.alpha <= 136,
+  `wide true blends must keep half coverage, got ${wideBlendEdge.alpha}`,
+);
+assert.deepEqual(
+  { red: wideBlendEdge.red, green: wideBlendEdge.green, blue: wideBlendEdge.blue },
+  { red: 255, green: 0, blue: 0 },
+  "wide true blends must lose their green matte color",
+);
 
 // A nearby opaque shade is not necessarily a noisy mixture of another shade and the key color.
 const shadePixels = solidImage(width, height, [0, 255, 0, 255]);

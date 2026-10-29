@@ -576,11 +576,13 @@ export async function removeUniformSpriteBackgroundPng(
         } else {
           rgba[offset + 3] = 0;
         }
+        // Classified spill remains matte contact for the next foreground edge.
+        matteMask[pixelIndex] = 1;
         continue;
       }
     }
 
-    if (matteNeighbors === 0 && (nearestForegroundDistance === null || nearestForegroundDistance > 2)) continue;
+    if (matteNeighbors === 0) continue;
     foreground ??= findForegroundNeighborColor(pixelIndex);
     if (foreground) {
       const observed = readPixel(pixelIndex);
@@ -615,6 +617,8 @@ export async function removeUniformSpriteBackgroundPng(
           rgba[offset + 1] = clampByte(foreground.green);
           rgba[offset + 2] = clampByte(foreground.blue);
           rgba[offset + 3] = clampByte(originalAlpha * foregroundCoverage);
+          // Continue cleanup across a substantial verified matte blend, not a slight opaque shade variation.
+          if (foregroundCoverage < 0.9) matteMask[pixelIndex] = 1;
           continue;
         }
       }

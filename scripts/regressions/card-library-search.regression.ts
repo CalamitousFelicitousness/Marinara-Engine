@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { matchesAllCardSearchTags, parseCardTagSearchTerms } from "@marinara-engine/shared";
 import {
   formatCardLibraryMeta,
   getCardLibrarySummary,
@@ -73,5 +74,24 @@ assert.equal(
   true,
   "the explicit summary remains searchable too",
 );
+
+const taggedDocument = { name: "Il Dottore", tags: ["male", "Genshin", "Modern AU", "fatui, harbinger"] };
+for (const query of ["male genshin", "genshin,male", "ＭＡＬＥ Genshin", 'male "Modern AU"', 'male "fatui, harbinger"']) {
+  assert.equal(matchesCardLibrarySearch(taggedDocument, parseCardLibrarySearchQuery(query)), true, query);
+}
+for (const query of ["male romance", "female genshin", ",,,", "-male genshin", "genshin -tag:male"]) {
+  assert.equal(matchesCardLibrarySearch(taggedDocument, parseCardLibrarySearchQuery(query)), false, query);
+}
+assert.equal(
+  matchesCardLibrarySearch({ tags: ["female", "genshin"] }, parseCardLibrarySearchQuery("male genshin")),
+  false,
+  "AND tags use exact membership, not substrings",
+);
+assert.equal(matchesCardLibrarySearch(taggedDocument, parseCardLibrarySearchQuery("Il Dottore")), true);
+assert.equal(matchesCardLibrarySearch(taggedDocument, parseCardLibrarySearchQuery("modern au")), true);
+assert.deepEqual(parseCardTagSearchTerms('male, MALE "Modern AU"'), ["male", "modern au"]);
+assert.equal(matchesAllCardSearchTags(["male"], []), false, "empty terms do not match every card");
+assert.equal(matchesAllCardSearchTags([null, 12, "Male"], ["male"]), true);
+assert.equal(matchesAllCardSearchTags("male", ["male"]), false);
 
 console.info("Card library search regression checks passed.");

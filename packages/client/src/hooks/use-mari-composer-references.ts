@@ -2,6 +2,7 @@ import type { MariComposerReference, ProfessorMariContextResource } from "@marin
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { referenceOptionId, type MariReferencePickerProps } from "../components/chat/mari/MariReferencePicker";
 import type { ActiveComposerToken, ComposerMark, ComposerPickerAction } from "../lib/composer-triggers";
+import { completeInline } from "../lib/inline-completion";
 import { rankCommands, removeCommandToken, type MariCommandId } from "../lib/mari-commands";
 import {
   addReference,
@@ -13,6 +14,7 @@ import {
   isSlashLinkable,
   linkCompletedReference,
   locateReferenceTokens,
+  maskReferenceQuery,
   MAX_COMPOSER_REFERENCES,
   applyReferencePick,
   pruneReferences,
@@ -195,9 +197,15 @@ export function useMariComposerReferences({
       setMoved({ key: moveKey, index: (activeIndex + step + rows.length) % rows.length });
     } else if (action === "picker-accept") pick(rows[activeIndex]);
     else if (action === "ghost-link") {
-      // Inside the `@` token the picker's best row is the link; in prose it is the name just completed.
-      if (rows.length > 0) pick(rows[defaultActiveIndex(rows)]);
-      else {
+      // Inside the `@` token the link is the name the ghost shows (the first in list order, not the best
+      // score); in prose it is the name just completed.
+      if (rows.length > 0) {
+        const shown = token ? `${maskReferenceQuery(token.query)}${completeInline(token.query, labels)}` : "";
+        const ghosted = rows.find(
+          (row) => !isCommandRow(row) && row.ref.label.toLocaleLowerCase() === shown.toLocaleLowerCase(),
+        );
+        pick(ghosted ?? rows[defaultActiveIndex(rows)]);
+      } else {
         const linked = linkCompletedReference(
           draft,
           labels,

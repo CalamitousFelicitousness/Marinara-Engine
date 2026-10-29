@@ -2375,7 +2375,13 @@ export function HomeProfessorMariChat({
       if (existingUserMessageId) {
         setTurnStartMessageId(existingUserMessageId);
       } else {
-        const localMessage = createLocalUserMessage(chat.id, messageText, submittedAttachments, submittedContext);
+        const localMessage = createLocalUserMessage(
+          chat.id,
+          messageText,
+          submittedAttachments,
+          submittedContext,
+          submittedReferences,
+        );
         localMessageId = localMessage.id;
         setMessages((current) => [
           ...current.filter((message) => message.id !== overrideRecovery?.localMessageId),

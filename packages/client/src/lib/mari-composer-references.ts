@@ -8,6 +8,7 @@ import { chatResultType } from "./command-icons";
 import { buildLorebookPreviewModel } from "./lorebook-preview";
 import { resolvePresetArtwork } from "./preset-artwork";
 import { filterOmnibarFuzzyFallback, scoreOmnibarText } from "./omnibar-search";
+import { normalizeProfessorMariNavigationQuery } from "./professor-mari-navigation";
 import { getAvatarCropStyle } from "./utils";
 import { formatReferenceToken, type ActiveComposerToken } from "./composer-triggers";
 import type { MariCommandId } from "./mari-commands";
@@ -180,7 +181,8 @@ export function buildReferenceItems(sources: {
       const item: ReferenceItem = { key: `${group}:${record.id}`, group, ref: { kind: group, id: record.id, label } };
       const media = referenceMedia(group, raw, faceById);
       if (media) item.media = media;
-      if (group === "character" && media?.src) faceById.set(record.id, media);
+      // Every character is a face, a placeholder when it has no avatar, as in her reply rows.
+      if (group === "character") faceById.set(record.id, media ?? {});
       if (group === "skill") item.state = record.origin === "builtin" ? "always" : record.enabled ? "on" : "off";
       if (group === "memory") item.state = record.enabled ? "on" : "off";
       items.push(item);
@@ -250,6 +252,10 @@ export function maskReferenceQuery(raw: string): string {
 export function referenceMatchScore(label: string, query: string): number | null {
   const needle = maskReferenceQuery(query);
   if (!needle.trim()) return 0;
+  // The omnibar folds everything but letters and digits away, so "★" or "!!" would match nothing.
+  if (!normalizeProfessorMariNavigationQuery(needle) || !normalizeProfessorMariNavigationQuery(label)) {
+    return label.toLocaleLowerCase().includes(needle.trim().toLocaleLowerCase()) ? 100 : null;
+  }
   const score = scoreOmnibarText(needle, [label]);
   return score < 0 ? null : score;
 }

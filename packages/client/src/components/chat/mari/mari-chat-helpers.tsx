@@ -313,6 +313,7 @@ export function createLocalUserMessage(
   content: string,
   attachments: ProfessorMariAttachment[] = [],
   context: ProfessorMariAskContext | null = null,
+  references: readonly MariComposerReference[] = [],
 ): Message {
   return {
     id: `${LOCAL_MESSAGE_ID_PREFIX}${Date.now()}`,
@@ -328,6 +329,8 @@ export function createLocalUserMessage(
       tokenCount: null,
       generationInfo: null,
       ...(attachments.length > 0 ? { attachments } : {}),
+      // The bubble marks what you linked before the server's copy replaces it.
+      ...(references.length > 0 ? { references: [...references] } : {}),
       professorMariContext: context,
     },
   };

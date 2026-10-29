@@ -17,6 +17,7 @@ import {
   maskReferenceQuery,
   pruneReferences,
   rankReferenceItems,
+  withoutFuzzyNoise,
   referenceFromResource,
   referenceMatchScore,
 } from "../../../packages/client/src/lib/mari-composer-references.js";
@@ -39,6 +40,10 @@ assert.ok(referenceMatchScore("Alice in Wonderland", "land")! >= 100);
 assert.ok(referenceMatchScore("Jessica", "jsca")! < 100);
 assert.equal(referenceMatchScore("Crème Brûlée", "creme"), referenceMatchScore("Creme Brulee", "creme"));
 assert.equal(referenceMatchScore("Alice", "zzz"), null);
+// names and queries the omnibar folds to nothing still match as plain text
+assert.equal(referenceMatchScore("★", "★"), 100);
+assert.equal(referenceMatchScore("Yes!!", "!!"), 100);
+assert.equal(referenceMatchScore("Alice", "!!"), null);
 assert.equal(referenceMatchScore("Alice", ""), 0);
 
 const items = buildReferenceItems({
@@ -75,7 +80,7 @@ assert.deepEqual(
   ).map((row) => row.key),
   ["persona:p9"],
 );
-assert.equal(defaultActiveIndex(rankReferenceItems(items, "ice")), 0);
+assert.deepEqual(rankReferenceItems(items, "ice"), []);
 assert.equal(rankReferenceItems(items, "Default").length, 1);
 assert.equal(rankReferenceItems(items, "").length, 6);
 assert.equal(defaultActiveIndex([]), 0);
@@ -278,8 +283,6 @@ assert.deepEqual(
   ["skill:s1", "memory:m1"],
 );
 
-console.log("Composer references client regression passed");
-
 // Faces: each kind's image as the omnibar reads it; a chat shows who is in it, badged with its mode.
 const faced = buildReferenceItems({
   characters: [
@@ -302,5 +305,19 @@ assert.equal(mediaOf("preset:s1"), undefined);
 assert.equal(mediaOf("agent:g1")?.src, "/a/agent.png");
 assert.equal(mediaOf("skill:k1"), undefined);
 assert.equal(mediaOf("chat:h1")?.src, "/a/ann.png");
-assert.equal(mediaOf("chat:h1")?.faces?.length, 1);
+// both characters are faces, the one without an avatar as a placeholder; an unknown id is not
+assert.equal(mediaOf("chat:h1")?.faces?.length, 2);
+assert.equal(mediaOf("chat:h1")?.faces?.[1]?.src, undefined);
 assert.equal(mediaOf("chat:h1")?.chatMode, "roleplay");
+
+// `/` lists commands and links together: a typo row of one kind drops beside a literal row of the other
+assert.deepEqual(
+  withoutFuzzyNoise([
+    { key: "command:history", score: 207 },
+    { key: "skill:k1", score: 40 },
+  ]).map((row) => row.key),
+  ["command:history"],
+);
+assert.equal(withoutFuzzyNoise([{ key: "skill:k1", score: 40 }]).length, 1);
+
+console.log("Composer references client regression passed");

@@ -4074,6 +4074,7 @@
   "mari.composerReferences.openFact": "Open in the editor",
   "mari.composerReferences.remove": "Remove link to {{name}}",
   "mari.composerReferences.showEntries": "Show entries of {{name}}",
+  "mari.composerReferences.showFields": "Show this editor's fields",
   "mari.composerReferences.state.always": "Always on",
   "mari.composerReferences.state.off": "Off",
   "mari.composerReferences.state.on": "On",

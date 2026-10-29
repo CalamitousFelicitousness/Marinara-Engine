@@ -10,6 +10,7 @@ import {
   completedNameAt,
   linkCompletedReference,
   defaultActiveIndex,
+  fieldRow,
   isFieldRow,
   isLinkRow,
   isSlashLinkable,
@@ -347,6 +348,7 @@ assert.equal(withoutFuzzyNoise([{ key: "skill:k1", score: 40 }]).length, 1);
     "scen",
   );
   assert.ok(character && isLinkRow(character), "a record row is a link");
+  assert.deepEqual(fieldRow(fields[1]!, 0), { key: "field:scenario", group: "field", field: fields[1], score: 0 });
 }
 
 console.log("Composer references client regression passed");

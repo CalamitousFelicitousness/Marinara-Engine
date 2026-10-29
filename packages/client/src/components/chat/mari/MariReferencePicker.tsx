@@ -12,8 +12,10 @@ export type MariReferencePickerProps = {
   id: string;
   rows: readonly PickerRow[];
   activeIndex: number;
-  /** Showing one lorebook's entries instead of the groups. */
+  /** Showing one lorebook's entries, or the open editor's fields, instead of the groups. */
   drilled: boolean;
+  /** The open editor's row lists that editor's fields. */
+  fieldsDrillable?: boolean;
   onPick: (index: number) => void;
   onDrill: (index: number) => void;
 };
@@ -31,7 +33,15 @@ const STATE_FACT_KEYS: Record<ReferenceState, string> = {
  * personas, lorebooks, presets, skills, memories), narrow enough for a phone and her 24rem companion pane. The textarea keeps focus and
  * owns the keys (see `composerKeyAction`); the rows only draw the choice and take a tap or click.
  */
-export function MariReferencePicker({ id, rows, activeIndex, drilled, onPick, onDrill }: MariReferencePickerProps) {
+export function MariReferencePicker({
+  id,
+  rows,
+  activeIndex,
+  drilled,
+  fieldsDrillable = false,
+  onPick,
+  onDrill,
+}: MariReferencePickerProps) {
   const { t } = useTranslation();
   const groupLabels: Record<PickerRow["group"], string> = {
     command: t("mari.composerReferences.group.command"),
@@ -110,6 +120,10 @@ export function MariReferencePicker({ id, rows, activeIndex, drilled, onPick, on
               );
             }
             const media = row.media;
+            const drillLabel =
+              row.group === "open"
+                ? t("mari.composerReferences.showFields")
+                : t("mari.composerReferences.showEntries", { name: row.ref.label });
             return (
               <MariRow
                 key={row.key}
@@ -137,13 +151,13 @@ export function MariReferencePicker({ id, rows, activeIndex, drilled, onPick, on
                 state={index === activeIndex ? "selected" : undefined}
                 onClick={() => onPick(index)}
                 action={
-                  row.group === "lorebook" && !drilled ? (
+                  !drilled && (row.group === "lorebook" || (row.group === "open" && fieldsDrillable)) ? (
                     <button
                       type="button"
                       tabIndex={-1}
                       className="mari-reference-picker__drill"
-                      aria-label={t("mari.composerReferences.showEntries", { name: row.ref.label })}
-                      title={t("mari.composerReferences.showEntries", { name: row.ref.label })}
+                      aria-label={drillLabel}
+                      title={drillLabel}
                       onClick={() => onDrill(index)}
                     >
                       <ChevronRight aria-hidden="true" />

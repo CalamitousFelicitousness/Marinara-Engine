@@ -159,13 +159,18 @@ export function isLinkRow(row: PickerRow | undefined): row is RankedReferenceIte
   return row !== undefined && !isCommandRow(row) && !isFieldRow(row);
 }
 
-/** The docked editor's fields matching a typed query, best first; none until something is typed. */
+export function fieldRow(field: { id: string; label: string }, score: number): FieldRow {
+  return { key: `field:${field.id}`, group: "field", field, score };
+}
+
+/** The docked editor's fields matching a typed query, best first; none until something is typed (the
+ * open editor's row lists them all). */
 export function rankFieldRows(fields: readonly { id: string; label: string }[], query: string): FieldRow[] {
   if (!maskReferenceQuery(query).trim()) return [];
   const scored: Array<FieldRow & { index: number }> = [];
   fields.forEach((field, index) => {
     const score = referenceMatchScore(field.label, query);
-    if (score !== null) scored.push({ key: `field:${field.id}`, group: "field", field, score, index });
+    if (score !== null) scored.push({ ...fieldRow(field, score), index });
   });
   return scored
     .sort((a, b) => b.score - a.score || a.index - b.index)

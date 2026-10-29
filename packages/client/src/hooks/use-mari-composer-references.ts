@@ -20,6 +20,7 @@ import {
   MAX_COMPOSER_REFERENCES,
   applyReferencePick,
   pruneReferences,
+  fieldRow,
   rankFieldRows,
   rankReferenceItems,
   referenceFromResource,
@@ -88,7 +89,8 @@ export function useMariComposerReferences({
   const [token, setToken] = useState<ActiveComposerToken | null>(null);
   const [picked, setPicked] = useState<readonly MariComposerReference[]>([]);
   const [dismissedKey, setDismissedKey] = useState<string | null>(null);
-  const [drill, setDrill] = useState<{ id: string; tokenKey: string } | null>(null);
+  // ArrowRight on a lorebook lists its entries; on the open editor's row, that editor's fields.
+  const [drill, setDrill] = useState<{ kind: "lorebook" | "fields"; id: string; tokenKey: string } | null>(null);
   const [moved, setMoved] = useState<{ key: string; index: number } | null>(null);
   const [caretRequest, setCaretRequest] = useState<{ pos: number; n: number } | null>(null);
 
@@ -147,8 +149,13 @@ export function useMariComposerReferences({
 
   const tokenKey = token ? `${token.start}:${token.end}:${token.query}` : "";
   const activeDrill = drill && drill.tokenKey === tokenKey ? drill : null;
-  const entries = useLorebookEntries(activeDrill?.id ?? null);
+  const entries = useLorebookEntries(activeDrill?.kind === "lorebook" ? activeDrill.id : null);
   const companionRoot = useUIStore((state) => state.mariCompanionRoot);
+  // Read again as the token changes, so the list is the editor as it is now (its header holds the name).
+  const editorFields = useMemo(() => {
+    const editor = companionDocked ? (companionRoot?.closest(".mari-editor-shell") ?? companionRoot) : null;
+    return editor && tokenKey ? listMariFields(editor) : [];
+  }, [companionDocked, companionRoot, tokenKey]);
   const atCap = references.length >= MAX_COMPOSER_REFERENCES;
   const rows = useMemo<PickerRow[]>(() => {
     if (token?.trigger === "/") {
@@ -163,20 +170,23 @@ export function useMariComposerReferences({
       return withoutFuzzyNoise([...commands, ...rankReferenceItems(linkable, token.query)]);
     }
     if (token?.trigger !== "@") return [];
+    if (activeDrill?.kind === "fields") {
+      const open = items.find((item) => item.group === "open");
+      if (!open) return [];
+      return [{ ...open, score: 0 }, ...editorFields.map((field) => fieldRow(field, 0))];
+    }
     if (activeDrill) {
       const book = items.find((item) => item.ref.kind === "lorebook" && item.ref.id === activeDrill.id);
       if (!book) return [];
       return [{ ...book, score: 0 }, ...rankReferenceItems(buildEntryItems(book.ref, entries.data), "")];
     }
     const ranked = rankReferenceItems(items, token.query);
-    // Read when the query changes, so the list is the editor as it is now (its header holds the name).
-    const editor = companionDocked ? (companionRoot?.closest(".mari-editor-shell") ?? companionRoot) : null;
-    const fields = editor ? rankFieldRows(listMariFields(editor), token.query) : [];
+    const fields = rankFieldRows(editorFields, token.query);
     if (fields.length === 0) return ranked;
     // Right under the open editor's row: it is the same editor.
     const lead = ranked.filter((row) => row.group === "open");
     return withoutFuzzyNoise([...lead, ...fields, ...ranked.slice(lead.length)]);
-  }, [activeDrill, atCap, availableCommands, companionDocked, companionRoot, entries.data, items, token]);
+  }, [activeDrill, atCap, availableCommands, editorFields, entries.data, items, token]);
 
   const pickerOpen = rows.length > 0 && (token?.trigger === "/" || !atCap) && dismissedKey !== tokenKey;
   // Prose: the first Tab completed a name and it still ends the draft, so a second Tab links it. A name
@@ -187,7 +197,10 @@ export function useMariComposerReferences({
   const canLinkCompletion = !pickerOpen && !token && !atCap && completedNameAt(draft, labels) !== null;
   const moveKey = `${tokenKey}|${activeDrill?.id ?? ""}`;
   const activeIndex = Math.min(moved?.key === moveKey ? moved.index : defaultActiveIndex(rows), rows.length - 1);
-  const canDrillIn = pickerOpen && !activeDrill && rows[activeIndex]?.group === "lorebook";
+  const fieldsDrillable = editorFields.length > 0;
+  const drillable = (row: PickerRow | undefined) =>
+    row?.group === "lorebook" || (row?.group === "open" && fieldsDrillable);
+  const canDrillIn = pickerOpen && !activeDrill && drillable(rows[activeIndex]);
 
   const pick = (row: PickerRow | undefined) => {
     if (!row || !token) return;
@@ -212,7 +225,8 @@ export function useMariComposerReferences({
     setCaretRequest((current) => ({ pos: next.caret, n: (current?.n ?? 0) + 1 }));
   };
   const drillInto = (row: PickerRow | undefined) => {
-    if (row?.group === "lorebook") setDrill({ id: row.ref.id, tokenKey });
+    if (!isLinkRow(row) || !drillable(row)) return;
+    setDrill({ kind: row.group === "lorebook" ? "lorebook" : "fields", id: row.ref.id, tokenKey });
   };
 
   const onPickerAction = (action: ComposerPickerAction) => {
@@ -251,6 +265,7 @@ export function useMariComposerReferences({
         rows,
         activeIndex,
         drilled: Boolean(activeDrill),
+        fieldsDrillable,
         onPick: (index) => pick(rows[index]),
         onDrill: (index) => drillInto(rows[index]),
       }

@@ -809,7 +809,8 @@ try {
   // otherwise land second and overwrite requestedCatalogUrl. Overlay behaviour
   // has its own coverage in capability-preview-overlay.regression.ts.
   const normalizedCatalog = await capabilityPackageManager.catalog(async (url) => {
-    requestedCatalogUrl = url;
+    // The store.json sidecar beside the catalog is fetched too; pin only the catalog.
+    if (String(url).endsWith("/catalog.json")) requestedCatalogUrl = url;
     return new Response(
       JSON.stringify({
         schemaVersion: 1,

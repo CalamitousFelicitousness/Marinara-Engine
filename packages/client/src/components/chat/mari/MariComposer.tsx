@@ -158,6 +158,14 @@ type MariComposerProps = {
   };
 };
 
+/** The link hint names the input the device has: Tab, a tap, or both. */
+function linkHintKey() {
+  if (window.matchMedia("(pointer: coarse)").matches) return "mari.composerReferences.linkHintTouch";
+  // A touch laptop reports a fine pointer but can still be tapped, so it gets both words.
+  if (window.matchMedia("(any-pointer: coarse)").matches) return "mari.composerReferences.linkHintHybrid";
+  return "mari.composerReferences.linkHint";
+}
+
 export function MariComposer({
   workspaceStatus,
   refreshWorkspaceStatus,
@@ -272,16 +280,7 @@ export function MariComposer({
   // A completed name ends the draft and a second Tab would link it: say so where the ghost was, and let a
   // tap link it, since touch screens have no Tab.
   const linkHint = Boolean(referenceUi?.canLinkCompletion) && !ghostAvailable && !pickerOpen && !isBusy;
-  // A touch laptop reports a fine pointer but can still be tapped, so it gets both words.
-  const linkHintText = linkHint
-    ? t(
-        window.matchMedia("(pointer: coarse)").matches
-          ? "mari.composerReferences.linkHintTouch"
-          : window.matchMedia("(any-pointer: coarse)").matches
-            ? "mari.composerReferences.linkHintHybrid"
-            : "mari.composerReferences.linkHint",
-      )
-    : "";
+  const linkHintText = linkHint ? t(linkHintKey()) : "";
   const ActivePermissionsModeIcon = MARI_PERMISSIONS_MODE_ICONS[permissionsMode];
   // The connection menu shows the chosen connection's models beside the list, like the chat input's
   // Connections menu. A narrow composer shows one step at a time: the list, then the chosen models.

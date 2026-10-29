@@ -64,15 +64,13 @@ try {
   await db
     .insert(characters)
     .values({ id: "tag-search-invalid-json", data: "{", createdAt: timestamp, updatedAt: timestamp });
-  await db
-    .insert(personas)
-    .values({
-      id: "tag-search-invalid-json",
-      name: "Malformed JSON fixture",
-      tags: "{",
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    });
+  await db.insert(personas).values({
+    id: "tag-search-invalid-json",
+    name: "Malformed JSON fixture",
+    tags: "{",
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  });
 
   const getPage = async (endpoint: string, search: string, limit = 100, offset = 0, extra = "") => {
     const response = await app.inject({
@@ -109,7 +107,7 @@ try {
     );
     assert.equal(page2.hasMore, false);
     assert.equal(page2.offset, 1);
-    for (const query of ['male "Modern AU"', "MALE,genshin"]) {
+    for (const query of ['male "Modern AU"', "MALE,genshin", "male，genshin", "male ＂Modern AU＂"]) {
       assert.deepEqual(
         (await getPage(endpoint, query)).items.map((row) => row.id),
         ["tag-search-target-a", "tag-search-target-b"],

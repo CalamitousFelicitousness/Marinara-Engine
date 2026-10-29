@@ -51,6 +51,10 @@ test("AND tags work in character and persona sidebars and libraries without extr
       await expect(library.getByText(`${prefix} ${kind} One`, { exact: true })).toHaveCount(0);
       await librarySearch.fill("male,genshin");
       await expect(library.getByRole("button").filter({ hasText: name }).first()).toBeVisible();
+      await librarySearch.fill("male，genshin");
+      await expect(library.getByRole("button").filter({ hasText: name }).first()).toBeVisible();
+      await librarySearch.fill("male ＂Modern AU＂");
+      await expect(library.getByRole("button").filter({ hasText: name }).first()).toBeVisible();
       await page.screenshot({ path: info.outputPath(`${kind}-library-and.png`) });
     }
   } finally {

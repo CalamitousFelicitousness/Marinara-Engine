@@ -16,7 +16,7 @@ export function startsWithTextForMatch(value: unknown, query: unknown): boolean 
 
 /** Positive card tags are space/comma separated; quote tags containing either. */
 export function parseCardTagSearchTerms(text: string): string[] {
-  const terms = Array.from(text.matchAll(/"([^"]+)"|([^\s,"]+)/gu), (match) =>
+  const terms = Array.from(normalizeTextForMatch(text).matchAll(/"([^"]+)"|([^\s,"]+)/gu), (match) =>
     normalizeTextForMatch(match[1] ?? match[2]),
   );
   return [...new Set(terms.filter(Boolean))];

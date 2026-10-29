@@ -71,6 +71,8 @@ for (const query of [
   "male genshin",
   "genshin,male",
   "ＭＡＬＥ Genshin",
+  "male，genshin",
+  "male ＂Modern AU＂",
   'male "Modern AU"',
   'male "fatui, harbinger"',
 ]) {
@@ -87,6 +89,8 @@ assert.equal(
 assert.equal(matchesCardLibrarySearch(taggedDocument, parseCardLibrarySearchQuery("Il Dottore")), true);
 assert.equal(matchesCardLibrarySearch(taggedDocument, parseCardLibrarySearchQuery("modern au")), true);
 assert.deepEqual(parseCardTagSearchTerms('male, MALE "Modern AU"'), ["male", "modern au"]);
+assert.deepEqual(parseCardTagSearchTerms("male，genshin"), ["male", "genshin"]);
+assert.deepEqual(parseCardTagSearchTerms("male ＂Modern AU＂"), ["male", "modern au"]);
 assert.equal(matchesAllCardSearchTags(["male"], []), false, "empty terms do not match every card");
 assert.equal(matchesAllCardSearchTags([null, 12, "Male"], ["male"]), true);
 assert.equal(matchesAllCardSearchTags("male", ["male"]), false);

@@ -30,12 +30,16 @@ const ref = (kind: MariComposerReference["kind"], id: string, label: string): Ma
 // masking and ranking
 assert.equal(maskReferenceQuery("@Jes"), "Jes");
 assert.equal(maskReferenceQuery('@"Jes'), "Jes");
-assert.equal(referenceMatchScore("Jessica", "jes"), 0);
-assert.equal(referenceMatchScore("Jessica", "@Jes"), 0);
-assert.equal(referenceMatchScore("Alice in Wonderland", "won"), 1);
-assert.equal(referenceMatchScore("Alice in Wonderland", "land"), 2);
+// The omnibar's scores: exact beats prefix beats whole word beats substring; a typo still matches, below 100.
+assert.ok(referenceMatchScore("Jess", "jess")! > referenceMatchScore("Jessica", "jess")!);
+assert.equal(referenceMatchScore("Jessica", "jes"), referenceMatchScore("Jessica", "@Jes"));
+assert.ok(referenceMatchScore("Jessica", "jes")! > referenceMatchScore("Alice in Wonderland", "in")!);
+assert.ok(referenceMatchScore("Alice in Wonderland", "in")! > referenceMatchScore("Alice in Wonderland", "land")!);
+assert.ok(referenceMatchScore("Alice in Wonderland", "land")! >= 100);
+assert.ok(referenceMatchScore("Jessica", "jsca")! < 100);
+assert.equal(referenceMatchScore("Crème Brûlée", "creme"), referenceMatchScore("Creme Brulee", "creme"));
 assert.equal(referenceMatchScore("Alice", "zzz"), null);
-assert.equal(referenceMatchScore("Alice", ""), 3);
+assert.equal(referenceMatchScore("Alice", ""), 0);
 
 const items = buildReferenceItems({
   characters: [
@@ -57,11 +61,20 @@ assert.deepEqual(
   ranked.map((row) => row.key),
   ["character:c2", "character:c1", "persona:p1", "lorebook:l1"],
 );
+// the exact name wins the highlight
+assert.equal(ranked[defaultActiveIndex(ranked)]!.key, "persona:p1");
+// a typo is listed only while nothing matches literally
 assert.deepEqual(
-  ranked.map((row) => row.score),
-  [0, 2, 0, 0],
+  rankReferenceItems(items, "jsca").map((row) => row.key),
+  ["character:c1", "character:c2", "lorebook:l1"],
 );
-assert.equal(defaultActiveIndex(ranked), 0);
+assert.deepEqual(
+  rankReferenceItems(
+    [...items, { key: "persona:p9", group: "persona", ref: ref("persona", "p9", "Jsca") }],
+    "jsca",
+  ).map((row) => row.key),
+  ["persona:p9"],
+);
 assert.equal(defaultActiveIndex(rankReferenceItems(items, "ice")), 0);
 assert.equal(rankReferenceItems(items, "Default").length, 1);
 assert.equal(rankReferenceItems(items, "").length, 6);
@@ -80,7 +93,7 @@ assert.equal(withOpen[0]!.key, "open:character:c3");
 assert.equal(defaultActiveIndex(withOpen), 0);
 // a better match elsewhere wins the highlight over a weaker open row
 const withOpenQuery = rankReferenceItems([open!, ...items], "jess");
-assert.equal(withOpenQuery[defaultActiveIndex(withOpenQuery)]!.key, "character:c2");
+assert.equal(withOpenQuery[defaultActiveIndex(withOpenQuery)]!.key, "persona:p1");
 
 // a lorebook's entries carry its id as parentId
 const entryItems = buildEntryItems({ id: "l1" }, [

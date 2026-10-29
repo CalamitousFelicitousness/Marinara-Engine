@@ -18,6 +18,7 @@ import {
   pruneReferences,
   rankReferenceItems,
   referenceFromResource,
+  withoutFuzzyNoise,
   type PickerRow,
 } from "../lib/mari-composer-references";
 import { useLorebookEntries } from "./use-lorebooks";
@@ -147,7 +148,7 @@ export function useMariComposerReferences({
       }));
       // Commands still run at the cap; only the links stop.
       const linkable = atCap ? [] : items.filter(isSlashLinkable);
-      return [...commands, ...rankReferenceItems(linkable, token.query)];
+      return withoutFuzzyNoise([...commands, ...rankReferenceItems(linkable, token.query)]);
     }
     if (token?.trigger !== "@") return [];
     if (activeDrill) {

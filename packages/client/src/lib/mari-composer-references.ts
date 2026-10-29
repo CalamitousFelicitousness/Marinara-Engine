@@ -7,6 +7,7 @@ import { getCharacterDisplayIdentity } from "./character-display";
 import { chatResultType } from "./command-icons";
 import { buildLorebookPreviewModel } from "./lorebook-preview";
 import { resolvePresetArtwork } from "./preset-artwork";
+import { filterOmnibarFuzzyFallback, scoreOmnibarText } from "./omnibar-search";
 import { getAvatarCropStyle } from "./utils";
 import { formatReferenceToken, type ActiveComposerToken } from "./composer-triggers";
 import type { MariCommandId } from "./mari-commands";
@@ -242,23 +243,30 @@ export function maskReferenceQuery(raw: string): string {
   return raw.replace(/^@"?/, "").replace(/"$/, "").trimStart();
 }
 
-const WORD_BOUNDARY = /[^\p{L}\p{N}]/u;
-
-/** 0 prefix, 1 word start, 2 substring, 3 empty query; null when the label does not match. */
+/**
+ * The omnibar's score for a label (higher is better; under 100 is a typo or initials match), 0 for an empty
+ * query so every row lists, and null when the label does not match.
+ */
 export function referenceMatchScore(label: string, query: string): number | null {
-  const needle = maskReferenceQuery(query).toLowerCase();
-  if (!needle) return 3;
-  const hay = label.toLowerCase();
-  let best: number | null = null;
-  for (let at = hay.indexOf(needle); at !== -1; at = hay.indexOf(needle, at + 1)) {
-    if (at === 0) return 0;
-    if (WORD_BOUNDARY.test(hay[at - 1]!)) best = 1;
-    else best ??= 2;
-  }
-  return best;
+  const needle = maskReferenceQuery(query);
+  if (!needle.trim()) return 0;
+  const score = scoreOmnibarText(needle, [label]);
+  return score < 0 ? null : score;
 }
 
 export type RankedReferenceItem = ReferenceItem & { score: number };
+
+/** Like the omnibar, a typo match is shown only when nothing matches literally. */
+export function withoutFuzzyNoise<T extends { key: string; score: number }>(rows: readonly T[]): T[] {
+  return filterOmnibarFuzzyFallback(
+    rows.map((row) => ({
+      id: row.key,
+      score: row.score,
+      matchKind: row.score > 0 && row.score < 100 ? ("fuzzy" as const) : ("literal" as const),
+      row,
+    })),
+  ).map(({ row }) => row);
+}
 
 /** Matching rows, grouped in `REFERENCE_GROUP_ORDER`; best match first inside a group, list order on ties. */
 export function rankReferenceItems(
@@ -271,12 +279,13 @@ export function rankReferenceItems(
     const score = referenceMatchScore(item.ref.label, query);
     if (score !== null) scored.push({ ...item, score, index });
   });
+  const matched = withoutFuzzyNoise(scored);
   const out: RankedReferenceItem[] = [];
   for (const group of REFERENCE_GROUP_ORDER) {
     const cap = group === "lorebookEntry" ? ENTRY_ROWS : group === "open" ? 1 : limit;
-    scored
+    matched
       .filter((item) => item.group === group)
-      .sort((a, b) => a.score - b.score || a.index - b.index)
+      .sort((a, b) => b.score - a.score || a.index - b.index)
       .slice(0, cap)
       .forEach(({ index: _index, ...item }) => out.push(item));
   }
@@ -287,7 +296,7 @@ export function rankReferenceItems(
 export function defaultActiveIndex(rows: readonly { score: number }[]): number {
   let best = 0;
   rows.forEach((row, index) => {
-    if (row.score < rows[best]!.score) best = index;
+    if (row.score > rows[best]!.score) best = index;
   });
   return best;
 }

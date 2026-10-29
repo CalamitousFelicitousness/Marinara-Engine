@@ -13,7 +13,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { ActiveComposerToken } from "./composer-triggers";
-import { referenceMatchScore } from "./mari-composer-references";
+import { scoreOmnibarText } from "./omnibar-search";
 
 export type MariCommandId =
   "new" | "history" | "skills" | "memories" | "context" | "attach" | "model" | "permissions" | "approvals";
@@ -106,14 +106,10 @@ export function rankCommands(query: string, available: readonly MariCommandId[])
   const scored: Array<RankedMariCommand & { index: number }> = [];
   MARI_COMMANDS.forEach((command, index) => {
     if (!available.includes(command.id)) return;
-    let best: number | null = null;
-    for (const name of [command.id, ...command.aliases]) {
-      const score = referenceMatchScore(name, query);
-      if (score !== null && (best === null || score < best)) best = score;
-    }
-    if (best !== null) scored.push({ ...command, score: best, index });
+    const score = query.trim() ? scoreOmnibarText(query, [command.id, ...command.aliases]) : 0;
+    if (score >= 0) scored.push({ ...command, score, index });
   });
-  return scored.sort((a, b) => a.score - b.score || a.index - b.index).map(({ index: _index, ...rest }) => rest);
+  return scored.sort((a, b) => b.score - a.score || a.index - b.index).map(({ index: _index, ...rest }) => rest);
 }
 
 /** The draft with the live `/query` token cut out, and the caret where it was. */

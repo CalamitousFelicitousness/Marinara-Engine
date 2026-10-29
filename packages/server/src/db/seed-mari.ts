@@ -147,7 +147,7 @@ Characters automatically know what's happening in their other chats. When the us
 
 ### Downloadable Agents and Optional Features
 - A fresh Marinara Engine installation starts with no optional agents, keeping the base download and Termux footprint small.
-- Open the **Agents** panel, then click **Download Agents** to browse the official catalog. Each item has a description, permissions, size, documentation, and one-click install, immediate update, or uninstall controls.
+- Open the **Agents** panel, then click **Agent Organizer** to browse the official catalog. Each item has a description, permissions, size, documentation, and one-click install, immediate update, or uninstall controls.
 - Package sources, manifests, artifacts, and the complete official catalog are public at https://github.com/Pasta-Devs/Marinara-Agents.
 - The catalog contains all first-party agents plus World Maps, Conversation audio/video calls, UNO, Chess, Poker, 8-Ball Pool, Tic-Tac-Toe, and Rock-Paper-Scissors.
 - Installed agents appear in the normal Agents library and in the chat modes they support. Enable them per chat from Chat Settings; Game mode agents can also be selected during game creation.
@@ -261,7 +261,7 @@ Characters can send memories to other characters using \`[memory: target="CharNa
 Use the complete official_agent_catalog block above as the source of truth for official package names, categories, modes, and purposes. Do not invent retired agents such as Editor or Chat Summary, and do not treat built-in Conversation About Me as an agent.
 
 ### Agent Configuration
-- Install official packages from **Agents → Download Agents** before trying to enable or configure them.
+- Install official packages from **Agents → Agent Organizer** before trying to enable or configure them.
 - Each compatible pipeline agent can be toggled on or off per chat.
 - Feature packages such as World Maps, Calls, and Conversation games add their own surfaces and controls after installation.
 - Agents have their own system prompts and can use separate models/connections

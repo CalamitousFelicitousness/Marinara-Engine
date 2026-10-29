@@ -18,8 +18,11 @@ import {
   useCreateAgent,
   type AgentConfigRow,
 } from "../../hooks/use-agents";
+import { useCapabilityAgentRegistry, useCapabilityCatalog } from "../../hooks/use-capability-packages";
 import { useConnections } from "../../hooks/use-connections";
 import { useOpenGameAssetsFolder } from "../../hooks/use-game-assets";
+import { AgentArtwork } from "./AgentArtwork";
+import { StoreBanner } from "./organizer/OrganizerParts";
 import {
   isCustomToolSelectable,
   useCustomToolCapabilities,
@@ -749,6 +752,14 @@ export function AgentEditor() {
   // Custom agent = DB entry with no matching built-in
   const isCustomAgent = !builtIn && !!dbConfig;
   const isNewCustomAgent = agentDetailId === "__new__";
+  // Downloaded agents show their store logo and banner, like their Organizer page.
+  const { data: capabilityAgents } = useCapabilityAgentRegistry();
+  const capabilityCatalog = useCapabilityCatalog();
+  const storeEntry = useMemo(() => {
+    const type = dbConfig?.type ?? builtIn?.id ?? agentDetailId;
+    const packageId = capabilityAgents?.find((agent) => agent.id === type)?.packageId;
+    return packageId ? capabilityCatalog.data?.packages.find((entry) => entry.manifest.id === packageId) : undefined;
+  }, [agentDetailId, builtIn, capabilityAgents, capabilityCatalog.data, dbConfig]);
   const customRunIntervalMeta =
     isCustomAgent || isNewCustomAgent
       ? getAgentRunIntervalMeta(isNewCustomAgent ? "__new__" : (dbConfig?.type ?? agentDetailId ?? ""), false)
@@ -2095,6 +2106,12 @@ export function AgentEditor() {
 
   return (
     <div className="mari-editor-shell mari-editor-legacy-bridge flex flex-1 flex-col overflow-hidden">
+      {storeEntry?.store?.bannerUrl && (
+        <div className="relative h-20 shrink-0 sm:h-28">
+          <StoreBanner entry={storeEntry} sizes="100vw" className="h-full w-full shadow-none!" />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-[var(--marinara-editor-bg,var(--background))] to-transparent" />
+        </div>
+      )}
       {/* ── Header ── */}
       <div className="mari-editor-header">
         <button
@@ -2106,7 +2123,13 @@ export function AgentEditor() {
           <ArrowLeft size="1.125rem" />
         </button>
         <div className="mari-editor-icon-tile">
-          <Sparkles size="1.125rem" className="max-md:!h-[0.875rem] max-md:!w-[0.875rem]" />
+          {storeEntry?.store?.iconUrl ? (
+            <span className="flex h-[70%] w-[70%]">
+              <AgentArtwork imageUrl={storeEntry.store.iconUrl} alt="" iconSize="1.125rem" />
+            </span>
+          ) : (
+            <Sparkles size="1.125rem" className="max-md:!h-[0.875rem] max-md:!w-[0.875rem]" />
+          )}
         </div>
         <input
           value={localName}

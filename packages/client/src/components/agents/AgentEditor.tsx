@@ -2106,12 +2106,6 @@ export function AgentEditor() {
 
   return (
     <div className="mari-editor-shell mari-editor-legacy-bridge flex flex-1 flex-col overflow-hidden">
-      {(storeEntry?.store?.bannerSmallUrl ?? storeEntry?.store?.bannerUrl) && (
-        <div className="relative aspect-[16/7] max-h-[300px] w-full shrink-0 sm:aspect-[16/5]">
-          <StoreBanner entry={storeEntry} sizes="100vw" className="h-full w-full shadow-none!" />
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-[var(--marinara-editor-bg,var(--background))] to-transparent" />
-        </div>
-      )}
       {/* ── Header ── */}
       <div className="mari-editor-header">
         <button
@@ -2249,6 +2243,14 @@ export function AgentEditor() {
       {/* ── Body ── */}
       <div className="mari-editor-content min-w-0 max-w-full overflow-x-hidden max-md:p-4">
         <div className="mari-editor-content-inner mari-editor-content-inner--wide w-full min-w-0 max-w-full space-y-6">
+          {/* Store banner of a downloaded agent; it scrolls with the form and keeps Back in the header. */}
+          {(storeEntry?.store?.bannerSmallUrl ?? storeEntry?.store?.bannerUrl) && (
+            <StoreBanner
+              entry={storeEntry}
+              sizes="(min-width: 1024px) 900px, 100vw"
+              className="aspect-[16/7] w-full rounded-xl sm:aspect-[16/6]"
+            />
+          )}
           {isNewCustomAgent && showCustomAgentNotice && (
             <div
               role="note"

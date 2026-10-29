@@ -37,7 +37,9 @@ import {
   packagedAgentDefinitionsSchema,
   capabilityReleaseNotesSchema,
   capabilityStoreEntrySchema,
+  capabilityStoreKitSchema,
   type CapabilityStoreListing,
+  type CapabilityStoreKit,
   type CapabilityCatalog,
   type CapabilityCatalogPackage,
   type StampedCapabilityCatalog,
@@ -7132,7 +7134,8 @@ export function resetCapabilityReleaseNotesCache() {
 
 type CapabilityStoreListings = Map<string, CapabilityStoreListing>;
 const withStoreListing = (store: CapabilityStoreListing | undefined) => (store ? { store } : {});
-const storeCache = new Map<string, { at: number; listings: CapabilityStoreListings }>();
+type StoreData = { listings: CapabilityStoreListings; kits: CapabilityStoreKit[] };
+const storeCache = new Map<string, { at: number } & StoreData>();
 
 /** A sidecar path as an absolute https URL on the sidecar's own origin, or undefined. */
 // Same host, not same repo: on raw.githubusercontent.com any repo passes. Images only, so that is fine.
@@ -7151,19 +7154,21 @@ function resolveStoreAssetUrl(path: string | undefined, storeUrl: string): strin
  * malformed document yields no listings and the Organizer falls back to catalog
  * categories. Each entry is parsed on its own so one bad entry drops only itself.
  */
-async function readStoreListings(
-  storeUrl: string | null,
-  fetchStore: typeof safeFetch,
-): Promise<CapabilityStoreListings> {
+async function readStoreListings(storeUrl: string | null, fetchStore: typeof safeFetch): Promise<StoreData> {
   const listings: CapabilityStoreListings = new Map();
-  if (!storeUrl) return listings;
+  const kits: CapabilityStoreKit[] = [];
+  if (!storeUrl) return { listings, kits };
   const cached = storeCache.get(storeUrl);
-  if (cached && Date.now() - cached.at < RELEASE_NOTES_TTL_MS) return cached.listings;
+  if (cached && Date.now() - cached.at < RELEASE_NOTES_TTL_MS) return cached;
   try {
     const response = await fetchCatalogDocument(storeUrl, fetchStore);
     if (response.ok) {
       const document = z
-        .object({ schemaVersion: z.literal(1), packages: z.record(z.string().max(80), z.unknown()) })
+        .object({
+          schemaVersion: z.literal(1),
+          packages: z.record(z.string().max(80), z.unknown()),
+          kits: z.array(z.unknown()).max(20).optional(),
+        })
         .safeParse(await response.json());
       for (const [id, raw] of Object.entries(document.success ? document.data.packages : {})) {
         const entry = capabilityStoreEntrySchema.safeParse(raw);
@@ -7178,6 +7183,10 @@ async function readStoreListings(
           ...(previewUrls.length ? { previewUrls } : {}),
         });
       }
+      for (const raw of document.success ? (document.data.kits ?? []) : []) {
+        const kit = capabilityStoreKitSchema.safeParse(raw);
+        if (kit.success) kits.push(kit.data);
+      }
       if (!document.success) logger.warn("Ignoring an Agent store document this Engine cannot parse: %s", storeUrl);
     } else if (response.status !== 404) {
       logger.warn("Agent store request failed with HTTP %d", response.status);
@@ -7185,8 +7194,8 @@ async function readStoreListings(
   } catch (error) {
     logger.warn(error, "Could not read Agent store data; continuing without it");
   }
-  storeCache.set(storeUrl, { at: Date.now(), listings });
-  return listings;
+  storeCache.set(storeUrl, { at: Date.now(), listings, kits });
+  return { listings, kits };
 }
 
 export const capabilityPackageManager = {
@@ -7237,7 +7246,7 @@ export const capabilityPackageManager = {
       preview: boolean,
     ): StampedCapabilityCatalogPackage => ({
       ...entry,
-      ...withStoreListing((preview ? previewStore : publishedStore).get(entry.manifest.id)),
+      ...withStoreListing((preview ? previewStore : publishedStore).listings.get(entry.manifest.id)),
       // Assigned here from the source URL and nowhere else. `preview` is absent
       // from the strict downloaded-entry schema, so a published or custom
       // catalog cannot ship an entry that claims preview provenance for itself
@@ -7250,21 +7259,28 @@ export const capabilityPackageManager = {
       },
     });
 
+    // Re-sorted because the two documents are each sorted only within
+    // themselves and the client renders catalog order as-is.
+    const packages = [
+      ...catalog.packages.map((entry) => decorate(entry, CATALOG_URL, false)),
+      ...(previewCatalogUrl ? previewPackages.map((entry) => decorate(entry, previewCatalogUrl, true)) : []),
+    ]
+      .filter((entry) => !NON_DOWNLOADABLE_CORE_PACKAGE_IDS.has(entry.manifest.id))
+      .sort(
+        (left, right) =>
+          CATALOG_SORT_COLLATOR.compare(left.manifest.name, right.manifest.name) ||
+          CATALOG_SORT_COLLATOR.compare(left.manifest.id, right.manifest.id),
+      );
+    const listedIds = new Set(packages.map((entry) => entry.manifest.id));
+    // Kits only name packages this catalog lists, so Install all never asks for an unknown id.
+    const kits = publishedStore.kits
+      .map((kit) => ({ ...kit, packages: kit.packages.filter((id) => listedIds.has(id)) }))
+      .filter((kit) => kit.packages.length > 0);
     return {
       ...catalog,
       provenance: { kind: isOfficialCatalogUrl(CATALOG_URL) ? "official" : "custom", url: CATALOG_URL },
-      // Re-sorted because the two documents are each sorted only within
-      // themselves and the client renders catalog order as-is.
-      packages: [
-        ...catalog.packages.map((entry) => decorate(entry, CATALOG_URL, false)),
-        ...(previewCatalogUrl ? previewPackages.map((entry) => decorate(entry, previewCatalogUrl, true)) : []),
-      ]
-        .filter((entry) => !NON_DOWNLOADABLE_CORE_PACKAGE_IDS.has(entry.manifest.id))
-        .sort(
-          (left, right) =>
-            CATALOG_SORT_COLLATOR.compare(left.manifest.name, right.manifest.name) ||
-            CATALOG_SORT_COLLATOR.compare(left.manifest.id, right.manifest.id),
-        ),
+      packages,
+      ...(kits.length ? { kits } : {}),
     };
   },
 

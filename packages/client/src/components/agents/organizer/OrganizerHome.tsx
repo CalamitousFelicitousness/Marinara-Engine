@@ -1,5 +1,6 @@
 import { ChevronRight } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
+import type { CapabilityStoreKit } from "@marinara-engine/shared";
 import { cn } from "../../../lib/utils";
 import {
   featuredEntries,
@@ -23,6 +24,8 @@ import {
 } from "./OrganizerParts";
 
 const SHELF_SIZE = 4;
+
+export type OrganizerKit = CapabilityStoreKit & { entries: readonly OrganizerEntry[] };
 
 function FeaturedCard({ entry, large, priority }: { entry: OrganizerEntry; large: boolean; priority: boolean }) {
   const { go } = useOrganizer();
@@ -70,10 +73,14 @@ function FeaturedCard({ entry, large, priority }: { entry: OrganizerEntry; large
 
 export function OrganizerHome({
   entries,
+  kits,
   onUpdateAll,
+  onInstallKit,
 }: {
   entries: readonly OrganizerEntry[];
+  kits: readonly OrganizerKit[];
   onUpdateAll: () => void;
+  onInstallKit: (entries: readonly OrganizerEntry[]) => void;
 }) {
   const { installedById, go, pending } = useOrganizer();
   const { t: localizeUi } = useUiTranslation();
@@ -124,6 +131,46 @@ export function OrganizerHome({
           >
             {localizeUi("ui.agents.organizer.updateAll")}
           </button>
+        </section>
+      )}
+
+      {kits.length > 0 && (
+        <section aria-labelledby="organizer-kits">
+          <h2 id="organizer-kits" className="mb-3 text-lg font-semibold text-[var(--foreground)]">
+            {localizeUi("ui.agents.organizer.starterKits")}
+          </h2>
+          <ul className="grid gap-3 md:grid-cols-2">
+            {kits.map((kit) => {
+              const missing = kit.entries.filter((entry) => !installedById.has(entry.manifest.id)).length;
+              return (
+                <li
+                  key={kit.id}
+                  className="flex items-center gap-3 rounded-2xl border border-[var(--border)] px-4 py-3"
+                >
+                  <IconStack entries={kit.entries} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-[var(--foreground)]">{kit.name}</p>
+                    <p className="truncate text-xs text-[var(--muted-foreground)]">
+                      {kit.tagline || kit.entries.map((entry) => entry.manifest.name).join(", ")}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className={cn(
+                      missing ? PRIMARY_ACTION : SECONDARY_ACTION,
+                      "h-8 shrink-0 px-3 text-xs font-semibold",
+                    )}
+                    disabled={pending || missing === 0}
+                    onClick={() => onInstallKit(kit.entries)}
+                  >
+                    {missing
+                      ? localizeUi("ui.agents.organizer.getKit", { count: missing })
+                      : localizeUi("ui.agents.organizer.kitInstalled")}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
         </section>
       )}
 

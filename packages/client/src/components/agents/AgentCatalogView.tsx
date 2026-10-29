@@ -496,7 +496,19 @@ export function AgentCatalogView() {
   } else if (page.kind === "section") {
     content = <SectionPage section={page.id} entries={entries.filter((entry) => sectionOf(entry) === page.id)} />;
   } else {
-    content = <OrganizerHome entries={entries} onUpdateAll={() => void handleUpdateAll()} />;
+    content = (
+      <OrganizerHome
+        entries={entries}
+        kits={(catalog.data?.kits ?? []).map((kit) => ({
+          ...kit,
+          entries: all.filter((entry) => kit.packages.includes(entry.manifest.id)),
+        }))}
+        onUpdateAll={() => void handleUpdateAll()}
+        onInstallKit={(kitEntries) =>
+          void handleInstallAll(kitEntries.filter((entry) => !installedById.has(entry.manifest.id)))
+        }
+      />
+    );
   }
 
   return (

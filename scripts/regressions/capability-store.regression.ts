@@ -79,6 +79,27 @@ try {
   });
   assert.equal(listings.poker, undefined, "A bad entry drops only itself");
 
+  resetCapabilityReleaseNotesCache();
+  const withKits = await capabilityPackageManager.catalog(
+    serve(() =>
+      json({
+        schemaVersion: 1,
+        packages: {},
+        kits: [
+          { id: "starter", name: "Starter", packages: ["chess", "ghost"] },
+          { id: "broken" },
+          { id: "unknown", name: "Unknown", packages: ["ghost"] },
+        ],
+      }),
+    ),
+    null,
+  );
+  assert.deepEqual(
+    withKits.kits,
+    [{ id: "starter", name: "Starter", tagline: "", packages: ["chess"] }],
+    "Kits keep only catalog packages; bad or empty kits drop",
+  );
+
   for (const broken of [notFound, () => json({ nope: true }), () => new Response("{", { status: 200 })]) {
     const result = await read(broken);
     assert.deepEqual(Object.keys(result), ["chess", "poker"], "The catalog survives a broken store sidecar");

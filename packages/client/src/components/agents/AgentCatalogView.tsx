@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import {
   ArrowLeft,
+  Check,
+  ChevronRight,
   Download,
   GitFork,
   Home,
@@ -39,6 +41,7 @@ import { AgentModeFilter, type AgentModeFilterValue } from "./AgentModeFilter";
 import { CustomAgentRepositoriesModal } from "./CustomAgentRepositoriesModal";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import {
+  checkReasonOf,
   hasUpdate,
   ORGANIZER_SECTIONS,
   packageModes,
@@ -48,7 +51,7 @@ import {
   type OrganizerEntry,
   type OrganizerPage,
 } from "./organizer/organizer-model";
-import { IconStack, OrganizerContext, type OrganizerActions } from "./organizer/OrganizerParts";
+import { AgentIcon, IconStack, OrganizerContext, type OrganizerActions } from "./organizer/OrganizerParts";
 import { OrganizerHome } from "./organizer/OrganizerHome";
 import { InstalledPage, SearchResults, SectionPage, UpdatesPage } from "./organizer/OrganizerLists";
 import { AgentPage } from "./organizer/AgentPage";
@@ -82,6 +85,13 @@ export function AgentCatalogView() {
   const customRepositories = useCustomAgentRepositories();
   const [query, setQuery] = useState("");
   const [modeFilter, setModeFilter] = useState<AgentModeFilterValue>("all");
+  const [openSections, setOpenSections] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleSection = (section: string) =>
+    setOpenSections((current) => {
+      const next = new Set(current);
+      if (!next.delete(section)) next.add(section);
+      return next;
+    });
   const [page, setPage] = useState<OrganizerPage>(() =>
     initialPackageId ? { kind: "agent", id: initialPackageId } : { kind: "home" },
   );
@@ -617,27 +627,79 @@ export function AgentCatalogView() {
                   {localizeUi("ui.agents.organizer.sectionsHeading")}
                 </h2>
                 <div className="space-y-0.5">
-                  {sectionCounts.map(({ section, entries: sectionEntries }) => {
-                    const target = { kind: "section", id: section } as const;
-                    return (
-                      <button
-                        key={section}
-                        type="button"
-                        onClick={() => go(target)}
-                        aria-current={isCurrent(target) ? "page" : undefined}
-                        className={cn(
-                          "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-[var(--sidebar-accent)]",
-                          isCurrent(target) && "bg-[var(--marinara-chat-chrome-highlight-bg)] font-semibold",
-                        )}
-                      >
-                        <IconStack entries={sectionEntries} />
-                        <span className="min-w-0 flex-1 truncate">{localizeUi(sectionLabelKey(section))}</span>
-                        <span className="text-xs tabular-nums text-[var(--muted-foreground)]">
-                          {sectionEntries.length}
-                        </span>
-                      </button>
-                    );
-                  })}
+                {sectionCounts.map(({ section, entries: sectionEntries }) => {
+                  const target = { kind: "section", id: section } as const;
+                  const expanded = openSections.has(section);
+                  const sectionLabel = localizeUi(sectionLabelKey(section));
+                  return (
+                    <div key={section}>
+                      <div className="flex items-center">
+                        <button
+                          type="button"
+                          onClick={() => go(target)}
+                          aria-current={isCurrent(target) ? "page" : undefined}
+                          className={cn(
+                            "flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-[var(--sidebar-accent)]",
+                            isCurrent(target) && "bg-[var(--marinara-chat-chrome-highlight-bg)] font-semibold",
+                          )}
+                        >
+                          <IconStack entries={sectionEntries} />
+                          <span className="min-w-0 flex-1 truncate">{sectionLabel}</span>
+                          <span className="text-xs tabular-nums text-[var(--muted-foreground)]">
+                            {sectionEntries.length}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleSection(section)}
+                          aria-expanded={expanded}
+                          aria-label={localizeUi("ui.agents.organizer.showSectionAgents", { section: sectionLabel })}
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--muted-foreground)] hover:bg-[var(--sidebar-accent)]"
+                        >
+                          <ChevronRight
+                            size="0.9rem"
+                            aria-hidden="true"
+                            className={cn("transition-transform", expanded && "rotate-90")}
+                          />
+                        </button>
+                      </div>
+                      {expanded && (
+                        <ul className="mb-1 ml-5 space-y-0.5 border-l border-[var(--border)] pl-2">
+                          {sectionEntries.map((entry) => {
+                            const installed = installedById.get(entry.manifest.id);
+                            return (
+                              <li key={entry.manifest.id}>
+                                <button
+                                  type="button"
+                                  onClick={() => go({ kind: "agent", id: entry.manifest.id })}
+                                  className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors hover:bg-[var(--sidebar-accent)]"
+                                >
+                                  <AgentIcon entry={entry} className="h-7 w-7 rounded-lg" />
+                                  <span className="min-w-0 flex-1 truncate">{entry.manifest.name}</span>
+                                  {checkReasonOf(installed) !== null ? (
+                                    <span className="text-xs font-semibold text-[var(--destructive)]">
+                                      {localizeUi("ui.agents.organizer.needsCheck")}
+                                    </span>
+                                  ) : hasUpdate(entry, installed) ? (
+                                    <span className="text-xs font-semibold text-[var(--marinara-chat-chrome-highlight-text,var(--primary))]">
+                                      {localizeUi("ui.agents.agentcatalogview.update")}
+                                    </span>
+                                  ) : installed ? (
+                                    <Check
+                                      size="0.85rem"
+                                      className="text-[var(--muted-foreground)]"
+                                      aria-label={localizeUi("ui.agents.organizer.installed")}
+                                    />
+                                  ) : null}
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </div>
+                  );
+                })}
                 </div>
               </div>
             </aside>

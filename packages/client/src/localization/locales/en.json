@@ -6251,6 +6251,7 @@
   "ui.agents.organizer.seeAll_other": "See all {{count}}",
   "ui.agents.organizer.seeWhatsNew": "See what's new",
   "ui.agents.organizer.settings": "Settings",
+  "ui.agents.organizer.showSectionAgents": "Show agents in {{section}}",
   "ui.agents.organizer.sortInstalled": "Recently installed",
   "ui.agents.organizer.sortSize": "Largest first",
   "ui.agents.organizer.sortStore": "Store order",

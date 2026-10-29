@@ -65,7 +65,7 @@ function FeaturedCard({ entry, large, priority }: { entry: OrganizerEntry; large
         </span>
       </button>
       <div className={cn("absolute right-4", large ? "bottom-5" : "bottom-4")}>
-        <AgentAction entry={entry} />
+        <AgentAction entry={entry} light />
       </div>
     </div>
   );
@@ -139,7 +139,7 @@ export function OrganizerHome({
           <h2 id="organizer-kits" className="mb-3 text-lg font-semibold text-[var(--foreground)]">
             {localizeUi("ui.agents.organizer.starterKits")}
           </h2>
-          <ul className="grid grid-cols-[minmax(0,1fr)] gap-3 md:grid-cols-2">
+          <ul className="grid grid-cols-[minmax(0,1fr)] gap-3 xl:grid-cols-2">
             {kits.map((kit) => {
               const missing = kit.entries.filter((entry) => !installedById.has(entry.manifest.id)).length;
               return (
@@ -198,7 +198,7 @@ export function OrganizerHome({
                 </button>
               )}
             </div>
-            <ul className="grid gap-x-6 md:grid-cols-2">
+            <ul className="grid gap-x-6 xl:grid-cols-2">
               {shelf.slice(0, SHELF_SIZE).map((entry) => (
                 <AgentRow key={entry.manifest.id} entry={entry} />
               ))}

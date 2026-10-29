@@ -1205,6 +1205,7 @@ export function AgentsPanel() {
         onRemoveFromChat: () =>
           void removeFromActiveChat({ id: agent.id, type: agent.type, name: getAgentLibraryDisplayName(agent) }),
         imagePath: agent.imagePath || (builtInMeta ? catalogArtworkByAgentId.get(agent.type) : null) || null,
+        storeLogo: !agent.imagePath,
         custom,
         openAgentDetail,
         onDuplicate: custom && capabilityAgentRegistryReady ? () => void handleDuplicateAgent(agent) : undefined,
@@ -1707,6 +1708,7 @@ export function AgentsPanel() {
                   inChat: activeChat ? isInActiveChat({ id: agent.id, type: agent.id }) : undefined,
                   onRemoveFromChat: () => void removeFromActiveChat({ id: agent.id, type: agent.id, name: agent.name }),
                   imagePath: sourceAgent.imagePath || catalogArtworkByAgentId.get(agent.id) || null,
+                  storeLogo: !sourceAgent.imagePath,
                   custom: false,
                   openAgentDetail,
                   onImagePick: () => handlePickAgentImage(agent.id),
@@ -2055,6 +2057,7 @@ function renderAgentCard({
   name,
   description,
   imagePath,
+  storeLogo = false,
   custom,
   openAgentDetail,
   onDuplicate,
@@ -2079,6 +2082,8 @@ function renderAgentCard({
   name: string;
   description: string;
   imagePath?: string | null;
+  /** The image is the store logo, not a picture the user set, so it gets a margin. */
+  storeLogo?: boolean;
   custom: boolean;
   openAgentDetail: (id: string) => void;
   onDuplicate?: () => void;
@@ -2101,6 +2106,7 @@ function renderAgentCard({
   const iconClasses = cn(
     "relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl shadow-sm",
     imagePath ? "bg-[var(--secondary)]" : AGENT_GRADIENT_SURFACE,
+    storeLogo && "[&>img]:h-[68%]! [&>img]:w-[68%]! [&>img]:object-contain!",
   );
 
   return (

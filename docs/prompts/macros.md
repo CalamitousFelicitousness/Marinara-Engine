@@ -41,7 +41,7 @@ These macros pull in the names and card fields of the person speaking and the ch
 | `{{21-character-card-ID}}` | Name of another character. Replace the placeholder text with that card's exact 21-character ID to pull the card into context. |
 | `{{persona-21-character-card-ID}}` | Name of another persona. Replace the placeholder text after `persona-` with that card's exact 21-character ID to pull the card into context. |
 | `{{charNamePhonetic}}` | The character's Phonetic name, or `{{char}}` when it is empty. |
-| `{{characters}}` | Every character in the chat, joined by commas. |
+| `{{characters}}` | Every character in the chat, including inactive characters, joined by commas. Only names are included; inactive character cards stay excluded from the prompt. |
 | `{{group}}` | Every other active character in the group chat, excluding the current responder. The persona is not part of this character roster. |
 | `{{persona}}` | Your persona's Description, Personality, Backstory, Appearance, and Scenario, joined by new lines. |
 | `{{personaDescription}}` | Your persona's Description field. |

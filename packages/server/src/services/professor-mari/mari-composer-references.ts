@@ -36,6 +36,8 @@ const COMPOSER_REFERENCE_KINDS: ReadonlySet<string> = new Set<ReferenceKind>([
 export const COMPOSER_REFERENCE_BUDGET_CAP = 60_000;
 /** The id prefix of the skills that ship with the app; those open as handbooks instead of being injected. */
 const BUILTIN_SKILL_PREFIX = "builtin-";
+/** Linked with a character, this handbook also sends the character's onboarding block: the block is what it works on. */
+const ONBOARDING_SKILL_ID = "builtin-onboarding";
 
 /** Characters one message's links may spend: a quarter of the connection's context (x4 chars per token), capped. */
 export function composerReferenceBudget(maxContext: number | null | undefined): number {
@@ -92,6 +94,7 @@ async function readReference(
   reader: ComposerReferenceReader,
   reference: MariComposerReference,
   sessionId: string,
+  withOnboarding = false,
 ): Promise<{ text: string; truncation?: MariDbCommandResult["truncation"] } | null> {
   const run = async (envelope: Record<string, unknown>) => {
     const result = await reader.executeAction({ ...envelope, sessionId });
@@ -116,7 +119,18 @@ async function readReference(
     };
   }
   const result = await run({ action: SINGLE_READ_ACTIONS[reference.kind], id: reference.id });
-  return result ? { text: stringifyOutput(result.output), truncation: result.truncation } : null;
+  if (!result) return null;
+  const onboarding =
+    withOnboarding && reference.kind === "character"
+      ? await run({ action: "character.onboarding.get", characterId: reference.id })
+      : null;
+  return {
+    text: [
+      stringifyOutput(result.output),
+      ...(onboarding ? ["", "app_data character.onboarding.get:", stringifyOutput(onboarding.output)] : []),
+    ].join("\n"),
+    truncation: result.truncation ?? onboarding?.truncation,
+  };
 }
 
 /** Reads each reference once, in order, spending the budget; the first that does not fit and all after it drop to a note. */
@@ -129,6 +143,9 @@ export async function resolveComposerReferences(
   const resolved: ResolvedComposerReferences = { payloads: [], notes: [], linkedHandbookIds: [] };
   let remaining = budgetChars;
   let overBudget = false;
+  const withOnboarding = references.some(
+    (reference) => reference.kind === "skill" && reference.id === ONBOARDING_SKILL_ID,
+  );
   for (const reference of references) {
     const title = composerReferenceTitle(reference);
     if (!isComposerReferenceKind(reference.kind)) {
@@ -146,7 +163,7 @@ export async function resolveComposerReferences(
     }
     let read: Awaited<ReturnType<typeof readReference>> = null;
     try {
-      read = await readReference(reader, reference, sessionId);
+      read = await readReference(reader, reference, sessionId, withOnboarding);
     } catch (err) {
       // Shown to her as not found below; the log keeps the cause (a refused doc, a failing store).
       logger.warn(err, "Professor Mari: failed to read linked %s reference", reference.kind);

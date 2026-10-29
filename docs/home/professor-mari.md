@@ -140,16 +140,16 @@ Type `@` in the message box to point her at something in your library, so she do
 
 What each link sends:
 
-| Link                       | What she gets                                                                                                       |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Character, persona, preset | The whole item, as she would read it herself                                                                        |
-| Lorebook                   | Its settings and the list of its entries (link an entry for its full text)                                          |
-| Lorebook entry             | The entry, plus which lorebook it belongs to                                                                        |
-| Skill                      | Your own skill's instructions. A built-in skill opens as her handbook for that message instead                      |
-| Memory                     | The memory's full text, even when it is switched off. Persistent memories are not listed, since she always has them |
-| Chat                       | The chat's details and its newest 30 messages                                                                       |
-| Agent                      | The agent's settings                                                                                                |
-| Doc                        | The whole page from this documentation                                                                              |
+| Link                       | What she gets                                                                                                                                                                                  |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Character, persona, preset | The whole item, as she would read it herself                                                                                                                                                   |
+| Lorebook                   | Its settings and the list of its entries (link an entry for its full text)                                                                                                                     |
+| Lorebook entry             | The entry, plus which lorebook it belongs to                                                                                                                                                   |
+| Skill                      | Your own skill's instructions. A built-in skill opens as her handbook for that message instead. Link the onboarding skill with a character and she also gets that character's onboarding block |
+| Memory                     | The memory's full text, even when it is switched off. Persistent memories are not listed, since she always has them                                                                            |
+| Chat                       | The chat's details and its newest 30 messages                                                                                                                                                  |
+| Agent                      | The agent's settings                                                                                                                                                                           |
+| Doc                        | The whole page from this documentation                                                                                                                                                         |
 
 A link is sent **once**, with the message you link it in. On later turns she only sees a one-line note that you linked it, and reads it again if she needs it. One message carries up to 8 links. If they add up to more than about a quarter of your connection's context (60,000 characters at most), the last ones are not sent; she gets a note instead and can read them herself.
 

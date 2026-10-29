@@ -106,6 +106,19 @@ try {
     assert.ok(note.endsWith(`read with app_data character.get ${alice})`), note);
   }
   // A kind outside the allowlist is refused, not read.
+  // A character linked with the onboarding handbook also sends its onboarding block; without it, it does not.
+  reads.length = 0;
+  const withOnboarding = await resolveComposerReferences(
+    spy,
+    [aliceRef, { kind: "skill", id: "builtin-onboarding", label: "Interactive Onboarding" }],
+    60_000,
+  );
+  assert.deepEqual(reads, ["character.get", "character.onboarding.get"]);
+  assert.deepEqual(withOnboarding.linkedHandbookIds, ["builtin-onboarding"]);
+  assert.match(withOnboarding.payloads[0]!.content, /app_data character\.onboarding\.get:/);
+  assert.match(withOnboarding.payloads[0]!.content, /The card has no onboarding yet\./);
+  assert.doesNotMatch(resolved.payloads[0]!.content, /onboarding\.get/);
+
   const readsBefore = reads.length;
   const refused = await resolveComposerReferences(
     spy,

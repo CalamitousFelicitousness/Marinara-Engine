@@ -108,9 +108,9 @@ assert.deepEqual(
   "only attached characters count; NPCs and entries without an id are skipped",
 );
 assert.deepEqual(
-  presentFromTracker([{ characterId: "npc-guard", name: "Guard" }], ids),
-  [],
-  "a scene of NPCs only is data: no attached character is present",
+  presentFromTracker([{ characterId: "npc-guard", name: "Guard" }, { characterId: "Kurt", name: "Kurt" }], ids),
+  null,
+  "a list naming no attached character is no data: NPCs only and wrong ids look the same",
 );
 
 // ── questions and state ─────────────────────────────────────────────────────────

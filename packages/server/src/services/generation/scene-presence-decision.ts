@@ -86,13 +86,18 @@ export function presentFromDecision(
 /**
  * Chat character ids in the Character Tracker's present characters, or null when it has no
  * list to read. An empty list is "no data", as the tracker merge treats it, not "nobody here".
+ *
+ * A list naming no attached character is no data too: the tracker model writes the ids, so
+ * a scene of NPCs only looks the same as ids it got wrong, and keeping the cast costs less
+ * than sending it away.
  */
 export function presentFromTracker(presentCharacters: unknown, candidateIds: string[]): string[] | null {
   if (!Array.isArray(presentCharacters) || presentCharacters.length === 0) return null;
   const candidates = new Set(candidateIds);
-  return presentCharacters
+  const present = presentCharacters
     .map((entry) => (entry && typeof entry === "object" ? (entry as { characterId?: unknown }).characterId : null))
     .filter((id): id is string => typeof id === "string" && candidates.has(id));
+  return present.length > 0 ? present : null;
 }
 
 /**

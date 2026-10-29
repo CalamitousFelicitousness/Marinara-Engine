@@ -3699,7 +3699,8 @@ def format_contract_entries_for_prompt(entries, limit=12_000):
 
 SUMMARY_HEADING = "### 🧭 Summary"
 NO_SUMMARY = "No summary produced."
-SUMMARY_UPDATE_RE = re.compile(r"^\*Since `[^`]+`:\* ")
+SUMMARY_UPDATE = "*Since `{}`:* "
+SUMMARY_UPDATE_RE = re.compile("^" + re.escape(SUMMARY_UPDATE).replace(re.escape("{}"), "[^`]+"))
 # The incremental examinations a summary keeps beneath the full one, newest last.
 MAX_SUMMARY_UPDATES = 3
 
@@ -3726,9 +3727,10 @@ def prior_walkthrough_summary(pr_num):
     return {"since": STATE_MARKER_RE.search(walkthrough_header(body)).group(1), "lines": walkthrough_summary(body)}
 
 
-def summary_lines(review_obj):
+def summary_lines(review_obj, head_sha):
     """A full examination's summary stands alone. An incremental one keeps the summary it was handed and adds its own
-    beneath it, one line per examination, the oldest dropped past the limit."""
+    beneath it, one line per examination, the oldest dropped past the limit. A rerun on the head that summary already
+    covers (only judging candidates it left unjudged) has no new commits to describe and adds nothing."""
     current = [" ".join(str(line).split()) for line in (review_obj.get("change_summary") or [])[:2]]
     current = [line for line in current if line]
     prior = review_obj.get("prior_summary") or {}
@@ -3737,8 +3739,8 @@ def summary_lines(review_obj):
         return current or [NO_SUMMARY]
     original = [line for line in carried if not SUMMARY_UPDATE_RE.match(line)]
     updates = [line for line in carried if SUMMARY_UPDATE_RE.match(line)]
-    if current:
-        updates.append(f"*Since `{short_ref(prior.get('since'))}`:* " + " ".join(current))
+    if current and prior.get("since") != head_sha:
+        updates.append(SUMMARY_UPDATE.format(short_ref(prior.get("since"))) + " ".join(current))
     return original + updates[-MAX_SUMMARY_UPDATES:]
 
 
@@ -3750,7 +3752,7 @@ def render_walkthrough(
     head_sha,
     prior_contracts=None,
 ):
-    summary = summary_lines(review_obj)
+    summary = summary_lines(review_obj, head_sha)
     questions = review_obj.get("open_questions") or []
     checked = review_obj.get("what_i_checked") or []
     pre_merge = review_obj.get("pre_merge_checks") or []

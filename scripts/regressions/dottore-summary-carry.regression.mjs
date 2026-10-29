@@ -60,6 +60,9 @@ print("PASS incremental lines are capped and the full summary survives")
 assert summary(incremental(full, [], heads[1])) == summary(full)
 print("PASS an incremental review without a summary keeps the prior one")
 
+assert summary(incremental(full, ["Judged what was left."], heads[0])) == summary(full)
+print("PASS a rerun on the reviewed head adds no update line")
+
 again = render({"mode": "full", "change_summary": ["A fresh look."], "prior_summary": handed(second)}, heads[2])
 assert summary(again) == ["A fresh look."], summary(again)
 print("PASS full review writes the summary afresh")

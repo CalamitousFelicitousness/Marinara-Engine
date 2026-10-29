@@ -108,7 +108,7 @@ export function OrganizerHome({
       {updates.length > 0 && (
         <section className="flex flex-wrap items-center gap-3 rounded-2xl border border-[var(--border)] px-4 py-3">
           <IconStack entries={updates} />
-          <div className="min-w-0 flex-1">
+          <div className="min-w-[10rem] flex-1">
             <p className="text-sm font-semibold text-[var(--foreground)]">
               {localizeUi("ui.agents.organizer.updatesReady", { count: updates.length })}
             </p>
@@ -139,7 +139,7 @@ export function OrganizerHome({
           <h2 id="organizer-kits" className="mb-3 text-lg font-semibold text-[var(--foreground)]">
             {localizeUi("ui.agents.organizer.starterKits")}
           </h2>
-          <ul className="grid gap-3 md:grid-cols-2">
+          <ul className="grid grid-cols-[minmax(0,1fr)] gap-3 md:grid-cols-2">
             {kits.map((kit) => {
               const missing = kit.entries.filter((entry) => !installedById.has(entry.manifest.id)).length;
               return (

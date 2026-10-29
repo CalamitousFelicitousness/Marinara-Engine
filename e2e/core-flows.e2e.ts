@@ -3825,7 +3825,7 @@ test("Character row actions can add a resource to the active chat without draggi
     await clickTopbarPanel(page, "characters");
 
     // This action proof needs one character, not the shard's accumulated catalog.
-    await page.getByRole("textbox", { name: "Search characters", exact: true }).fill(characterName);
+    await page.getByRole("textbox", { name: "Search characters/tags", exact: true }).fill(characterName);
     const folderRow = page.locator(`[data-character-folder-id="${group.id}"]`);
     const folderHeader = folderRow.locator(':scope > [role="button"]');
     await folderHeader.click();

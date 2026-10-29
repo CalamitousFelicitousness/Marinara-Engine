@@ -150,7 +150,7 @@ If `data/capability-runtime-snapshots` or `data/capability-packages/versions` ha
 
 Package downloads are rejected when their checksum, declared file list, Engine version range, or archive paths do not match the official catalog. Update Marinara Engine first, refresh the catalog, and retry. Do not manually extract an artifact into the data directory.
 
-Agent updates are never applied at startup. When a newer compatible version is available, Marinara asks whether to apply it. Choose **No** to keep the installed version; the **Update** button remains available in **Agents → Agent Organizer**. A failed update also leaves the installed version registered, and a newly updated server runtime that fails its startup self-check rolls back to the previous version.
+Agent updates are never applied at startup. When a newer compatible version is available, Marinara asks whether to apply it. Choose **Not now** to keep the installed version; the **Update** button remains available in **Agents → Agent Organizer**. A failed update also leaves the installed version registered, and a newly updated server runtime that fails its startup self-check rolls back to the previous version.
 
 ## Accessing Marinara from another device
 

@@ -161,7 +161,7 @@ export function AgentUpdateDialog({
                       {localizeUi("ui.agents.agentupdatedialog.updated")}
                     </span>
                   ) : result?.status === "failed" ? (
-                    <span className="text-xs font-semibold text-[var(--destructive)]">
+                    <span className="text-xs font-semibold text-red-500">
                       {localizeUi("ui.agents.agentupdatedialog.failed")}
                     </span>
                   ) : skipped ? (
@@ -175,8 +175,8 @@ export function AgentUpdateDialog({
                   )}
                 </div>
                 {result?.status === "failed" && (
-                  <div className="mt-2 flex items-center gap-2 rounded-lg bg-[var(--destructive)]/10 px-3 py-2">
-                    <p className="min-w-0 flex-1 text-xs text-[var(--destructive)]">{result.error}</p>
+                  <div className="mt-2 flex items-center gap-2 rounded-lg bg-red-500/10 px-3 py-2">
+                    <p className="min-w-0 flex-1 text-xs text-red-500">{result.error}</p>
                     <button
                       type="button"
                       disabled={running}

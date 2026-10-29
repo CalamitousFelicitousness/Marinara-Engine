@@ -6,7 +6,7 @@ import {
   type StampedCapabilityCatalogPackage,
 } from "@marinara-engine/shared";
 import { isAppCapabilityPackage } from "../../../hooks/use-capability-packages";
-import { capabilityPackageAssetUrl } from "../../chat/HomeBrowserHub";
+import { capabilityPackageAssetUrl } from "../../../lib/capability-package-assets";
 
 export type OrganizerEntry = StampedCapabilityCatalogPackage;
 

@@ -63,7 +63,7 @@ export function AgentAction({ entry, size = "sm" }: { entry: OrganizerEntry; siz
   const { installedById, busyId, pending, install, open } = useOrganizer();
   const { t: localizeUi } = useUiTranslation();
   const installed = installedById.get(entry.manifest.id);
-  const sizing = size === "lg" ? "h-10 px-5 text-sm" : "h-8 px-3 text-xs";
+  const sizing = size === "lg" ? "h-10 px-5 text-sm" : "h-8 px-3 text-xs [@media(pointer:coarse)]:h-11";
   const stop = (event: MouseEvent) => event.stopPropagation();
   if (busyId === entry.manifest.id) {
     return (
@@ -121,7 +121,11 @@ export function MenuButton({ entry, className }: { entry: OrganizerEntry; classN
   return (
     <button
       type="button"
-      className={cn(SECONDARY_ACTION, "h-8 w-8 shrink-0 p-0", className)}
+      className={cn(
+        SECONDARY_ACTION,
+        "h-8 w-8 shrink-0 p-0 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11",
+        className,
+      )}
       aria-label={localizeUi("ui.agents.organizer.moreFor", { name: entry.manifest.name })}
       aria-haspopup="menu"
       onClick={(event) => {

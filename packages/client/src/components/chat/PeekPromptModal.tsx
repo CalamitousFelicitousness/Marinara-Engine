@@ -708,7 +708,11 @@ export function PeekPromptModal({ data: originalData, onClose }: PeekPromptModal
         )}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(event) => {
-          if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "f") {
+          if (
+            (event.ctrlKey || event.metaKey) &&
+            !event.altKey &&
+            (event.key.toLowerCase() === "f" || (event.code === "KeyF" && !/^[a-z]$/i.test(event.key)))
+          ) {
             event.preventDefault();
             event.stopPropagation();
             findRef.current?.focus();

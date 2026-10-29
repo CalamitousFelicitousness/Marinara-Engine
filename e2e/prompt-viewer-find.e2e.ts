@@ -102,6 +102,30 @@ for (const mode of ["roleplay", "conversation"] as const) {
         await page.keyboard.press(shortcut);
         await expect(find).toBeFocused();
       }
+      // Layout events keep the typed Latin letter authoritative, with a physical-key fallback for other alphabets.
+      for (const target of [viewer, find, viewer.getByRole("button").last()]) {
+        for (const modifiers of [{ ctrlKey: true }, { metaKey: true }]) {
+          for (const { key, code, altKey, captured } of [
+            { key: "u", code: "KeyF", altKey: false, captured: false },
+            { key: "а", code: "KeyF", altKey: true, captured: false },
+            { key: "f", code: "KeyU", altKey: false, captured: true },
+            { key: "а", code: "KeyF", altKey: false, captured: true },
+          ]) {
+            await target.focus();
+            const prevented = await target.evaluate(
+              (node, init) => {
+                const event = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init });
+                node.dispatchEvent(event);
+                return event.defaultPrevented;
+              },
+              { key, code, altKey, ...modifiers },
+            );
+            expect(prevented, `${JSON.stringify(modifiers)} ${key}/${code} alt=${altKey}`).toBe(captured);
+            if (captured) await expect(find).toBeFocused();
+            else await expect(target).toBeFocused();
+          }
+        }
+      }
       await find.fill("find_target");
       await expect(viewer.getByRole("status")).toHaveText("1 of 3");
       await expect(viewer.locator("mark[data-prompt-match]")).toHaveCount(3);

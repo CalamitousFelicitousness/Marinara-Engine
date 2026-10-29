@@ -1,4 +1,4 @@
-import { ChevronRight, Pencil } from "lucide-react";
+import { ChevronLeft, ChevronRight, Pencil } from "lucide-react";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { resourceResultType } from "../../../lib/command-icons";
@@ -18,6 +18,8 @@ export type MariReferencePickerProps = {
   fieldsDrillable?: boolean;
   onPick: (index: number) => void;
   onDrill: (index: number) => void;
+  /** Leaves the entries or fields for the groups (ArrowLeft's tap twin). */
+  onBack?: () => void;
 };
 
 export const referenceOptionId = (listboxId: string, index: number) => `${listboxId}-option-${index}`;
@@ -41,6 +43,7 @@ export function MariReferencePicker({
   fieldsDrillable = false,
   onPick,
   onDrill,
+  onBack,
 }: MariReferencePickerProps) {
   const { t } = useTranslation();
   const groupLabels: Record<PickerRow["group"], string> = {
@@ -151,7 +154,19 @@ export function MariReferencePicker({
                 state={index === activeIndex ? "selected" : undefined}
                 onClick={() => onPick(index)}
                 action={
-                  !drilled && (row.group === "lorebook" || (row.group === "open" && fieldsDrillable)) ? (
+                  // Drilled in, the lorebook or editor row leads and takes you back out.
+                  drilled && index === 0 && onBack ? (
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      className="mari-reference-picker__drill"
+                      aria-label={t("mari.composerReferences.back")}
+                      title={t("mari.composerReferences.back")}
+                      onClick={onBack}
+                    >
+                      <ChevronLeft aria-hidden="true" />
+                    </button>
+                  ) : !drilled && (row.group === "lorebook" || (row.group === "open" && fieldsDrillable)) ? (
                     <button
                       type="button"
                       tabIndex={-1}

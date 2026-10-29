@@ -259,6 +259,15 @@ export function useMariComposerReferences({
     else setDrill(null);
   };
 
+  // A token is keyed by where it sits, so a deleted `@` typed again in the same spot would reopen
+  // drilled in (or stay closed): the end of a token forgets both.
+  const trackToken = useCallback((next: ActiveComposerToken | null) => {
+    setToken(next);
+    if (next) return;
+    setDrill(null);
+    setDismissedKey(null);
+  }, []);
+
   const picker: MariReferencePickerProps | null = pickerOpen
     ? {
         id: listboxId,
@@ -266,6 +275,7 @@ export function useMariComposerReferences({
         activeIndex,
         drilled: Boolean(activeDrill),
         fieldsDrillable,
+        onBack: () => setDrill(null),
         onPick: (index) => pick(rows[index]),
         onDrill: (index) => drillInto(rows[index]),
       }
@@ -284,7 +294,7 @@ export function useMariComposerReferences({
     pickerOpen,
     /** A just-completed name at the caret: Tab again links it instead of moving focus. */
     canLinkCompletion,
-    onActiveTokenChange: setToken,
+    onActiveTokenChange: trackToken,
     onPickerAction,
     /** Everything `MariComposer` needs besides the four props above. */
     referenceUi: {

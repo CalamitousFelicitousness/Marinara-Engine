@@ -38,6 +38,8 @@ export function normalizeGroupChatMode(value: unknown): GroupChatMode {
 
 /** How individual-mode group chats decide response order. */
 export type GroupResponseOrder = "sequential" | "smart" | "manual";
+/** Who keeps a Merged Roleplay group's active characters current: nobody, the Decision model, or the Character Tracker. */
+export type AutoActiveCharactersMode = "off" | "decision" | "tracker";
 
 export interface KnowledgeAgentSourceSettings {
   /** When true/omitted, this agent uses the chat's active lorebooks unless fixed sources are selected. */
@@ -495,6 +497,10 @@ export interface ChatMetadata {
   groupTurnPromptEnabled?: boolean;
   /** Chat members that are temporarily excluded from group prompt/generation participation. */
   inactiveCharacterIds?: string[];
+  /** Merged Roleplay groups: who updates `inactiveCharacterIds` each turn. Missing means "off". */
+  autoActiveCharacters?: AutoActiveCharactersMode;
+  /** Characters toggled by hand while automation is on; automation leaves their state alone. */
+  autoActiveCharacterPins?: string[];
   /** Characters with visible roleplay sprites enabled for this chat. */
   spriteCharacterIds?: string[];
   /** Which sprite file families the roleplay Expression Engine may display. */

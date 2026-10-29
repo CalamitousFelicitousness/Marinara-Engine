@@ -1570,10 +1570,13 @@ export function ChatSettingsDrawer({
       ...(mode === "off" ? { autoActiveCharacterPins: [] } : {}),
     });
   };
-  const unpinCharacter = (charId: string) => {
+  // Pins the character's current state, on or off, so automation leaves it alone.
+  const togglePin = (charId: string) => {
     updateMeta.mutate({
       id: chat.id,
-      autoActiveCharacterPins: autoActiveCharacterPins.filter((id) => id !== charId),
+      autoActiveCharacterPins: autoActiveCharacterPins.includes(charId)
+        ? autoActiveCharacterPins.filter((id) => id !== charId)
+        : [...autoActiveCharacterPins, charId],
     });
   };
   const mapsPackage = installedCapabilities.find(
@@ -6690,14 +6693,27 @@ export function ChatSettingsDrawer({
                               )}
                             </div>
                           </button>
-                          {/* Left of the eye, so a pin appearing never shifts the row's other buttons. */}
-                          {autoActiveCharactersMode !== "off" && autoActiveCharacterPins.includes(c.id) && (
+                          {/* On every row while automation runs, so pinning never shifts the row's buttons.
+                              Styled like the eye: muted when unpinned, primary when pinned. */}
+                          {autoActiveCharactersMode !== "off" && (
                             <button
                               type="button"
-                              onClick={() => unpinCharacter(c.id)}
-                              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[var(--primary)] transition-colors hover:bg-[var(--accent)]"
-                              title={localizeUi("ui.chat.chatsettingsdrawer.autoActiveCharacters.unpin")}
-                              aria-label={localizeUi("ui.chat.chatsettingsdrawer.autoActiveCharacters.unpin")}
+                              onClick={() => togglePin(c.id)}
+                              aria-pressed={autoActiveCharacterPins.includes(c.id)}
+                              className={cn(
+                                "flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
+                                autoActiveCharacterPins.includes(c.id) && "text-[var(--primary)]",
+                              )}
+                              title={
+                                autoActiveCharacterPins.includes(c.id)
+                                  ? localizeUi("ui.chat.chatsettingsdrawer.autoActiveCharacters.unpin")
+                                  : localizeUi("ui.chat.chatsettingsdrawer.autoActiveCharacters.pin")
+                              }
+                              aria-label={
+                                autoActiveCharacterPins.includes(c.id)
+                                  ? localizeUi("ui.chat.chatsettingsdrawer.autoActiveCharacters.unpin")
+                                  : localizeUi("ui.chat.chatsettingsdrawer.autoActiveCharacters.pin")
+                              }
                             >
                               <Pin size="0.6875rem" />
                             </button>

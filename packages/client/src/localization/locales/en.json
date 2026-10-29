@@ -6217,7 +6217,7 @@
   "ui.agents.organizer.moreFor": "More for {{name}}",
   "ui.agents.organizer.moreIn": "More in {{section}}",
   "ui.agents.organizer.needsCheck": "Needs check",
-  "ui.agents.organizer.needsCheckHint": "This agent did not start. Update it, or uninstall and install it again.",
+  "ui.agents.organizer.needsCheckHint": "Update or reinstall this agent to start it again.",
   "ui.agents.organizer.noNotes": "No notes for this update.",
   "ui.agents.organizer.onInChats_one": "On in {{count}} chat",
   "ui.agents.organizer.onInChats_other": "On in {{count}} chats",

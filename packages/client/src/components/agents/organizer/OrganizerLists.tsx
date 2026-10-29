@@ -158,7 +158,7 @@ export function InstalledPage({ entries }: { entries: readonly OrganizerEntry[] 
                       <>
                         {" "}
                         ·{" "}
-                        <span className="font-semibold text-red-500">
+                        <span className="font-semibold text-[var(--destructive)]">
                           {localizeUi("ui.agents.organizer.needsCheck")}
                         </span>
                       </>

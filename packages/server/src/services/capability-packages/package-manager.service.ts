@@ -7168,8 +7168,9 @@ async function readStoreListings(storeUrl: string | null, fetchStore: typeof saf
         .object({
           schemaVersion: z.literal(1),
           packages: z.record(z.string().max(80), z.unknown()),
-          kits: z.array(z.unknown()).max(20).optional(),
-          howTo: z.record(z.string().max(20), z.array(z.string().min(1).max(512)).max(3)).optional(),
+          // Optional extras parse on their own below, so a bad one never drops the listings.
+          kits: z.unknown().optional(),
+          howTo: z.unknown().optional(),
         })
         .safeParse(await response.json());
       for (const [id, raw] of Object.entries(document.success ? document.data.packages : {})) {
@@ -7185,11 +7186,21 @@ async function readStoreListings(storeUrl: string | null, fetchStore: typeof saf
           ...(previewUrls.length ? { previewUrls } : {}),
         });
       }
-      for (const raw of document.success ? (document.data.kits ?? []) : []) {
+      const kitList = z
+        .array(z.unknown())
+        .max(20)
+        .safeParse(document.success ? (document.data.kits ?? []) : []);
+      for (const raw of kitList.success ? kitList.data : []) {
         const kit = capabilityStoreKitSchema.safeParse(raw);
         if (kit.success) kits.push(kit.data);
       }
-      for (const [type, paths] of Object.entries(document.success ? (document.data.howTo ?? {}) : {})) {
+      const howToDoc = z
+        .record(z.string().max(20), z.unknown())
+        .safeParse(document.success ? (document.data.howTo ?? {}) : {});
+      for (const [type, raw] of Object.entries(howToDoc.success ? howToDoc.data : {})) {
+        const parsed = z.array(z.string().min(1).max(512)).max(3).safeParse(raw);
+        if (!parsed.success) continue;
+        const paths = parsed.data;
         const urls = paths.flatMap((path) => resolveStoreAssetUrl(path, storeUrl) ?? []);
         if (urls.length === paths.length) howTo[type] = urls;
       }

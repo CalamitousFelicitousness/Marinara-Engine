@@ -151,12 +151,11 @@ export function AgentPage({
         </div>
       </header>
       {checkReason !== null && (
-        <p
-          role="alert"
-          className="mt-4 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-[var(--foreground)]"
-        >
-          <span className="font-semibold text-red-500">{localizeUi("ui.agents.organizer.needsCheck")}</span> ·{" "}
-          {checkReason || localizeUi("ui.agents.organizer.needsCheckHint")}
+        <p className="mt-4 rounded-xl border border-[var(--destructive)]/40 bg-[var(--destructive)]/10 px-4 py-3 text-sm text-[var(--foreground)]">
+          <span className="font-semibold text-[var(--destructive)]">
+            {localizeUi("ui.agents.organizer.needsCheck")}
+          </span>{" "}
+          · {checkReason || localizeUi("ui.agents.organizer.needsCheckHint")}
         </p>
       )}
 
@@ -233,6 +232,9 @@ export function AgentPage({
                       height={400}
                       loading="lazy"
                       decoding="async"
+                      onError={(event) => {
+                        event.currentTarget.hidden = true;
+                      }}
                       className="aspect-[16/10] w-full bg-[var(--secondary)] object-cover"
                     />
                   )}

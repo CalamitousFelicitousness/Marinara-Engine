@@ -84,13 +84,17 @@ try {
     serve(() =>
       json({
         schemaVersion: 1,
-        packages: {},
+        packages: { chess: { section: "games", tagline: "Play chess." } },
         kits: [
           { id: "starter", name: "Starter", packages: ["chess", "ghost"] },
           { id: "broken" },
           { id: "unknown", name: "Unknown", packages: ["ghost"] },
         ],
-        howTo: { game: ["../../store/howto/game-1.webp"], app: ["https://evil.example/x.webp"] },
+        howTo: {
+          game: ["../../store/howto/game-1.webp"],
+          app: ["https://evil.example/x.webp"],
+          agent: ["a", "b", "c", "d"],
+        },
       }),
     ),
     null,
@@ -104,6 +108,11 @@ try {
     withKits.howTo,
     { game: [`${ROOT}/store/howto/game-1.webp`] },
     "How-to pictures resolve on the sidecar origin; a type with an off-origin picture drops",
+  );
+  assert.equal(
+    withKits.packages.find((item) => item.manifest.id === "chess")?.store?.section,
+    "games",
+    "A bad how-to set drops only itself, not the listings",
   );
 
   for (const broken of [notFound, () => json({ nope: true }), () => new Response("{", { status: 200 })]) {

@@ -243,7 +243,7 @@ function rememberSeenNoodleRefreshMarker(marker: string) {
   }
 }
 
-function capabilityPackageAssetUrl(packageId: string, version: string, assetPath: string): string {
+export function capabilityPackageAssetUrl(packageId: string, version: string, assetPath: string): string {
   const encodedPath = assetPath
     .split("/")
     .map((segment) => encodeURIComponent(segment))

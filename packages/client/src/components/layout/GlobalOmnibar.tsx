@@ -919,7 +919,7 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
       : omnibarContext.surface === "chat" && activeChat?.id === activeChatId
         ? activeChat.name
         : agentCatalogOpen
-          ? t("omnibar.aside.downloadAgents", "Download Agents")
+          ? t("omnibar.aside.downloadAgents", "Agent Organizer")
           : null;
   const asideState = useOmnibarAside({
     connectionId: asideAnswerConnectionId,

@@ -385,7 +385,7 @@ function StepPicture({ entry, type, step }: { entry: OrganizerEntry; type: "app"
           <MoreHorizontal className="ml-auto h-4 w-4 shrink-0 text-[var(--muted-foreground)]" />
         </div>
         <span className={cn(BOX, "absolute -bottom-6 right-1 px-3 py-1 text-xs font-semibold text-[var(--foreground)] shadow-md", RING)}>
-          {localizeUi("ui.panels.agentspanel.remove")}
+          {localizeUi("ui.agents.agentcatalogview.uninstall")}
         </span>
       </div>
     );

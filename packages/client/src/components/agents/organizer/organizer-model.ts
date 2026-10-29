@@ -63,7 +63,8 @@ export function iconOf(entry: OrganizerEntry, installed?: InstalledCapabilityPac
 
 /** Why an installed package needs a look (may be empty), or null when it runs fine. */
 export function checkReasonOf(installed?: InstalledCapabilityPackage): string | null {
-  if (installed?.status === "error") return installed.error ?? "";
+  // Start errors are runtime text for developers; readiness errors are written for users.
+  if (installed?.status === "error") return "";
   if (installed?.readiness === "error") return installed.readinessError ?? "";
   return null;
 }

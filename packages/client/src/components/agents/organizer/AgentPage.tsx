@@ -167,8 +167,8 @@ export function AgentPage({
           </div>
         </header>
         {checkReason !== null && (
-          <p className="mt-4 rounded-xl border border-[var(--destructive)]/40 bg-[var(--destructive)]/10 px-4 py-3 text-sm text-[var(--foreground)]">
-            <span className="font-semibold text-[var(--destructive)]">
+          <p className="mt-4 rounded-xl border border-[var(--marinara-app-accent-static)]/40 bg-[var(--marinara-app-accent-static)]/10 px-4 py-3 text-sm text-[var(--foreground)]">
+            <span className="font-semibold text-[var(--marinara-app-accent-static)]">
               {localizeUi("ui.agents.organizer.needsCheck")}
             </span>{" "}
             · {checkReason || localizeUi("ui.agents.organizer.needsCheckHint")}

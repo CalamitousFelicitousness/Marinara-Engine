@@ -483,7 +483,12 @@ export function AgentCatalogView() {
     content = <SearchResults query={query.trim()} entries={results} />;
   } else if (page.kind === "agent") {
     content = agentEntry ? (
-      <AgentPage entry={agentEntry} entries={all} customSource={catalog.data?.provenance?.kind === "custom"} />
+      <AgentPage
+        entry={agentEntry}
+        entries={all}
+        customSource={catalog.data?.provenance?.kind === "custom"}
+        howTo={catalog.data?.howTo}
+      />
     ) : (
       <p className="py-10 text-center text-sm text-[var(--muted-foreground)]">
         {localizeUi("ui.agents.organizer.agentMissing")}

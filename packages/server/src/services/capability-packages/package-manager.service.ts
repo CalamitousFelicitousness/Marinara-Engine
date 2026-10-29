@@ -7134,7 +7134,7 @@ export function resetCapabilityReleaseNotesCache() {
 
 type CapabilityStoreListings = Map<string, CapabilityStoreListing>;
 const withStoreListing = (store: CapabilityStoreListing | undefined) => (store ? { store } : {});
-type StoreData = { listings: CapabilityStoreListings; kits: CapabilityStoreKit[] };
+type StoreData = { listings: CapabilityStoreListings; kits: CapabilityStoreKit[]; howTo: Record<string, string[]> };
 const storeCache = new Map<string, { at: number } & StoreData>();
 
 /** A sidecar path as an absolute https URL on the sidecar's own origin, or undefined. */
@@ -7157,7 +7157,8 @@ function resolveStoreAssetUrl(path: string | undefined, storeUrl: string): strin
 async function readStoreListings(storeUrl: string | null, fetchStore: typeof safeFetch): Promise<StoreData> {
   const listings: CapabilityStoreListings = new Map();
   const kits: CapabilityStoreKit[] = [];
-  if (!storeUrl) return { listings, kits };
+  const howTo: Record<string, string[]> = {};
+  if (!storeUrl) return { listings, kits, howTo };
   const cached = storeCache.get(storeUrl);
   if (cached && Date.now() - cached.at < RELEASE_NOTES_TTL_MS) return cached;
   try {
@@ -7168,6 +7169,7 @@ async function readStoreListings(storeUrl: string | null, fetchStore: typeof saf
           schemaVersion: z.literal(1),
           packages: z.record(z.string().max(80), z.unknown()),
           kits: z.array(z.unknown()).max(20).optional(),
+          howTo: z.record(z.string().max(20), z.array(z.string().min(1).max(512)).max(3)).optional(),
         })
         .safeParse(await response.json());
       for (const [id, raw] of Object.entries(document.success ? document.data.packages : {})) {
@@ -7187,6 +7189,10 @@ async function readStoreListings(storeUrl: string | null, fetchStore: typeof saf
         const kit = capabilityStoreKitSchema.safeParse(raw);
         if (kit.success) kits.push(kit.data);
       }
+      for (const [type, paths] of Object.entries(document.success ? (document.data.howTo ?? {}) : {})) {
+        const urls = paths.flatMap((path) => resolveStoreAssetUrl(path, storeUrl) ?? []);
+        if (urls.length === paths.length) howTo[type] = urls;
+      }
       if (!document.success) logger.warn("Ignoring an Agent store document this Engine cannot parse: %s", storeUrl);
     } else if (response.status !== 404) {
       logger.warn("Agent store request failed with HTTP %d", response.status);
@@ -7194,8 +7200,8 @@ async function readStoreListings(storeUrl: string | null, fetchStore: typeof saf
   } catch (error) {
     logger.warn(error, "Could not read Agent store data; continuing without it");
   }
-  storeCache.set(storeUrl, { at: Date.now(), listings, kits });
-  return { listings, kits };
+  storeCache.set(storeUrl, { at: Date.now(), listings, kits, howTo });
+  return { listings, kits, howTo };
 }
 
 export const capabilityPackageManager = {
@@ -7281,6 +7287,7 @@ export const capabilityPackageManager = {
       provenance: { kind: isOfficialCatalogUrl(CATALOG_URL) ? "official" : "custom", url: CATALOG_URL },
       packages,
       ...(kits.length ? { kits } : {}),
+      ...(Object.keys(publishedStore.howTo).length ? { howTo: publishedStore.howTo } : {}),
     };
   },
 

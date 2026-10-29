@@ -50,10 +50,13 @@ export function AgentPage({
   entry,
   entries,
   customSource,
+  howTo,
 }: {
   entry: OrganizerEntry;
   entries: readonly OrganizerEntry[];
   customSource: boolean;
+  /** How-to step pictures by package type, from the store data. */
+  howTo?: Record<string, string[]>;
 }) {
   const { installedById, chatCountById, settingsAgentById, go, open } = useOrganizer();
   const openAgentDetail = useUIStore((state) => state.openAgentDetail);
@@ -221,13 +224,26 @@ export function AgentPage({
           <Section title={localizeUi("ui.agents.organizer.howTo")}>
             <ol className="grid gap-3 sm:grid-cols-3">
               {HOW_TO_STEPS.map((step) => (
-                <li key={step} className="flex gap-3 rounded-xl border border-[var(--border)] p-3 text-sm">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--marinara-chat-chrome-highlight-bg,var(--accent))] text-xs font-bold text-[var(--foreground)]">
-                    {step}
-                  </span>
-                  <span className="text-[var(--foreground)]">
-                    {localizeUi(`ui.agents.organizer.steps.${type}.step${step}`)}
-                  </span>
+                <li key={step} className="overflow-hidden rounded-xl border border-[var(--border)] text-sm">
+                  {howTo?.[type]?.[step - 1] && (
+                    <img
+                      src={howTo[type][step - 1]}
+                      alt=""
+                      width={640}
+                      height={400}
+                      loading="lazy"
+                      decoding="async"
+                      className="aspect-[16/10] w-full bg-[var(--secondary)] object-cover"
+                    />
+                  )}
+                  <div className="flex gap-3 p-3">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--marinara-chat-chrome-highlight-bg,var(--accent))] text-xs font-bold text-[var(--foreground)]">
+                      {step}
+                    </span>
+                    <span className="text-[var(--foreground)]">
+                      {localizeUi(`ui.agents.organizer.steps.${type}.step${step}`)}
+                    </span>
+                  </div>
                 </li>
               ))}
             </ol>

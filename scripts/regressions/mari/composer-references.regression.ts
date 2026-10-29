@@ -13,8 +13,13 @@ process.env.FILE_STORAGE_DIR = storageDir;
 const { getDB, closeDB } = await import("../../../packages/server/src/db/connection.js");
 try {
   const db = await getDB();
-  const { composerReferenceBudget, resolveComposerReferences, composerReferenceLedgerLine, parseComposerReferences } =
-    await import("../../../packages/server/src/services/professor-mari/mari-composer-references.js");
+  const {
+    composerReferenceBudget,
+    resolveComposerReferences,
+    composerReferenceLedgerLine,
+    parseComposerReferences,
+    readEditorFieldPrompt,
+  } = await import("../../../packages/server/src/services/professor-mari/mari-composer-references.js");
   const { ProfessorMariWorkspaceService } =
     await import("../../../packages/server/src/services/professor-mari/workspace-agent.service.js");
   const { saveRunStart } =
@@ -282,6 +287,35 @@ try {
   assert.match(
     prompt2,
     /@skill "Characters" \(id builtin-characters\), linked 1 turn ago; re-read with app_data skill.get builtin-characters/,
+  );
+  // --- A block field: while Onboarding is her field, each message carries what character.onboarding.get returns.
+  const reader = { executeAction: (envelope: Record<string, unknown>) => service.executeAction(envelope as never) };
+  const onboardingPrompt = await readEditorFieldPrompt(
+    reader,
+    { fieldId: "extensions.onboarding", resource: { kind: "character", id: alice } },
+    "composer-references",
+  );
+  assert.ok(onboardingPrompt, "the onboarding field sends its read");
+  assert.match(onboardingPrompt, /<editor_field>/);
+  assert.match(onboardingPrompt, new RegExp(`app_data character.onboarding.get ${alice}`));
+  assert.match(onboardingPrompt, /The card has no onboarding yet\./);
+  assert.equal(
+    await readEditorFieldPrompt(
+      reader,
+      { fieldId: "description", resource: { kind: "character", id: alice } },
+      "composer-references",
+    ),
+    null,
+    "a text field sends its draft, not a read",
+  );
+  assert.equal(
+    await readEditorFieldPrompt(
+      reader,
+      { fieldId: "extensions.onboarding", resource: { kind: "persona", id: alice } },
+      "composer-references",
+    ),
+    null,
+    "only a character has onboarding",
   );
 } finally {
   await closeDB();

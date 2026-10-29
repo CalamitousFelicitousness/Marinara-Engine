@@ -28,8 +28,9 @@ export function editorFieldId(path: string): string {
   return path.replace(/^data\./, "");
 }
 
-// List fields: the focused input is one tag or greeting, not the field's content.
-const LIST_FIELD_IDS = new Set(["tags", "alternate_greetings"]);
+// List and block fields: the focused input is one tag, greeting or onboarding question, not the field's
+// content. The server reads the onboarding block itself (`character.onboarding.get`).
+const LIST_FIELD_IDS = new Set(["tags", "alternate_greetings", "extensions.onboarding"]);
 
 /** Capture the focused field's current text and selected text for a Prof. Mari handoff; null for list fields. */
 export function mariFieldDraft(
@@ -83,6 +84,7 @@ const CHARACTER_FIELD_IDS = new Set([
   "extensions.backstory",
   "extensions.appearance",
   "extensions.depth_prompt",
+  "extensions.onboarding",
 ]);
 
 /** A change-card path whose field the Character editor anchors (itself or its parent field). */

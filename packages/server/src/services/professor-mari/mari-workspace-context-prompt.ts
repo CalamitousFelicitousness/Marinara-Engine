@@ -17,8 +17,8 @@ import type { MariWorkspaceContextRow } from "../storage/mari-workspace-context.
 
 export interface RenderMariWorkspaceContextOptions {
   maxTotalChars?: number;
-  /** The wrapper tag (default `attached_context`); `linked_references` is the composer's `@` links. */
-  tag?: typeof CONTEXT_BLOCK_TAG | typeof LINKED_REFERENCES_TAG;
+  /** The wrapper tag (default `attached_context`); `linked_references` is the composer's `@` links, `editor_field` a handoff field's read. */
+  tag?: typeof CONTEXT_BLOCK_TAG | typeof LINKED_REFERENCES_TAG | typeof EDITOR_FIELD_TAG;
   /** Replaces the opening guidance paragraphs, for a block whose content is not a chat transcript. */
   preamble?: string[];
 }
@@ -31,6 +31,7 @@ const DEFAULT_MAX_TOTAL_CHARS = 400_000;
 
 const CONTEXT_BLOCK_TAG = "attached_context";
 const LINKED_REFERENCES_TAG = "linked_references";
+const EDITOR_FIELD_TAG = "editor_field";
 
 function flattenLine(value: string): string {
   return value.replace(/\s+/g, " ").trim();
@@ -43,7 +44,7 @@ function flattenLine(value: string): string {
 // authorization boundary: the real boundary is that Mari's mutations are user-reviewed (Keep/Restore)
 // and only the user's direct request authorizes a change (see the block guidance below).
 function neutralizeBlockDelimiters(text: string): string {
-  return text.replace(/<(\/?)(attached_context|linked_references)>/gi, "[$1$2]");
+  return text.replace(/<(\/?)(attached_context|linked_references|editor_field)>/gi, "[$1$2]");
 }
 
 const DEFAULT_PREAMBLE = [

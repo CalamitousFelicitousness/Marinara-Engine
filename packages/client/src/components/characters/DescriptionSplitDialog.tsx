@@ -14,6 +14,7 @@ interface DescriptionSplitDialogProps {
   hasUnsavedChanges: boolean;
   /** Absent for a card that has not been saved yet. */
   onAskMari?: () => void;
+  /** Saves the split card as a new version. */
   onApply: () => void;
   onSplitAnyway: () => void;
   onClose: () => void;

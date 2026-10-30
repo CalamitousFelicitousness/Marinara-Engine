@@ -33,7 +33,7 @@ import {
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  applyDescriptionSplit,
+  DESCRIPTION_SPLIT_VERSION,
   splitCharacterDescription,
   unassignCardFieldAlternatives,
   type DescriptionSplitField,
@@ -2086,13 +2086,12 @@ export function BotBrowserView() {
       return;
     }
 
-    let cardData = readCharacterCardData(prepared.payload);
-    if (splitDescription) {
-      // Personas are created from explicit fields, so the split runs here instead of on the server.
-      const split = splitCharacterDescription(cardData);
-      if (split.status === "changed") cardData = applyDescriptionSplit(cardData, split.after);
-      toast.info(describeSplit({ status: split.status, reason: split.reason, fields: split.changed }));
-    }
+    const cardData = readCharacterCardData(prepared.payload);
+    // Personas are created from explicit fields, so the split runs here instead of on the server. The
+    // persona is created as it came and the split is saved afterwards as a new persona version. Personas
+    // have no system prompt, so instruction lines stay in the description.
+    const split = splitDescription ? splitCharacterDescription(cardData, { instructions: false }) : null;
+    if (split) toast.info(describeSplit({ status: split.status, reason: split.reason, fields: split.changed }));
     const extensions = optionalRecord(cardData.extensions) ?? {};
     const personaName = optionalString(cardData.name) ?? prepared.card.name;
     const sourceTags = readCardTags(cardData.tags);
@@ -2119,6 +2118,25 @@ export function BotBrowserView() {
     const persona = (await personaResponse.json()) as { id?: string; error?: string };
     if (!personaResponse.ok || !persona.id) {
       throw new Error(persona.error ?? localizeUi("ui.botBrowser.botbrowserview.importFailed"));
+    }
+
+    if (split?.status === "changed") {
+      const { description, personality, scenario, backstory, appearance, mes_example } = split.after;
+      const splitResponse = await fetch(`/api/characters/personas/${persona.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description,
+          personality,
+          scenario,
+          backstory,
+          appearance,
+          mes_example,
+          versionSource: DESCRIPTION_SPLIT_VERSION.source,
+          versionReason: DESCRIPTION_SPLIT_VERSION.reason,
+        }),
+      });
+      if (!splitResponse.ok) toast.warning(localizeUi("ui.botBrowser.importDialog.personaImportedWithoutSplit"));
     }
 
     const avatarDataUrl = optionalString(prepared.payload._avatarDataUrl);

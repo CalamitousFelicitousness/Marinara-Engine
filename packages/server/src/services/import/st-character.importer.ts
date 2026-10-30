@@ -10,7 +10,7 @@ import { createLorebooksStorage } from "../storage/lorebooks.storage.js";
 import { createRegexScriptsStorage } from "../storage/regex-scripts.storage.js";
 import { importSTLorebook } from "./st-lorebook.importer.js";
 import {
-  applyDescriptionSplit,
+  DESCRIPTION_SPLIT_VERSION,
   unassignCardFieldAlternatives,
   capImportedRulesetSheets,
   containsDecisionStatements,
@@ -237,18 +237,16 @@ export async function importSTCharacter(raw: Record<string, unknown>, db: DB, op
   data.tags = await filterImportedTags(data.tags, db, tagImportMode, options?.existingTagKeys);
 
   // Cards that keep everything in the description are split into Marinara's fields when asked.
-  // The outcome is reported for every card, so the import list can say which ones were left alone.
+  // The card is imported as it came and the split is saved afterwards as a new card version, so
+  // the unsplit card stays in the version history. The outcome is reported for every card, so the
+  // import list can say which ones were left alone.
+  const split = options?.splitDescription ? splitCharacterDescription(data) : null;
   let descriptionSplit: { status: DescriptionSplitStatus; reason?: string; fields: DescriptionSplitField[] } | null =
-    null;
-  if (options?.splitDescription) {
-    const split = splitCharacterDescription(data);
-    if (split.status === "changed") Object.assign(data, applyDescriptionSplit(data, split.after));
-    descriptionSplit = {
+    split && {
       status: split.status,
       ...(split.reason ? { reason: split.reason } : {}),
       fields: split.changed,
     };
-  }
 
   // Tag with browser source if imported from browser
   if (botBrowserSource) {
@@ -398,6 +396,20 @@ export async function importSTCharacter(raw: Record<string, unknown>, db: DB, op
       await restoreSprites(embeddedMarinaraSprites, charId);
     } catch (err) {
       logger.warn(err, "Skipped optional embedded sprite restore for %s", charId);
+    }
+  }
+
+  if (charId && split?.status === "changed") {
+    const { appearance, backstory, ...fields } = split.after;
+    try {
+      await storage.update(charId, { ...fields, extensions: { appearance, backstory } }, undefined, {
+        versionSource: DESCRIPTION_SPLIT_VERSION.source,
+        versionReason: DESCRIPTION_SPLIT_VERSION.reason,
+        updatedAt: normalizedTimestamps?.updatedAt ?? normalizedTimestamps?.createdAt ?? null,
+      });
+    } catch (err) {
+      logger.warn(err, "Imported %s without splitting its description", charId);
+      descriptionSplit = { status: "skipped", reason: "the split could not be saved", fields: [] };
     }
   }
 

@@ -146,6 +146,7 @@ import { cn, copyToClipboard, generateClientId, getAvatarCropStyle } from "../..
 import {
   applyBakedGreetingImages,
   applyDescriptionSplit,
+  DESCRIPTION_SPLIT_VERSION,
   findGreetingImageUrls,
   getCardVariableChipNames,
   normalizeAvatarCrop,
@@ -732,7 +733,8 @@ export function CharacterEditor() {
   }, [mariReview.review, characterId]);
 
   // Moves labelled text out of the description into the other card fields. The dialog summarises the
-  // split first; nothing is saved until the user saves the card.
+  // split first; applying it saves the card straight away as a new version, so the unsplit card
+  // stays in the version history.
   const [descriptionSplit, setDescriptionSplit] = useState<DescriptionSplitResult | null>(null);
   const [descriptionSplitOpen, setDescriptionSplitOpen] = useState(false);
   const handleSplitDescription = useCallback(
@@ -743,17 +745,27 @@ export function CharacterEditor() {
     },
     [formData],
   );
-  const applyDescriptionSplitResult = useCallback(() => {
+  const applyDescriptionSplitResult = async () => {
     setDescriptionSplitOpen(false);
-    if (descriptionSplit?.status !== "changed") return;
-    const { after } = descriptionSplit;
-    updateFormData((data) => applyDescriptionSplit(data, after));
+    if (descriptionSplit?.status !== "changed" || !formData) return;
+    const next = applyDescriptionSplit(formData, descriptionSplit.after);
+    updateFormData(() => next);
     const fields = descriptionSplit.changed
       .filter((field) => field !== "description")
       .map((field) => localizeUi(`ui.characters.descriptionsplitdialog.field.${field}`))
       .join(", ");
-    toast.success(localizeUi("ui.characters.metadatatab.splitDescriptionMovedTextInto", { fields }));
-  }, [descriptionSplit, localizeUi, updateFormData]);
+    const saved = await saveCard(next, DESCRIPTION_SPLIT_VERSION);
+    toast.success(
+      localizeUi(
+        !saved
+          ? "ui.characters.metadatatab.splitDescriptionMovedTextInto"
+          : next.extensions.versioningEnabled !== false
+            ? "ui.characters.metadatatab.splitDescriptionSavedAsVersion"
+            : "ui.characters.metadatatab.splitDescriptionSaved",
+        { fields },
+      ),
+    );
+  };
   // Hands the split to Professor Mari, who edits the saved card; nothing is sent until the user does.
   const askMariToSplitDescription = useCallback(() => {
     if (!characterId || !formData) return;
@@ -805,8 +817,10 @@ export function CharacterEditor() {
     setAvatarUploading(false);
   }, []);
 
-  const handleSave = async () => {
-    if (!characterId || !formData) return false;
+  const handleSave = () => saveCard(formData);
+  // Saves `data` as the card. `version` labels the version snapshot (the default is a manual save).
+  const saveCard = async (data: CharacterData | null, version?: { source: string; reason: string }) => {
+    if (!characterId || !data) return false;
     // The server would reject the whole card; say why instead (the Onboarding
     // tab offers Start over). Also covers the leave-page save, which stays put.
     if (unreadableOnboarding) {
@@ -826,8 +840,9 @@ export function CharacterEditor() {
     try {
       await updateCharacter.mutateAsync({
         id: characterId,
-        data: formData as unknown as Record<string, unknown>,
+        data: data as unknown as Record<string, unknown>,
         comment: characterComment,
+        ...(version && { versionSource: version.source, versionReason: version.reason }),
       });
       if (editRevisionRef.current === editRevisionAtSaveStart) {
         setDirtyState(false);

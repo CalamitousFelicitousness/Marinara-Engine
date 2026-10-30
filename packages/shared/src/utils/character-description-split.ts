@@ -54,6 +54,12 @@ export interface DescriptionSplitOptions {
 
 export type DescriptionSplitStatus = "changed" | "unchanged" | "skipped";
 
+/** A split always lands as a new card or persona version so the unsplit card stays in the history. */
+export const DESCRIPTION_SPLIT_VERSION = {
+  source: "description-split",
+  reason: "Split description into fields",
+} as const;
+
 export interface DescriptionSplitResult {
   status: DescriptionSplitStatus;
   /** Why a skipped card was left alone. */

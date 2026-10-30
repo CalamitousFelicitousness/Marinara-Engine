@@ -265,7 +265,41 @@ try {
     { ok: true, bag: { holder: "Sorrel" } },
     "late arrivals receive their own inventory holder",
   );
-  await assert.rejects(validateNewRoomHumanGameName(db, fresh.id, "Sorrel"), RoomPersonaConflictError);
+  await chats.patchMetadata(fresh.id, { multiplayer: lateRoom });
+  await assert.rejects(
+    validateNewRoomHumanGameName(db, fresh.id, "Sorrel"),
+    RoomPersonaConflictError,
+    "a seated player's hero is never handed to someone else",
+  );
+  // Removed by the host, Sorrel may come back as Sorrel: the card is rebound to the new seat.
+  await chats.patchMetadata(fresh.id, { multiplayer: initialRoom });
+  await validateNewRoomHumanGameName(db, fresh.id, "Sorrel");
+  const rejoined = {
+    ...initialRoom,
+    participants: [
+      ...initialRoom.participants,
+      { id: "sorrel_again", persona: { name: "Sorrel", description: "A ranger." }, joinsNextRound: true },
+    ],
+  } as MultiplayerStoredRoom;
+  await withChatMetadataPatchQueue(fresh.id, () =>
+    db.transaction((tx) => ensureRoomHumanGameCards(tx, fresh.id, rejoined, true)),
+  );
+  const rejoinedCards = JSON.parse((await chats.getById(fresh.id))!.metadata).gameCharacterCards;
+  assert.equal(rejoinedCards.length, lateCards.length, "no second Sorrel card");
+  assert.equal(rejoinedCards[2].multiplayerParticipantId, "sorrel_again", "the removed hero's card is rebound");
+  const { gamePartyRoster } = await import("../../packages/server/src/services/game/ruleset-sheet-turn.service.js");
+  const party = await gamePartyRoster(
+    db,
+    fresh.id,
+    { gamePartyCharacterIds: [], gameCharacterCards: [{ name: "Sorrel", multiplayerParticipantId: "gone_seat" }] },
+    "Host",
+  );
+  assert.ok(party?.has("sorrel"), "a room player's hero, seated or removed, stays in the party a long rest reaches");
+  await assert.rejects(
+    validateNewRoomHumanGameName(db, fresh.id, "Rowan"),
+    RoomPersonaConflictError,
+    "a seated guest's name stays theirs",
+  );
   await chats.patchMetadata(fresh.id, {
     gameNpcs: [{ name: "Briar" }],
     gameInventory: [{ id: "left_item", name: "Rope", quantity: 1, holder: "Former" }],

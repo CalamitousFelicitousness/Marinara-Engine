@@ -429,6 +429,15 @@ export async function gamePartyRoster(
     const key = normalizeCharacterLookupName(name);
     if (!present.has(key)) present.set(key, id);
   }
+  // A shared room's players' own heroes, played by them or by the Engine for a player who left or was
+  // removed: never on the party list, always in the party (laptop room playtest 2026-10-30: a party
+  // long rest skipped a removed guest's hero).
+  for (const card of Array.isArray(meta.gameCharacterCards) ? (meta.gameCharacterCards as unknown[]) : []) {
+    const row = card && typeof card === "object" ? (card as Record<string, unknown>) : {};
+    if (typeof row.multiplayerParticipantId !== "string" || typeof row.name !== "string" || !row.name.trim()) continue;
+    const key = normalizeCharacterLookupName(row.name);
+    if (!present.has(key)) present.set(key, "");
+  }
   return present;
 }
 

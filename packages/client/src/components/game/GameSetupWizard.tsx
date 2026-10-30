@@ -56,6 +56,8 @@ import {
   type GameSpotifySourceType,
   normalizeSpotifySourceType,
   resolveGameSpatialMapDraftOptions,
+  rulesetCombatStyle,
+  rulesetCombatStyles,
   type GenerationParameters,
   type SpatialMapGroundingMode,
   type SpatialMapDraftSize,
@@ -64,6 +66,7 @@ import {
   type Persona,
   type AvatarCrop,
   type MultiplayerPlayer,
+  type InstalledCapabilityPackage,
 } from "@marinara-engine/shared";
 import { MultiplayerPrepareButton } from "../../features/multiplayer/MultiplayerPrepareButton";
 import { getCharacterTitle } from "../../lib/character-display";
@@ -92,7 +95,9 @@ import {
 import { useConnections, useModelParameterCapabilities } from "../../hooks/use-connections";
 import { useDefaultPreset, usePresets } from "../../hooks/use-presets";
 import { useCharacterGroups, usePersonas } from "../../hooks/use-characters";
+import { GameRulesetUpdate } from "./GameRulesetUpdate";
 import { GameSetupRulesChooser, GameSetupRulesetSheetStatus } from "./GameSetupRulesChooser";
+import { getCombatStyle, isBuiltInCombatStyle, listCombatStyles, resolveCombatStyle } from "./combat-styles";
 import { GameSetupWorldKitChooser, MapPackLock } from "./GameSetupWorldKitChooser";
 import { useExperienceMapPack } from "../../hooks/use-map-pack";
 import { useOverworldGamesEnabled } from "../../hooks/use-world-library";
@@ -129,7 +134,7 @@ import {
   resolveGameSetupImport,
 } from "../../lib/game-setup-share";
 import { downloadJsonFile, sanitizeExportFilenamePart } from "../../lib/download-json";
-import { filterAudioGenerationConnections, filterLanguageGenerationConnections } from "../../lib/connection-filters";
+import { filterTTSConnections, filterLanguageGenerationConnections } from "../../lib/connection-filters";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { CapabilityElement } from "../capabilities/CapabilityElement";
 import { GameAudioSetupSection, previewGameAudioLane } from "./GameAudioSetupSection";
@@ -218,8 +223,12 @@ interface WizardConnection {
   imageService?: string | null;
   videoService?: string | null;
   audioSource?: string | null;
+  audioGenerationSource?: string | null;
+  audioGenerationLegacyConnectionId?: string | null;
   audioSoundEffects?: boolean | string;
   audioMusic?: boolean | string;
+  audioMusicEndpoint?: string | null;
+  audioSoundEffectsEndpoint?: string | null;
   defaultParameters?: string | null;
   isDefault?: boolean | string;
   defaultForAgents?: boolean | string;
@@ -407,6 +416,19 @@ function filterLearnedOptions(options: string[] | undefined, excluded: string[])
 function filterCustomLearnedValues(values: string[], builtIns: string[]) {
   const excluded = new Set([...builtIns, "Surprise me, go wild!"].map(optionKey));
   return values.map((value) => value.trim()).filter((value) => value && !excluded.has(optionKey(value)));
+}
+
+/** Says a field still holds the text kept from the last game set up, with a way to empty it. */
+function RememberedTextNote({ onClear }: { onClear: () => void }) {
+  const { t: localizeUi } = useUiTranslation();
+  return (
+    <div className="mt-1 flex items-center gap-2 text-[0.625rem] text-[var(--muted-foreground)]">
+      <span>{localizeUi("ui.game.gamesetupwizard.fromYourLastGame")}</span>
+      <button type="button" onClick={onClear} className="underline transition-colors hover:text-[var(--primary)]">
+        {localizeUi("ui.game.gamesetupwizard.clearRememberedText")}
+      </button>
+    </div>
+  );
 }
 
 function LearnedOptionChips({
@@ -618,22 +640,29 @@ export function GameSetupWizard({
   const [tones, setTones] = useState<string[]>(["Heroic"]);
   const [customTone, setCustomTone] = useState("");
   const [difficulty, setDifficulty] = useState("Normal");
-  const [combatStyle, setCombatStyle] = useState<GameCombatStyle>("classic");
+  const [pickedCombatStyle, setCombatStyle] = useState<GameCombatStyle>("classic");
+  // The chosen ruleset may name the styles its games play (1.379): only those are offered, and a pick it
+  // leaves out is shown and sent as the first it lists. The pick itself is kept for another ruleset.
+  const combatStyles = rulesetCombatStyles(activeRuleset?.definition);
+  const combatStyle = rulesetCombatStyle(activeRuleset?.definition, pickedCombatStyle, listCombatStyles());
   const [gmBossControl, setGmBossControl] = useState(true);
   const [tacticalBattlefieldSize, setTacticalBattlefieldSize] = useState<"auto" | TacticalBattlefieldSize>("auto");
   const [gmMode, setGmMode] = useState<GameGmMode>("standalone");
   // The GM intro message (1.339): null follows the Experience's own.
   const [gameIntro, setGameIntro] = useState<GameIntroChoice | null>(null);
+  // The picked Experience's art style (1.372); a setup file's own art style settings come first.
+  const [experienceArtStylePrompt, setExperienceArtStylePrompt] = useState<string | null>(null);
   const [gmCharacterId, setGmCharacterId] = useState<string | null>(null);
   const [partyCharacterIds, setPartyCharacterIds] = useState<string[]>(() =>
     Array.from(new Set(initialPartyCharacterIds.filter((id) => characters.some((character) => character.id === id)))),
   );
-  const [playerGoals, setPlayerGoals] = useState(
-    () => useUIStore.getState().rememberedGameSetupText?.playerGoals ?? "",
-  );
-  const [preferences, setPreferences] = useState(
-    () => useUIStore.getState().rememberedGameSetupText?.preferences ?? "",
-  );
+  // Goals and preferences start as the last game's; a note says so while the text is unchanged.
+  const [rememberedSetupText] = useState(() => ({
+    playerGoals: useUIStore.getState().rememberedGameSetupText?.playerGoals ?? "",
+    preferences: useUIStore.getState().rememberedGameSetupText?.preferences ?? "",
+  }));
+  const [playerGoals, setPlayerGoals] = useState(rememberedSetupText.playerGoals);
+  const [preferences, setPreferences] = useState(rememberedSetupText.preferences);
   const [gmSearch, setGmSearch] = useState("");
   const [partySearch, setPartySearch] = useState("");
   const [partyFolderId, setPartyFolderId] = useState("");
@@ -840,7 +869,7 @@ export function GameSetupWizard({
   const videoConnections = useMemo(() => connections.filter((c) => c.provider === "video_generation"), [connections]);
   // Quarantined (review-required) imports are refused by the server's
   // resolution, so they must not be offered or previewed here either.
-  const audioConnections = useMemo(() => filterAudioGenerationConnections(connections), [connections]);
+  const audioConnections = useMemo(() => filterTTSConnections(connections), [connections]);
   const preferredImageConnectionId = useMemo(() => getPreferredConnectionId(imageConnections), [imageConnections]);
   // "Use the default" is the server's own answer per lane. Where it answers with
   // nothing usable and a capable connection exists, the preview names that
@@ -1054,7 +1083,7 @@ export function GameSetupWizard({
       characters.filter((c) => {
         const query = gmSearch.toLowerCase();
         const title = getCharacterTitle(c)?.toLowerCase() ?? "";
-        return c.name.toLowerCase().includes(query) || title.includes(query);
+        return (c.name ?? "").toLowerCase().includes(query) || title.includes(query);
       }),
     [characters, gmSearch],
   );
@@ -1065,7 +1094,7 @@ export function GameSetupWizard({
         if (c.id === gmCharacterId) return false;
         const query = partySearch.toLowerCase();
         const title = getCharacterTitle(c)?.toLowerCase() ?? "";
-        return c.name.toLowerCase().includes(query) || title.includes(query);
+        return (c.name ?? "").toLowerCase().includes(query) || title.includes(query);
       }),
     [characters, gmCharacterId, partySearch],
   );
@@ -1357,7 +1386,7 @@ export function GameSetupWizard({
       setDifficulty(
         DIFFICULTIES.find((d) => normalizeGameDifficulty(d) === normalizeGameDifficulty(config.difficulty)) ?? "Normal",
       );
-      setCombatStyle(config.combatStyle === "tactical" ? "tactical" : "classic");
+      setCombatStyle(resolveCombatStyle(config.combatStyle));
       setGmBossControl(config.gmBossControl ?? true);
       setTacticalBattlefieldSize(config.tacticalBattlefield?.size ?? "auto");
       setRating(config.rating);
@@ -1568,6 +1597,9 @@ export function GameSetupWizard({
       enableGameSoundEffects: enableGameSoundEffects && sfxPreview.canGenerate ? undefined : false,
       enableGameMusic: enableGameMusic && musicPreview.canGenerate ? undefined : false,
       ...(importedArtStyleSettingsRef.current ?? {}),
+      ...(experienceArtStylePrompt && !importedArtStyleSettingsRef.current?.artStylePrompt
+        ? { artStylePrompt: experienceArtStylePrompt }
+        : {}),
       activeLorebookIds: activeLorebookIds.length > 0 ? activeLorebookIds : undefined,
       ...(selectedEntryIds.length ? { activeLorebookEntryIds: selectedEntryIds } : {}),
       enableCustomWidgets,
@@ -1726,6 +1758,38 @@ export function GameSetupWizard({
     );
   };
 
+  // Picking an Experience fills in its GM setup values (1.372); the player may still change any of them
+  // but a locked intro, which the intro field shows read-only. Turning it off leaves them as they are.
+  // A just-imported Experience comes with its package, since the list has not refetched it yet.
+  const selectExperience = (id: string | null, picked?: InstalledCapabilityPackage) => {
+    setExperienceId(id);
+    const experience = picked?.id === id ? picked : experiences.find((item) => item.id === id);
+    const defaults = experience?.manifest.contributions?.gameSurface?.setup?.defaults;
+    setExperienceArtStylePrompt(defaults?.artStylePrompt ?? null);
+    if (!defaults) return;
+    if (defaults.name) setGameName(defaults.name);
+    if (defaults.genre) {
+      genresChosenRef.current = true;
+      setGenres(defaults.genre);
+      setCustomGenre("");
+    }
+    if (defaults.setting) setSetting(defaults.setting);
+    if (defaults.tone) {
+      setTones(defaults.tone);
+      setCustomTone("");
+    }
+    if (defaults.difficulty) setDifficulty(defaults.difficulty);
+    if (defaults.rating) setRating(defaults.rating);
+    if (defaults.language) setLanguage(defaults.language);
+    if (defaults.combatStyle) setCombatStyle(defaults.combatStyle);
+    if (defaults.playerGoals) setPlayerGoals(defaults.playerGoals);
+    if (defaults.preferences) setPreferences(defaults.preferences);
+    if (defaults.gameSpecialInstructions) setGameSpecialInstructions(defaults.gameSpecialInstructions);
+    // The intro field then shows the Experience's own.
+    if (defaults.intro) setGameIntro(null);
+  };
+  const experienceIntro = experienceSetup?.defaults?.intro ?? worldDraft?.story?.intro;
+
   if (activeExperience && !experienceSetup) {
     return (
       <LegacyExperienceSetupDialog
@@ -1880,7 +1944,7 @@ export function GameSetupWizard({
                       <NewGameExperienceChooser
                         experiences={experiences}
                         activeId={activeExperience?.id ?? null}
-                        onSelect={setExperienceId}
+                        onSelect={selectExperience}
                         seed={experienceSeed}
                         onSeedChange={setExperienceSeed}
                         onRandomize={() => setExperienceSeed(String(crypto.getRandomValues(new Uint32Array(1))[0]))}
@@ -2213,42 +2277,73 @@ export function GameSetupWizard({
                       <label className="mb-1.5 block text-xs font-medium text-[var(--foreground)]">
                         {localizeUi("ui.game.gamesetupwizard.combatPreference")}
                       </label>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setCombatStyle("classic")}
-                          aria-pressed={combatStyle === "classic"}
-                          className={cn(
-                            "flex-1 rounded-lg p-3 text-left text-xs transition-colors ring-1",
-                            combatStyle === "classic"
-                              ? "bg-[var(--primary)]/10 ring-[var(--primary)]/40"
-                              : "bg-[var(--secondary)] ring-[var(--border)] hover:ring-[var(--primary)]/20",
-                          )}
-                        >
-                          <div className="font-medium text-[var(--foreground)]">
-                            {localizeUi("ui.game.gamesetupwizard.classic")}
-                          </div>
-                          <div className="mt-1 text-[var(--muted-foreground)]">
-                            {localizeUi("game.combat.preference.classicDescription")}
-                          </div>
-                        </button>
-                        <button
-                          onClick={() => setCombatStyle("tactical")}
-                          aria-pressed={combatStyle === "tactical"}
-                          className={cn(
-                            "flex-1 rounded-lg p-3 text-left text-xs transition-colors ring-1",
-                            combatStyle === "tactical"
-                              ? "bg-[var(--primary)]/10 ring-[var(--primary)]/40"
-                              : "bg-[var(--secondary)] ring-[var(--border)] hover:ring-[var(--primary)]/20",
-                          )}
-                        >
-                          <div className="font-medium text-[var(--foreground)]">
-                            {localizeUi("ui.game.gamesetupwizard.tactical")}
-                          </div>
-                          <div className="mt-1 text-[var(--muted-foreground)]">
-                            {localizeUi("game.combat.preference.tacticalDescription")}
-                          </div>
-                        </button>
+                      <div className="flex flex-wrap gap-2">
+                        {(!combatStyles || combatStyles.includes("classic")) && (
+                          <button
+                            onClick={() => setCombatStyle("classic")}
+                            aria-pressed={combatStyle === "classic"}
+                            className={cn(
+                              "min-w-0 flex-1 basis-36 rounded-lg p-3 text-left text-xs break-words transition-colors ring-1",
+                              combatStyle === "classic"
+                                ? "bg-[var(--primary)]/10 ring-[var(--primary)]/40"
+                                : "bg-[var(--secondary)] ring-[var(--border)] hover:ring-[var(--primary)]/20",
+                            )}
+                          >
+                            <div className="font-medium text-[var(--foreground)]">
+                              {localizeUi("ui.game.gamesetupwizard.classic")}
+                            </div>
+                            <div className="mt-1 text-[var(--muted-foreground)]">
+                              {localizeUi("game.combat.preference.classicDescription")}
+                            </div>
+                          </button>
+                        )}
+                        {(!combatStyles || combatStyles.includes("tactical")) && (
+                          <button
+                            onClick={() => setCombatStyle("tactical")}
+                            aria-pressed={combatStyle === "tactical"}
+                            className={cn(
+                              "min-w-0 flex-1 basis-36 rounded-lg p-3 text-left text-xs break-words transition-colors ring-1",
+                              combatStyle === "tactical"
+                                ? "bg-[var(--primary)]/10 ring-[var(--primary)]/40"
+                                : "bg-[var(--secondary)] ring-[var(--border)] hover:ring-[var(--primary)]/20",
+                            )}
+                          >
+                            <div className="font-medium text-[var(--foreground)]">
+                              {localizeUi("ui.game.gamesetupwizard.tactical")}
+                            </div>
+                            <div className="mt-1 text-[var(--muted-foreground)]">
+                              {localizeUi("game.combat.preference.tacticalDescription")}
+                            </div>
+                          </button>
+                        )}
+                        {listCombatStyles()
+                          .filter((id) => !isBuiltInCombatStyle(id) && (!combatStyles || combatStyles.includes(id)))
+                          .map((id) => (
+                            <button
+                              key={id}
+                              type="button"
+                              onClick={() => setCombatStyle(id)}
+                              aria-pressed={combatStyle === id}
+                              className={cn(
+                                "min-w-0 flex-1 basis-36 rounded-lg p-3 text-left text-xs break-words transition-colors ring-1",
+                                combatStyle === id
+                                  ? "bg-[var(--primary)]/10 ring-[var(--primary)]/40"
+                                  : "bg-[var(--secondary)] ring-[var(--border)] hover:ring-[var(--primary)]/20",
+                              )}
+                            >
+                              <span className="font-medium text-[var(--foreground)]">
+                                {getCombatStyle(id).label ?? id}
+                              </span>
+                            </button>
+                          ))}
                       </div>
+                      {combatStyles && activeRuleset && (
+                        <p className="mt-1.5 text-xs text-[var(--muted-foreground)]">
+                          {localizeUi("game.ruleset.setup.combatStylesLimited", {
+                            name: activeRuleset.definition.name,
+                          })}
+                        </p>
+                      )}
                       <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--border)] p-3 text-sm text-[var(--foreground)]">
                         <input
                           type="checkbox"
@@ -2290,6 +2385,9 @@ export function GameSetupWizard({
                       )}
                     </div>
 
+                    {!isNewGame && chatMetadata?.gameRuleset != null && (
+                      <GameRulesetUpdate chatId={activeChatId} pin={chatMetadata.gameRuleset} variant="wizard" />
+                    )}
                     {rulesets.length > 0 && (
                       <GameSetupRulesChooser
                         rulesets={rulesets}
@@ -2495,7 +2593,7 @@ export function GameSetupWizard({
                     <GameSetupGmIntro
                       value={gameIntro}
                       onChange={setGameIntro}
-                      {...(effectiveWorldDraft?.story?.intro ? { experience: effectiveWorldDraft.story.intro } : {})}
+                      {...(experienceIntro ? { experience: experienceIntro } : {})}
                     />
 
                     {/* GM Character selector */}
@@ -3329,6 +3427,9 @@ export function GameSetupWizard({
                         rows={3}
                         className="w-full resize-none rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs text-[var(--foreground)] outline-none ring-1 ring-transparent transition-all placeholder:text-[var(--muted-foreground)] focus:ring-[var(--primary)]/40"
                       />
+                      {rememberedSetupText.playerGoals && playerGoals === rememberedSetupText.playerGoals && (
+                        <RememberedTextNote onClear={() => setPlayerGoals("")} />
+                      )}
                       <div className="mt-1.5 flex flex-wrap gap-1">
                         {goalSuggestions.map((s) => (
                           <button
@@ -3362,6 +3463,9 @@ export function GameSetupWizard({
                         rows={3}
                         className="w-full resize-none rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs text-[var(--foreground)] outline-none ring-1 ring-transparent transition-all placeholder:text-[var(--muted-foreground)] focus:ring-[var(--primary)]/40"
                       />
+                      {rememberedSetupText.preferences && preferences === rememberedSetupText.preferences && (
+                        <RememberedTextNote onClear={() => setPreferences("")} />
+                      )}
                       <div className="mt-1.5 flex flex-wrap gap-1">
                         {PREFERENCE_SUGGESTIONS.map((s) => (
                           <button
@@ -3445,11 +3549,13 @@ export function GameSetupWizard({
                               <Plus size={12} className="text-[var(--muted-foreground)]" />
                             </button>
                           ))}
-                          {availableLorebooks.length === 0 && (
+                          {availableLorebooks.length === 0 && lorebooksList !== undefined && (
                             <p className="px-3 py-2 text-[0.625rem] text-[var(--muted-foreground)]">
-                              {lorebooks.filter((lb) => !activeLorebookIds.includes(lb.id)).length === 0
-                                ? localizeUi("ui.game.gamesetupwizard.allLorebooksAlreadyAdded")
-                                : localizeUi("ui.lorebooks.linkedresourcepicker.noMatches")}
+                              {lorebooks.length === 0
+                                ? localizeUi("ui.panels.lorebookspanel.noLorebooksYet")
+                                : lorebooks.filter((lb) => !activeLorebookIds.includes(lb.id)).length === 0
+                                  ? localizeUi("ui.game.gamesetupwizard.allLorebooksAlreadyAdded")
+                                  : localizeUi("ui.lorebooks.linkedresourcepicker.noMatches")}
                             </p>
                           )}
                         </div>
@@ -4205,7 +4311,7 @@ export function GameSetupWizard({
                         <>
                           <Wand2 size={14} />
                           {localizeUi(
-                            multiplayerPlayers ? "multiplayer.game.review" : "ui.game.gamesurfacecomponent.startGame",
+                            multiplayerPlayers ? "multiplayer.game.review" : "ui.game.gamesetupwizard.createWorld",
                           )}
                         </>
                       )}

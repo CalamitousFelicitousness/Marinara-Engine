@@ -90,6 +90,32 @@ export function protectTerminalLogger(log: object, prettyStdout = false): void {
 /** Short random id of this process start; tells two runs apart in one log file. */
 const bootId = randomBytes(4).toString("hex");
 
+/** Opt in when an Error's message/stack can contain provider text. Fields must contain metadata only. */
+export const privateErrorLogFields = Symbol("privateErrorLogFields");
+
+function errorLogFields(value: unknown): unknown {
+  if (!(value instanceof Error)) return undefined;
+  const seen = new Set<object>();
+  let current: unknown = value;
+  while (current && typeof current === "object") {
+    if (seen.has(current)) break;
+    seen.add(current);
+    const fields = Reflect.get(current, privateErrorLogFields);
+    if (fields) return fields;
+    current = Reflect.get(current, "cause");
+  }
+  return undefined;
+}
+
+function privateErrorLogArgument(value: unknown): unknown {
+  const fields = errorLogFields(value);
+  if (fields) return fields;
+  if (!value || typeof value !== "object" || value instanceof Error) return value;
+  const err = errorLogFields(Reflect.get(value, "err"));
+  const error = errorLogFields(Reflect.get(value, "error"));
+  return err || error ? { ...value, ...(err ? { err } : {}), ...(error ? { error } : {}) } : value;
+}
+
 /**
  * Left to itself pino writes to file descriptor 1, which on Windows reaches the
  * console through WriteFile and is decoded with the console's OEM code page, so
@@ -109,6 +135,14 @@ export function createLogDestination() {
 export const logger = pino(
   {
     level: getLogLevel(),
+    hooks: {
+      logMethod(args, method, level) {
+        // Pino copies a bare Error's message into msg before serializing it; intercept marked errors first.
+        if (level >= 30)
+          for (let index = 0; index < args.length; index++) args[index] = privateErrorLogArgument(args[index]);
+        return method.apply(this, args);
+      },
+    },
     // Pino's defaults (pid, hostname) plus bootId.
     base: { pid: process.pid, hostname: hostname(), bootId },
     mixin: logContextMixin,

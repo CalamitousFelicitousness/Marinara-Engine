@@ -6,12 +6,14 @@ import {
   CUSTOM_GENERATION_PARAMETERS_SETTINGS_KEY,
   parseManagedGenerationParameterDefinitions,
   type ParameterTraceLayer,
+  withoutPresetTokenLimits,
+  isStockMarinaraUniversalPreset,
 } from "@marinara-engine/shared";
 import { createConnectionsStorage } from "../../services/storage/connections.storage.js";
 import { createChatsStorage } from "../../services/storage/chats.storage.js";
 import { createPromptsStorage } from "../../services/storage/prompts.storage.js";
 import { createAppSettingsStorage } from "../../services/storage/app-settings.storage.js";
-import { parsePresetParameters } from "../../services/prompt/assembler.js";
+import { getPresetGenerationParameters } from "../../services/prompt/assembler.js";
 import {
   defaultGenerationParameterValues,
   presetGenerationParameterValues,
@@ -19,11 +21,7 @@ import {
   usesPresetAssembly,
 } from "../../services/generation/provider-generation-runtime.js";
 import { keepsCodexDefaultEffort, storedParameterSources } from "../../services/generation/generation-parameters.js";
-import {
-  resolveModelAccessPolicy,
-  mergeModelContextLimit,
-  resolveStoredModelContextLimit,
-} from "../../services/generation/model-access-policy.js";
+import { resolveModelAccessPolicy } from "../../services/generation/model-access-policy.js";
 import { sentOutputBudget } from "../../services/generation/empty-response-reason.js";
 import { buildGenerationPromptPresetCandidates } from "./prompt-preset-selection.js";
 import { parseExtra, parseStoredGenerationParameters } from "./generate-route-utils.js";
@@ -66,10 +64,10 @@ export async function registerParameterPreviewRoute(app: FastifyInstance) {
       if (preset) break;
     }
     // Conversation and Game chats read their preset for prompt text only, as generation does.
-    const presetApplies = !!preset && usesPresetAssembly(chatMode);
-    const presetParams = preset ? parsePresetParameters(preset.parameters) : { ...DEFAULT_GENERATION_PARAMS };
+    const presetApplies = !!preset && !isStockMarinaraUniversalPreset(preset) && usesPresetAssembly(chatMode);
+    const presetParams = preset ? getPresetGenerationParameters(preset) : { ...DEFAULT_GENERATION_PARAMS };
     const storedPresetParams: StoredParameters = presetApplies
-      ? parseStoredGenerationParameters(preset?.parameters)
+      ? withoutPresetTokenLimits(parseStoredGenerationParameters(preset?.parameters) ?? {})
       : null;
     const policy = resolveModelAccessPolicy(connection);
     const definitions = parseManagedGenerationParameterDefinitions(
@@ -87,11 +85,7 @@ export async function registerParameterPreviewRoute(app: FastifyInstance) {
       initialSources: presetApplies ? storedParameterSources(storedPresetParams, "preset") : undefined,
       initial: {
         ...(presetApplies ? presetGenerationParameterValues(presetParams) : defaultGenerationParameterValues()),
-        effectiveMaxContext: mergeModelContextLimit(
-          policy,
-          policy.effectiveMaxContext,
-          presetApplies ? resolveStoredModelContextLimit(policy, presetParams) : undefined,
-        ),
+        effectiveMaxContext: policy.effectiveMaxContext,
       },
     });
     const cappedOutput = sentOutputBudget(runtime.maxTokens, connection.maxTokensOverride);
@@ -155,6 +149,7 @@ export async function registerParameterPreviewRoute(app: FastifyInstance) {
     return {
       chatName: chat?.name ?? null,
       inheritedParameters: {
+        maxTokens: 4096,
         ...presetParams,
         ...runtime.connectionParams,
         ...(keepsCodexDefaultEffort(connection.provider, runtime.connectionParams) ? { reasoningEffort: null } : {}),

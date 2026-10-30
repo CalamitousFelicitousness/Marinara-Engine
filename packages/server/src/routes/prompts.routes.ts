@@ -6,6 +6,7 @@ import { mkdir, readFile, unlink, writeFile } from "fs/promises";
 import { extname, join } from "path";
 import {
   createPromptPresetSchema,
+  DEFAULT_GENERATION_PARAMS,
   updatePromptPresetSchema,
   createPromptSectionSchema,
   updatePromptSectionSchema,
@@ -14,7 +15,6 @@ import {
   createChoiceBlockSchema,
   updateChoiceBlockSchema,
   createFolderEntry,
-  DEFAULT_GENERATION_PARAMS,
   isStockMarinaraUniversalPreset,
   normalizeAdvancedMemorySettings,
   type LorebookEntryTimingState,
@@ -509,7 +509,13 @@ export async function promptsRoutes(app: FastifyInstance) {
     let personaId: string | null = null;
     let personaName = "User";
     let personaDescription = "";
-    let personaFields: { personality?: string; scenario?: string; backstory?: string; appearance?: string } = {};
+    let personaFields: {
+      example?: string;
+      personality?: string;
+      scenario?: string;
+      backstory?: string;
+      appearance?: string;
+    } = {};
     // Get active persona
     const activePersona = await resolveChatUserIdentity(charStorage, chat);
     if (activePersona) {
@@ -525,6 +531,7 @@ export async function promptsRoutes(app: FastifyInstance) {
       personaName = activePersona.name;
       personaDescription = cardPromptText(activePersona.description);
       personaFields = {
+        example: cardPromptText(activePersona.mesExample),
         personality: cardPromptText(activePersona.personality),
         scenario: cardPromptText(activePersona.scenario),
         backstory: cardPromptText(activePersona.backstory),
@@ -554,9 +561,10 @@ export async function promptsRoutes(app: FastifyInstance) {
             chatParameterOverrides: chatMeta.chatParameterOverrides,
             gameSetupParameters: (chatMeta.gameSetupConfig as Record<string, unknown> | undefined)
               ?.generationParameters,
-            baseReasoningEffort: usesPresetAssembly(chat.mode)
-              ? (parsePresetParameters(preset.parameters).reasoningEffort ?? null)
-              : DEFAULT_GENERATION_PARAMS.reasoningEffort,
+            baseReasoningEffort:
+              !isStockMarinaraUniversalPreset(preset) && usesPresetAssembly(chat.mode)
+                ? (parsePresetParameters(preset.parameters).reasoningEffort ?? null)
+                : DEFAULT_GENERATION_PARAMS.reasoningEffort,
           })
         : undefined,
       preset: preset as any,

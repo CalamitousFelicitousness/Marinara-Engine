@@ -26,6 +26,7 @@ import {
   removeSpriteBackgroundPng,
   selectSpriteChromaMatte,
   spriteBackgroundContract,
+  SPRITE_CLEANUP_REVISION,
   type SpriteCleanupEngine,
   type UsedSpriteCleanupEngine,
   type SpriteChromaMatte,
@@ -836,6 +837,7 @@ export async function drawTalkingHeadSet(
       width: request.prompt.width,
       height: request.prompt.height,
       transparentBackground: false,
+      preserveProviderOutput: true,
       imageEndpointId: conn.imageEndpointId || undefined,
       comfyWorkflow: conn.comfyuiWorkflow || undefined,
       imageDefaults: resolveConnectionImageDefaults(conn),
@@ -1417,6 +1419,7 @@ export async function spritesRoutes(app: FastifyInstance) {
 
   app.get("/cleanup/status", async () => ({
     backgroundRemover: getBackgroundRemoverStatus(),
+    cleanupRevision: SPRITE_CLEANUP_REVISION,
   }));
 
   /**
@@ -2382,6 +2385,7 @@ export async function spritesRoutes(app: FastifyInstance) {
                   referenceImage: request.references[0],
                   referenceImages: request.references.length > 1 ? request.references : undefined,
                   transparentBackground: nativeTransparentPng,
+                  preserveProviderOutput: true,
                   imageEndpointId: conn.imageEndpointId || undefined,
                   comfyWorkflow: conn.comfyuiWorkflow || undefined,
                   imageDefaults,
@@ -2483,6 +2487,7 @@ export async function spritesRoutes(app: FastifyInstance) {
                   referenceImage: resolvedRefs[0],
                   referenceImages: resolvedRefs.length > 1 ? resolvedRefs : undefined,
                   transparentBackground: nativeTransparentPng,
+                  preserveProviderOutput: true,
                   imageEndpointId: conn.imageEndpointId || undefined,
                   comfyWorkflow: conn.comfyuiWorkflow || undefined,
                   imageDefaults,
@@ -2551,6 +2556,7 @@ export async function spritesRoutes(app: FastifyInstance) {
             referenceImage: resolvedRefs[0],
             referenceImages: resolvedRefs.length > 1 ? resolvedRefs : undefined,
             transparentBackground: nativeTransparentPng,
+            preserveProviderOutput: true,
             imageEndpointId: conn.imageEndpointId || undefined,
             comfyWorkflow: conn.comfyuiWorkflow || undefined,
             imageDefaults,
@@ -2624,6 +2630,7 @@ export async function spritesRoutes(app: FastifyInstance) {
         engine: cleanupEngine,
         backgroundRemoverProcessed: engineCounts.backgroundremover,
         builtinProcessed: engineCounts.builtin,
+        cleanupRevision: SPRITE_CLEANUP_REVISION,
       };
     } catch (err: any) {
       logger.error(err, "Sprite cleanup failed");

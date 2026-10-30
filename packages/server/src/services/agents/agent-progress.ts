@@ -8,6 +8,7 @@ import type {
 import { extractLeadingThinkingBlocks } from "@marinara-engine/shared";
 import {
   measureContextBudget,
+  withLlmInactivityTimeout,
   type BaseLLMProvider,
   type ChatMessage,
   type ChatOptions,
@@ -26,7 +27,7 @@ import type { AgentExecConfig } from "./agent-executor.js";
 import { logger, logDebugOverride } from "../../lib/logger.js";
 import { tryParseJsonRecord } from "../../lib/json-repair.js";
 import { replyUnfinished } from "../generation/empty-response-reason.js";
-import { isDebugAgentsEnabled } from "../../config/runtime-config.js";
+import { getAgentCallTimeoutMs, isDebugAgentsEnabled } from "../../config/runtime-config.js";
 import { normalizeGemma4Delimiters } from "../llm/textual-tool-call-parser.js";
 
 /** Labels an agent request's parameters the way agent-executor resolves them. */
@@ -87,7 +88,9 @@ function isAgentExecConfigs(
   return agents.every((agent) => "settings" in agent);
 }
 
-/** Observe an existing call while forwarding its explicit agent debug setting. */
+const ILLUSTRATOR_AGENT_CALL_TIMEOUT_MS = 30 * 60_000;
+
+/** Give each agent call its own inactivity budget and observe its progress. */
 export async function completeAgentCall(
   context: Pick<AgentContext, "agentDebug" | "sceneCheck" | "agentProgress" | "signal" | "agentTrace">,
   agents: readonly AgentExecConfig[] | AgentTaskProgress["agents"],
@@ -143,6 +146,30 @@ async function observeAgentCall(
   messages: ChatMessage[],
   options: ChatOptions,
 ) {
+  const parentSignal =
+    options.signal && context.signal && options.signal !== context.signal
+      ? AbortSignal.any([options.signal, context.signal])
+      : (options.signal ?? context.signal);
+  const configuredMs = getAgentCallTimeoutMs();
+  const timeoutMs = agents.some((agent) => agent.type === "illustrator")
+    ? Math.max(ILLUSTRATOR_AGENT_CALL_TIMEOUT_MS, configuredMs)
+    : configuredMs;
+  let callSignal = parentSignal;
+  const complete = (requestOptions: ChatOptions) =>
+    withLlmInactivityTimeout(
+      timeoutMs,
+      (signal) => {
+        callSignal = signal;
+        return provider.chatComplete(messages, {
+          ...requestOptions,
+          // Keep upstream thinking/pings flowing even when the UI wants only a final answer.
+          stream: true,
+          ...(options.stream === false ? { onToken: undefined, onThinking: undefined } : {}),
+          signal,
+        });
+      },
+      parentSignal,
+    );
   let sceneCheck =
     context.sceneCheck &&
     !context.sceneCheck.claimed &&
@@ -205,7 +232,7 @@ async function observeAgentCall(
       logger.warn(error, "Could not send scene-check tracker prompt diagnostics");
     }
   }
-  if (!context.agentProgress && !sceneCheck) return provider.chatComplete(messages, options);
+  if (!context.agentProgress && !sceneCheck) return complete(options);
   const startedAt = Date.now();
   const progress: AgentTaskProgress = {
     callId: randomUUID(),
@@ -250,7 +277,7 @@ async function observeAgentCall(
   emit();
   try {
     let streamedText = "";
-    const result = await provider.chatComplete(messages, {
+    const result = await complete({
       ...options,
       ...(options.stream !== false
         ? {
@@ -310,7 +337,7 @@ async function observeAgentCall(
     }
     return result;
   } catch (error) {
-    progress.stage = options.signal?.aborted ? "stopped" : "error";
+    progress.stage = callSignal?.aborted ? "stopped" : "error";
     emit();
     throw error;
   }

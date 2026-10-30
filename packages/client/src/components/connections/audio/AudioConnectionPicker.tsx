@@ -20,7 +20,7 @@ import { Volume2 } from "lucide-react";
 import { TTS_SOURCE_DEFINITIONS, type TTSSourceId } from "@marinara-engine/shared";
 import { useConnections, useUpdateConnection } from "../../../hooks/use-connections";
 import { useEffectiveTTSConfig } from "../../../hooks/use-tts";
-import { filterAudioGenerationConnections, isConnectionFlagTrue } from "../../../lib/connection-filters";
+import { filterTTSConnections, isConnectionFlagTrue } from "../../../lib/connection-filters";
 import { useUIStore } from "../../../stores/ui.store";
 import { HelpTooltip } from "../../ui/HelpTooltip";
 
@@ -62,8 +62,7 @@ export function AudioConnectionPicker() {
   const openModal = useUIStore((state) => state.openModal);
 
   const audioConnections = useMemo(
-    () =>
-      filterAudioGenerationConnections((connections ?? []).map(toAudioConnectionOption).filter((row) => row !== null)),
+    () => filterTTSConnections((connections ?? []).map(toAudioConnectionOption).filter((row) => row !== null)),
     [connections],
   );
   const selected = audioConnections.find((row) => isConnectionFlagTrue(row.defaultForAgents)) ?? null;

@@ -107,7 +107,7 @@ export function ModalRenderer() {
   const type = modal?.type ?? null;
   if (!type) return null;
 
-  let content = null;
+  let content: React.ReactNode;
   switch (type) {
     case "create-character":
       content = (

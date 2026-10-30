@@ -1,3 +1,4 @@
+import { partialInput } from "@marinara-engine/shared";
 import {
   worldGeneratorReads,
   gameWorldSchema,
@@ -78,6 +79,9 @@ export interface GameSetupImportConnection {
   imageService?: string | null;
   videoService?: string | null;
   audioSource?: string | null;
+  audioGenerationSource?: string | null;
+  audioGenerationLegacyConnectionId?: string | null;
+  profileImportReviewRequired?: unknown;
 }
 
 export interface GameSetupImportContext {
@@ -119,7 +123,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
-const importedGenerationParametersSchema = generationParametersSchema.partial().strict();
+const importedGenerationParametersSchema = partialInput(generationParametersSchema).strict();
 
 function parseGenerationParameters(value: unknown): Partial<GenerationParameters> | undefined {
   if (value === undefined) return undefined;
@@ -570,9 +574,11 @@ function resolveConnectionId(
       if (model && normalizeLookupValue(connection.model) === model) score += 3;
       if (
         service &&
-        [connection.imageService, connection.videoService, connection.audioSource].some(
-          (candidate) => normalizeLookupValue(candidate) === service,
-        )
+        [
+          connection.imageService,
+          connection.videoService,
+          connection.audioGenerationSource ?? connection.audioSource,
+        ].some((candidate) => normalizeLookupValue(candidate) === service)
       ) {
         score += 2;
       }

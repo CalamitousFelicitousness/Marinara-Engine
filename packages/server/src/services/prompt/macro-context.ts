@@ -34,6 +34,8 @@ import type { DB } from "../../db/connection.js";
 import { loadLorebookIncludes, processLorebooks, type LorebookScanResult } from "../lorebook/index.js";
 import { createCharactersStorage, type PersonaStorageRow } from "../storage/characters.storage.js";
 import { createLorebooksStorage } from "../storage/lorebooks.storage.js";
+import { createChatsStorage, parseCharacterIds } from "../storage/chats.storage.js";
+import { createGameStateStorage } from "../storage/game-state.storage.js";
 import { wrapContent } from "./format-engine.js";
 import { sanitizePromptLeaf } from "./prompt-escaping.js";
 import { logger } from "../../lib/logger.js";
@@ -61,6 +63,8 @@ export interface BuildPromptMacroContextInput {
   lastGenerationType?: string;
   idleDuration?: string;
   timeZone?: string;
+  /** The generation's selected snapshot; explicit null means there is no scene clock. */
+  worldState?: MacroContext["worldState"];
   /** Extra prompt templates that may contain macros outside card/persona fields. */
   macroSources?: readonly string[];
   /** Load lorebook entry counts unconditionally, for paths that resolve text macroSources cannot see. */
@@ -355,6 +359,7 @@ function referencedPersonaMacroContext(macroCtx: MacroContext, persona: PersonaS
       backstory: persona.backstory ?? "",
       appearance: persona.appearance ?? "",
       scenario: persona.scenario ?? "",
+      example: persona.mes_example ?? "",
     },
   };
 }
@@ -375,6 +380,7 @@ function buildReferencedPersonaFields(
     { label: "backstory", value: persona.backstory },
     { label: "appearance", value: persona.appearance },
     { label: "scenario", value: persona.scenario },
+    { label: "example_dialogue", value: persona.mes_example },
     { label: "creator", value: persona.creator },
     { label: "persona_version", value: persona.personaVersion },
     { label: "creator_notes", value: persona.creatorNotes },
@@ -415,7 +421,7 @@ export async function buildReferencedPersonaContext(input: {
     Math.max(0, input.maxReferences ?? MAX_REFERENCED_PERSONAS),
   );
   const referencedIds = candidateIds.filter((id) => id !== input.activePersonaId);
-  const referencedRows = await Promise.all(referencedIds.map((id) => characters.getPersona(id)));
+  const referencedRows = await Promise.all(referencedIds.map((id) => characters.getPersona(id, input.chatId)));
   const referenced = referencedIds.flatMap((id, index) => {
     const persona = referencedRows[index];
     return persona ? [{ id, persona }] : [];
@@ -512,7 +518,7 @@ export async function buildReferencedCharacterContext(input: {
   const sources = [...input.sources, ...input.chatMessages.map((message) => message.content)];
 
   const activeNames = new Map<string, string>();
-  const activeRows = await Promise.all([...activeIds].map((id) => characters.getById(id)));
+  const activeRows = await Promise.all([...activeIds].map((id) => characters.getById(id, input.chatId)));
   [...activeIds].forEach((id, index) => {
     const data = parseCharacterData(activeRows[index]?.data);
     if (!data) return;
@@ -523,7 +529,7 @@ export async function buildReferencedCharacterContext(input: {
   // Every referenced ID gets a name in every mode; the cap only limits which cards are added (#6956).
   const mentionedIds = extractCharacterReferenceIds(sources, Infinity);
   const outsideIds = mentionedIds.filter((id) => !activeIds.has(id));
-  const outsideRows = await Promise.all(outsideIds.map((id) => characters.getById(id)));
+  const outsideRows = await Promise.all(outsideIds.map((id) => characters.getById(id, input.chatId)));
   const outside = outsideIds.flatMap((id, index) => {
     const data = parseCharacterData(outsideRows[index]?.data);
     return data ? [{ id, data }] : [];
@@ -722,7 +728,11 @@ function parseCharacterData(raw: unknown): CharacterData | null {
   return null;
 }
 
-export async function resolveCharacterMacroData(db: DB, characterIds: string[]): Promise<CharacterMacroData> {
+export async function resolveCharacterMacroData(
+  db: DB,
+  characterIds: string[],
+  chatId?: string,
+): Promise<CharacterMacroData> {
   if (characterIds.length === 0)
     return { names: [], phoneticNames: [], profiles: [], profilesById: new Map(), unreadableIds: new Set() };
 
@@ -735,7 +745,7 @@ export async function resolveCharacterMacroData(db: DB, characterIds: string[]):
   let primaryFields: CharacterMacroData["primaryFields"] | undefined;
 
   for (const id of characterIds) {
-    const row = await chars.getById(id);
+    const row = await chars.getById(id, chatId);
     const data = parseCharacterData(row?.data);
     if (!data) {
       if (row) unreadableIds.add(id);
@@ -872,10 +882,24 @@ export async function buildChatMacroContextForPreset(
 }
 
 export async function buildPromptMacroContext(input: BuildPromptMacroContextInput): Promise<MacroContext> {
-  const characterMacroData = await resolveCharacterMacroData(input.db, input.characterIds);
+  const characterMacroData = await resolveCharacterMacroData(input.db, input.characterIds, input.chatId);
   const groupCharacterMacroData = input.groupCharacterIds
-    ? await resolveCharacterMacroData(input.db, input.groupCharacterIds)
+    ? await resolveCharacterMacroData(input.db, input.groupCharacterIds, input.chatId)
     : characterMacroData;
+  const chat = input.chatId && input.db ? await createChatsStorage(input.db).getById(input.chatId) : null;
+  // Only the names cross into the full roster: inactive profiles must not enter
+  // grouped card expansion, reference discovery, or lorebook macro sources.
+  // Game callers supply the party scope, including legacy sessions whose chat row was not mirrored.
+  const rosterIds =
+    chat?.mode === "game"
+      ? (input.groupCharacterIds ?? input.characterIds)
+      : chat?.characterIds !== undefined
+        ? parseCharacterIds(chat.characterIds)
+        : input.characterIds;
+  const rosterNames =
+    rosterIds.length === input.characterIds.length && rosterIds.every((id, index) => id === input.characterIds[index])
+      ? characterMacroData.names
+      : (await resolveCharacterMacroData(input.db, rosterIds, input.chatId)).names;
   const variables = input.variables ?? {};
 
   let lorebookEntryCounts: Record<string, number> = {};
@@ -904,7 +928,7 @@ export async function buildPromptMacroContext(input: BuildPromptMacroContextInpu
     userPhonetic: input.personaPhoneticName || input.personaFields?.phoneticName || input.personaName || "User",
     char: characterMacroData.names[0] || "Character",
     charPhonetic: characterMacroData.phoneticNames[0] || characterMacroData.names[0] || "Character",
-    characters: characterMacroData.names,
+    characters: rosterNames,
     groupCharacters: groupCharacterMacroData.names,
     characterProfiles: characterMacroData.profiles,
     variables,
@@ -916,6 +940,12 @@ export async function buildPromptMacroContext(input: BuildPromptMacroContextInpu
     lastGenerationType: input.lastGenerationType,
     idleDuration: input.idleDuration,
     timeZone: input.timeZone,
+    worldState:
+      input.worldState !== undefined
+        ? input.worldState
+        : input.chatId && input.db
+          ? await createGameStateStorage(input.db).getForGeneration(input.chatId)
+          : null,
     lorebookEntryCounts,
     ...(lorebookIncludes ? { lorebookIncludes } : {}),
     characterFields: {
@@ -1067,7 +1097,7 @@ export async function collectCharacterDepthPromptEntries(
   const entries: PromptDepthEntry[] = [];
 
   for (const id of characterIds) {
-    const row = await chars.getById(id);
+    const row = await chars.getById(id, macroCtx.chatId);
     const data = parseCharacterData(row?.data);
     const depthPrompt = normalizeDepthPrompt(data?.extensions?.depth_prompt);
     if (!depthPrompt) continue;
@@ -1102,6 +1132,7 @@ export async function collectCharacterPostHistoryEntries(
   characterIds: string[],
   macroCtx: MacroContext,
   wrapFormat: WrapFormat,
+  onResolved?: (characterId: string, content: string) => void,
 ): Promise<PromptDepthEntry[]> {
   if (characterIds.length === 0) return [];
 
@@ -1110,7 +1141,7 @@ export async function collectCharacterPostHistoryEntries(
   const multiCharacter = characterIds.length > 1;
 
   for (const id of characterIds) {
-    const row = await chars.getById(id);
+    const row = await chars.getById(id, macroCtx.chatId);
     const data = parseCharacterData(row?.data);
     const raw = stripMacroComments(data?.post_history_instructions ?? "").trim();
     if (!data || !raw) continue;
@@ -1132,6 +1163,7 @@ export async function collectCharacterPostHistoryEntries(
       },
     }).trim();
 
+    onResolved?.(id, content);
     if (content) {
       const label = multiCharacter
         ? `${data.name ?? "Character"} post-history instructions`
@@ -1152,10 +1184,11 @@ export async function collectCharacterAdvancedPromptEntries(
   characterIds: string[],
   macroCtx: MacroContext,
   wrapFormat: WrapFormat,
+  onPostHistoryResolved?: (characterId: string, content: string) => void,
 ): Promise<PromptDepthEntry[]> {
   const [depthEntries, postHistoryEntries] = await Promise.all([
     collectCharacterDepthPromptEntries(db, characterIds, macroCtx),
-    collectCharacterPostHistoryEntries(db, characterIds, macroCtx, wrapFormat),
+    collectCharacterPostHistoryEntries(db, characterIds, macroCtx, wrapFormat, onPostHistoryResolved),
   ]);
   return [...depthEntries, ...postHistoryEntries];
 }

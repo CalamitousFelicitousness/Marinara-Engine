@@ -111,11 +111,22 @@ for (const [file, path] of [
   }
 
   // The three speech mounts get the voice pin, and each generation call gets
-  // its own, so swapping two of them cannot go unnoticed.
+  // its own, so swapping two of them cannot go unnoticed. Combat receives it
+  // through the combat-style context rather than as a prop.
   assert.equal(
     (surface.match(/audioConnectionId=\{gameVoiceConnectionId\}/gu) ?? []).length,
-    3,
-    "both narration mounts and combat must be handed the voice pin",
+    2,
+    "both narration mounts must be handed the voice pin",
+  );
+  assert.match(
+    surface,
+    /dialogue:\s*\{[^}]*audioConnectionId:\s*gameVoiceConnectionId,/u,
+    "combat must be handed the voice pin through its surface context",
+  );
+  assert.match(
+    readSource("packages/client/src/components/game/combat-styles.tsx"),
+    /audioConnectionId=\{ctx\.dialogue\.audioConnectionId\}/u,
+    "the classic combat surface must pass the voice pin to GameCombatUI",
   );
   assert.match(
     surface,
@@ -414,7 +425,7 @@ for (const [file, path] of [
   // Which rows qualify is one rule, audio provider and not a quarantined
   // import, already shared with the game setup wizard. Another inline copy
   // drifts from the server's resolution the first time either moves.
-  assert.match(picker, /filterAudioGenerationConnections/u, "the picker reuses the shared audio filter");
+  assert.match(picker, /filterTTSConnections/u, "the picker reuses the shared audio filter");
   assert.doesNotMatch(picker, /provider === "audio"/u, "rather than re-deriving it inline");
 
   // What is picked and what speaks are different questions: a fallback row or

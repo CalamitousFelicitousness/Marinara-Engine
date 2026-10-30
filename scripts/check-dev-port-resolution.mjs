@@ -71,8 +71,12 @@ if (viteConfig) {
     );
   }
 
+  // The target is upstream's resolveDevProxyPort, which reads process.env.PORT after the .env load above.
+  const proxyPortIndex = viteConfig.indexOf("const DEV_PROXY_PORT = resolveDevProxyPort()");
   require_(
-    /target:\s*`http:\/\/127\.0\.0\.1:\$\{process\.env\.PORT/.test(viteConfig),
+    /target:\s*`http:\/\/127\.0\.0\.1:\$\{DEV_PROXY_PORT\}/.test(viteConfig) &&
+      /function resolveDevProxyPort\(\) \{\s*let port = process\.env\.PORT;/.test(viteConfig) &&
+      proxyPortIndex > loadIndex,
     "packages/client/vite.config.ts no longer derives its /api proxy target from process.env.PORT, so the client can proxy to a port the server is not listening on.",
   );
 }

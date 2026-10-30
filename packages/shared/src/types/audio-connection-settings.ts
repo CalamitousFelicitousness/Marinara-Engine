@@ -19,6 +19,7 @@
 
 import { z } from "zod";
 import { ttsSourceProfileSchema, type TTSConfig, type TTSSourceProfile } from "./tts.js";
+import { partialInput } from "../utils/zod-input.js";
 
 /** Profile fields naming which engine to call, not how it speaks. Kept in dedicated columns. */
 export const AUDIO_CONNECTION_IDENTITY_FIELDS = [
@@ -30,16 +31,17 @@ export const AUDIO_CONNECTION_IDENTITY_FIELDS = [
   "elevenLabsGameMusic",
 ] as const;
 
-export const audioConnectionSettingsSchema = ttsSourceProfileSchema
-  .omit({
-    baseUrl: true,
-    apiKey: true,
-    voice: true,
-    model: true,
-    elevenLabsGameSoundEffects: true,
-    elevenLabsGameMusic: true,
-  })
-  .partial();
+const tunableProfileSchema = ttsSourceProfileSchema.omit({
+  baseUrl: true,
+  apiKey: true,
+  voice: true,
+  model: true,
+  elevenLabsGameSoundEffects: true,
+  elevenLabsGameMusic: true,
+});
+
+// Zod 4's .partial() still applies each field's default; partialInput leaves an absent field absent.
+export const audioConnectionSettingsSchema = partialInput(tunableProfileSchema);
 
 export type AudioConnectionSettings = z.infer<typeof audioConnectionSettingsSchema>;
 

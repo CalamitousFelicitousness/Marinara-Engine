@@ -59,7 +59,7 @@ import {
   resolveTranscriptRenderWindowSize,
   TRANSCRIPT_RENDER_WINDOW_STEP,
 } from "../../lib/transcript-render-window";
-import { useUIStore } from "../../stores/ui.store";
+import { selectSidebarShown, useUIStore } from "../../stores/ui.store";
 import { useChatStore } from "../../stores/chat.store";
 import { useGameStateStore } from "../../stores/game-state.store";
 import { useChatComposerFocused, useChatKeyboardOpen } from "../../hooks/use-visual-viewport-chat-bottom";
@@ -370,6 +370,7 @@ function StreamingIndicator({
   personaInfo,
   chatMode,
   groupChatMode,
+  colorInlineNames,
   expressionAvatarResolver,
   visualNovel = false,
   visualNovelParagraphIndex,
@@ -383,6 +384,7 @@ function StreamingIndicator({
   personaInfo?: PersonaInfo;
   chatMode: string;
   groupChatMode?: string;
+  colorInlineNames?: boolean;
   expressionAvatarResolver?: ExpressionAvatarResolver;
   visualNovel?: boolean;
   visualNovelParagraphIndex?: number;
@@ -435,6 +437,7 @@ function StreamingIndicator({
         personaInfo={personaInfo}
         chatMode={chatMode}
         groupChatMode={groupChatMode}
+        colorInlineNames={colorInlineNames}
         chatCharacterIds={chatCharIds}
         mergedGroupCharacterIds={mergedGroupCharacterIds}
         expressionAvatarResolver={expressionAvatarResolver}
@@ -797,11 +800,12 @@ type RoleplaySurfaceProps = {
   onOpenScheduleEditor?: ComponentProps<typeof ChatCommonOverlays>["onOpenScheduleEditor"];
   onCloseSettings: (options?: { force?: boolean }) => void;
   onIllustrate?: (prompt?: string, messageRange?: [string, string]) => void;
+  onRoleplayVideo?: (description?: string) => void | Promise<void>;
   onIllustrateWithAgent?: (agentType: string) => void | Promise<void>;
   onGenerateBackground?: () => void | Promise<void>;
   onGenerateVideo?: () => void | Promise<void>;
   onAnimateImage?: (image: ChatImage) => void | Promise<void>;
-  onWizardFinish: () => void;
+  onWizardFinish: (discarded?: boolean) => void;
   onClosePeekPrompt: () => void;
   onResetSpritePlacements: () => void;
   onResetSpriteCharacterVisualSettings: (characterId: string) => void;
@@ -918,6 +922,7 @@ export function ChatRoleplaySurface({
   onOpenScheduleEditor,
   onCloseSettings,
   onIllustrate,
+  onRoleplayVideo,
   onIllustrateWithAgent,
   onGenerateBackground,
   onGenerateVideo,
@@ -1005,7 +1010,7 @@ export function ChatRoleplaySurface({
   const linkedChatName = chat?.connectedChatId
     ? getConnectedChatDisplayName(allChats?.find((c) => c.id === chat.connectedChatId))
     : undefined;
-  const sidebarOpen = useUIStore((s) => s.sidebarOpen);
+  const sidebarOpen = useUIStore(selectSidebarShown);
   const rightPanelOpen = useUIStore((s) => s.rightPanelOpen);
   const chatBackgroundBlur = useUIStore((s) => s.chatBackgroundBlur);
   const roleplayReducedPaintEffects = useUIStore((s) => s.roleplayReducedPaintEffects);
@@ -1014,9 +1019,12 @@ export function ChatRoleplaySurface({
   const vnAutoPlay = useUIStore((s) => s.roleplayVnAutoPlay);
   const vnAutoPlayDelay = useUIStore((s) => s.roleplayVnAutoPlayDelay);
   const visualNovel = isRoleplay && (chatMeta.roleplayDisplayStyle ?? defaultDisplayStyle) === "visual-novel";
+  // Undefined until the chat sets it; ChatMessage then falls back to the retired global switch.
+  const colorInlineNames = typeof chatMeta.colorInlineNames === "boolean" ? chatMeta.colorInlineNames : undefined;
   const chatPosition = useUIStore((s) => s.roleplayChatPosition);
   const roleplayAvatarStyle = useUIStore((s) => s.roleplayAvatarStyle);
   const roleplayAvatarScale = useUIStore((s) => s.roleplayAvatarScale);
+  const roleplayChatWidthPercent = useUIStore((s) => s.roleplayChatWidthPercent);
   const trackerPanelSide = useUIStore((s) => s.trackerPanelSide);
   // Left and Right apply on wide screens only (see globals.css); a narrow chat pane keeps the centred column.
   const sideChatPosition = chatPosition === "left" || chatPosition === "right" ? chatPosition : undefined;
@@ -1235,6 +1243,12 @@ export function ChatRoleplaySurface({
       }
       const scrollElement = scrollRef.current;
       if (!scrollElement) return;
+      scrollElement
+        .closest<HTMLElement>('[data-chat-mode="roleplay"]')
+        ?.style.setProperty(
+          "--mari-roleplay-scrollbar-width",
+          `${scrollElement.offsetWidth - scrollElement.clientWidth}px`,
+        );
       const historyBox = scrollElement.parentElement;
       if (historyBox) {
         historyBox.style.top = visualNovel && vnHistoryOpen ? `${top + 8}px` : "";
@@ -1256,6 +1270,7 @@ export function ChatRoleplaySurface({
     measure();
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(measure);
+    if (scrollRef.current) observer.observe(scrollRef.current);
     if (topChromeRef.current) observer.observe(topChromeRef.current);
     if (inputChromeRef.current) observer.observe(inputChromeRef.current);
     return () => observer.disconnect();
@@ -1263,6 +1278,7 @@ export function ChatRoleplaySurface({
     activeChatId,
     centerCompact,
     phoneLayout,
+    roleplayChatWidthPercent,
     chatMeta.enableAgents,
     chatMeta.sceneStatus,
     combatAgentEnabled,
@@ -1710,10 +1726,18 @@ export function ChatRoleplaySurface({
         data-chat-mode="roleplay"
         data-roleplay-presentation={visualNovel ? "visual-novel" : "classic"}
         data-chat-position={sideChatPosition}
+        data-roleplay-custom-width={roleplayChatWidthPercent !== null || undefined}
         data-roleplay-avatar-style={sideChatPosition ? roleplayAvatarStyle : undefined}
         style={
           {
             isolation: "isolate",
+            ...(roleplayChatWidthPercent !== null && {
+              "--mari-roleplay-custom-column-width": `${roleplayChatWidthPercent}cqw`,
+              "--mari-roleplay-custom-avatar-room":
+                roleplayAvatarStyle === "none"
+                  ? "0rem"
+                  : `calc(${(roleplayAvatarStyle === "rectangles" ? 2.75 : 2.5) * roleplayAvatarScale}rem + 1.5rem)`,
+            }),
             // The compact pane keeps the transcript's narrow padding (px-3) at every width.
             ...(centerCompact && { "--mari-roleplay-transcript-gutter": "0.75rem" }),
             ...(sideChatPosition && {
@@ -1986,6 +2010,7 @@ export function ChatRoleplaySurface({
                           messageOrderIndex={messageOrderIndex}
                           isGrouped={isGrouped(sourceIndex)}
                           groupChatMode={groupChatMode}
+                          colorInlineNames={colorInlineNames}
                           chatCharacterIds={chatCharIds}
                           mergedGroupCharacterIds={activeChatCharacterIds}
                           expressionAvatarResolver={expressionAvatarResolver}
@@ -2025,6 +2050,7 @@ export function ChatRoleplaySurface({
                           messageOrderIndex={messageOrderIndex}
                           isGrouped={isGrouped(sourceIndex)}
                           groupChatMode={groupChatMode}
+                          colorInlineNames={colorInlineNames}
                           chatCharacterIds={chatCharIds}
                           mergedGroupCharacterIds={activeChatCharacterIds}
                           expressionAvatarResolver={expressionAvatarResolver}
@@ -2059,6 +2085,7 @@ export function ChatRoleplaySurface({
                     personaInfo={personaInfo}
                     chatMode={chatMode}
                     groupChatMode={groupChatMode}
+                    colorInlineNames={colorInlineNames}
                     expressionAvatarResolver={expressionAvatarResolver}
                   />
                 )}
@@ -2119,6 +2146,7 @@ export function ChatRoleplaySurface({
                               characterMap={characterMap}
                               personaInfo={personaInfo}
                               groupChatMode={groupChatMode}
+                              colorInlineNames={colorInlineNames}
                               chatCharacterIds={chatCharIds}
                               mergedGroupCharacterIds={activeChatCharacterIds}
                               expressionAvatarResolver={expressionAvatarResolver}
@@ -2136,6 +2164,7 @@ export function ChatRoleplaySurface({
                               personaInfo={personaInfo}
                               chatMode="roleplay"
                               groupChatMode={groupChatMode}
+                              colorInlineNames={colorInlineNames}
                               expressionAvatarResolver={expressionAvatarResolver}
                             />
                           )
@@ -2159,6 +2188,7 @@ export function ChatRoleplaySurface({
                               characterMap={characterMap}
                               personaInfo={personaInfo}
                               groupChatMode={groupChatMode}
+                              colorInlineNames={colorInlineNames}
                               chatCharacterIds={chatCharIds}
                               mergedGroupCharacterIds={activeChatCharacterIds}
                               expressionAvatarResolver={expressionAvatarResolver}
@@ -2246,6 +2276,7 @@ export function ChatRoleplaySurface({
                   onExpressionChange={onExpressionChange}
                   onPeekPrompt={onPeekPrompt}
                   onIllustrate={onIllustrate}
+                  onRoleplayVideo={onRoleplayVideo}
                   interactionsLocked={agentProcessing}
                 />
               </div>

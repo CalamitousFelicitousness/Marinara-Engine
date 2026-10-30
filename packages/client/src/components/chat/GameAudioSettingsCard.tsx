@@ -13,7 +13,7 @@ import { Volume2 } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import type { GameAudioPurpose } from "@marinara-engine/shared";
 import { AgentSettingsCard, AgentSettingsToggle } from "./AgentSettingsControls";
-import { audioConnectionSupportsPurpose, filterAudioGenerationConnections } from "../../lib/connection-filters";
+import { audioConnectionSupportsPurpose, filterTTSConnections } from "../../lib/connection-filters";
 
 export interface GameAudioSettingsConnection {
   id: string;
@@ -44,7 +44,7 @@ export function GameAudioSettingsCard({
   onMusicEnabledChange,
 }: GameAudioSettingsCardProps) {
   const { t: localizeUi } = useUiTranslation();
-  const audioConnections = filterAudioGenerationConnections(connections);
+  const audioConnections = filterTTSConnections(connections);
   const legacyPin = typeof metadata.gameAudioConnectionId === "string" ? metadata.gameAudioConnectionId : "";
   // The one place a player can see the all-purpose pin a game may still carry.
   const emptyOptionLabel = legacyPin

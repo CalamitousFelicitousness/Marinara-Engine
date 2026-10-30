@@ -45,6 +45,7 @@ import {
   runInMediaProviderLane,
   runMediaGenerationRequest,
 } from "./image-generation-queue.js";
+import { runSharedGpuTurn } from "../generation/shared-gpu-turns.js";
 import { generateRunPodComfyUI } from "./runpod-comfyui.service.js";
 import { logger, logDebugOverride } from "../../lib/logger.js";
 import {
@@ -85,6 +86,8 @@ import {
   buildAtlasCloudImageRequest,
   runAtlasCloudPrediction,
 } from "../media/atlas-cloud.js";
+import { generateToAPIsImage, isToAPIsMediaUrl, ToAPIsSubmittedTaskError } from "../media/toapis-media.js";
+import { formatGeneratedImageForStorage } from "./generated-image-format.js";
 import {
   OPENAI_CHATGPT_CODEX_BASE_URL,
   buildOpenAIChatGPTHeaders,
@@ -309,8 +312,10 @@ export function imageAdmissionKey(normalizedBaseUrl: string, resolvedSource: str
  * way generateVideo already is, so EVERY image path is capped at this single
  * point — game assets, sprites, avatars, storyboards, Mari images — instead of
  * relying on per-caller wiring. Callers that additionally wrap in
- * runImageGenerationRequest for the per-connection FIFO are safe: the nested
- * acquire re-uses their held permit (AsyncLocalStorage re-entrancy guard). Batch/automatic work
+ * runImageGenerationRequest for the per-connection FIFO pass taskTakesPermit, so
+ * the shared GPU turn is waited for here before any permit is taken. (A wrapper
+ * that does take a permit is still safe from deadlock: the nested acquire re-uses
+ * it through the AsyncLocalStorage re-entrancy guard.) Batch/automatic work
  * (admissionMode "background") never occupies the last permit ahead of
  * interactive requests.
  *
@@ -347,6 +352,7 @@ export async function generateImage(
     request.admissionMode ?? { kind: "foreground" },
   );
   let outcome: ConnectionAttemptOutcome = "failed";
+  let toAPIsSubmissionStarted = false;
 
   try {
     const physicalRequest = () =>
@@ -364,8 +370,6 @@ export async function generateImage(
         };
 
         switch (resolvedSource) {
-          case "openai":
-            return generateOpenAI(normalizedBaseUrl, apiKey, scopedRequest);
           case "codex_chatgpt":
             return generateChatGPTImage(scopedRequest);
           case "arli":
@@ -414,8 +418,11 @@ export async function generateImage(
             return generateAutomatic1111(normalizedBaseUrl, scopedRequest, serviceHint);
           case "gemini_image":
             return generateViaChatCompletions(normalizedBaseUrl, apiKey, scopedRequest);
+          case "openai":
           default:
-            return generateOpenAI(normalizedBaseUrl, apiKey, scopedRequest);
+            return generateOpenAI(normalizedBaseUrl, apiKey, scopedRequest, () => {
+              toAPIsSubmissionStarted = true;
+            });
         }
       });
     // Admit on the resolved endpoint rather than a connection id: every caller reaches this
@@ -424,8 +431,10 @@ export async function generateImage(
     // ponytail: image work keys on the endpoint URL while text work keys on the connection
     // id, so the two do not hold each other off on a connection used for both. Unify the
     // key if that overlap ever shows up in practice.
-    // The provider lane comes first and the global permit second, so requests waiting
-    // their turn at one account never hold permits other providers could use.
+    // The provider lane comes first, then the shared GPU turn, then the global permit and the
+    // connection admission, so requests waiting their turn at one account or on a busy shared
+    // GPU never hold permits or admission other providers could use. The turn sits outside the
+    // request deadline, so waiting for it costs no render time.
     const admissionKey = imageAdmissionKey(normalizedBaseUrl, resolvedSource, request.imageEndpointId);
     const primaryResult = await runInMediaProviderLane({
       laneKey: mediaProviderLaneKey(admissionKey, apiKey),
@@ -437,15 +446,24 @@ export async function generateImage(
           queue: false,
           signal: request.signal,
           priority: request.admissionMode?.kind === "background" ? "background" : "foreground",
+          aroundPermit: (work) => runSharedGpuTurn("media", normalizedBaseUrl, work, request.signal),
           task: () => withConnectionAdmission(admissionKey, primaryMode, physicalRequest),
         }),
     });
     outcome = "completed";
+    const storedResult = request.preserveProviderOutput
+      ? primaryResult
+      : await formatGeneratedImageForStorage(primaryResult);
     return flattenedPrompt
-      ? { ...primaryResult, effectivePrompt: primaryResult.effectivePrompt ?? flattenedPrompt }
-      : primaryResult;
+      ? { ...storedResult, effectivePrompt: storedResult.effectivePrompt ?? flattenedPrompt }
+      : storedResult;
   } catch (error) {
     const fallback = request.fallback;
+    if (error instanceof ToAPIsSubmittedTaskError) throw error;
+    // The deadline races the worker, so it can arrive before the worker wraps its aborted task.
+    if (error instanceof ImageGenerationDeadlineError && toAPIsSubmissionStarted) {
+      throw new ToAPIsSubmittedTaskError(error);
+    }
     if (!fallback || request.signal?.aborted || isConnectionAdmissionFailure(error)) throw error;
     // An edit drawn without its picture is a new picture, so a fallback that drops the picture is not tried.
     if (request.referenceIsCanvas && !imageConnectionTakesReferencePicture(fallback)) {
@@ -992,6 +1010,17 @@ function decodeImageDataUrl(imageUrl: string): ImageGenResult {
   return { base64, mimeType, ext: imageExtensionFromMimeType(mimeType) };
 }
 
+/**
+ * A provider's `b64_json`-style field as an image. Some fill it with a whole data URL (xAI's generations endpoint
+ * returns `data:image/jpeg;base64,…`), and few say the type, so a data URL is decoded as one and bare base64 is typed
+ * by its bytes, as PNG only when they match no known format.
+ */
+function imageResultFromBase64Field(value: string): ImageGenResult {
+  if (value.trim().startsWith("data:")) return decodeImageDataUrl(value);
+  const mimeType = detectImageMimeType(value) ?? "image/png";
+  return { base64: value, mimeType, ext: imageExtensionFromMimeType(mimeType) };
+}
+
 function nanoGPTImagesUrl(baseUrl: string): string {
   const trimmed = baseUrl.replace(/\/+$/, "");
   try {
@@ -1110,7 +1139,7 @@ async function readOpenAIImageResult(
     throw new Error(`No image data in ${provider} response (fields: ${fields || "none"})`);
   }
 
-  return { base64: b64, mimeType: "image/png", ext: "png" };
+  return imageResultFromBase64Field(b64);
 }
 
 async function downloadImageUrl(
@@ -1311,7 +1340,22 @@ function applyImageCustomFormParameters(request: ImageGenRequest, body: FormData
   );
 }
 
-async function generateOpenAI(baseUrl: string, apiKey: string, request: ImageGenRequest): Promise<ImageGenResult> {
+async function generateOpenAI(
+  baseUrl: string,
+  apiKey: string,
+  request: ImageGenRequest,
+  onToAPIsSubmissionStart?: () => void,
+): Promise<ImageGenResult> {
+  if (isToAPIsMediaUrl(baseUrl)) {
+    return generateToAPIsImage(
+      baseUrl,
+      apiKey,
+      { ...request, prompt: openAITextPrompt(request) },
+      openAIReferenceImages(request).map(decodeReferenceImage),
+      MAX_IMAGE_RESPONSE_BYTES,
+      onToAPIsSubmissionStart,
+    );
+  }
   const usesGptImageApi = isOpenAIGptImageModel(request.model);
   const references = openAIReferenceImages(request);
   const prompt = openAITextPrompt(request);
@@ -1565,7 +1609,7 @@ async function generateXAI(baseUrl: string, apiKey: string, request: ImageGenReq
 
   const data = (await resp.json()) as { data?: Array<{ b64_json?: string; url?: string }> };
   const result = data.data?.[0];
-  if (result?.b64_json) return { base64: result.b64_json, mimeType: "image/png", ext: "png" };
+  if (result?.b64_json) return imageResultFromBase64Field(result.b64_json);
   if (result?.url) return downloadImageUrl(result.url, request.privateImageResultOrigin, request.signal);
 
   throw new Error("No image data in xAI response");
@@ -1885,23 +1929,53 @@ async function generateAtlasCloudImage(
   return downloadImageUrl(outputUrl, request.privateImageResultOrigin, request.signal);
 }
 
+function nanoGPTNanoBanana21AspectRatio(width: number, height: number): string {
+  // NanoGPT's nano-banana-2.1 supports these ratios, not arbitrary pixel sizes.
+  const ratios = [
+    ["1:1", 1],
+    ["2:3", 2 / 3],
+    ["3:2", 3 / 2],
+    ["3:4", 3 / 4],
+    ["4:3", 4 / 3],
+    ["4:5", 4 / 5],
+    ["5:4", 5 / 4],
+    ["9:16", 9 / 16],
+    ["16:9", 16 / 9],
+    ["21:9", 21 / 9],
+    ["1:4", 1 / 4],
+    ["4:1", 4],
+    ["1:8", 1 / 8],
+    ["8:1", 8],
+  ] as const;
+  const ratio = width / height;
+  return ratios.reduce((best, candidate) =>
+    Math.abs(candidate[1] - ratio) < Math.abs(best[1] - ratio) ? candidate : best,
+  )[0];
+}
+
 async function generateNanoGPT(baseUrl: string, apiKey: string, request: ImageGenRequest): Promise<ImageGenResult> {
   const url = nanoGPTImagesUrl(baseUrl);
   const width = request.width ?? 1024;
   const height = request.height ?? 1024;
   const model = request.model?.trim().toLowerCase() ?? "";
   const isNanoBanana = model.includes("nano-banana");
-  const size = isOpenAIGptImageModel(request.model)
-    ? openAIImageSize(request)
-    : isNanoBanana && height > width
-      ? "768x1344"
-      : `${width}x${height}`;
+  const isNanoBanana21 = model === "nano-banana-2.1";
+  const size = isNanoBanana21
+    ? Math.max(width, height) > 1024
+      ? "2k"
+      : "1k"
+    : isOpenAIGptImageModel(request.model)
+      ? openAIImageSize(request)
+      : isNanoBanana && height > width
+        ? "768x1344"
+        : `${width}x${height}`;
   const body: Record<string, unknown> = {
     prompt: request.prompt,
     n: 1,
     size,
     response_format: "url",
   };
+  if (isNanoBanana21) body.aspect_ratio = nanoGPTNanoBanana21AspectRatio(width, height);
   if (request.model) body.model = request.model;
   if (request.negativePrompt) body.negative_prompt = request.negativePrompt;
 
@@ -2331,7 +2405,7 @@ async function generateTogetherAI(baseUrl: string, apiKey: string, request: Imag
   const b64 = data.data?.[0]?.b64_json;
   if (!b64) throw new Error("No image data in Together AI response");
 
-  return { base64: b64, mimeType: "image/png", ext: "png" };
+  return imageResultFromBase64Field(b64);
 }
 
 export function buildArliImageUrl(baseUrl: string, endpoint: "txt2img" | "img2img"): string {

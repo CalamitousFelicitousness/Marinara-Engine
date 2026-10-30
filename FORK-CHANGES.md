@@ -16,6 +16,8 @@ Upstream reads `PORT` only from `process.env` in both files and falls back to `7
 
 `process.loadEnvFile()` never overrides a value already in the environment, so `PORT=... pnpm dev` still wins over the file. In `vite.config.ts` the load must stay **above** `DEV_SERVER_PORT`, because those constants evaluate at module load.
 
+Upstream now resolves `PORT` from `.env` too (`resolveServerPort` in `dev.mjs`, `resolveDevProxyPort` in `vite.config.ts`), but only `PORT`. The fork's full `.env` load stays for `VITE_PORT`, `VITE_HOST` and the browser-open switches, and the proxy target is upstream's `DEV_PROXY_PORT`.
+
 Guarded by `pnpm dev-ports:check`, which runs inside `pnpm check`.
 
 ### Shared message action button carries gesture handlers
@@ -93,6 +95,38 @@ meaning and drops the hardcoded source.
 The lane asserted the shared generation call had exactly three arguments, standing in for "no caller's
 signal reaches the shared work". The fork's call passes five, so that invariant is now asserted
 directly: no argument is an `AbortSignal`.
+
+### Music and sound effects stay on the fork's audio lanes
+
+Upstream moved music and sound effects onto a new `audio_generation` provider (`generateAudioAsset`
+in `services/audio/generative-audio.service.ts`) and splits every music- or sound-effect-capable
+`audio` row into one with `migrateGenerativeAudioConnections`, switching `audioMusic` and
+`audioSoundEffects` off on the original. Here those switches feed the sound-effect and music lanes
+("Voice, sound effects, and music each pick their own engine"), so the split never runs: `app.ts`
+does not register its startup phase, `connections.routes.ts` does not call it after a save, and
+`resolveGenerativeAudioConfig` does not call it lazily. The migration module stays unreferenced.
+
+Game and Roleplay audio keep the fork's path: `/tts/game-audio` and `generateRoleplaySoundEffect`
+resolve through `resolveAudioConfig` and `generateGameAudio`, not `generateAudioAsset`. Upstream's
+`audio_generation` connections still work for what calls them directly, `/api/audio` and the
+connection test, and have their own default pair in Connections > Defaults beside the fork's lanes.
+
+Upstream kept the name `filterAudioGenerationConnections` but now returns `audio_generation` rows;
+`filterTTSConnections` has the fork's old meaning, so every fork caller uses it. Upstream's persona
+voices, Eleven v4 speech and Game player-speaker voicing are not taken yet; they rely on the TTS
+card's Source picker or on app-level voice assignments, which this fork replaced with per-connection
+casting. `connection-role-flags.ts` gains the `audio_generation` category so an `audio_generation`
+default does not evict the language default.
+
+Upstream lanes that test the split or `generateAudioAsset` behind the Game and Roleplay routes are
+not carried: `generative-audio-client`, `generative-audio-connections`,
+`generative-audio-migration-failure`, `startup-audio-migration-isolation` and
+`compatible-game-audio`. `tts-source-persistence` and `game-tts-emotion` keep the fork's versions,
+without upstream's persona-voice and Eleven v4 cases.
+
+Patches `app.ts`, `connections.routes.ts`, `generative-audio.service.ts`, `connection-role-flags.ts`,
+`ConnectionEditor.tsx`, `ConnectionsPanel.tsx`, `GameSetupWizard.tsx`, `GameSurface.tsx` and
+`combat-styles.tsx` (the classic combat surface receives `audioConnectionId` for the Game's speech pin).
 
 ### Launchers stop a running copy cleanly and take its place
 
@@ -1560,6 +1594,41 @@ Patches to upstream files: `packages/client/src/components/chat/ChatBranchesPane
 and `packages/client/src/localization/locales/en.json`.
 
 Covered by `scripts/regressions/chat-branch-preview.regression.ts`.
+
+### Sync with upstream, 2026-10-30
+
+1620 upstream commits, merge base `0d44d2867`, merged in two steps: through `8042ef6ec` (the v2.5.1
+release point, 23 conflicts), then through `98ae0c8f9` (59 conflicts). v2.5.0 to v2.5.1, storage
+format 7 on both sides. Upstream moved to pnpm 12 and native Zod 4.
+
+- **Speech connection Source (#7848).** Not taken; speech resolves its engine through the audio
+  connection defaults. See "A TTS engine is a saved connection, not a settings page".
+- **Music and sound effects (`audio_generation`).** Present beside the fork's lanes; see "Music and
+  sound effects stay on the fork's audio lanes".
+- **Token limits outside presets, stock preset (`04ed6eaa4`, `0751ef760`).** Applied to the fork's own
+  parameter path: `presetGenerationParameterValues` never supplies `maxTokens` or a context limit,
+  and the stock Universal preset supplies no parameters in the live route, dry run, parameter
+  preview, `parameter-baseline.ts`, `{{reasoning}}` and the prompts route.
+- **World state in macros.** Upstream's `worldState` passes through `buildChatMacroContext`; the two
+  new `game.routes.ts` builders and the capability lorebook read use it with their preset variables.
+- **Log output.** Upstream's private error fields hook into the fork's `createLogDestination` logger.
+
+Losses with no conflict marker, fixed in the merge: fork-only `z.record(z.unknown())` failed under
+Zod 4; Zod 4's `.partial()` keeps field defaults, so `audioConnectionSettingsSchema` (now built with
+upstream's `partialInput`) filled every connection setting and stopped inheriting the app-level
+value; `filterAudioGenerationConnections` changed meaning under the same name; upstream's persona
+voices reached `ChatArea`, `ChatMessage`, `GameNarration` and `tts-roleplay-speaker-extractor.ts`
+through clean hunks; `capability-gm-verbs` pins 24 opaque metadata writes because each lineage
+bumped the shared count for its own call in both steps.
+
+`e2e/roleplay-chat-width.e2e.ts` seeds `trackerPanelWidth` instead of the size profile.
+
+Upstream's new avatar director (`features/avatars/director/reply-text.ts`) reads speaker tags through
+the shared `speaker-tags.ts` helpers, as `speaker-tag-grammar` requires. Upstream's
+`tts-sequence-cache-identity` found that the Game voice text alias ignored the speaking connection;
+`buildVoiceLineTextCacheKey` now includes it, and the lane passes the connection the fork's way, beside
+the config. `preset-token-limits` and `stock-preset-parameters` call `resolveGenerationParameterRuntime`
+and seed chat values as `chatParameterOverrides`.
 
 ### Sync with upstream, 2026-10-16
 
@@ -3134,15 +3203,11 @@ round-trip, CRLF-vs-LF on scripted edits, and the `localeCompare` sort the local
 
 Fork-only: upstream has no `.claude/` skills. Nothing here changes product behavior.
 
-### pnpm 11 configuration migration
+### pnpm store location
 
-Every dependency override moved from `package.json#pnpm` into `pnpm-workspace.yaml`, because pnpm 11 no longer reads that field and was silently dropping all 17 pins. Build-script permissions moved from `onlyBuiltDependencies` to the `allowBuilds` map. `protobufjs` resolves to `7.6.5` — the later of the two conflicting pins, matching the committed lockfile.
-
-Upstream stays on pnpm 10.34.5 and still keeps its overrides in `package.json#pnpm`, so this is a
-standing divergence rather than a one-time migration: `package.json` conflicts on most syncs, and
-any override upstream adds to that field lands somewhere this fork no longer reads. After every
-sync, diff `package.json#pnpm` between the merge base and `upstream/staging`. It was unchanged
-across the 447 commits merged 2026-08-20, but a silently dropped pin is the failure mode.
+`pnpm-workspace.yaml` is upstream's pnpm 12 configuration minus `storeDir: .pnpm-store`, so installs
+use the shared content store at the drive root instead of one inside the checkout. Patches an
+upstream file; take upstream's side of every other change to it.
 
 ### Regression lane registration
 
@@ -3152,9 +3217,9 @@ runner's `--filter`. Upstream replaced the per-script `regression:*` aliases wit
 recursively on a 30-second-per-file budget, so plain `pnpm regression` picks the script up with no
 registration at all; only the focused prompt lane needs the explicit filter.
 
-`scripts/run-regressions.mjs` prefixes each file's START and result lines with `[n/total]`, since a
-full run is 900+ files with no other progress indicator. Per-file output lines keep the bare
-`[path]` prefix. Patches an upstream file.
+`scripts/run-regressions.mjs` prefixes each result line with `[n/total]`, counting finished files,
+since a full run is 1000+ files with no other progress indicator. Files run in upstream's worker
+pool, so START and per-file output lines keep the bare `[path]` prefix. Patches an upstream file.
 
 `pnpm check` keeps the fork's `dev-ports:check` guard ahead of upstream's `format:check`. Patches
 `package.json`, which upstream edits constantly; re-check both after every sync.

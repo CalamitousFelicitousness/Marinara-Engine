@@ -8,6 +8,7 @@ import {
   resolveManagedGenerationParameters,
   resolveProviderReasoningEffort,
   stripLegacyChatParameters,
+  withoutPresetTokenLimits,
   type ChatParameterOverrides,
   type GenerationParameterSendMap,
   type GenerationParameters,
@@ -158,11 +159,15 @@ export function defaultGenerationParameterValues(): GenerationParameterValues {
   };
 }
 
-/** Values a prompt preset supplies in chat modes that assemble their prompt from the preset. */
-export function presetGenerationParameterValues(parameters: GenerationParameters): GenerationParameterValues {
+/** Values a prompt preset supplies in chat modes that assemble their prompt from the preset. Never a token budget. */
+export function presetGenerationParameterValues(
+  presetParameters: Partial<GenerationParameters>,
+): GenerationParameterValues {
+  const parameters = withoutPresetTokenLimits(presetParameters);
+  const defaults = defaultGenerationParameterValues();
   return {
-    temperature: parameters.temperature,
-    maxTokens: parameters.maxTokens,
+    temperature: parameters.temperature ?? defaults.temperature,
+    maxTokens: defaults.maxTokens,
     topP: parameters.topP ?? 1,
     topK: parameters.topK ?? 0,
     minP: parameters.minP ?? 0,

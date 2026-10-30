@@ -3,6 +3,7 @@ import type {
   AvatarCrop,
   AgentParameterTrace,
   ParameterTrace,
+  CombatIconChoice,
   ReplyCheckupFinding,
   ReplyCheckupLink,
 } from "@marinara-engine/shared";
@@ -46,6 +47,8 @@ export type PersonaInfo = {
   scenario?: string;
   avatarUrl?: string;
   avatarCrop?: AvatarCrop | null;
+  /** The card's Game Mode Icon choice; missing means the avatar. */
+  combatIcon?: CombatIconChoice | null;
   nameColor?: string;
   dialogueColor?: string;
   boxColor?: string;

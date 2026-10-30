@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api } from "../lib/api-client";
 import { parameterBaselineKeys } from "./use-parameter-baseline";
+import { libraryFolderKeys } from "./use-library-folders";
 import type { PromptPreset, PromptGroup, PromptSection, ChoiceBlock } from "@marinara-engine/shared";
 
 // ── Query Keys ──
@@ -115,6 +116,7 @@ export function useDeletePreset() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: presetKeys.all });
       qc.invalidateQueries({ queryKey: parameterBaselineKeys.all });
+      qc.invalidateQueries({ queryKey: libraryFolderKeys.list("presets") });
     },
   });
 }

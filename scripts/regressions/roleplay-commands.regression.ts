@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { stripTypeScriptTypes } from "node:module";
 import { setImmediate as nextTurn } from "node:timers/promises";
 import { runInNewContext } from "node:vm";
+import { GENERATIVE_AUDIO_DEFAULTS } from "../../packages/shared/src/types/connection.js";
 import {
   ROLEPLAY_COMMAND_KEYS,
   isRoleplayCommandEnabled,
@@ -87,6 +88,14 @@ await assert.rejects(
 const soundSource = readFileSync(new URL("../../packages/server/src/routes/tts.routes.ts", import.meta.url), "utf8");
 const soundEntry = soundSource.match(/^export async function generateRoleplaySoundEffect\([\s\S]*?^}/m)?.[0];
 assert.ok(soundEntry);
+const generationSource = readFileSync(
+  new URL("../../packages/server/src/services/audio/generative-audio.service.ts", import.meta.url),
+  "utf8",
+);
+const soundIdentity = generationSource.match(/^function cacheIdentity\([\s\S]*?^}/m)?.[0];
+assert.ok(soundIdentity);
+const sharedSoundEntry = generationSource.match(/^export async function generateAudioAsset\([\s\S]*?^}/m)?.[0];
+assert.ok(sharedSoundEntry);
 type AudioResult = { tag: string; path: string; cached: boolean };
 let finishAudio!: (value: AudioResult) => void;
 let failAudio!: (error: Error) => void;
@@ -99,7 +108,9 @@ let upstreamAudio = deferredAudio();
 const sharedAudio = new Map<string, Promise<AudioResult>>();
 const audioRequests: unknown[][] = [];
 const sound = runInNewContext(
-  stripTypeScriptTypes(soundEntry.replace(/^export /, "")) + "\ngenerateRoleplaySoundEffect",
+  stripTypeScriptTypes(
+    `${soundIdentity}\n${sharedSoundEntry.replace(/^export /, "")}\n${soundEntry.replace(/^export /, "")}`,
+  ) + "\ngenerateRoleplaySoundEffect",
   {
     addAbortListener,
     Promise,

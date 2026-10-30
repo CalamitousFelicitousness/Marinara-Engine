@@ -3,7 +3,9 @@ import {
   DEFAULT_GENERATION_PARAMS,
   GENERATION_PARAMETER_SEND_KEYS,
   LOCAL_SIDECAR_CONNECTION_ID,
+  isStockMarinaraUniversalPreset,
   parseManagedGenerationParameterDefinitions,
+  withoutPresetTokenLimits,
   type GenerationParameterBaseline,
   type ParameterTraceLayer,
 } from "@marinara-engine/shared";
@@ -86,7 +88,9 @@ export function createParameterBaselineResolver(db: DB) {
     })) {
       const preset = await presets.getById(candidate.id);
       if (!preset) continue;
-      presetStored = parseStoredGenerationParameters(preset.parameters);
+      // The stock preset supplies no parameters at all, as in generation.
+      if (isStockMarinaraUniversalPreset(preset)) break;
+      presetStored = withoutPresetTokenLimits(parseStoredGenerationParameters(preset.parameters) ?? {});
       if (usesPresetAssembly(mode)) {
         presetAppliesValues = true;
         values = presetGenerationParameterValues(parsePresetParameters(preset.parameters));

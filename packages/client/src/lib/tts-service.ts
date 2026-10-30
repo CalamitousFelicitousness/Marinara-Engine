@@ -75,6 +75,18 @@ export interface TTSSpeakSequenceOptions extends Pick<
   onChunkEnd?: (request: TTSSpeakRequest, index: number) => void;
 }
 
+function speechCacheIdentity(
+  options: Pick<TTSSpeakOptions, "audioConnectionId" | "voice" | "speaker" | "tone">,
+): string {
+  // Caller keys describe the line; the synthesis request also owns its source and voice.
+  return JSON.stringify([
+    options.audioConnectionId ?? null,
+    options.voice || null,
+    options.speaker || null,
+    options.tone || null,
+  ]);
+}
+
 /** The clip on the playback element now. Avatar lip sync (features/avatars/audio) reads it to follow the voice
  *  without touching the element, so playback and the autoplay handling below stay as they are. */
 export interface TTSPlayback {
@@ -528,6 +540,7 @@ class TTSService {
           signal: options.abortCacheGenerationOnAbort ? options.signal : undefined,
         }),
       options.cacheAliases,
+      speechCacheIdentity(options),
     );
     return this.blobReady(await waitForBlobWithAbort(sharedPromise, options.signal));
   }

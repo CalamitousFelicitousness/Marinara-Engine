@@ -23,6 +23,7 @@ export type APIProvider =
   | "custom"
   | "image_generation"
   | "video_generation"
+  | "audio_generation"
   | "audio"
   | "decision";
 
@@ -58,6 +59,43 @@ export function defaultDecisionStateTokens(source: string | null | undefined): n
 /** Audio backends an audio connection can target (the former TTS sources). */
 export const AUDIO_GENERATION_SOURCES = TTS_SOURCE_IDS;
 export type AudioGenerationSource = (typeof AUDIO_GENERATION_SOURCES)[number];
+
+/** Music and sound effects are independent of the character's speech connection. */
+export const GENERATIVE_AUDIO_SOURCES = ["elevenlabs", "sunoapi", "custom"] as const;
+export type GenerativeAudioSource = (typeof GENERATIVE_AUDIO_SOURCES)[number];
+
+export const GENERATIVE_AUDIO_DEFAULTS = {
+  elevenlabs: {
+    baseUrl: "https://api.elevenlabs.io",
+    model: "music_v2_5",
+    soundEffectsModel: "eleven_text_to_sound_v2",
+  },
+  sunoapi: { baseUrl: "https://apibox.erweima.ai", model: "V6", soundEffectsModel: "V6" },
+  custom: { baseUrl: "", model: "", soundEffectsModel: "" },
+} as const;
+
+/** Explicit capabilities: compatible endpoints must be configured before Game can use them. */
+export function audioConnectionSupportsGeneration(
+  connection: {
+    audioGenerationSource?: string | null;
+    audioSource?: string | null;
+    audioMusic?: boolean | string;
+    audioSoundEffects?: boolean | string;
+    audioMusicEndpoint?: string | null;
+    audioSoundEffectsEndpoint?: string | null;
+  },
+  kind: "music" | "sfx",
+): boolean {
+  const enabled = kind === "music" ? connection.audioMusic : connection.audioSoundEffects;
+  if (enabled !== true && enabled !== "true") return false;
+  const source = connection.audioGenerationSource ?? connection.audioSource ?? "elevenlabs";
+  return (
+    source === "elevenlabs" ||
+    source === "sunoapi" ||
+    ((source === "openai" || source === "custom") &&
+      Boolean((kind === "music" ? connection.audioMusicEndpoint : connection.audioSoundEffectsEndpoint)?.trim()))
+  );
+}
 
 export const IMAGE_GENERATION_QUALITIES = ["auto", "low", "medium", "high", "xhigh", "max"] as const;
 export type ImageGenerationQuality = (typeof IMAGE_GENERATION_QUALITIES)[number];
@@ -143,6 +181,14 @@ export interface APIConnection {
   videoPromptInstructions: string | null;
   /** Audio backend for audio connections (e.g. "elevenlabs"). Null for non-audio providers. */
   audioSource: AudioGenerationSource | null;
+  /** Backend for a dedicated music and sound-effects connection. */
+  audioGenerationSource?: GenerativeAudioSource | null;
+  /** SunoAPI requires a callback URL for music even when completion is polled. */
+  audioGenerationCallbackUrl?: string | null;
+  /** A separate sound-effects model; the connection's main model composes music. */
+  audioSoundEffectsModel?: string | null;
+  /** Host migration link: old chats and profiles can keep referencing their former speech connection. */
+  audioGenerationLegacyConnectionId?: string | null;
   /** System One backend; absent on older connections. */
   decisionSource?: DecisionSource | null;
   credentialsFromConnectionId?: string | null;
@@ -153,7 +199,7 @@ export interface APIConnection {
   audioVoice: string | null;
   /** Whether this audio connection may generate game sound effects (ElevenLabs only today). */
   audioSoundEffects: boolean;
-  /** Whether this audio connection may generate game music (ElevenLabs only today). */
+  /** Whether this audio connection may generate game music. */
   audioMusic: boolean;
   /** Synthesis settings owned by this audio connection (JSON). Absent fields inherit the app-level TTS settings. */
   audioSettings: string | null;
@@ -165,6 +211,11 @@ export interface APIConnection {
   defaultForMusic: boolean;
   /** Whether this audio connection answers for music when no music default exists */
   fallbackForMusic: boolean;
+  /** Paths relative to the Audio connection's base URL, for compatible generation endpoints. */
+  audioMusicEndpoint?: string | null;
+  audioSoundEffectsEndpoint?: string | null;
+  /** Binary audio JSON endpoint, or the ACE-Step compatible Chat Completions contract. */
+  audioGenerationFormat?: "binary" | "chat_completions";
   /** Default generation parameters for new chats using this connection (JSON) */
   defaultParameters: string | null;
   /** Prompt preset to use instead of a chat's selected preset when this connection is active */

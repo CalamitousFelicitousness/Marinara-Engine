@@ -11,6 +11,7 @@ import {
   parseDecisionPromptQuestionLimit,
   LOCAL_SIDECAR_CONNECTION_ID,
   parseManagedGenerationParameterDefinitions,
+  isStockMarinaraUniversalPreset,
   resolveMacros,
   DEFAULT_CONVERSATION_PROMPT,
   DEFAULT_GAME_SYSTEM_PROMPT,
@@ -122,12 +123,7 @@ import { cardPromptText } from "../../services/prompt/card-text.js";
 import { resolveChatUserIdentity } from "../../services/chat-user-identity.js";
 import { wrapContent } from "../../services/prompt/format-engine.js";
 import { yieldToEventLoop, type BaseLLMProvider, type ChatMessage } from "../../services/llm/base-provider.js";
-import {
-  fitMessagesForModelAccess,
-  mergeModelContextLimit,
-  resolveModelAccessPolicy,
-  resolveStoredModelContextLimit,
-} from "../../services/generation/model-access-policy.js";
+import { fitMessagesForModelAccess, resolveModelAccessPolicy } from "../../services/generation/model-access-policy.js";
 import {
   defaultGenerationParameterValues,
   presetGenerationParameterValues,
@@ -170,6 +166,7 @@ import {
   resolvePromptCharacterIdsForTarget,
   mergedChatSummaryReaders,
   resolveCharacterNameMap,
+  resolveChatSpeakerNames,
   resolveGroupGenerationMode,
   resolveRegenerationGameStateAnchor,
   resolveRoleplayChatSummaryForPrompt,
@@ -180,6 +177,8 @@ import {
 } from "../generate/generate-route-utils.js";
 import { buildGenerationPromptPresetCandidates, type PromptPresetCandidateSource } from "./prompt-preset-selection.js";
 import {
+  appendSentMediaNotes,
+  isSentVideoAttachment,
   CONVERSATION_NO_REPEAT_INSTRUCTION,
   conversationPromptHistoryContent,
 } from "./conversation-prompt-formatting.js";
@@ -639,7 +638,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
 
     // Resolved with the live route's layers once the preset has been assembled.
     let parameterValues = defaultGenerationParameterValues();
-    let initialMaxContext = modelAccessPolicy.effectiveMaxContext;
+    const initialMaxContext = modelAccessPolicy.effectiveMaxContext;
 
     // Pull existing messages, apply the same conversation-start + context limit filtering
     const chatMode = (chat.mode as string) ?? "roleplay";
@@ -741,7 +740,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
             content: rawUserMessage,
             extra: body.replyTo ? { replyTo: body.replyTo } : {},
             metadata: chatMeta,
-            characters: [...(await resolveCharacterNameMap(allCharacterIds, (id) => chars.getById(id)))].map(
+            characters: [...(await resolveCharacterNameMap(allCharacterIds, (id) => chars.getById(id, chatId)))].map(
               ([id, name]) => ({ id, name }),
             ),
           })
@@ -793,6 +792,13 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       conn.model,
     );
     const latestReplyUserMessageId = [...chatMessages].reverse().find((message) => message.role === "user")?.id;
+    const chatSpeakerNames =
+      chatMode === "conversation" &&
+      chatMessages.some((m: any) =>
+        (parseExtra(m.extra).attachments as PromptAttachment[] | undefined)?.some(isSentVideoAttachment),
+      )
+        ? await resolveChatSpeakerNames(chars, chat)
+        : [];
     let mappedMessages: DryRunPromptMessage[] = chatMessages.map((m: any) => {
       const extra = parseExtra(m.extra);
       const personaSnapshotName = m.role === "user" ? readPersonaSnapshotName(extra) : null;
@@ -803,18 +809,20 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       const conversationStartForCharacterIds = getMessageConversationStartCharacterIds(m);
       const providerMetadata = pastReasoning.get(m.id);
       const isUserTurn = m.role === "user";
+      const content =
+        withLatestMessageReply(
+          appendReadableAttachmentsToContent(
+            chatMode === "roleplay" ? conversationPromptHistoryContent(m, chatMode) : ((m.content as string) ?? ""),
+            attachments,
+          ),
+          extra.replyTo,
+          isUserTurn && m.id === latestReplyUserMessageId,
+        ) + (isUserTurn ? "" : describeAttachmentsForNonUserTurn(attachments));
       return {
         id: typeof m.id === "string" ? m.id : null,
         role: m.role === "narrator" ? ("system" as const) : (m.role as "user" | "assistant" | "system"),
         content:
-          withLatestMessageReply(
-            appendReadableAttachmentsToContent(
-              chatMode === "roleplay" ? conversationPromptHistoryContent(m, chatMode) : ((m.content as string) ?? ""),
-              attachments,
-            ),
-            extra.replyTo,
-            isUserTurn && m.id === latestReplyUserMessageId,
-          ) + (isUserTurn ? "" : describeAttachmentsForNonUserTurn(attachments)),
+          m.role === "assistant" ? appendSentMediaNotes(content, attachments, attachments, chatSpeakerNames) : content,
         contextKind: "history" as const,
         characterId: typeof m.characterId === "string" && m.characterId ? m.characterId : null,
         ...(personaSnapshotName ? { personaSnapshotName } : {}),
@@ -971,6 +979,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     let lorebookIdentityCharacterId: string | null = null;
     try {
       const identity = await resolveChatUserIdentity(chars, {
+        id: chatId,
         personaId: chat.personaId,
         personaCharacterId: chat.personaCharacterId,
         mode: chatMode,
@@ -982,6 +991,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         personaName = identity.name;
         personaDescription = cardPromptText(identity.description);
         personaFields = {
+          example: cardPromptText(identity.mesExample),
           personality: cardPromptText(identity.personality),
           scenario: cardPromptText(identity.scenario),
           backstory: cardPromptText(identity.backstory),
@@ -1084,7 +1094,11 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       chatParameterOverrides: chatMeta.chatParameterOverrides,
       gameSetupParameters: (chatMeta.gameSetupConfig as Record<string, unknown> | undefined)?.generationParameters,
       baseReasoningEffort:
-        effectivePresetId && effectivePreset && !promptParts && usesPresetAssembly(chatMode)
+        effectivePresetId &&
+        effectivePreset &&
+        !promptParts &&
+        !isStockMarinaraUniversalPreset(effectivePreset) &&
+        usesPresetAssembly(chatMode)
           ? (parsePresetParameters(effectivePreset.parameters).reasoningEffort ?? null)
           : parameterValues.reasoningEffort,
     });
@@ -1095,6 +1109,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       presetVariables,
       localVariables: chatMacroVariables,
       requestTimeZone: normalizePromptTimeZone((body as { userTimeZone?: unknown }).userTimeZone),
+      worldState: await loadLatestGameSnapshot(app, chatId, visibleGameStateAnchor, regenerateMessageId),
       characterIds: promptCharacterIds,
       groupCharacterIds: promptTargetCharacterId ? characterIds : undefined,
       personaName,
@@ -1126,6 +1141,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     const { profilesById: historyMacroProfilesById, unreadableIds } = await resolveCharacterMacroData(
       app.db,
       allCharacterIds,
+      chatId,
     );
     const chatSummaryReaders = mergedChatSummaryReaders({
       characterIds,
@@ -1326,7 +1342,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       dryRunGroupChatMode === "individual" &&
       (chatMode === "conversation" || chatMeta.groupSpeakerNamesInHistory === true);
     if (shouldPrefixGroupHistorySpeakers && !deferGroupPromptRegex) {
-      const characterNamesById = await resolveCharacterNameMap(allCharacterIds, (id) => chars.getById(id));
+      const characterNamesById = await resolveCharacterNameMap(allCharacterIds, (id) => chars.getById(id, chatId));
       mappedMessages = prefixGroupIndividualHistorySpeakers(mappedMessages, {
         personaName,
         characterNamesById,
@@ -1449,12 +1465,14 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         if (resolvedPersonaBackstory.trim()) personaLines.push(`Backstory: ${resolvedPersonaBackstory.trim()}`);
         if (resolvedPersonaAppearance.trim()) personaLines.push(`Appearance: ${resolvedPersonaAppearance.trim()}`);
         if (resolvedPersonaScenario.trim()) personaLines.push(`Scenario: ${resolvedPersonaScenario.trim()}`);
+        const example = resolvePromptMacros(personaFields.example ?? "").trim();
+        if (example) personaLines.push(`Example dialogue:\n${example}`);
         return wrapContent(personaLines.join("\n"), "Persona", wrapFormat).trim();
       })();
 
       const characterBlocks: string[] = [];
       if (includeCharacters && promptCharacterIds.length > 0) {
-        const charRows = await Promise.all(promptCharacterIds.map((id) => chars.getById(id)));
+        const charRows = await Promise.all(promptCharacterIds.map((id) => chars.getById(id, chatId)));
         for (const row of charRows) {
           if (!row?.data) continue;
           try {
@@ -1746,6 +1764,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       );
 
       const assemblerInput: AssemblerInput = {
+        worldState: promptMacroContext.worldState,
         model: conn.model,
         reasoning: promptReasoning,
         deferMessagePostProcessing: true,
@@ -1835,12 +1854,9 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       finalMessages = assembled.messages;
       lorebookImageEntries = assembled.lorebookScanResult?.imageEntries ?? [];
       advancedMemoryPlacements = assembled.advancedMemoryPlacements ?? [];
-      parameterValues = presetGenerationParameterValues(assembled.parameters);
-      initialMaxContext = mergeModelContextLimit(
-        modelAccessPolicy,
-        initialMaxContext,
-        resolveStoredModelContextLimit(modelAccessPolicy, assembled.parameters),
-      );
+      if (!isStockMarinaraUniversalPreset(effectivePreset)) {
+        parameterValues = presetGenerationParameterValues(assembled.parameters);
+      }
     }
 
     const {
@@ -1904,7 +1920,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         effectivePreset as Record<string, unknown> | null,
         "conversationPrompt",
       );
-      const characterNamesById = await resolveCharacterNameMap(promptCharacterIds, (id) => chars.getById(id));
+      const characterNamesById = await resolveCharacterNameMap(promptCharacterIds, (id) => chars.getById(id, chatId));
       const charNameList =
         promptCharacterIds
           .map((id) => characterNamesById.get(id))
@@ -2096,7 +2112,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     if (deferGroupPromptRegex) {
       const regexScripts = await regexScriptsStore.list();
       const regexSpeakerNames = shouldPrefixGroupHistorySpeakers
-        ? await resolveCharacterNameMap(allCharacterIds, (id) => chars.getById(id))
+        ? await resolveCharacterNameMap(allCharacterIds, (id) => chars.getById(id, chatId))
         : null;
       finalMessages = scopeIndividualGroupMessagesForTarget(
         finalMessages,
@@ -2191,9 +2207,9 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     }
 
     if (chatMode === "roleplay" && !impersonate) {
-      const personalCharacters = [...(await resolveCharacterNameMap(allCharacterIds, (id) => chars.getById(id)))].map(
-        ([id, name]) => ({ id, name }),
-      );
+      const personalCharacters = [
+        ...(await resolveCharacterNameMap(allCharacterIds, (id) => chars.getById(id, chatId))),
+      ].map(([id, name]) => ({ id, name }));
       const target = promptTargetCharacterId ?? (allCharacterIds.length === 1 ? allCharacterIds[0]! : null);
       const individual = dryRunGroupChatMode === "individual";
       const endIndex = regenerateMessageId
@@ -2288,7 +2304,9 @@ export async function registerDryRunRoute(app: FastifyInstance) {
 
     const prepareProviderMessages = (messages: ChatMessage[]): ChatMessage[] => {
       return postProcessMessages(messages, {
-        ...parseStoredGenerationParameters(effectivePreset?.parameters),
+        ...(effectivePreset && !isStockMarinaraUniversalPreset(effectivePreset)
+          ? parseStoredGenerationParameters(effectivePreset.parameters)
+          : {}),
         ...connectionParams,
         ...gameSetupParams,
         ...chatParams,

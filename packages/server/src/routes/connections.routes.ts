@@ -1,4 +1,6 @@
+import { partialInput } from "@marinara-engine/shared";
 import { resolveDecisionConnection } from "../services/decision/decision-connection.js";
+import { validateSunoMusicCallback } from "../services/audio/generative-audio-providers.js";
 import { askNoulQuestions } from "../services/decision/system-one.client.js";
 import { connectionChatTarget, probeDecisionSlot } from "../services/decision/sidecar-decision.backend.js";
 import {
@@ -11,10 +13,12 @@ import {
 // Routes: Connections
 // ──────────────────────────────────────────────
 import type { FastifyInstance, FastifyReply } from "fastify";
+import { validationDetails } from "../middleware/error-handler.js";
 import { existsSync } from "fs";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import { extname, join } from "path";
 import {
+  APP_VERSION,
   ATLAS_CLOUD_IMAGE_MODELS,
   ATLAS_CLOUD_VIDEO_MODELS,
   CODEX_IMAGE_MODEL,
@@ -86,6 +90,7 @@ import {
   extensionFromImageMime,
   isAllowedImageBuffer,
   normalizeLoopbackUrl,
+  requestHeadersWithDefaultUserAgent,
   safeFetch,
 } from "../utils/security.js";
 import { DATA_DIR } from "../utils/data-dir.js";
@@ -128,6 +133,26 @@ const DEFAULT_ATLAS_CLOUD_VIDEO_MODEL = "google/veo3.1/text-to-video";
 const DEFAULT_ATLAS_CLOUD_VIDEO_BASE_URL = "https://api.atlascloud.ai/api/v1";
 const DEFAULT_SEEDANCE_VIDEO_MODEL = "seedance-2-0";
 const DEFAULT_SEEDANCE_VIDEO_BASE_URL = "https://api.seedance2.ai";
+
+async function generativeAudioConnectionError(connection: {
+  provider: string;
+  audioGenerationSource?: string | null;
+  audioGenerationCallbackUrl?: string | null;
+  audioMusic?: boolean | string;
+}): Promise<string | null> {
+  if (
+    connection.provider !== "audio_generation" ||
+    connection.audioGenerationSource !== "sunoapi" ||
+    (connection.audioMusic !== true && connection.audioMusic !== "true")
+  )
+    return null;
+  try {
+    await validateSunoMusicCallback(connection.audioGenerationCallbackUrl);
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -532,25 +557,26 @@ export async function connectionsRoutes(app: FastifyInstance) {
 
   app.post("/", async (req, reply) => {
     const input = createConnectionSchema.parse(req.body);
-    const validationError = nanoGptVideoConnectionError(input);
+    const validationError = nanoGptVideoConnectionError(input) || (await generativeAudioConnectionError(input));
     if (validationError) return reply.status(400).send({ error: validationError });
     return withLongTermMemoryEmbeddingChange(app.db, reply, async () => {
       const created = await storage.create(input);
       resetMemoryRecallVectorizerCache();
-      return maskConnection(created);
+      return maskConnection(created ? await storage.getById(created.id) : null);
     });
   });
 
   app.patch<{ Params: { id: string } }>("/:id", async (req, reply) => {
-    const data = createConnectionSchema.partial().parse(req.body);
+    const data = partialInput(createConnectionSchema).parse(req.body);
     const current = await storage.getById(req.params.id);
     if (!current) return reply.status(404).send({ error: "Connection not found" });
-    const validationError = nanoGptVideoConnectionError({ ...current, ...data });
+    const merged = { ...current, ...data };
+    const validationError = nanoGptVideoConnectionError(merged) || (await generativeAudioConnectionError(merged));
     if (validationError) return reply.status(400).send({ error: validationError });
     return withLongTermMemoryEmbeddingChange(app.db, reply, async () => {
       const updated = await storage.update(req.params.id, data);
       resetMemoryRecallVectorizerCache();
-      return maskConnection(updated);
+      return maskConnection(updated ? await storage.getById(updated.id) : null);
     });
   });
 
@@ -588,14 +614,11 @@ export async function connectionsRoutes(app: FastifyInstance) {
     }
     let params: Record<string, unknown> | null = null;
     if (raw !== null) {
-      const parsed = generationParametersSchema.partial().safeParse(raw);
+      const parsed = partialInput(generationParametersSchema).safeParse(raw);
       if (!parsed.success) {
         return reply.status(400).send({
           error: "Invalid generation parameters",
-          issues: parsed.error.issues.map((issue) => ({
-            path: issue.path.join("."),
-            message: issue.message,
-          })),
+          issues: [...validationDetails(parsed.error.issues)],
         });
       }
       params = { ...parsed.data };
@@ -644,6 +667,11 @@ export async function connectionsRoutes(app: FastifyInstance) {
   app.post<{ Params: { id: string } }>("/:id/test", async (req, reply) => {
     const conn = await storage.getWithKey(req.params.id);
     if (!conn) return reply.status(404).send({ error: "Connection not found" });
+    if (conn.provider === "audio_generation") {
+      return reply.status(400).send({
+        error: "Test this connection by generating audio in a mode. No chat or model-list test is supported.",
+      });
+    }
 
     const requestDebug = readDebugMode(req.body);
     const debugLog = (message: string, ...args: any[]) => logDebugOverride(requestDebug, message, ...args);
@@ -801,7 +829,10 @@ export async function connectionsRoutes(app: FastifyInstance) {
           modelName: null,
         };
       }
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "User-Agent": `MarinaraEngine/${APP_VERSION}`,
+      };
       if (provider?.usesAuthHeader) {
         headers["Authorization"] = `Bearer ${conn.apiKey}`;
       }
@@ -908,7 +939,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
         conn.provider === "image_generation" && imageSource === "horde" ? hordeHeaders(conn.apiKey) : headers;
       debugLog("[connections/test] provider=%s model=%s catalogUrl=%s", conn.provider, conn.model ?? "", testUrl);
       const res = await safeFetch(testUrl, {
-        headers: testHeaders,
+        headers: requestHeadersWithDefaultUserAgent(testHeaders),
         policy: localUrlPolicyForProvider(conn.provider, imageSource),
         maxResponseBytes: 2 * 1024 * 1024,
         decodeCompressedResponse: true,
@@ -1117,7 +1148,10 @@ export async function connectionsRoutes(app: FastifyInstance) {
         return reply.status(400).send({ error: "No base URL configured" });
       }
 
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "User-Agent": `MarinaraEngine/${APP_VERSION}`,
+      };
       if (provider?.usesAuthHeader) {
         headers["Authorization"] = `Bearer ${conn.apiKey}`;
       }
@@ -1284,6 +1318,29 @@ export async function connectionsRoutes(app: FastifyInstance) {
         return {
           models: names.map((name: string) => ({ id: name, name })),
           loras: loras.map((name: string) => ({ id: name, name })),
+        };
+      }
+
+      // Arli AI lists its image checkpoints at the host root, not under the /v1 chat API its base URL points at
+      // (the documented /v1/models/image-models answers 404). Caption models are not image generators.
+      if (conn.provider === "image_generation" && imageSource === "arli") {
+        const res = await safeFetch(`${new URL(baseUrl).origin}/sdapi/v1/sd-models`, {
+          headers: { ...headers, Authorization: `Bearer ${conn.apiKey}` },
+          policy: localUrlPolicyForProvider(conn.provider, imageSource),
+          maxResponseBytes: 5 * 1024 * 1024,
+          decodeCompressedResponse: true,
+        });
+        if (!res.ok) {
+          return reply.status(502).send({
+            error: `Arli AI returned ${res.status}: ${sanitizeProviderBody(await res.text())}`,
+          });
+        }
+        const arliModels = (await res.json()) as Array<{ title?: string; model_name?: string; modelType?: string }>;
+        return {
+          models: arliModels
+            .filter((m) => m.modelType !== "caption")
+            .map((m) => ({ id: m.model_name ?? m.title ?? "", name: m.title ?? m.model_name ?? "" }))
+            .filter((m) => m.id),
         };
       }
 
@@ -1493,7 +1550,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
           : `${baseUrl}${provider?.modelsEndpoint || "/models"}`;
 
       const res = await safeFetch(modelsUrl, {
-        headers,
+        headers: requestHeadersWithDefaultUserAgent(headers),
         policy: {
           allowLocal: isProviderLocalUrlsEnabled(),
           allowLoopback: true,
@@ -1542,6 +1599,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
   app.get<{ Params: { id: string }; Querystring: { refresh?: string } }>("/:id/models", async (req, reply) => {
     const conn = await storage.getWithKey(req.params.id);
     if (!conn) return reply.status(404).send({ error: "Connection not found" });
+    if (conn.provider === "audio_generation") return { models: [] };
     const savesList = connectionSavesModelList(conn.provider);
     if (savesList && req.query.refresh !== "true") {
       const saved = readSavedModelList(conn);
@@ -1878,7 +1936,11 @@ export async function connectionsRoutes(app: FastifyInstance) {
     const conn = await storage.getWithKey(req.params.id);
     if (!conn) return reply.status(404).send({ error: "Connection not found" });
 
-    if (conn.provider === "image_generation" || conn.provider === "video_generation") {
+    if (
+      conn.provider === "image_generation" ||
+      conn.provider === "video_generation" ||
+      conn.provider === "audio_generation"
+    ) {
       return reply.status(400).send({ error: "This provider does not support chat test messages." });
     }
 

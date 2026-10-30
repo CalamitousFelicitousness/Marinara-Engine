@@ -1,6 +1,7 @@
 import { artPortraitFor } from "@marinara-engine/shared";
 import { ArtIcon } from "./ArtIcon";
 import { CombatAiControls } from "./CombatAiControls";
+import { RulesetSpendToggle } from "./RulesetSpendToggle";
 // ──────────────────────────────────────────────
 // Game: Turn-Based Combat UI
 //
@@ -77,6 +78,7 @@ import {
   VolumeX,
 } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
+import { TokenPicture } from "./TokenPicture";
 
 /** Matches game narration: two attempts with a 350ms linear backoff. */
 const COMBAT_VOICE_SYNTHESIS_POLICY: TTSSynthesisPolicy = {
@@ -434,8 +436,18 @@ function CombatantSpriteVisual({
   emojiClassName?: string;
 }) {
   const spriteKind = resolveSpriteKind(combatant.sprite);
+  // No picture of their own: their pixel bust from the portraits pack (1.338), else their initial.
+  const portrait = (
+    <ArtIcon
+      kind="portraits"
+      ids={[artPortraitFor(combatant.name)]}
+      label={combatant.name}
+      className={imageClassName}
+      fallback={<span className={textClassName}>{combatant.name.charAt(0).toUpperCase()}</span>}
+    />
+  );
   if (spriteKind.kind === "url") {
-    return <img src={spriteKind.value} alt={combatant.name} className={imageClassName} />;
+    return <TokenPicture src={spriteKind.value} alt={combatant.name} className={imageClassName} fallback={portrait} />;
   }
 
   if (spriteKind.kind === "emoji") {
@@ -446,16 +458,7 @@ function CombatantSpriteVisual({
     );
   }
 
-  // No picture of their own: their pixel bust from the portraits pack (1.338), else their initial.
-  return (
-    <ArtIcon
-      kind="portraits"
-      ids={[artPortraitFor(combatant.name)]}
-      label={combatant.name}
-      className={imageClassName}
-      fallback={<span className={textClassName}>{combatant.name.charAt(0).toUpperCase()}</span>}
-    />
-  );
+  return portrait;
 }
 
 interface GameCombatUIProps {
@@ -481,6 +484,8 @@ interface GameCombatUIProps {
       busy: boolean;
       onChoose: (optionId: string, targetIds: string[], payWith?: string) => void;
       onFlee: () => void;
+      /** Whether the player picks their own symbol spends (1.382). */
+      onSpends?: (choose: boolean) => void;
     };
   };
   chatId: string;
@@ -1852,24 +1857,34 @@ export function GameCombatUI({
     [selectedAction, selectedItemEffect, selectedItemName, selectedSkillId, playSfx, resolveRound],
   );
 
+  const spendsShown = rulesetFight?.view.spends;
   const aiControls = (
-    <CombatAiControls
-      party={party}
-      enemies={enemies}
-      defaultController="ai"
-      // A ruleset fight has no queued orders and lets anybody be handed over at any point, so the
-      // only thing that locks the toggle is a step already on its way to the server.
-      locked={rulesetFight ? rulesetFight.busy : phase !== "player-turn" || Object.keys(queuedOrders).length > 0}
-      onChange={(id, controller) => {
-        if (directed) {
-          directed.onControl(id, controller);
-          return;
-        }
-        const updated = party.map((c) => (c.id === id ? { ...c, controller } : c));
-        setParty(updated);
-        onCombatantsChange?.(updated, enemies);
-      }}
-    />
+    <>
+      {spendsShown && rulesetFight?.onSpends && (
+        <RulesetSpendToggle
+          choose={spendsShown.choose}
+          locked={rulesetFight.busy}
+          onChange={rulesetFight.onSpends}
+          className="px-3 py-1"
+        />
+      )}
+      <CombatAiControls
+        party={party}
+        defaultController="ai"
+        // A ruleset fight has no queued orders and lets anybody be handed over at any point, so the
+        // only thing that locks the toggle is a step already on its way to the server.
+        locked={rulesetFight ? rulesetFight.busy : phase !== "player-turn" || Object.keys(queuedOrders).length > 0}
+        onChange={(id, controller) => {
+          if (directed) {
+            directed.onControl(id, controller);
+            return;
+          }
+          const updated = party.map((c) => (c.id === id ? { ...c, controller } : c));
+          setParty(updated);
+          onCombatantsChange?.(updated, enemies);
+        }}
+      />
+    </>
   );
 
   // ── Keyboard navigation for action menu ──

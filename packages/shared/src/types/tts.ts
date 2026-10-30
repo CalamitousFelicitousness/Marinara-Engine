@@ -44,7 +44,7 @@ export const AUDIO_PARAMETERS_MAX_BYTES = 8_192;
  * here: a wrong key is the provider's error to report, not this app's to guess.
  * Nested objects are kept, since ElevenLabs takes its knobs inside voice_settings.
  */
-const audioParameterRecordSchema = z.record(z.unknown()).superRefine((value, ctx) => {
+const audioParameterRecordSchema = z.record(z.string(), z.unknown()).superRefine((value, ctx) => {
   if (JSON.stringify(value).length > AUDIO_PARAMETERS_MAX_BYTES) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -62,7 +62,7 @@ export const audioParametersSchema = z
       [K in AudioPurpose]: z.ZodOptional<typeof audioParameterRecordSchema>;
     },
   )
-  .default({});
+  .prefault({});
 export type AudioParameterMap = z.infer<typeof audioParametersSchema>;
 
 function normalizeDialoguePauseMs(value: number): number {
@@ -310,7 +310,7 @@ export const ttsSourceProfilesSchema = z
       [K in TTSSourceId]: z.ZodOptional<typeof ttsSourceProfileSchema>;
     },
   )
-  .default({});
+  .prefault({});
 export type TTSSourceProfiles = z.infer<typeof ttsSourceProfilesSchema>;
 
 /**
@@ -335,7 +335,7 @@ export const ttsConfigSchema = ttsConfigBaseSchema.extend({
    */
   connectionId: z.string().default(""),
   /** Upstream's per-connection voice profiles. Unused here; voices live on the audio connection. */
-  connectionProfiles: z.record(z.string(), ttsConnectionProfileSchema).default({}),
+  connectionProfiles: z.record(z.string(), ttsConnectionProfileSchema).prefault({}),
 });
 
 export type TTSConfig = z.infer<typeof ttsConfigSchema>;
@@ -352,6 +352,25 @@ export function ttsSourceProfileFromConfig(config: TTSConfig): TTSSourceProfile 
 
 export const TTS_SETTINGS_KEY = "tts";
 export const TTS_API_KEY_MASK = "••••••";
+
+const ELEVENLABS_TTS_MODEL_ALIASES: Record<string, string> = {
+  tts_v3: "eleven_v3",
+  elevenlabs_v3: "eleven_v3",
+  elevenlabs_tts_v3: "eleven_v3",
+};
+
+export function normalizeElevenLabsTtsModelId(model: string): string {
+  const trimmed = model.trim();
+  const key = trimmed.toLowerCase();
+  return Object.hasOwn(ELEVENLABS_TTS_MODEL_ALIASES, key) ? ELEVENLABS_TTS_MODEL_ALIASES[key]! : trimmed;
+}
+
+// Eleven v3 and v4 have no speed setting, so speech requests leave it out and the slider is off.
+const ELEVENLABS_MODELS_WITHOUT_SPEED = new Set(["eleven_v3", "eleven_v4", "eleven_v4_turbo"]);
+
+export function elevenLabsModelSupportsSpeed(model: string): boolean {
+  return !ELEVENLABS_MODELS_WITHOUT_SPEED.has(normalizeElevenLabsTtsModelId(model).toLowerCase());
+}
 
 export const ttsRoleplaySpeakerSegmentSchema = z.discriminatedUnion("kind", [
   z.object({

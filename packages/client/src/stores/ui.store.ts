@@ -78,6 +78,7 @@ import { readUIPersistence, UI_PERSISTENCE, UI_PERSISTENCE_HOST_COPY } from "../
 import { addApprovedRemoteImageUrl, normalizeApprovedRemoteImageUrls } from "../lib/remote-images";
 import { normalizeChatWidgetFont } from "../lib/font-family";
 import type { ChatWizardDefaults, ChatWizardMode } from "../lib/chat-wizard-defaults";
+import type { MariFieldReview } from "../lib/mari-editor-fields";
 import {
   readSeasonalPreview,
   seasonalThemeFor,
@@ -176,6 +177,10 @@ export type RoleplayChatPosition = "left" | "center" | "right";
 export function normalizeRoleplayChatPosition(value: unknown): RoleplayChatPosition {
   return value === "left" || value === "right" ? value : "center";
 }
+/** Null retains the automatic column width used before custom sizing was introduced. */
+export function normalizeRoleplayChatWidthPercent(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(40, Math.min(100, Math.round(value))) : null;
+}
 export type GameDialogueDisplayMode = "classic" | "stacked";
 /** How much of the chat list shows each chat's background as a row banner. */
 export type ChatListBackgroundMode = "hover" | "always" | "off";
@@ -217,6 +222,16 @@ export function normalizeMariWindowWidthRem(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value)
     ? Math.max(MARI_WINDOW_WIDTH_MIN_REM, Math.min(MARI_WINDOW_WIDTH_MAX_REM, Math.round(value)))
     : MARI_WINDOW_WIDTH_DEFAULT_REM;
+}
+
+/** Companion panel width: never narrower than the phone view, so her tabs fit. */
+export const MARI_COMPANION_WIDTH_MIN_REM = 24;
+export const MARI_COMPANION_WIDTH_MAX_REM = 32;
+
+export function normalizeMariCompanionWidthRem(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(MARI_COMPANION_WIDTH_MIN_REM, Math.min(MARI_COMPANION_WIDTH_MAX_REM, Math.round(value * 2) / 2))
+    : MARI_COMPANION_WIDTH_MIN_REM;
 }
 
 export function normalizeConversationBackgroundImageOpacity(value: unknown): number {
@@ -691,9 +706,10 @@ interface UIState {
   /** Transient: the initial cross-device settings fetch has settled. */
   settingsSyncReady: boolean;
   showHomeBrowserAddressBar: boolean;
-  showHomeBrowserDesktopBookmarksOnOtherTabs: boolean;
-  showHomeBrowserMobileBookmarksOnOtherTabs: boolean;
   sidebarOpen: boolean;
+  /** Transient: a fight on a board hides the chat list while its screen is up. `sidebarOpen` stays the
+   *  player's own choice; what is drawn is `selectSidebarShown`. Opening or closing the list clears it. */
+  sidebarHiddenForFight: boolean;
   sidebarWidth: number;
   rightPanelOpen: boolean;
   rightPanelWidth: number;
@@ -724,6 +740,8 @@ interface UIState {
   settingsTargetSectionId: string | null;
   /** Not saved: a Home surface to open once Home mounts (see `requestHome`). */
   homeRequest: HomeRequest | null;
+  /** Not saved: the Home tab a package opened the connection editor from; closing that editor returns there. */
+  connectionDetailReturnTab: string | null;
   /** Not saved: the What's New window should open again (see `requestWhatsNew`). */
   whatsNewRequested: boolean;
   modal: { type: string; props?: Record<string, unknown> } | null;
@@ -752,6 +770,12 @@ interface UIState {
   mariWindowHeightRem: number;
   /** Desktop window width, in rem. Only Professor Mari's window uses it. */
   mariWindowWidthRem: number;
+  /** Desktop: Prof. Mari docks as a companion panel beside an open editor (header toggle). */
+  mariCompanionDocked: boolean;
+  /** Companion panel width in rem. */
+  mariCompanionWidthRem: number;
+  /** Scroll root of the open editor that offers the companion panel. Not persisted. */
+  mariCompanionRoot: HTMLElement | null;
   omnibarWindowWidthRem: number;
   /** Search window height in rem; null sizes it to its results, as before. */
   omnibarWindowHeightRem: number | null;
@@ -794,6 +818,16 @@ interface UIState {
   regexDetailId: string | null;
   /** The primary field currently focused in an open editor, for Mari omnibar handoff. Transient, never persisted. */
   activeEditorField: { id: string; label: string } | null;
+  /** Current text of the field that had focus when the omnibar opened. Transient, never persisted. */
+  mariFieldDraft: { fieldId: string; value: string; selection?: string } | null;
+  /** Prof. Mari asks the open editor to show this field: scroll to it and pulse it once. Transient. */
+  /** `scroll: false` pulses the field in place (companion hover). */
+  mariRevealField: { characterId: string; path: string; scroll?: boolean } | null;
+  /** The editor field a running Prof. Mari step is writing, for its working glow. Transient. */
+  mariWorkingField: { characterId: string; path: string } | null;
+  /** Her change to a character as the editor shows it in the fields: waiting for Keep, or kept
+   * with Undo. Published by her open chat, which owns the replies. Transient. */
+  mariFieldReview: MariFieldReview | null;
   /**
    * The most recent recoverable app failure, so the omnibar can answer "fix this".
    * `retry` is a serializable target the omnibar maps to a real action, never a
@@ -949,6 +983,8 @@ interface UIState {
   queueImageGenerationRequests: boolean;
   /** When true, generated image prompts are shown for review before supported provider calls are sent. */
   reviewImagePromptsBeforeSend: boolean;
+  saveGeneratedImagesAsWebp: boolean;
+  generatedImageWebpQuality: number;
   autoSaveGeneratedImagesToGalleries: boolean;
   imageBackgroundWidth: number;
   imageBackgroundHeight: number;
@@ -971,6 +1007,7 @@ interface UIState {
   showTimestamps: boolean;
   showModelName: boolean;
   showTokenUsage: boolean;
+  quickSwitcherShowModels: boolean;
   showContextUsage: boolean;
   showMessageNumbers: boolean;
   /** When true, the swipe selector and message action buttons render above the message body instead of below it. */
@@ -1001,7 +1038,10 @@ interface UIState {
   messagesPerPage: number;
   /** Bold quoted dialogue in chat messages; color highlighting can still remain when this is off */
   boldDialogue: boolean;
-  /** When true, character names and aliases are colored in chat prose using the character's nameColor. */
+  /**
+   * Retired global switch for inline name colors, now a per-chat setting (chat metadata `colorInlineNames`).
+   * Nothing writes it any more; it stays persisted so a chat that never set its own value falls back to it.
+   */
   colorInlineNames: boolean;
   /** When true, inline name coloring uses the first solid color from gradients instead of rendering the gradient. */
   disableInlineNameGradients: boolean;
@@ -1025,8 +1065,6 @@ interface UIState {
   chibiProfessorMariEnabled: boolean;
   /** When true, Professor Mari shows generated suggestion chips and guided-plan options. */
   professorMariSuggestionsEnabled: boolean;
-  /** When true, the Command Center (omnibar) surfaces Professor Mari's LLM-backed assistance. */
-  commandCenterMariEnabled: boolean;
   /** When true, the omnibar adds proactive context and edit suggestions. */
   omnibarSuggestionsEnabled: boolean;
   /** When true, achievements appear on Home and announce unlocks. Backend tracking stays silent either way. */
@@ -1107,6 +1145,8 @@ interface UIState {
   roleplayDisplayStyle: "classic" | "visual-novel";
   /** Where the Roleplay messages and input sit on wide screens. Phones always use the full width. */
   roleplayChatPosition: RoleplayChatPosition;
+  /** Null preserves the automatic Roleplay column width. */
+  roleplayChatWidthPercent: number | null;
   roleplayVnAutoPlay: boolean;
   roleplayVnAutoPlayDelay: number;
   roleplayVnPortraitScale: number;
@@ -1233,10 +1273,9 @@ interface UIState {
 
   // Actions
   setShowHomeBrowserAddressBar: (visible: boolean) => void;
-  setShowHomeBrowserDesktopBookmarksOnOtherTabs: (visible: boolean) => void;
-  setShowHomeBrowserMobileBookmarksOnOtherTabs: (visible: boolean) => void;
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
+  hideSidebarForFight: (hidden: boolean) => void;
   setSidebarWidth: (width: number) => void;
   setRightPanelWidth: (width: number) => void;
   toggleTrackerPanel: (chatId?: string | null) => void;
@@ -1264,6 +1303,11 @@ interface UIState {
   toggleRightPanel: (panel: Panel) => void;
   setSettingsTab: (tab: string) => void;
   setActiveEditorField: (field: { id: string; label: string } | null) => void;
+  setMariFieldDraft: (draft: UIState["mariFieldDraft"]) => void;
+  revealMariField: (characterId: string, path: string, options?: { scroll?: boolean }) => void;
+  clearMariRevealField: () => void;
+  setMariWorkingField: (field: { characterId: string; path: string } | null) => void;
+  setMariFieldReview: (review: MariFieldReview | null) => void;
   setLastAppError: (error: UIState["lastAppError"]) => void;
   setSettingsTargetControlId: (controlId: string | null) => void;
   requestHome: (request: HomeRequest) => void;
@@ -1291,6 +1335,9 @@ interface UIState {
   setParameterTraceView: (view: ParameterTraceView) => void;
   setMariWindowHeightRem: (height: number) => void;
   setMariWindowWidthRem: (width: number) => void;
+  setMariCompanionDocked: (docked: boolean) => void;
+  setMariCompanionWidthRem: (width: number) => void;
+  setMariCompanionRoot: (root: HTMLElement | null) => void;
   setOmnibarWindowWidthRem: (width: number) => void;
   setOmnibarWindowHeightRem: (height: number | null) => void;
   setMariAppearancePack: (packId: string) => void;
@@ -1321,14 +1368,17 @@ interface UIState {
   setConnectionPanelSort: (sort: ConnectionPanelSort) => void;
   setAgentPanelSort: (sort: ResourcePanelSort) => void;
   setLibraryManualOrder: (kind: string, order: { active: boolean; ids: string[] }) => void;
-  openCharacterDetail: (id: string, options?: { preserveCharacterLibrary?: boolean; initialTab?: string }) => void;
+  openCharacterDetail: (
+    id: string,
+    options?: { preserveCharacterLibrary?: boolean; initialTab?: string; revealField?: string },
+  ) => void;
   closeCharacterDetail: () => void;
   openLorebookDetail: (id: string, options?: { initialTab?: string; entryId?: string; field?: string }) => void;
   closeLorebookDetail: () => void;
   setLorebookLinkClipboard: (links: NonNullable<UIState["lorebookLinkClipboard"]>) => void;
   openPresetDetail: (id: string, options?: { initialTab?: string }) => void;
   closePresetDetail: () => void;
-  openConnectionDetail: (id: string) => void;
+  openConnectionDetail: (id: string, options?: { returnToHomeTab?: string }) => void;
   closeConnectionDetail: () => void;
   openAgentDetail: (agentType: string) => void;
   closeAgentDetail: () => void;
@@ -1398,6 +1448,8 @@ interface UIState {
   setGameAutoPlayDelay: (v: number) => void;
   setQueueImageGenerationRequests: (v: boolean) => void;
   setReviewImagePromptsBeforeSend: (v: boolean) => void;
+  setSaveGeneratedImagesAsWebp: (v: boolean) => void;
+  setGeneratedImageWebpQuality: (v: number) => void;
   setAutoSaveGeneratedImagesToGalleries: (v: boolean) => void;
   setImageBackgroundDimensions: (width: number, height: number) => void;
   setImageIllustrationDimensions: (width: number, height: number) => void;
@@ -1414,6 +1466,7 @@ interface UIState {
   setShowTimestamps: (v: boolean) => void;
   setShowModelName: (v: boolean) => void;
   setShowTokenUsage: (v: boolean) => void;
+  setQuickSwitcherShowModels: (v: boolean) => void;
   setShowContextUsage: (v: boolean) => void;
   setShowMessageNumbers: (v: boolean) => void;
   setMessageControlsAbove: (v: boolean) => void;
@@ -1435,7 +1488,6 @@ interface UIState {
   setIncludePrivateNotesInExports: (v: boolean) => void;
   setMessagesPerPage: (n: number) => void;
   setBoldDialogue: (v: boolean) => void;
-  setColorInlineNames: (v: boolean) => void;
   setDisableInlineNameGradients: (v: boolean) => void;
   setQuoteFormat: (v: QuoteFormat) => void;
   setConvertLatexSymbols: (v: boolean) => void;
@@ -1447,7 +1499,6 @@ interface UIState {
   setTTSLineVolume: (v: number) => void;
   setChibiProfessorMariEnabled: (v: boolean) => void;
   setProfessorMariSuggestionsEnabled: (v: boolean) => void;
-  setCommandCenterMariEnabled: (v: boolean) => void;
   setOmnibarSuggestionsEnabled: (v: boolean) => void;
   setAchievementsEnabled: (v: boolean) => void;
   setSeasonalThemesDisabled: (v: boolean) => void;
@@ -1484,6 +1535,7 @@ interface UIState {
   setRoleplaySpriteScale: (v: number) => void;
   setRoleplayDisplayStyle: (v: "classic" | "visual-novel") => void;
   setRoleplayChatPosition: (v: RoleplayChatPosition) => void;
+  setRoleplayChatWidthPercent: (v: number | null) => void;
   setRoleplayVnAutoPlay: (v: boolean) => void;
   setRoleplayVnAutoPlayDelay: (v: number) => void;
   setRoleplayVnPortraitScale: (v: number) => void;
@@ -1628,8 +1680,6 @@ export function pickSyncedSettings(state: UIState) {
   return {
     libraryManualOrders: state.libraryManualOrders,
     showHomeBrowserAddressBar: state.showHomeBrowserAddressBar,
-    showHomeBrowserDesktopBookmarksOnOtherTabs: state.showHomeBrowserDesktopBookmarksOnOtherTabs,
-    showHomeBrowserMobileBookmarksOnOtherTabs: state.showHomeBrowserMobileBookmarksOnOtherTabs,
     sidebarOpen: state.sidebarOpen,
     sidebarWidth: state.sidebarWidth,
     rightPanelWidth: state.rightPanelWidth,
@@ -1680,6 +1730,8 @@ export function pickSyncedSettings(state: UIState) {
     gameAutoPlayDelay: state.gameAutoPlayDelay,
     queueImageGenerationRequests: state.queueImageGenerationRequests,
     reviewImagePromptsBeforeSend: state.reviewImagePromptsBeforeSend,
+    saveGeneratedImagesAsWebp: state.saveGeneratedImagesAsWebp,
+    generatedImageWebpQuality: state.generatedImageWebpQuality,
     autoSaveGeneratedImagesToGalleries: state.autoSaveGeneratedImagesToGalleries,
     imageBackgroundWidth: state.imageBackgroundWidth,
     imageBackgroundHeight: state.imageBackgroundHeight,
@@ -1702,6 +1754,7 @@ export function pickSyncedSettings(state: UIState) {
     showTimestamps: state.showTimestamps,
     showModelName: state.showModelName,
     showTokenUsage: state.showTokenUsage,
+    quickSwitcherShowModels: state.quickSwitcherShowModels,
     showContextUsage: state.showContextUsage,
     showMessageNumbers: state.showMessageNumbers,
     messageControlsAbove: state.messageControlsAbove,
@@ -1733,7 +1786,6 @@ export function pickSyncedSettings(state: UIState) {
     ttsLineVolume: state.ttsLineVolume,
     chibiProfessorMariEnabled: state.chibiProfessorMariEnabled,
     professorMariSuggestionsEnabled: state.professorMariSuggestionsEnabled,
-    commandCenterMariEnabled: state.commandCenterMariEnabled,
     omnibarSuggestionsEnabled: state.omnibarSuggestionsEnabled,
     mariPanelSortMode: state.mariPanelSortMode,
     omnibarAsideEnabled: state.omnibarAsideEnabled,
@@ -1743,6 +1795,8 @@ export function pickSyncedSettings(state: UIState) {
     mariEditViewMode: state.mariEditViewMode,
     mariWindowHeightRem: normalizeMariWindowHeightRem(state.mariWindowHeightRem),
     mariWindowWidthRem: normalizeMariWindowWidthRem(state.mariWindowWidthRem),
+    mariCompanionDocked: state.mariCompanionDocked,
+    mariCompanionWidthRem: normalizeMariCompanionWidthRem(state.mariCompanionWidthRem),
     omnibarWindowWidthRem: normalizeOmnibarWindowWidthRem(state.omnibarWindowWidthRem),
     omnibarWindowHeightRem: normalizeOmnibarWindowHeightRem(state.omnibarWindowHeightRem),
     mariAppearancePackId: getMariAppearancePack(state.mariAppearancePackId).id,
@@ -1782,6 +1836,7 @@ export function pickSyncedSettings(state: UIState) {
     roleplaySpriteScale: state.roleplaySpriteScale,
     roleplayDisplayStyle: state.roleplayDisplayStyle,
     roleplayChatPosition: state.roleplayChatPosition,
+    roleplayChatWidthPercent: normalizeRoleplayChatWidthPercent(state.roleplayChatWidthPercent),
     roleplayVnAutoPlay: state.roleplayVnAutoPlay,
     roleplayVnAutoPlayDelay: state.roleplayVnAutoPlayDelay,
     roleplayVnPortraitScale: state.roleplayVnPortraitScale,
@@ -1831,11 +1886,14 @@ export function pickSyncedSettings(state: UIState) {
   };
 }
 
+/** Whether the chat list is drawn: the player's choice, unless a fight on a board has it hidden. */
+export function selectSidebarShown(state: Pick<UIState, "sidebarOpen" | "sidebarHiddenForFight">) {
+  return state.sidebarOpen && !state.sidebarHiddenForFight;
+}
+
 export function pickPersistedUIState(state: UIState) {
   return {
     showHomeBrowserAddressBar: state.showHomeBrowserAddressBar,
-    showHomeBrowserDesktopBookmarksOnOtherTabs: state.showHomeBrowserDesktopBookmarksOnOtherTabs,
-    showHomeBrowserMobileBookmarksOnOtherTabs: state.showHomeBrowserMobileBookmarksOnOtherTabs,
     sidebarOpen: state.sidebarOpen,
     sidebarWidth: state.sidebarWidth,
     rightPanelOpen: state.rightPanelOpen,
@@ -1908,6 +1966,8 @@ export function pickPersistedUIState(state: UIState) {
     parameterTraceView: state.parameterTraceView,
     mariWindowHeightRem: normalizeMariWindowHeightRem(state.mariWindowHeightRem),
     mariWindowWidthRem: normalizeMariWindowWidthRem(state.mariWindowWidthRem),
+    mariCompanionDocked: state.mariCompanionDocked,
+    mariCompanionWidthRem: state.mariCompanionWidthRem,
     omnibarWindowWidthRem: normalizeOmnibarWindowWidthRem(state.omnibarWindowWidthRem),
     omnibarWindowHeightRem: normalizeOmnibarWindowHeightRem(state.omnibarWindowHeightRem),
     mariAppearancePackId: getMariAppearancePack(state.mariAppearancePackId).id,
@@ -1945,6 +2005,8 @@ export function pickPersistedUIState(state: UIState) {
     gameAutoPlayDelay: state.gameAutoPlayDelay,
     queueImageGenerationRequests: state.queueImageGenerationRequests,
     reviewImagePromptsBeforeSend: state.reviewImagePromptsBeforeSend,
+    saveGeneratedImagesAsWebp: state.saveGeneratedImagesAsWebp,
+    generatedImageWebpQuality: state.generatedImageWebpQuality,
     autoSaveGeneratedImagesToGalleries: state.autoSaveGeneratedImagesToGalleries,
     imageBackgroundWidth: state.imageBackgroundWidth,
     imageBackgroundHeight: state.imageBackgroundHeight,
@@ -1967,6 +2029,7 @@ export function pickPersistedUIState(state: UIState) {
     showTimestamps: state.showTimestamps,
     showModelName: state.showModelName,
     showTokenUsage: state.showTokenUsage,
+    quickSwitcherShowModels: state.quickSwitcherShowModels,
     showContextUsage: state.showContextUsage,
     showMessageNumbers: state.showMessageNumbers,
     messageControlsAbove: state.messageControlsAbove,
@@ -1998,7 +2061,6 @@ export function pickPersistedUIState(state: UIState) {
     ttsLineVolume: state.ttsLineVolume,
     chibiProfessorMariEnabled: state.chibiProfessorMariEnabled,
     professorMariSuggestionsEnabled: state.professorMariSuggestionsEnabled,
-    commandCenterMariEnabled: state.commandCenterMariEnabled,
     omnibarSuggestionsEnabled: state.omnibarSuggestionsEnabled,
     achievementsEnabled: state.achievementsEnabled,
     seasonalThemesDisabled: state.seasonalThemesDisabled,
@@ -2034,6 +2096,7 @@ export function pickPersistedUIState(state: UIState) {
     roleplaySpriteScale: state.roleplaySpriteScale,
     roleplayDisplayStyle: state.roleplayDisplayStyle,
     roleplayChatPosition: state.roleplayChatPosition,
+    roleplayChatWidthPercent: normalizeRoleplayChatWidthPercent(state.roleplayChatWidthPercent),
     roleplayVnAutoPlay: state.roleplayVnAutoPlay,
     roleplayVnAutoPlayDelay: state.roleplayVnAutoPlayDelay,
     roleplayVnPortraitScale: state.roleplayVnPortraitScale,
@@ -2106,9 +2169,8 @@ export const useUIStore = create<UIState>()(
       return {
         settingsSyncReady: false,
         showHomeBrowserAddressBar: true,
-        showHomeBrowserDesktopBookmarksOnOtherTabs: true,
-        showHomeBrowserMobileBookmarksOnOtherTabs: true,
         sidebarOpen: true,
+        sidebarHiddenForFight: false,
         sidebarWidth: 320,
         rightPanelOpen: false,
         rightPanelWidth: 320,
@@ -2132,9 +2194,14 @@ export const useUIStore = create<UIState>()(
         trackerPanelSectionOrder: [...TRACKER_DATA_PANEL_SECTIONS],
         settingsTab: "general",
         activeEditorField: null,
+        mariFieldDraft: null,
+        mariRevealField: null,
+        mariWorkingField: null,
+        mariFieldReview: null,
         lastAppError: null,
         settingsTargetControlId: null,
         homeRequest: null,
+        connectionDetailReturnTab: null,
         whatsNewRequested: false,
         settingsTargetSectionId: null,
         modal: null,
@@ -2156,6 +2223,9 @@ export const useUIStore = create<UIState>()(
         parameterTraceView: "main",
         mariWindowHeightRem: MARI_WINDOW_HEIGHT_DEFAULT_REM,
         mariWindowWidthRem: MARI_WINDOW_WIDTH_DEFAULT_REM,
+        mariCompanionDocked: true,
+        mariCompanionWidthRem: MARI_COMPANION_WIDTH_MIN_REM,
+        mariCompanionRoot: null,
         omnibarWindowWidthRem: OMNIBAR_WINDOW_WIDTH_DEFAULT_REM,
         omnibarWindowHeightRem: null,
         mariAppearancePackId: "basic",
@@ -2250,6 +2320,8 @@ export const useUIStore = create<UIState>()(
         gameAutoPlayDelay: 3000,
         queueImageGenerationRequests: true,
         reviewImagePromptsBeforeSend: false,
+        saveGeneratedImagesAsWebp: false,
+        generatedImageWebpQuality: 95,
         autoSaveGeneratedImagesToGalleries: true,
         imageBackgroundWidth: 1280,
         imageBackgroundHeight: 720,
@@ -2272,6 +2344,7 @@ export const useUIStore = create<UIState>()(
         showTimestamps: false,
         showModelName: false,
         showTokenUsage: false,
+        quickSwitcherShowModels: true,
         showContextUsage: true,
         showMessageNumbers: false,
         messageControlsAbove: false,
@@ -2303,7 +2376,6 @@ export const useUIStore = create<UIState>()(
         ttsLineVolume: 50,
         chibiProfessorMariEnabled: true,
         professorMariSuggestionsEnabled: true,
-        commandCenterMariEnabled: true,
         omnibarSuggestionsEnabled: true,
         achievementsEnabled: true,
         seasonalThemesDisabled: false,
@@ -2341,6 +2413,7 @@ export const useUIStore = create<UIState>()(
         roleplaySpriteScale: 1,
         roleplayDisplayStyle: "classic",
         roleplayChatPosition: "center",
+        roleplayChatWidthPercent: null,
         roleplayVnAutoPlay: false,
         roleplayVnAutoPlayDelay: 3000,
         roleplayVnPortraitScale: 1,
@@ -2409,17 +2482,19 @@ export const useUIStore = create<UIState>()(
         toggleSidebar: () =>
           set((s) => {
             const mobile = isMobileShellViewport();
-            const sidebarOpen = !s.sidebarOpen || (mobile && s.rightPanelOpen);
+            const sidebarOpen = !selectSidebarShown(s) || (mobile && s.rightPanelOpen);
             dismissChatFloatingUiForMobilePanel(sidebarOpen);
             return {
               sidebarOpen,
+              sidebarHiddenForFight: false,
               ...(mobile && sidebarOpen ? { rightPanelOpen: false } : {}),
             };
           }),
         setSidebarOpen: (open) => {
           dismissChatFloatingUiForMobilePanel(open);
-          set({ sidebarOpen: open });
+          set({ sidebarOpen: open, sidebarHiddenForFight: false });
         },
+        hideSidebarForFight: (hidden) => set({ sidebarHiddenForFight: hidden }),
         setSidebarWidth: (width) =>
           set({ sidebarWidth: Math.max(SIDEBAR_WIDTH_MIN, Math.min(SIDEBAR_WIDTH_MAX, width)) }),
         setRightPanelWidth: (width) =>
@@ -2502,7 +2577,7 @@ export const useUIStore = create<UIState>()(
             return {
               rightPanelOpen: true,
               rightPanel: panel,
-              ...(mobile ? { sidebarOpen: false } : {}),
+              ...(mobile ? { sidebarOpen: false, sidebarHiddenForFight: false } : {}),
             };
           }),
         closeRightPanel: () => set({ rightPanelOpen: false }),
@@ -2514,12 +2589,17 @@ export const useUIStore = create<UIState>()(
             return {
               rightPanelOpen: true,
               rightPanel: panel,
-              ...(mobile ? { sidebarOpen: false } : {}),
+              ...(mobile ? { sidebarOpen: false, sidebarHiddenForFight: false } : {}),
             };
           }),
 
         setSettingsTab: (tab) => set({ settingsTab: tab }),
         setActiveEditorField: (field) => set({ activeEditorField: field }),
+        setMariFieldDraft: (draft) => set({ mariFieldDraft: draft }),
+        revealMariField: (characterId, path, options) => set({ mariRevealField: { characterId, path, ...options } }),
+        clearMariRevealField: () => set({ mariRevealField: null }),
+        setMariWorkingField: (field) => set({ mariWorkingField: field }),
+        setMariFieldReview: (review) => set({ mariFieldReview: review }),
         setLastAppError: (error) => set({ lastAppError: error }),
         setSettingsTargetControlId: (controlId) => set({ settingsTargetControlId: controlId }),
         requestHome: (homeRequest) => set({ homeRequest }),
@@ -2547,6 +2627,9 @@ export const useUIStore = create<UIState>()(
         setParameterTraceView: (view) => set({ parameterTraceView: view }),
         setMariWindowHeightRem: (height) => set({ mariWindowHeightRem: normalizeMariWindowHeightRem(height) }),
         setMariWindowWidthRem: (width) => set({ mariWindowWidthRem: normalizeMariWindowWidthRem(width) }),
+        setMariCompanionDocked: (docked) => set({ mariCompanionDocked: docked }),
+        setMariCompanionWidthRem: (width) => set({ mariCompanionWidthRem: normalizeMariCompanionWidthRem(width) }),
+        setMariCompanionRoot: (root) => set({ mariCompanionRoot: root }),
         setOmnibarWindowWidthRem: (width) => set({ omnibarWindowWidthRem: normalizeOmnibarWindowWidthRem(width) }),
         setOmnibarWindowHeightRem: (height) => set({ omnibarWindowHeightRem: normalizeOmnibarWindowHeightRem(height) }),
         // A dated pack is never stored: picking it clears the opt-out, so the user's own pick returns after its window.
@@ -2604,6 +2687,8 @@ export const useUIStore = create<UIState>()(
             return {
               characterDetailId: id,
               characterDetailInitialTab: options?.initialTab ?? null,
+              // In the same patch as the navigation, so a refused editor leave drops it too.
+              mariRevealField: options?.revealField ? { characterId: id, path: options.revealField } : null,
               lorebookDetailId: null,
               presetDetailId: null,
               connectionDetailId: null,
@@ -2681,9 +2766,13 @@ export const useUIStore = create<UIState>()(
             editorDirty: false,
             ...restoreMobileDetailReturnPanel(s.detailReturnRightPanel),
           })),
-        openConnectionDetail: (id) =>
+        openConnectionDetail: (id, options) =>
           set((s) => ({
             connectionDetailId: id,
+            // Switching the open editor to another connection keeps the package tab it returns to; an editor
+            // opened afresh starts without one.
+            connectionDetailReturnTab:
+              options?.returnToHomeTab || (s.connectionDetailId ? s.connectionDetailReturnTab : null),
             characterLibraryOpen: false,
             agentCatalogOpen: false,
             botBrowserOpen: false,
@@ -2702,8 +2791,14 @@ export const useUIStore = create<UIState>()(
         closeConnectionDetail: () =>
           set((s) => ({
             connectionDetailId: null,
+            connectionDetailReturnTab: null,
             editorDirty: false,
             ...restoreMobileDetailReturnPanel(s.detailReturnRightPanel),
+            // Only closing the editor itself returns Home to the package tab that opened it. Leaving it any other
+            // way (a chat, another editor, closeAllDetails) queues nothing, so Home never jumps to that tab later.
+            ...(s.connectionDetailId && s.connectionDetailReturnTab
+              ? { homeRequest: { kind: "tab" as const, tab: s.connectionDetailReturnTab } }
+              : {}),
           })),
         openAgentDetail: (agentType) =>
           set((s) => ({
@@ -3029,6 +3124,7 @@ export const useUIStore = create<UIState>()(
         },
         closeAllDetails: () =>
           set({
+            connectionDetailReturnTab: null,
             characterDetailId: null,
             lorebookDetailId: null,
             presetDetailId: null,
@@ -3076,7 +3172,7 @@ export const useUIStore = create<UIState>()(
           // K6: mark the start of every real open (any trigger routes through
           // here) so the first-result-paint effect can measure against it.
           if (open && !get().omnibarOpen && get().debugMode) markOmnibarOpenStart();
-          set(open ? { omnibarOpen: true } : { omnibarOpen: false, omnibarSettings: null });
+          set(open ? { omnibarOpen: true } : { omnibarOpen: false, omnibarSettings: null, mariFieldDraft: null });
         },
         openOmnibarSettings: (controlId = null) => {
           if (!get().omnibarOpen && get().debugMode) markOmnibarOpenStart();
@@ -3121,6 +3217,9 @@ export const useUIStore = create<UIState>()(
         setGameAutoPlayDelay: (v) => set({ gameAutoPlayDelay: Math.max(200, Math.min(10000, Math.round(v))) }),
         setQueueImageGenerationRequests: (v) => set({ queueImageGenerationRequests: v }),
         setReviewImagePromptsBeforeSend: (v) => set({ reviewImagePromptsBeforeSend: v }),
+        setSaveGeneratedImagesAsWebp: (v) => set({ saveGeneratedImagesAsWebp: v }),
+        setGeneratedImageWebpQuality: (v) =>
+          set({ generatedImageWebpQuality: Number.isFinite(v) ? Math.max(1, Math.min(100, Math.round(v))) : 95 }),
         setAutoSaveGeneratedImagesToGalleries: (v) => set({ autoSaveGeneratedImagesToGalleries: v }),
         setImageBackgroundDimensions: (width, height) =>
           set({
@@ -3161,6 +3260,7 @@ export const useUIStore = create<UIState>()(
         setShowTimestamps: (v) => set({ showTimestamps: v }),
         setShowModelName: (v) => set({ showModelName: v }),
         setShowTokenUsage: (v) => set({ showTokenUsage: v }),
+        setQuickSwitcherShowModels: (v) => set({ quickSwitcherShowModels: v }),
         setShowContextUsage: (v) => set({ showContextUsage: v }),
         setShowMessageNumbers: (v) => set({ showMessageNumbers: v }),
         setMessageControlsAbove: (v) => set({ messageControlsAbove: v }),
@@ -3204,7 +3304,6 @@ export const useUIStore = create<UIState>()(
         setIncludePrivateNotesInExports: (v) => set({ includePrivateNotesInExports: v }),
         setMessagesPerPage: (n) => set({ messagesPerPage: n }),
         setBoldDialogue: (v) => set({ boldDialogue: v }),
-        setColorInlineNames: (v) => set({ colorInlineNames: v }),
         setDisableInlineNameGradients: (v) => set({ disableInlineNameGradients: v }),
         setQuoteFormat: (v) => set({ quoteFormat: normalizeQuoteFormat(v) }),
         setConvertLatexSymbols: (v) => set({ convertLatexSymbols: v }),
@@ -3213,16 +3312,11 @@ export const useUIStore = create<UIState>()(
           set((state) => ({ approvedRemoteImageUrls: addApprovedRemoteImageUrl(state.approvedRemoteImageUrls, href) })),
         setTrimIncompleteModelOutput: (v) => set({ trimIncompleteModelOutput: v }),
         setShowHomeBrowserAddressBar: (visible) => set({ showHomeBrowserAddressBar: visible }),
-        setShowHomeBrowserDesktopBookmarksOnOtherTabs: (visible) =>
-          set({ showHomeBrowserDesktopBookmarksOnOtherTabs: visible }),
-        setShowHomeBrowserMobileBookmarksOnOtherTabs: (visible) =>
-          set({ showHomeBrowserMobileBookmarksOnOtherTabs: visible }),
         setContinueAddsNewline: (v) => set({ continueAddsNewline: v }),
         setSpeechToTextEnabled: (v) => set({ speechToTextEnabled: v }),
         setTTSLineVolume: (v) => set({ ttsLineVolume: Math.max(0, Math.min(100, Math.round(v))) }),
         setChibiProfessorMariEnabled: (v) => set({ chibiProfessorMariEnabled: v }),
         setProfessorMariSuggestionsEnabled: (v) => set({ professorMariSuggestionsEnabled: v }),
-        setCommandCenterMariEnabled: (v) => set({ commandCenterMariEnabled: v }),
         setOmnibarSuggestionsEnabled: (v) => set({ omnibarSuggestionsEnabled: v }),
         setAchievementsEnabled: (v) => set({ achievementsEnabled: v }),
         // Switching seasonal themes back on also undoes a "Turn it off" from this year's greeting.
@@ -3302,6 +3396,7 @@ export const useUIStore = create<UIState>()(
         setGameAvatarScale: (v) => set({ gameAvatarScale: Math.max(0.75, Math.min(1.75, v)) }),
         setRoleplayDisplayStyle: (v) => set({ roleplayDisplayStyle: v }),
         setRoleplayChatPosition: (v) => set({ roleplayChatPosition: normalizeRoleplayChatPosition(v) }),
+        setRoleplayChatWidthPercent: (v) => set({ roleplayChatWidthPercent: normalizeRoleplayChatWidthPercent(v) }),
         setRoleplayVnAutoPlay: (v) => set({ roleplayVnAutoPlay: v }),
         setRoleplayVnAutoPlayDelay: (v) =>
           set({ roleplayVnAutoPlayDelay: Math.max(200, Math.min(10000, Math.round(v))) }),
@@ -3389,6 +3484,7 @@ export const useUIStore = create<UIState>()(
             roleplaySpriteScale: 1,
             roleplayDisplayStyle: "classic",
             roleplayChatPosition: "center",
+            roleplayChatWidthPercent: null,
             roleplayVnAutoPlay: false,
             roleplayVnAutoPlayDelay: 3000,
             roleplayVnPortraitScale: 1,
@@ -3624,14 +3720,8 @@ export const useUIStore = create<UIState>()(
             // Package settings use their defaults if browser storage is unavailable.
           }
         }
-        if (version <= 99) {
-          if (persisted.showHomeBrowserAddressBar === undefined) persisted.showHomeBrowserAddressBar = true;
-          if (persisted.showHomeBrowserDesktopBookmarksOnOtherTabs === undefined) {
-            persisted.showHomeBrowserDesktopBookmarksOnOtherTabs = true;
-          }
-          if (persisted.showHomeBrowserMobileBookmarksOnOtherTabs === undefined) {
-            persisted.showHomeBrowserMobileBookmarksOnOtherTabs = true;
-          }
+        if (version <= 99 && persisted.showHomeBrowserAddressBar === undefined) {
+          persisted.showHomeBrowserAddressBar = true;
         }
         if (version <= 99 && persisted.showCharactersInPersonaPickers === undefined) {
           persisted.showCharactersInPersonaPickers = false;
@@ -4163,10 +4253,6 @@ export const useUIStore = create<UIState>()(
         if (version <= 88 && persisted.reduceAmbientEffects === undefined) {
           persisted.reduceAmbientEffects = false;
         }
-        // v94 -> v95: Command Center Mari LLM assistance defaults on for existing users.
-        if (version <= 94 && persisted.commandCenterMariEnabled === undefined) {
-          persisted.commandCenterMariEnabled = true;
-        }
         // v94 -> v95: existing custom positions stay untouched; the exact legacy
         // default is the only reliable indication that the widget was never moved.
         if (
@@ -4186,11 +4272,11 @@ export const useUIStore = create<UIState>()(
         }
         // v101 -> v102: the Home navigator and its setting are gone; its commands moved to the omnibar.
         delete persisted.professorMariNavigationEnabled;
+        delete persisted.commandCenterMariEnabled;
         persisted.appAccentRgbMode = persisted.appAccentRgbMode === true;
         persisted.customCursorEnabled = persisted.customCursorEnabled !== false;
         persisted.reduceAmbientEffects = persisted.reduceAmbientEffects === true;
         persisted.professorMariSuggestionsEnabled = persisted.professorMariSuggestionsEnabled !== false;
-        persisted.commandCenterMariEnabled = persisted.commandCenterMariEnabled !== false;
         persisted.omnibarSuggestionsEnabled = persisted.omnibarSuggestionsEnabled !== false;
         persisted.includeReasoningInExports = persisted.includeReasoningInExports === true;
         persisted.includePrivateNotesInExports = persisted.includePrivateNotesInExports === true;
@@ -4218,6 +4304,8 @@ export const useUIStore = create<UIState>()(
           ...persisted,
           mariWindowHeightRem: normalizeMariWindowHeightRem(persisted.mariWindowHeightRem),
           mariWindowWidthRem: normalizeMariWindowWidthRem(persisted.mariWindowWidthRem),
+          mariCompanionDocked: persisted.mariCompanionDocked !== false,
+          mariCompanionWidthRem: normalizeMariCompanionWidthRem(persisted.mariCompanionWidthRem),
           omnibarWindowWidthRem: normalizeOmnibarWindowWidthRem(persisted.omnibarWindowWidthRem),
           omnibarWindowHeightRem: normalizeOmnibarWindowHeightRem(persisted.omnibarWindowHeightRem),
           mariAppearancePackId: getMariAppearancePack(persisted.mariAppearancePackId).id,
@@ -4232,6 +4320,7 @@ export const useUIStore = create<UIState>()(
           ),
           chatWidgetPreset: normalizeChatWidgetPreset(persisted.chatWidgetPreset),
           roleplayChatPosition: normalizeRoleplayChatPosition(persisted.roleplayChatPosition),
+          roleplayChatWidthPercent: normalizeRoleplayChatWidthPercent(persisted.roleplayChatWidthPercent),
           chatWidgetFont: normalizeChatWidgetFont(persisted.chatWidgetFont),
           chatWidgetShape: normalizeChatWidgetShape(persisted.chatWidgetShape),
           chatWidgetButtonSize: normalizeChatWidgetButtonSize(persisted.chatWidgetButtonSize),

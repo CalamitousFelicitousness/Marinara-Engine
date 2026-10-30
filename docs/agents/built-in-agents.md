@@ -61,6 +61,16 @@ A life simulation. You live in a small town on a clock, with a job to find and k
 - **Key settings**: install it from **Agents → Download Agents**, restart Marinara Engine when prompted, then open **Home → Life Sim**. It needs a text connection. An image connection is optional: without one, places show illustrated cards instead of generated backgrounds. Optional extras called modules stay off unless you switch them on for a life; the **Adult** module asks you to confirm that you are an adult.
 - **Full guide**: [Modern Life Sim package guide](https://github.com/Pasta-Devs/Marinara-Agents/blob/staging/packages/modern-life-sim/README.md).
 
+### Story Writer
+
+A book you write together with the model. Set up the story, its cast and its lorebooks in a sidebar, leave the author's instructions on a sticky note, and the model writes the next chapter each time you ask. The pages look like an open book or an e-book reader, and you can click anywhere in the text to change it, or start the first chapter yourself.
+
+- **Integration**: App; it opens in its own **Story Writer** tab in **Home**.
+- **Where it works**: Home.
+- **Availability**: needs a Marinara Engine newer than **v2.5.1** (the next release, or a current staging build). Older Engines do not offer it in **Download Agents**.
+- **Key settings**: install it from **Agents → Download Agents**, restart Marinara Engine when prompted, then open **Home → Story Writer** and pick a text connection in its sidebar. Every story is saved on your Marinara Engine server, and you can start new ones, return to old ones, and download them as Markdown or plain text.
+- **Full guide**: [Story Writer package guide](https://github.com/Pasta-Devs/Marinara-Agents/blob/staging/packages/story-writer/README.md).
+
 ## Writer agents
 
 Writer agents shape the story or the prose. They either add guidance before the reply or clean up the reply after it.
@@ -268,7 +278,7 @@ Responsible for image and video generations. It writes visual prompts for import
 
 - **Phase**: Post-Processing.
 - **Where it works**: Roleplay.
-- **Key settings**: it runs once every 5 user and assistant messages by default, and each Roleplay chat can change that with **Run Interval** on its card. Settings include **Prompt Model**, **Image Style**, **Attach Card Appearance**, and **Send Avatar References**. For the full setup, see [Illustrator agent](../media/illustrator-agent.md).
+- **Key settings**: Illustrator runs once every 5 user and assistant messages by default. Set **Image Run Interval** on each Roleplay chat's card to change this. Automatic clips use **Video Run Interval** when **Illustrator makes** is **Pictures and clips** or **Clips only**. Set **Video Run Interval** to **0** to turn automatic clips off. Settings include **Prompt Model**, **Image Style**, **Attach Card Appearance**, and **Send Avatar References**. For the full setup, see [Illustrator agent](../media/illustrator-agent.md).
 
 ### Lorebook Keeper
 

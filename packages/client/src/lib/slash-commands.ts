@@ -93,6 +93,8 @@ export interface SlashCommandContext {
   selfie?: (characterId?: string) => void | Promise<void>;
   /** Have a Conversation character send a video message, as the chat Gallery's Video button does. */
   video?: (characterId?: string) => void | Promise<void>;
+  /** Roleplay /video: a clip of the latest reply, or of the description. */
+  roleplayVideo?: (description?: string) => void | Promise<void>;
   /** Active downloadable capability packages available to this composer. */
   availableCapabilityIds?: ReadonlySet<string>;
   /** Installed Conversation games that contribute manual slash launchers. */
@@ -185,7 +187,7 @@ function buildStatusCommandHelp(characters: Array<{ id: string; name: string }>)
 
 function formatGuidedTargetHelp(characters: Array<{ name: string }>): string {
   const available = formatAvailableCharacterList(characters);
-  return `Use /guided respond for <character> <direction>${available ? `\nAvailable: ${available}` : ""}`;
+  return `Use /guided respond as <character> <direction>${available ? `\nAvailable: ${available}` : ""}`;
 }
 
 function trimGuideSeparator(value: string): string {
@@ -291,12 +293,16 @@ function parseReminder(input: string): { ms: number; timeStr: string; message: s
   return { ms, timeStr: parts.join(""), message };
 }
 
-function buildMacroHelpText(): string {
+async function buildMacroHelpText(): Promise<string> {
+  const { translate } = await import("../localization/i18n");
   const sections = new Map<string, string[]>();
 
   for (const macro of SUPPORTED_MACROS) {
     const lines = sections.get(macro.category) ?? [];
-    lines.push(`${macro.syntax} - ${macro.description}`);
+    const description = macro.descriptionKey
+      ? translate(macro.descriptionKey, { defaultValue: macro.description })
+      : macro.description;
+    lines.push(`${macro.syntax} - ${description}`);
     sections.set(macro.category, lines);
   }
 
@@ -314,7 +320,6 @@ function buildMacroHelpText(): string {
   ].join("\n");
 }
 
-const MACRO_HELP_TEXT = buildMacroHelpText();
 const ILLUSTRATE_SLASH_TIMEOUT_MS = 1_800_000;
 
 function withSlashCommandTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
@@ -662,7 +667,7 @@ export function parseTargetedHideArguments(
 }
 
 function readHiddenFromAICharacterIds(extra: unknown): string[] {
-  let parsed: Record<string, unknown> = {};
+  let parsed: Record<string, unknown>;
   try {
     parsed =
       typeof extra === "string"
@@ -767,8 +772,9 @@ const COMMANDS: SlashCommand[] = [
   {
     name: "guided",
     aliases: ["narrator", "narrate", "nar"],
-    description: "Steer the narrative — the AI will narrate events in the direction you describe",
-    usage: "/guided [direction] | /guided respond for [name] [direction (optional)]",
+    description:
+      'Steer the narrative — the AI will narrate events in the direction you describe. Add "respond as" or "reply as" a character name to steer one character.',
+    usage: "/guided [direction] | /guided respond as [name] [direction (optional)]",
     async execute(args, ctx) {
       if (!args.trim()) return { handled: true, feedback: "Usage: /guided <direction to steer the narrative>" };
       const characters = ctx.characters ?? [];
@@ -1393,12 +1399,30 @@ const COMMANDS: SlashCommand[] = [
   },
   {
     name: "video",
-    description: "Have a character send you a short video message",
-    usage: "/video [name (optional)]",
+    description: "Have a character send you a short video message, or in Roleplay, make a clip of the scene",
+    usage: "/video [name (optional)] — in Roleplay: /video [description (optional)]",
     requiredCapabilityId: "illustrator",
-    modes: ["conversation"],
+    modes: ["conversation", "roleplay"],
     local: true,
     async execute(args, ctx) {
+      if (ctx.roleplayVideo) {
+        if (useGalleryStore.getState().videoGeneratingChatIds.has(ctx.chatId)) {
+          return { handled: true, feedback: await translateSlash("ui.chat.slash.video.alreadyRunning") };
+        }
+        useGalleryStore.getState().setChatGeneratingVideo(ctx.chatId, true);
+        try {
+          await withSlashCommandTimeout(
+            Promise.resolve(ctx.roleplayVideo(args.trim() || undefined)),
+            ILLUSTRATE_SLASH_TIMEOUT_MS,
+            await translateSlash("ui.chat.slash.video.timedOut"),
+          );
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : await translateSlash("ui.chat.slash.video.failed"));
+        } finally {
+          useGalleryStore.getState().setChatGeneratingVideo(ctx.chatId, false);
+        }
+        return { handled: true };
+      }
       if (!ctx.video) {
         return { handled: true, feedback: await translateSlash("ui.chat.slash.video.unavailable") };
       }
@@ -1572,7 +1596,7 @@ const COMMANDS: SlashCommand[] = [
     usage: "/macros",
     local: true,
     async execute() {
-      return { handled: true, feedback: MACRO_HELP_TEXT };
+      return { handled: true, feedback: await buildMacroHelpText() };
     },
   },
 ];

@@ -252,6 +252,7 @@ export function GenerationParametersFields({
   showServiceTier = false,
   showOpenRouterServiceTier = showServiceTier,
   showCustomHeaders = false,
+  showTokenLimits = true,
   effectiveParameters,
   provider,
   model,
@@ -263,6 +264,7 @@ export function GenerationParametersFields({
   onChange: (next: EditableGenerationParameters) => void;
   showServiceTier?: boolean;
   showCustomHeaders?: boolean;
+  showTokenLimits?: boolean;
   effectiveParameters?: EffectiveGenerationParameters;
   /** Used only when no provider is given. */
   showOpenRouterServiceTier?: boolean;
@@ -316,7 +318,8 @@ export function GenerationParametersFields({
   };
   const relevant = provider === undefined ? null : relevantGenerationParameters(context);
   const show = (key: GenerationParameterKey) =>
-    relevant ? relevant.has(key) : key !== "serviceTier" || showOpenRouterServiceTier;
+    (showTokenLimits || key !== "maxTokens") &&
+    (relevant ? relevant.has(key) : key !== "serviceTier" || showOpenRouterServiceTier);
   const effortChoices = reasoningEffortChoices({ ...context, selected: value.reasoningEffort }).filter(
     (choice) => choice.value !== null || !isClaudeOpus55Model(model ?? ""),
   );

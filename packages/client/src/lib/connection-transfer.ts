@@ -1,8 +1,10 @@
 import {
   DECISION_SOURCES,
+  createConnectionSchema,
   defaultDecisionStateTokens,
   resolveDecisionConnectionTimeoutMs,
   type DecisionSource,
+  type GenerativeAudioSource,
   normalizeImagePromptInstructions,
   parseAudioConnectionSettings,
   normalizeVideoPromptInstructions,
@@ -49,6 +51,9 @@ export type ConnectionTransferRow = {
   videoService?: unknown;
   videoPromptInstructions?: unknown;
   audioSource?: unknown;
+  audioGenerationSource?: unknown;
+  audioGenerationCallbackUrl?: unknown;
+  audioSoundEffectsModel?: unknown;
   decisionSource?: unknown;
   maxStateTokens?: unknown;
   decisionTimeoutMs?: unknown;
@@ -56,6 +61,9 @@ export type ConnectionTransferRow = {
   audioSoundEffects?: unknown;
   audioMusic?: unknown;
   audioSettings?: unknown;
+  audioMusicEndpoint?: unknown;
+  audioSoundEffectsEndpoint?: unknown;
+  audioGenerationFormat?: unknown;
   service?: unknown;
   imageEndpointId?: unknown;
   imagePromptInstructions?: unknown;
@@ -100,6 +108,9 @@ export type SafeConnectionExport = {
   videoService: string | null;
   videoPromptInstructions: string | null;
   audioSource: string | null;
+  audioGenerationSource: GenerativeAudioSource | null;
+  audioGenerationCallbackUrl: string | null;
+  audioSoundEffectsModel: string | null;
   decisionSource: DecisionSource | null;
   maxStateTokens: number | null;
   decisionTimeoutMs: number | null;
@@ -107,6 +118,9 @@ export type SafeConnectionExport = {
   audioSoundEffects: boolean;
   audioMusic: boolean;
   audioSettings: AudioConnectionSettings | null;
+  audioMusicEndpoint: string | null;
+  audioSoundEffectsEndpoint: string | null;
+  audioGenerationFormat: "binary" | "chat_completions";
   imageEndpointId: string | null;
   imagePromptInstructions: string | null;
   imageGenerationQuality: ImageGenerationQuality;
@@ -156,6 +170,8 @@ export function normalizeImportedConnectionEntry(value: unknown): ConnectionImpo
     provider === "decision" && DECISION_SOURCES.includes(value.decisionSource as DecisionSource)
       ? (value.decisionSource as DecisionSource)
       : null;
+  const generativeAudioSource = asGenerativeAudioSource(value.audioGenerationSource);
+  if (provider === "audio_generation" && !generativeAudioSource) return null;
   const defaultParameters = parseDefaultParameters(value.defaultParameters);
   const imageService = asNullableString(value.imageService ?? value.service);
   const videoService = provider === "video_generation" ? asNullableString(value.videoService ?? value.service) : null;
@@ -203,9 +219,26 @@ export function normalizeImportedConnectionEntry(value: unknown): ConnectionImpo
       decisionTimeoutMs: provider === "decision" ? asDecisionTimeoutMs(value.decisionTimeoutMs) : null,
       credentialsFromConnectionId: null,
       audioSource: provider === "audio" ? asAudioGenerationSource(value.audioSource ?? value.service) : null,
+      audioGenerationSource: provider === "audio_generation" ? generativeAudioSource : null,
+      audioGenerationCallbackUrl:
+        provider === "audio_generation" ? asNullableString(value.audioGenerationCallbackUrl) : null,
+      audioSoundEffectsModel: provider === "audio_generation" ? asNullableString(value.audioSoundEffectsModel) : null,
       audioVoice: provider === "audio" ? asNullableString(value.audioVoice) : null,
-      audioSoundEffects: provider === "audio" && asBoolean(value.audioSoundEffects),
-      audioMusic: provider === "audio" && asBoolean(value.audioMusic),
+      audioSoundEffects:
+        (provider === "audio" || provider === "audio_generation") && asBoolean(value.audioSoundEffects),
+      audioMusic: (provider === "audio" || provider === "audio_generation") && asBoolean(value.audioMusic),
+      audioMusicEndpoint:
+        provider === "audio" || provider === "audio_generation"
+          ? asAudioGenerationEndpoint(value.audioMusicEndpoint)
+          : null,
+      audioSoundEffectsEndpoint:
+        provider === "audio" || provider === "audio_generation"
+          ? asAudioGenerationEndpoint(value.audioSoundEffectsEndpoint)
+          : null,
+      audioGenerationFormat:
+        (provider === "audio" || provider === "audio_generation") && value.audioGenerationFormat === "chat_completions"
+          ? "chat_completions"
+          : "binary",
       audioSettings: provider === "audio" ? parseAudioConnectionSettings(value.audioSettings) : null,
       promptPresetId: null,
       maxTokensOverride: asNullablePositiveInteger(value.maxTokensOverride),
@@ -227,6 +260,7 @@ function serializeConnectionForExport(connection: ConnectionTransferRow): SafeCo
       : null;
   const isVideoProvider = provider === "video_generation";
   const isAudioProvider = provider === "audio";
+  const isGenerativeAudioProvider = provider === "audio_generation";
   return {
     name: asString(connection.name) || "Unnamed Connection",
     provider,
@@ -269,9 +303,26 @@ function serializeConnectionForExport(connection: ConnectionTransferRow): SafeCo
         : null,
     decisionTimeoutMs: provider === "decision" ? asDecisionTimeoutMs(connection.decisionTimeoutMs) : null,
     audioSource: isAudioProvider ? asNullableString(connection.audioSource ?? connection.service) : null,
+    audioGenerationSource: isGenerativeAudioProvider
+      ? asGenerativeAudioSource(asNullableString(connection.audioGenerationSource) ?? "elevenlabs")
+      : null,
+    audioGenerationCallbackUrl: isGenerativeAudioProvider
+      ? asNullableString(connection.audioGenerationCallbackUrl)
+      : null,
+    audioSoundEffectsModel: isGenerativeAudioProvider ? asNullableString(connection.audioSoundEffectsModel) : null,
     audioVoice: isAudioProvider ? asNullableString(connection.audioVoice) : null,
-    audioSoundEffects: isAudioProvider && asBoolean(connection.audioSoundEffects),
-    audioMusic: isAudioProvider && asBoolean(connection.audioMusic),
+    audioSoundEffects: (isAudioProvider || isGenerativeAudioProvider) && asBoolean(connection.audioSoundEffects),
+    audioMusic: (isAudioProvider || isGenerativeAudioProvider) && asBoolean(connection.audioMusic),
+    audioMusicEndpoint:
+      isAudioProvider || isGenerativeAudioProvider ? asAudioGenerationEndpoint(connection.audioMusicEndpoint) : null,
+    audioSoundEffectsEndpoint:
+      isAudioProvider || isGenerativeAudioProvider
+        ? asAudioGenerationEndpoint(connection.audioSoundEffectsEndpoint)
+        : null,
+    audioGenerationFormat:
+      (isAudioProvider || isGenerativeAudioProvider) && connection.audioGenerationFormat === "chat_completions"
+        ? "chat_completions"
+        : "binary",
     audioSettings: isAudioProvider ? parseAudioConnectionSettings(connection.audioSettings) : null,
     imageEndpointId: asNullableString(connection.imageEndpointId),
     imagePromptInstructions: normalizeImagePromptInstructions(connection.imagePromptInstructions),
@@ -280,6 +331,16 @@ function serializeConnectionForExport(connection: ConnectionTransferRow): SafeCo
     treatAsLocalEndpoint: asBoolean(connection.treatAsLocalEndpoint),
     claudeFastMode: asBoolean(connection.claudeFastMode),
   };
+}
+
+function asGenerativeAudioSource(value: unknown): GenerativeAudioSource | null {
+  const parsed = createConnectionSchema.shape.audioGenerationSource.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+function asAudioGenerationEndpoint(value: unknown): string | null {
+  const parsed = createConnectionSchema.shape.audioMusicEndpoint.safeParse(value);
+  return parsed.success ? parsed.data || null : null;
 }
 
 /** Unknown sources degrade to null (resolved as ElevenLabs) instead of failing the whole connection import. */

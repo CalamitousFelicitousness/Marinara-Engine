@@ -209,6 +209,8 @@ Under the **Auto-play** heading, each toggle tells the app to read one kind of n
 - **Progressive playback**: when a reply has several lines, starts playing the first line right away instead of waiting for the whole reply.
 - **Only read dialogues**: reads only quoted or tagged spoken lines and skips plain narration.
 
+In Roleplay, voice preparation starts as soon as the main response has been saved. Speaker and emotion extraction starts from that text without waiting for unrelated agents. If an enabled agent rewrites the reply, such as Prose Guardian, Marinara waits for the final rewritten text before preparing speech.
+
 Auto-play fires only once, on the newest reply, at the moment it finishes. It does not re-read old messages when you reopen or scroll a chat.
 
 The same playback settings also let you **Skip text inside HTML and custom tags**, **Skip fenced code blocks**, or **Skip text inside square brackets**. Code blocks are skipped by default; the other two filters start off. Tag filtering removes the enclosed text, such as a hidden `<simulation>...</simulation>` block, while preserving speaker tags used to select voices. These filters apply to manual playback and auto-play, including Game narration and Roleplay speaker extraction.

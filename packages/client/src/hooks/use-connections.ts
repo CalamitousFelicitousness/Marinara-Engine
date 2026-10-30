@@ -25,6 +25,7 @@ import type {
   Chat,
   ConnectionTestResult,
   DecisionSource,
+  GenerativeAudioSource,
   ImageGenerationQuality,
 } from "@marinara-engine/shared";
 
@@ -132,6 +133,9 @@ export type CreateConnectionPayload = {
   videoService?: string | null;
   videoPromptInstructions?: string | null;
   audioSource?: string | null;
+  audioGenerationSource?: GenerativeAudioSource | null;
+  audioGenerationCallbackUrl?: string | null;
+  audioSoundEffectsModel?: string | null;
   decisionSource?: DecisionSource | null;
   credentialsFromConnectionId?: string | null;
   maxStateTokens?: number | null;
@@ -140,6 +144,9 @@ export type CreateConnectionPayload = {
   audioSoundEffects?: boolean;
   audioMusic?: boolean;
   audioSettings?: AudioConnectionSettings | null;
+  audioMusicEndpoint?: string | null;
+  audioSoundEffectsEndpoint?: string | null;
+  audioGenerationFormat?: "binary" | "chat_completions";
   promptPresetId?: string | null;
   maxTokensOverride?: number | null;
   maxParallelJobs?: number;

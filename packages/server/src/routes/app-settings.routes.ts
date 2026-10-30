@@ -42,6 +42,7 @@ import { createConnectionsStorage } from "../services/storage/connections.storag
 import { initializeChatWindowDefaults } from "../services/storage/chat-window-defaults.js";
 import { featureSettingsResponse, loadFeatureSettings } from "../services/features/feature-settings.js";
 import { loadMediaQueueUiSettings } from "../services/image/image-generation-queue.js";
+import { loadGeneratedImageFormatUiSettings } from "../services/image/generated-image-format.js";
 
 const ALLOWED_KEYS = new Set([
   "ui",
@@ -66,6 +67,7 @@ export async function appSettingsRoutes(app: FastifyInstance) {
   // Prime the in-memory feature switches; storage writes keep them current from here on.
   await loadFeatureSettings(storage);
   await loadMediaQueueUiSettings(storage);
+  await loadGeneratedImageFormatUiSettings(storage);
 
   app.get(`/${FEATURE_SETTINGS_KEY}`, (): FeatureSettingsResponse => featureSettingsResponse());
 

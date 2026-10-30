@@ -836,10 +836,13 @@ assert.deepEqual(
 // write path, the same as updateChatMetadata beside it, so it introduces no Engine key.
 // The other half of the boundary — a read off a parameter inside a helper — has no count
 // to pin, which is why sub-source 7 exists rather than a seventh sweep. The docs state both limits.
+// The Video Run Interval claim (agent-cadence.ts claimAutomaticVideoRun) adds one audited updater write: it
+// checks the interval inside the serialized metadata write and commits only lastAutomaticVideoMessageId, under
+// the already reserved `last` namespace (staging's own count was 22 before it).
 assert.equal(
   unreadableWriteCalls,
-  23,
-  `chat-metadata writes this sweep cannot read statically changed: expected 23, found ${unreadableWriteCalls}. ` +
+  24,
+  `chat-metadata writes this sweep cannot read statically changed: expected 24, found ${unreadableWriteCalls}. ` +
     "This count is a boundary marker, not a budget, so do not simply edit the number to match. Read the " +
     "call this added by hand — the sites are listed below — and decide what it writes: if it commits a key " +
     "under a namespace that is not already in ENGINE_OWNED_METADATA_KEY_PREFIXES, add that namespace (or " +

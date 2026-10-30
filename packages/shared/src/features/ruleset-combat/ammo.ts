@@ -349,7 +349,14 @@ export function spendRulesetShots(
   }
   if (!action.ammo) return null;
   draw(actor, action.ammo.tag, per, action.ammo.recover, action.ammoFrom, rulesetAmmoFirst(actor, action));
-  return { ...said, left: rulesetAmmoLeft(actor, action.ammo.tag) };
+  // What is left of the stack it was shot out of, where one was picked, as its label names it.
+  return {
+    ...said,
+    left:
+      action.ammoFrom !== undefined
+        ? rulesetStackLeft(actor, action.ammoFrom)
+        : rulesetAmmoLeft(actor, action.ammo.tag),
+  };
 }
 
 /** A clip filled to its most, out of what it shoots where it loads from the bag: as much as the bag

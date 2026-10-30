@@ -361,6 +361,20 @@ try {
       swapped.lines[0]!,
       /^Lich is far beyond this party \(worth 1800, against its High budget of 200\), so lesser ones of its kind come instead: 4 Skeleton\. Lich Morrow stays out of this fight/,
     );
+    // Three of a kind are one group, swapped once, every name its own (laptop handoff 2026-10-30:
+    // three Knights became six Battle Priests, "Battle Priest 1" and "2" three times).
+    const three = rulesetBudgetStandIns(
+      definition,
+      bestiary,
+      ["a", "b", "c"].map((id) => ({ id, name: `Lich ${id}`, creature: "Lich" })),
+      party,
+    );
+    assert.equal(three.lines.length, 1, three.lines.join("\n"));
+    assert.match(three.lines[0]!, /^3 Lich are far beyond this party .* Lich a, Lich b, Lich c stay out/);
+    assert.ok(three.enemies.length <= 4, JSON.stringify(three.enemies));
+    assert.equal(new Set(three.enemies.map((one) => one.name)).size, three.enemies.length, "no name twice");
+    assert.equal(new Set(three.enemies.map((one) => one.id)).size, three.enemies.length);
+    assert.equal(three.enemies[0]!.id, "a");
     // One that fits, or one kept, comes as it is.
     const zombie = rulesetBudgetStandIns(definition, bestiary, [{ id: "z", name: "Zombie" }], party);
     assert.deepEqual(zombie.lines, []);

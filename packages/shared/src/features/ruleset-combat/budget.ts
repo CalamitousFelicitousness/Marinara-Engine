@@ -164,17 +164,38 @@ export function rulesetBudgetStandIns<
   const tierOf = (index: number) => found[index]?.entry.creature?.tier ?? enemies[index]!.tier;
   const lines: string[] = [];
   const out: Array<T | (Omit<T, "creature" | "tier" | "boss"> & { creature: string; boss?: T["boss"] })> = [];
+  // The tier of each one out so far, so each group is weighed beside what already came in its place.
+  const outTiers: Array<string | undefined> = [];
+  const handled = new Set<number>();
+  // How many of each stand-in's name have come, so a second group of one kind never repeats a name.
+  const named = new Map<string, number>();
+  const keepAs = (index: number) => {
+    out.push(enemies[index]!);
+    outTiers.push(tierOf(index));
+  };
   enemies.forEach((enemy, index) => {
+    if (handled.has(index)) return;
     const own = found[index];
     const creature = own?.entry.creature;
-    const others = enemies.flatMap((_, at) => (at === index ? [] : [tierOf(at)]));
+    if (!own || !creature || kept.has(enemy.id)) {
+      handled.add(index);
+      keepAs(index);
+      return;
+    }
+    // Every one of the same kind is one group, swapped once (laptop handoff 2026-10-30: three Knights
+    // each swapped on their own, beside the other two as they were, made six Battle Priests).
+    const group = enemies.flatMap((other, at) =>
+      at >= index && !handled.has(at) && !kept.has(other.id) && found[at]?.entry === own.entry ? [at] : [],
+    );
+    for (const at of group) handled.add(at);
+    const others = [...outTiers, ...enemies.flatMap((_, at) => (handled.has(at) || at <= index ? [] : [tierOf(at)]))];
     // A boss fight, this one the boss or another, is held to the boss budget (cloud re-test SB1).
     const bossed = enemies.some((one) => !!one.boss);
     const allowed = bossed ? budget.bossWorth : budget.worth;
     const step = (bossed ? budget.bossStep : budget.step).label;
-    const alone = rulesetFightWorth(definition, [...others, creature?.tier], budget.members);
-    if (!own || !creature || kept.has(enemy.id) || alone <= Math.max(allowed, budget.bossWorth)) {
-      out.push(enemy);
+    const alone = rulesetFightWorth(definition, [...others, ...group.map(() => creature.tier)], budget.members);
+    if (alone <= Math.max(allowed, budget.bossWorth)) {
+      for (const at of group) keepAs(at);
       return;
     }
     // Nearest kin first: the words its name shares with the other's, the rarer in the bestiary the
@@ -222,23 +243,31 @@ export function rulesetBudgetStandIns<
         }
       }
     if (!best) {
-      out.push(enemy);
+      for (const at of group) keepAs(at);
       return;
     }
-    const { creature: _creature, tier: _tier, boss: _boss, ...unit } = enemy;
-    for (let at = 0; at < best.count; at++)
+    const lead = group.map((at) => enemies[at]!).find((one) => !!one.boss) ?? enemy;
+    const { creature: _creature, tier: _tier, boss: _boss, ...unit } = lead;
+    const label = best.entry.label;
+    for (let at = 0; at < best.count; at++) {
+      const n = (named.get(label) ?? 0) + 1;
+      named.set(label, n);
       out.push({
         ...unit,
-        id: at === 0 ? enemy.id : `${enemy.id}-${at + 1}`,
-        name: best.count === 1 ? best.entry.label : `${best.entry.label} ${at + 1}`,
+        // Each takes the id of one it stands in for while there are, then the lead's numbered.
+        id: at < group.length ? enemies[group[at]!]!.id : `${lead.id}-${at + 1}`,
+        name: best.count === 1 && n === 1 ? label : `${label} ${n}`,
         creature: `${best.catalogId}/${best.entry.id}`,
         // The first that comes in a boss's place is the fight's boss in its stead (cloud re-test SB2),
         // with the boss's own mark: nobody else carries one at all, not even a false one (laptop v3b
         // 2026-10-26: `boss: false` broke the saved fight).
-        ...(at === 0 && enemy.boss ? { boss: enemy.boss } : {}),
+        ...(at === 0 && lead.boss ? { boss: lead.boss } : {}),
       });
+      outTiers.push(best.entry.creature!.tier);
+    }
+    const many = (count: number, what: string) => (count === 1 ? what : `${count} ${what}`);
     lines.push(
-      `${own.entry.label} is far beyond this party (worth ${alone}, against its ${step} budget of ${allowed}), so lesser ones of its kind come instead: ${best.count === 1 ? best.entry.label : `${best.count} ${best.entry.label}`}. ${enemy.name} stays out of this fight, for the story to keep.`,
+      `${many(group.length, own.entry.label)} ${group.length === 1 ? "is" : "are"} far beyond this party (worth ${alone}, against its ${step} budget of ${allowed}), so lesser ones of ${group.length === 1 ? "its" : "their"} kind come instead: ${many(best.count, label)}. ${group.length === 1 ? `${enemy.name} stays` : `${group.map((at) => enemies[at]!.name).join(", ")} stay`} out of this fight, for the story to keep.`,
     );
   });
   return { enemies: out, lines };

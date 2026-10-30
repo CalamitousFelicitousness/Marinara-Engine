@@ -36,6 +36,9 @@ process.env.DATA_DIR = dataDir;
 process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
 const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
+const { createCombatDirector } = await import("../../packages/server/src/services/game/combat-director.service.js");
+const { rankRulesetChoices } =
+  await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 
 try {
   assert.ok(supportedCapabilityApi.minor >= 644);
@@ -190,6 +193,11 @@ try {
     assert.equal(dealt(result.events, "wolf"), 6);
     const archer = rulesetCombatant(result.state, "archer")!;
     assert.equal(archer.itemsUsed?.["2"], 1, "the slaying arrow was shot");
+    assert.equal(
+      eventsOf(result.events, "shot")[0]?.left,
+      0,
+      "what is left of the stack it was shot out of, as its label names it, not every arrow",
+    );
     assert.equal(archer.recoverable?.["2"], 1, "still a slaying arrow to win back");
   }
 
@@ -202,6 +210,42 @@ try {
     const taken = Object.fromEntries(changes.map((one) => [one.stack.ref, one.taken]));
     assert.equal(taken["kit/dragon-arrow"], 1, "the slaying arrow is gone");
     assert.equal(taken["kit/arrow"], -1, "and back as a plain arrow");
+  }
+
+  // ── The Engine keeps it for its kind (laptop handoff 2026-10-30: Nyx shot five at humans) ──
+  {
+    const unit = (id: string, side: "player" | "enemy") => ({
+      id,
+      name: id,
+      side,
+      hp: 30,
+      maxHp: 30,
+      attack: 8,
+      defense: 6,
+      speed: 6,
+      level: 5,
+      skills: [],
+    });
+    const modesAt = (target: string, type: string) => {
+      const state = fight([foe(target, type, 200)]);
+      const director = createCombatDirector({
+        id: "fight",
+        anchor: "anchor",
+        style: "ruleset",
+        party: [unit("archer", "player")],
+        enemies: [unit(target, "enemy")],
+        gm: false,
+        difficulty: "normal",
+        seed: 3,
+      } as never);
+      return rankRulesetChoices(definition, director, state, "archer", 200)
+        .filter((one) => one.candidate.action.choice?.optionId === "item:0")
+        .map((one) => one.candidate.action.choice?.mode ?? "plain");
+    };
+    const atWolf = modesAt("wolf", "beast");
+    assert.ok(atWolf.includes("plain"), JSON.stringify(atWolf));
+    assert.ok(!atWolf.includes("shot:2"), "never a slaying arrow at a creature it does nothing more to");
+    assert.ok(modesAt("wyrm", "dragon").includes("shot:2"), "at its own kind it is weighed");
   }
 
   // ── Refused ──

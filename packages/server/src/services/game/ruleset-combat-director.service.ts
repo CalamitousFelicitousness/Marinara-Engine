@@ -5402,6 +5402,22 @@ function rulesetCandidatesFrom(
     for (const targetId of legal) {
       const target = rulesetCombatant(encounter, targetId);
       if (!target) continue;
+      // Ammunition kept for what it is for (1.644): an Arrow of Undead Slaying is shot only at one of
+      // its kind (laptop handoff 2026-10-30: Nyx shot five at humans with twelve Arrows +1 left; the
+      // forecast weighs no save-gated clause, so the two tied and chance picked).
+      if (way.mode?.startsWith("shot:")) {
+        const stack = actor.sheet?.items?.[Number(way.mode.slice("shot:".length))]?.item;
+        const kept = stack?.ammoRider?.plus.filter((clause) => clause.targetIs || clause.not || clause.marked);
+        if (
+          kept?.length &&
+          !kept.some(
+            (clause) =>
+              (!clause.targetIs || rulesetTargetIs(definition, target, clause.targetIs)) &&
+              !(clause.not && rulesetTargetIs(definition, target, clause.not)),
+          )
+        )
+          continue;
+      }
       // Whose side the TARGET is on, not whose side the option was written for: an author may let a
       // blast reach either side, and a fight where the Engine drops one on its own party is worse
       // than one where it never does.

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -84,6 +84,9 @@ runWithRoomGeneration(carded, () =>
     roomRosterPrompt()?.includes("Alex controls Rowan and plays the game character Guest Hero"),
     "the GM is told which game card each player plays, so it never voices it",
   ),
+);
+runWithRoomGeneration(carded, () =>
+  assert.match(roomRosterPrompt()!, /Played by these people, never by you: [^\n]*Rowan, Guest Hero\./u),
 );
 for (const characters of [
   undefined,
@@ -195,6 +198,14 @@ try {
       gameMessages[0]?.content.includes("Harbormaster"),
       "the existing GM prompt retains tracked NPC companions",
     );
+    assert.ok(gameMessages[0]?.content.includes("Human-controlled persona"), "a guest's card is still shown");
+    // A seated guest is never one the Game Master "also plays" (laptop room playtest 2026-10-30).
+    const runtimeSource = readFileSync(
+      new URL("../../packages/server/src/services/generation/game-gm-prompt-runtime.ts", import.meta.url),
+      "utf8",
+    );
+    const guestLoop = runtimeSource.slice(runtimeSource.indexOf("for (const participant of currentRoomGeneration()"));
+    assert.doesNotMatch(guestLoop.slice(0, guestLoop.indexOf("\n  }\n")), /partyNames\.push/u);
     assert.deepEqual(resolveRoleplayWhisperRecipient("Rowan", [], { id: "legacy_host", name: "Luna" }), {
       id: "guest_12345",
       kind: "persona",

@@ -9855,16 +9855,24 @@ function GameSurfaceComponent({
       const gameCharacterCards = Array.isArray(chatMeta.gameCharacterCards)
         ? (chatMeta.gameCharacterCards as StoredGameCombatCard[])
         : [];
+      // Each member its own id: one matched to a name another already took gets its own (laptop room
+      // playtest 2026-10-30: a rejoined guest's "Guest Hero", not yet on the party list, took the
+      // host's "persona:active" and no fight would open).
+      const takenIds = new Set<string>();
       const partyCombatants = Array.isArray(combatState.party)
-        ? combatState.party.map((member, index) =>
-            generatedPartyMemberToCombatant(
+        ? combatState.party.map((member, index) => {
+            const combatant = generatedPartyMemberToCombatant(
               member,
               index,
               combatAvatarCandidates,
               fallbackLevel,
               findGameCombatCard(gameCharacterCards, member.name),
-            ),
-          )
+            );
+            if (takenIds.has(combatant.id))
+              combatant.id = `generated-party-${index}-${slugifyCombatantId(member.name)}`;
+            takenIds.add(combatant.id);
+            return combatant;
+          })
         : [];
       const enemyCombatants = Array.isArray(combatState.enemies)
         ? combatState.enemies.map((enemy, index) => generatedEnemyToCombatant(enemy, index, fallbackLevel))

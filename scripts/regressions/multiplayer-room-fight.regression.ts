@@ -471,6 +471,19 @@ try {
       /\[data-multiplayer-room-header\]\[data-chat-window-top-obstacle\]/u,
     );
     const snapshotting = read("../../packages/server/src/services/multiplayer/service.ts");
+    // An Approve refused for a name in use declines the request with that reason, and the host is told
+    // (laptop room playtest 2026-10-30: a silent 400, the guest waiting forever).
+    assert.match(snapshotting, /session\.status = "declined";\s+session\.declinedFor = "identity-conflict";/u);
+    assert.match(snapshotting, /error: session\.declinedFor \?\? "declined"/u);
+    assert.match(
+      read("../../packages/client/src/features/multiplayer/MultiplayerHostControls.tsx"),
+      /t\("multiplayer\.host\.approveConflict", \{ name: request\.persona\.name \}\)/u,
+    );
+    // Each fighter its own id: a rejoined guest's hero never takes the host's "persona:active".
+    assert.match(
+      hostSurface,
+      /if \(takenIds\.has\(combatant\.id\)\)\s+combatant\.id = `generated-party-\$\{index\}-\$\{slugifyCombatantId\(member\.name\)\}`;/u,
+    );
     assert.match(snapshotting, /const viewer = forLocalHost \? \{ host: true \} : \{ host: false, participantId \};/u);
     assert.match(
       snapshotting,

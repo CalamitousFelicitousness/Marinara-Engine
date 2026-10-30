@@ -4838,6 +4838,7 @@
   "multiplayer.guest.you": "You",
   "multiplayer.host.approve": "Approve",
   "multiplayer.host.approveCharacter": "Approve and save to host library",
+  "multiplayer.host.approveConflict": "{{name}} could not join: that name is still seated for another player, maybe one who left, or the game already uses it. Remove that seat under Players first, or ask them to join under a different character name. They have been told.",
   "multiplayer.host.automaticReplies": "Automatic AI replies",
   "multiplayer.host.awayWaiting": "{{name}} is offline, and this round waits for them. Record a pass to go on without them, or remove them from the room.",
   "multiplayer.host.blankSheets": "No sheet has been built yet for {{names}}, so they would fight from the ruleset's blank defaults. Build their sheets on the Game screen before a fight.",

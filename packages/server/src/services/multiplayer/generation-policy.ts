@@ -227,6 +227,11 @@ export function roomRosterPrompt(): string | null {
           participant.character ? ` and plays the game character ${participant.character}` : ""
         }${participant.isHost ? " (host)" : ""}:\n${participant.persona.description}`,
     ),
+    `Played by these people, never by you: ${room.participants
+      .flatMap((participant) => [participant.persona.name, ...(participant.character ? [participant.character] : [])])
+      .join(
+        ", ",
+      )}. Never write a line of dialogue labelled with one of these names, nor decide what they do or think: say only what their own player wrote they do, and end there.`,
     "[End shared room human participants]",
     "[Approved AI roles]",
     "AI characters speak and act as their own characters. An approved GM narrates the shared scene, manages the situation and adjudicates declared actions in this mode, without taking over human personas. Follow the approved role of the current speaker.",

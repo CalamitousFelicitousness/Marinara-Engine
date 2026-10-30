@@ -32,7 +32,14 @@ import {
   Unplug,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { unassignCardFieldAlternatives } from "@marinara-engine/shared";
+import {
+  applyDescriptionSplit,
+  splitCharacterDescription,
+  unassignCardFieldAlternatives,
+  type DescriptionSplitField,
+  type DescriptionSplitStatus,
+} from "@marinara-engine/shared";
+import { HelpTooltip } from "../ui/HelpTooltip";
 import { characterKeys } from "../../hooks/use-characters";
 import { lorebookKeys } from "../../hooks/use-lorebooks";
 import { api } from "../../lib/api-client";
@@ -303,6 +310,8 @@ function readCardTags(value: unknown): string[] {
       .filter(Boolean);
   return [];
 }
+
+type DescriptionSplitOutcome = { status: DescriptionSplitStatus; reason?: string; fields: DescriptionSplitField[] };
 
 function optionalString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -1693,6 +1702,7 @@ export function BotBrowserView() {
   const [importing, setImporting] = useState(false);
   const [pendingImport, setPendingImport] = useState<PendingBrowserCardImport | null>(null);
   const [tagImportMode, setTagImportMode] = useState<TagImportMode>("all");
+  const [splitDescription, setSplitDescription] = useState(false);
   const mainScrollRef = useRef<HTMLDivElement | null>(null);
   const resultsScrollTopRef = useRef(0);
   const restoreResultsScrollRef = useRef(false);
@@ -2027,6 +2037,18 @@ export function BotBrowserView() {
     return { card, payload, embeddedLorebook: cardDetail?.embeddedLorebook };
   };
 
+  const describeSplit = (split: DescriptionSplitOutcome) => {
+    if (split.status === "skipped") {
+      return localizeUi("ui.modals.importcharactermodal.descriptionNotSplit", { reason: split.reason });
+    }
+    if (split.status === "unchanged") return localizeUi("ui.modals.importcharactermodal.descriptionNothingToSplit");
+    const fields = split.fields
+      .filter((field) => field !== "description")
+      .map((field) => localizeUi(`ui.characters.descriptionsplitdialog.field.${field}`))
+      .join(", ");
+    return localizeUi("ui.modals.importcharactermodal.descriptionSplitInto", { fields });
+  };
+
   const importPreparedCard = async (
     prepared: PreparedBrowserCardImport,
     target: BrowserCardImportTarget,
@@ -2040,9 +2062,16 @@ export function BotBrowserView() {
           ...prepared.payload,
           importEmbeddedLorebook,
           tagImportMode,
+          splitDescription,
         }),
       });
-      const data = (await response.json()) as { success?: boolean; name?: string; error?: string; lorebook?: unknown };
+      const data = (await response.json()) as {
+        success?: boolean;
+        name?: string;
+        error?: string;
+        lorebook?: unknown;
+        descriptionSplit?: DescriptionSplitOutcome;
+      };
       if (!response.ok || !data.success)
         throw new Error(data.error ?? localizeUi("ui.botBrowser.botbrowserview.importFailed"));
 
@@ -2051,12 +2080,19 @@ export function BotBrowserView() {
           value1: data.name ?? prepared.card.name,
         }),
       );
+      if (data.descriptionSplit) toast.info(describeSplit(data.descriptionSplit));
       void qc.invalidateQueries({ queryKey: characterKeys.list() });
       if (data.lorebook) void qc.invalidateQueries({ queryKey: lorebookKeys.all });
       return;
     }
 
-    const cardData = readCharacterCardData(prepared.payload);
+    let cardData = readCharacterCardData(prepared.payload);
+    if (splitDescription) {
+      // Personas are created from explicit fields, so the split runs here instead of on the server.
+      const split = splitCharacterDescription(cardData);
+      if (split.status === "changed") cardData = applyDescriptionSplit(cardData, split.after);
+      toast.info(describeSplit({ status: split.status, reason: split.reason, fields: split.changed }));
+    }
     const extensions = optionalRecord(cardData.extensions) ?? {};
     const personaName = optionalString(cardData.name) ?? prepared.card.name;
     const sourceTags = readCardTags(cardData.tags);
@@ -2999,6 +3035,22 @@ export function BotBrowserView() {
                     </span>
                   </button>
                 </div>
+                <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--secondary)]/40 p-3">
+                  <input
+                    type="checkbox"
+                    checked={splitDescription}
+                    onChange={(e) => setSplitDescription(e.target.checked)}
+                    className="h-4 w-4 shrink-0 accent-[var(--primary)]"
+                  />
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--foreground)]">
+                    {localizeUi("ui.botBrowser.importDialog.splitDescriptionIntoFields")}
+                    <HelpTooltip
+                      text={localizeUi("ui.botBrowser.importDialog.splitDescriptionHelp")}
+                      ariaLabel={localizeUi("ui.botBrowser.importDialog.aboutSplitDescription")}
+                      wide
+                    />
+                  </span>
+                </label>
               </>
             ) : !pendingImport.prepared ? (
               <div className="flex min-h-28 items-center justify-center gap-2 text-sm text-[var(--marinara-chat-chrome-panel-muted)]">

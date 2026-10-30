@@ -7247,7 +7247,7 @@
   "ui.characters.onboarding.noCardQuestionsYet": "No character questions yet. Add one to let the card read this chat's answer.",
   "ui.characters.onboarding.noQuestionsYet": "No questions yet. Add one to let players shape their persona.",
   "ui.characters.onboarding.optionHelpText": "Help text for players (optional)",
-  "ui.characters.onboarding.personaQuestionInGreeting": "A greeting uses {{value1}}. It's filled in when the player creates this persona in the wizard, and shows as written otherwise.",
+  "ui.characters.onboarding.personaQuestionInGreeting": "{{value1}} in a greeting only fills in when the player creates this persona in the wizard.",
   "ui.characters.onboarding.personaTemplate": "Persona Template",
   "ui.characters.onboarding.personaTemplateHelp": "The persona your card provides. When a player creates their persona from this character, these fields are the starting text their answers build on.",
   "ui.characters.onboarding.plainIfAfter": "Without it, this text shows up in the persona as typed.",

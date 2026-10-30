@@ -236,7 +236,7 @@ export function AgentCatalogView() {
     packages: CapabilityCatalogPackage[] = all.filter((entry) => installablePackageIds.includes(entry.manifest.id)),
     isUpdate = false,
   ) => {
-    if (packages.length === 0 || packageActionPending) return;
+    if (!installed.data || packages.length === 0 || packageActionPending) return;
     const total = packages.length;
     setBulkProgress({ action: "install", completed: 0, total });
     try {

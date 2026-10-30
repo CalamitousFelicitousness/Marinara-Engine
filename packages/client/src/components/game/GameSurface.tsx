@@ -9594,8 +9594,11 @@ function GameSurfaceComponent({
               fallbackLevel,
               findGameCombatCard(gameCharacterCards, member.name),
             );
-            if (takenIds.has(combatant.id))
+            if (takenIds.has(combatant.id)) {
+              // Another member already holds that unit, so this one keeps neither its id nor its picture.
               combatant.id = `generated-party-${index}-${slugifyCombatantId(member.name)}`;
+              combatant.sprite = undefined;
+            }
             takenIds.add(combatant.id);
             return combatant;
           })

@@ -755,6 +755,7 @@ export class MultiplayerService {
               if (error instanceof MultiplayerError && error.code === "identity-conflict") {
                 session.status = "declined";
                 session.declinedFor = "identity-conflict";
+                this.wake(host);
               }
               throw error;
             }

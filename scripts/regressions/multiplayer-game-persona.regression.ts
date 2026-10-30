@@ -323,7 +323,7 @@ try {
   // to the host's entry, gets its own fight id, so the fight still opens.
   const source = (path: string) => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
   const service = source("packages/server/src/services/multiplayer/service.ts");
-  assert.match(service, /session\.status = "declined";\s+session\.declinedFor = "identity-conflict";/u);
+  assert.match(service, /session\.status = "declined";\s+session\.declinedFor = "identity-conflict";\s+this\.wake\(host\);/u);
   assert.match(service, /error: session\.declinedFor \?\? "declined"/u);
   assert.match(
     source("packages/client/src/features/multiplayer/MultiplayerHostControls.tsx"),
@@ -331,7 +331,7 @@ try {
   );
   assert.match(
     source("packages/client/src/components/game/GameSurface.tsx"),
-    /if \(takenIds\.has\(combatant\.id\)\)\s+combatant\.id = `generated-party-\$\{index\}-\$\{slugifyCombatantId\(member\.name\)\}`;/u,
+    /if \(takenIds\.has\(combatant\.id\)\) \{\s+(?:\/\/[^\n]*\s+)?combatant\.id = `generated-party-\$\{index\}-\$\{slugifyCombatantId\(member\.name\)\}`;\s+combatant\.sprite = undefined;/u,
   );
 } finally {
   await closeDB();

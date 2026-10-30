@@ -65,6 +65,9 @@ rejects: `Only URLs with a scheme in: file, data, and node are supported`. Neith
 its server. A `file://` URL is correct on every platform, so this is portable rather than a Windows
 branch.
 
+`scripts/regressions/avatar-mmd-client.regression.ts` (2026-10-30) does the same for the modules it
+loads with `import(require.resolve(...))`.
+
 `restart-supervisor` passes with it. `server-signal-shutdown` gets as far as booting and then fails
 on a separate Windows limit recorded in `.claude/skills/marinara-validation/SKILL.md`: the lane needs
 a child process to observe `SIGINT`, and Windows terminates the target instead of delivering a signal
@@ -1603,6 +1606,13 @@ Patches to upstream files: `packages/client/src/components/chat/ChatBranchesPane
 and `packages/client/src/localization/locales/en.json`.
 
 Covered by `scripts/regressions/chat-branch-preview.regression.ts`.
+
+### Sync with upstream, 2026-10-30, second merge
+
+31 upstream commits, merge base `98ae0c8f9`, through `8e8f14636`. Still v2.5.1; storage format 7 to 8
+(MMD avatars), so the launcher's downgrade guard now refuses an older build on this data. One
+conflict, an import beside the fork's `SECRET_FIELD_PROPS` in `TranslationSection.tsx`. Upstream's
+MMD chunking in `vite.config.ts` merged around the fork's dev proxy patch.
 
 ### Sync with upstream, 2026-10-30
 

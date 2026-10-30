@@ -351,7 +351,9 @@ Newer versions of Marinara store each chat's data (messages, swipes, memories, i
 
 Marinara refuses obvious downgrades on its own: the launcher skips an auto-update that would land on an incompatible version, and the in-app updater blocks it with an error that points here.
 
-To downgrade anyway:
+If your data has reached storage format 8 (MMD avatar support), restore a full backup made before that upgrade to use a format-7 or older build. The command below only converts older chat-file layouts; it cannot convert MMD avatar settings. Do not change the format number by hand.
+
+For data that has not reached format 8, to convert the older chat-file layout:
 
 1. Stop the Marinara server.
 2. From the Marinara folder, run:

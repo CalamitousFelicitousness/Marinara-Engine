@@ -4,7 +4,7 @@
 import { useState, useRef } from "react";
 import { createDecisionImportTracker } from "../../lib/decision-import-notice";
 import { Modal } from "../ui/Modal";
-import { Download, FileJson, Image, CheckCircle, XCircle, Loader2, BookOpen, Scissors, Sparkles } from "lucide-react";
+import { Download, FileJson, Image, CheckCircle, XCircle, Loader2, BookOpen, Scissors } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { characterKeys } from "../../hooks/use-characters";
 import { lorebookKeys } from "../../hooks/use-lorebooks";
@@ -15,8 +15,9 @@ import {
   type EmbeddedLorebookImportPreview,
 } from "../../lib/character-import";
 import { useTranslation as useUiTranslation } from "react-i18next";
-import type { DescriptionSplitField, DescriptionSplitStatus } from "@marinara-engine/shared";
+import type { DescriptionSplitResult } from "@marinara-engine/shared";
 import { HelpTooltip } from "../ui/HelpTooltip";
+import { DescriptionSplitDialog } from "../characters/DescriptionSplitDialog";
 import { requestMariDescriptionSplit } from "../../lib/description-split-mari";
 
 interface Props {
@@ -24,15 +25,13 @@ interface Props {
   onClose: () => void;
 }
 
-type DescriptionSplitOutcome = { status: DescriptionSplitStatus; reason?: string; fields: DescriptionSplitField[] };
-
 type ImportResultRow = {
   filename: string;
   success: boolean;
   message: string;
   characterId?: string;
   name?: string;
-  descriptionSplit?: DescriptionSplitOutcome;
+  descriptionSplit?: DescriptionSplitResult;
 };
 
 type TagImportMode = "all" | "none" | "existing";
@@ -63,7 +62,15 @@ export function ImportCharacterModal({ open, onClose }: Props) {
   const [tagImportMode, setTagImportMode] = useState<TagImportMode>("all");
   const [regexScriptScope, setRegexScriptScope] = useState<RegexScriptScope>("character");
   const [splitDescription, setSplitDescription] = useState(false);
+  // The row whose split summary is shown; kept after closing so the dialog does not empty while it fades.
+  const [splitSummary, setSplitSummary] = useState<ImportResultRow | null>(null);
+  const [splitSummaryOpen, setSplitSummaryOpen] = useState(false);
   const qc = useQueryClient();
+
+  const showSplitSummary = (row: ImportResultRow) => {
+    setSplitSummary(row);
+    setSplitSummaryOpen(true);
+  };
 
   const isZipFile = async (file: File): Promise<boolean> => {
     if (file.size < 4) return false;
@@ -153,7 +160,7 @@ export function ImportCharacterModal({ open, onClose }: Props) {
             lorebook?: { lorebookId?: string };
             embeddedLorebook?: { hasEmbeddedLorebook?: boolean; skipped?: boolean; entries?: number };
             usesDecisions?: boolean;
-            descriptionSplit?: DescriptionSplitOutcome;
+            descriptionSplit?: DescriptionSplitResult;
           }>;
         }>("/import/st-character/batch", form);
 
@@ -239,6 +246,10 @@ export function ImportCharacterModal({ open, onClose }: Props) {
       setResults(nextResults);
       decisionImports.notify(nextResults, localizeUi);
       setStatus("done");
+      // A single split card gets the same summary dialog as the editor's split button; a batch keeps
+      // the per-row summary buttons instead of a queue of dialogs.
+      const splitRows = nextResults.filter((result) => result.descriptionSplit);
+      if (splitRows.length === 1) showSplitSummary(splitRows[0]!);
 
       if (nextResults.some((result) => result.success)) {
         qc.invalidateQueries({ queryKey: characterKeys.list() });
@@ -264,12 +275,12 @@ export function ImportCharacterModal({ open, onClose }: Props) {
     handleFiles(Array.from(e.dataTransfer.files));
   };
 
-  const describeSplit = (split: DescriptionSplitOutcome) => {
+  const describeSplit = (split: DescriptionSplitResult) => {
     if (split.status === "skipped") {
       return localizeUi("ui.modals.importcharactermodal.descriptionNotSplit", { reason: split.reason });
     }
     if (split.status === "unchanged") return localizeUi("ui.modals.importcharactermodal.descriptionNothingToSplit");
-    const fields = split.fields
+    const fields = split.changed
       .filter((field) => field !== "description")
       .map((field) => localizeUi(`ui.characters.descriptionsplitdialog.field.${field}`))
       .join(", ");
@@ -286,6 +297,8 @@ export function ImportCharacterModal({ open, onClose }: Props) {
   const reset = () => {
     setStatus("idle");
     setResults([]);
+    setSplitSummary(null);
+    setSplitSummaryOpen(false);
     setPendingLorebookChoice(null);
     setTagImportMode("all");
     setRegexScriptScope("character");
@@ -547,17 +560,13 @@ export function ImportCharacterModal({ open, onClose }: Props) {
                       <div className="mt-1 flex items-center gap-1.5 text-[0.6875rem] text-[var(--muted-foreground)]">
                         <Scissors size="0.6875rem" className="shrink-0" />
                         <span className="min-w-0 flex-1">{describeSplit(result.descriptionSplit)}</span>
-                        {result.descriptionSplit.status !== "changed" && result.characterId && (
-                          <button
-                            type="button"
-                            onClick={() => askMari(result.characterId!, result.name ?? result.filename)}
-                            title={localizeUi("ui.characters.descriptionsplitdialog.askMariHelp")}
-                            className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 font-medium text-[var(--primary)] transition-colors hover:bg-[var(--accent)]"
-                          >
-                            <Sparkles size="0.6875rem" />
-                            {localizeUi("ui.characters.descriptionsplitdialog.askMari")}
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => showSplitSummary(result)}
+                          className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 font-medium text-[var(--primary)] transition-colors hover:bg-[var(--accent)]"
+                        >
+                          {localizeUi("ui.modals.importcharactermodal.splitSummary")}
+                        </button>
                       </div>
                     )}
                   </div>
@@ -580,6 +589,18 @@ export function ImportCharacterModal({ open, onClose }: Props) {
           </button>
         </div>
       </div>
+      <DescriptionSplitDialog
+        open={splitSummaryOpen}
+        result={splitSummary?.descriptionSplit ?? null}
+        applied
+        hasUnsavedChanges={false}
+        onAskMari={
+          splitSummary?.characterId
+            ? () => askMari(splitSummary.characterId!, splitSummary.name ?? splitSummary.filename)
+            : undefined
+        }
+        onClose={() => setSplitSummaryOpen(false)}
+      />
     </Modal>
   );
 }

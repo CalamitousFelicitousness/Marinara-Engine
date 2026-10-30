@@ -67,6 +67,11 @@ export interface DescriptionSplitResult {
   before: DescriptionSplitFields;
   after: DescriptionSplitFields;
   changed: DescriptionSplitField[];
+  /**
+   * Some moved text had no label and was sorted by its wording alone (plain prose), so the result
+   * deserves a look; a labelled card never sets this.
+   */
+  keywordSorted: boolean;
   notes: string[];
 }
 
@@ -1259,7 +1264,14 @@ export function applyDescriptionSplit<T extends DescriptionSplitSource>(data: T,
 }
 
 function split(before: DescriptionSplitFields, name: string, opts: AssignOptions): DescriptionSplitResult {
-  const result: DescriptionSplitResult = { status: "unchanged", before, after: { ...before }, changed: [], notes: [] };
+  const result: DescriptionSplitResult = {
+    status: "unchanged",
+    before,
+    after: { ...before },
+    changed: [],
+    keywordSorted: false,
+    notes: [],
+  };
   const ctx: Ctx = { names: collectNames(name, before.description) };
   const json = tryJson(before.description);
   const sourceLines = json ? jsonToLines(json) : before.description.split(/\r?\n/);
@@ -1344,6 +1356,7 @@ function split(before: DescriptionSplitFields, name: string, opts: AssignOptions
     result.changed = [];
   }
   result.status = result.changed.length ? "changed" : "unchanged";
+  result.keywordSorted = result.status === "changed" && records.some((r) => !r.drop && r.how === "prose");
   return result;
 }
 
@@ -1358,7 +1371,8 @@ export function splitCharacterDescription(
   const before = readDescriptionSplitFields(data);
   const name = text(data.name);
   const reason = skipReason(name, before, options.force ?? false);
-  if (reason) return { status: "skipped", reason, before, after: { ...before }, changed: [], notes: [] };
+  if (reason)
+    return { status: "skipped", reason, before, after: { ...before }, changed: [], keywordSorted: false, notes: [] };
   try {
     return split(before, name, { prose: options.prose ?? true, instructions: options.instructions ?? true });
   } catch (error) {
@@ -1370,6 +1384,7 @@ export function splitCharacterDescription(
       before,
       after: { ...before },
       changed: [],
+      keywordSorted: false,
       notes: [],
     };
   }

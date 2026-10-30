@@ -18,8 +18,7 @@ import {
   isPatternSafe,
   ONBOARDING_MAX_QUESTIONS,
   splitCharacterDescription,
-  type DescriptionSplitField,
-  type DescriptionSplitStatus,
+  type DescriptionSplitResult,
 } from "@marinara-engine/shared";
 import type {
   CharacterBookEntryPosition,
@@ -239,14 +238,9 @@ export async function importSTCharacter(raw: Record<string, unknown>, db: DB, op
   // Cards that keep everything in the description are split into Marinara's fields when asked.
   // The card is imported as it came and the split is saved afterwards as a new card version, so
   // the unsplit card stays in the version history. The outcome is reported for every card, so the
-  // import list can say which ones were left alone.
+  // import list can show the same summary as the editor's split dialog.
   const split = options?.splitDescription ? splitCharacterDescription(data) : null;
-  let descriptionSplit: { status: DescriptionSplitStatus; reason?: string; fields: DescriptionSplitField[] } | null =
-    split && {
-      status: split.status,
-      ...(split.reason ? { reason: split.reason } : {}),
-      fields: split.changed,
-    };
+  let descriptionSplit: DescriptionSplitResult | null = split;
 
   // Tag with browser source if imported from browser
   if (botBrowserSource) {
@@ -409,7 +403,14 @@ export async function importSTCharacter(raw: Record<string, unknown>, db: DB, op
       });
     } catch (err) {
       logger.warn(err, "Imported %s without splitting its description", charId);
-      descriptionSplit = { status: "skipped", reason: "the split could not be saved", fields: [] };
+      descriptionSplit = {
+        ...split,
+        status: "skipped",
+        reason: "the split could not be saved",
+        after: { ...split.before },
+        changed: [],
+        keywordSorted: false,
+      };
     }
   }
 

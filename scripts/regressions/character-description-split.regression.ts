@@ -148,6 +148,21 @@ const prose = splitCharacterDescription({
 });
 assert.equal(prose.status, "unchanged");
 assert.deepEqual(prose.after, prose.before);
+assert.equal(prose.keywordSorted, false);
+assert.equal(labelled.keywordSorted, false, "a labelled card is not flagged");
+
+// 5b. An unlabelled paragraph sorted by its wording alone is flagged, so the UI can warn that it may be misfiled.
+const sorted = splitCharacterDescription({
+  name: "Mia",
+  description: [
+    "Mia is a quiet librarian who spends her evenings reading by the window of her small flat.",
+    "",
+    "She has long auburn hair tied in a loose braid, pale green eyes and a slim build. She usually wears a cardigan over a plain dress and round glasses.",
+  ].join("\n"),
+});
+assert.equal(sorted.status, "changed");
+assert.deepEqual(sorted.changed, ["description", "appearance"]);
+assert.equal(sorted.keywordSorted, true, "keyword-sorted prose is flagged");
 
 // 6. Existing field text is kept: moved text is appended, and text already present is not added twice.
 const existing = splitCharacterDescription({

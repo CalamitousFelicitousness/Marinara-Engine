@@ -14,9 +14,11 @@ interface DescriptionSplitDialogProps {
   hasUnsavedChanges: boolean;
   /** Absent for a card that has not been saved yet. */
   onAskMari?: () => void;
+  /** The split was already saved as a new version (import), so the dialog only reports it. */
+  applied?: boolean;
   /** Saves the split card as a new version. */
-  onApply: () => void;
-  onSplitAnyway: () => void;
+  onApply?: () => void;
+  onSplitAnyway?: () => void;
   onClose: () => void;
 }
 
@@ -43,6 +45,7 @@ export function DescriptionSplitDialog({
   result,
   hasUnsavedChanges,
   onAskMari,
+  applied = false,
   onApply,
   onSplitAnyway,
   onClose,
@@ -50,6 +53,7 @@ export function DescriptionSplitDialog({
   const { t: localizeUi } = useUiTranslation();
   const rows = result?.status === "changed" ? summarizeSplit(result) : [];
   const descriptionAfter = result?.after.description.trim().length ?? 0;
+  const canSplitAnyway = !applied && result?.status === "skipped" && !!result.before.description.trim();
 
   return (
     <Modal
@@ -89,8 +93,18 @@ export function DescriptionSplitDialog({
                       after: descriptionAfter.toLocaleString(),
                     })
                   : localizeUi("ui.characters.descriptionsplitdialog.descriptionEmptied")}{" "}
-                {localizeUi("ui.characters.descriptionsplitdialog.nothingSavedYet")}
+                {localizeUi(
+                  applied
+                    ? "ui.characters.descriptionsplitdialog.savedAsVersion"
+                    : "ui.characters.descriptionsplitdialog.nothingSavedYet",
+                )}
               </p>
+              {result.keywordSorted && (
+                <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[var(--foreground)]">
+                  {localizeUi("ui.characters.descriptionsplitdialog.keywordSorted")}
+                  {onAskMari && <> {localizeUi("ui.characters.descriptionsplitdialog.mariCanSort")}</>}
+                </p>
+              )}
             </>
           ) : (
             <>
@@ -126,18 +140,18 @@ export function DescriptionSplitDialog({
             <button type="button" onClick={onClose} className={SETTINGS_BUTTON_CLASS}>
               <X size="0.75rem" />
               {localizeUi(
-                result.status === "unchanged"
+                applied || result.status === "unchanged"
                   ? "ui.characters.descriptionsplitdialog.close"
                   : "ui.characters.descriptionsplitdialog.cancel",
               )}
             </button>
-            {result.status === "changed" && (
+            {!applied && result.status === "changed" && (
               <button type="button" onClick={onApply} className={SETTINGS_COMPACT_PRIMARY_BUTTON_CLASS}>
                 <Check size="0.75rem" />
                 {localizeUi("ui.characters.descriptionsplitdialog.apply")}
               </button>
             )}
-            {result.status === "skipped" && result.before.description.trim() && (
+            {canSplitAnyway && (
               <button type="button" onClick={onSplitAnyway} className={SETTINGS_COMPACT_PRIMARY_BUTTON_CLASS}>
                 <Scissors size="0.75rem" />
                 {localizeUi("ui.characters.descriptionsplitdialog.splitAnyway")}

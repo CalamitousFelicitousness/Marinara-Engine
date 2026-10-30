@@ -4,7 +4,7 @@
 import { useState, useRef } from "react";
 import { createDecisionImportTracker } from "../../lib/decision-import-notice";
 import { Modal } from "../ui/Modal";
-import { Download, FileJson, Image, CheckCircle, XCircle, Loader2, BookOpen } from "lucide-react";
+import { Download, FileJson, Image, CheckCircle, XCircle, Loader2, BookOpen, Scissors, Sparkles } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { characterKeys } from "../../hooks/use-characters";
 import { lorebookKeys } from "../../hooks/use-lorebooks";
@@ -15,16 +15,24 @@ import {
   type EmbeddedLorebookImportPreview,
 } from "../../lib/character-import";
 import { useTranslation as useUiTranslation } from "react-i18next";
+import type { DescriptionSplitField, DescriptionSplitStatus } from "@marinara-engine/shared";
+import { HelpTooltip } from "../ui/HelpTooltip";
+import { requestMariDescriptionSplit } from "../../lib/description-split-mari";
 
 interface Props {
   open: boolean;
   onClose: () => void;
 }
 
+type DescriptionSplitOutcome = { status: DescriptionSplitStatus; reason?: string; fields: DescriptionSplitField[] };
+
 type ImportResultRow = {
   filename: string;
   success: boolean;
   message: string;
+  characterId?: string;
+  name?: string;
+  descriptionSplit?: DescriptionSplitOutcome;
 };
 
 type TagImportMode = "all" | "none" | "existing";
@@ -54,6 +62,7 @@ export function ImportCharacterModal({ open, onClose }: Props) {
   } | null>(null);
   const [tagImportMode, setTagImportMode] = useState<TagImportMode>("all");
   const [regexScriptScope, setRegexScriptScope] = useState<RegexScriptScope>("character");
+  const [splitDescription, setSplitDescription] = useState(false);
   const qc = useQueryClient();
 
   const isZipFile = async (file: File): Promise<boolean> => {
@@ -131,17 +140,20 @@ export function ImportCharacterModal({ open, onClose }: Props) {
         form.append("importEmbeddedLorebook", String(importEmbeddedLorebook ?? true));
         form.append("tagImportMode", tagImportMode);
         form.append("regexScriptScope", regexScriptScope);
+        form.append("splitDescription", String(splitDescription));
 
         const batchResult = await api.upload<{
           success: boolean;
           results: Array<{
             filename: string;
             success: boolean;
+            characterId?: string;
             name?: string;
             error?: string;
             lorebook?: { lorebookId?: string };
             embeddedLorebook?: { hasEmbeddedLorebook?: boolean; skipped?: boolean; entries?: number };
             usesDecisions?: boolean;
+            descriptionSplit?: DescriptionSplitOutcome;
           }>;
         }>("/import/st-character/batch", form);
 
@@ -160,6 +172,9 @@ export function ImportCharacterModal({ open, onClose }: Props) {
                       : ""
                 }`
               : (result.error ?? "Import failed"),
+            characterId: result.characterId,
+            name: result.name,
+            descriptionSplit: result.success ? result.descriptionSplit : undefined,
           });
         }
       }
@@ -249,12 +264,32 @@ export function ImportCharacterModal({ open, onClose }: Props) {
     handleFiles(Array.from(e.dataTransfer.files));
   };
 
+  const describeSplit = (split: DescriptionSplitOutcome) => {
+    if (split.status === "skipped") {
+      return localizeUi("ui.modals.importcharactermodal.descriptionNotSplit", { reason: split.reason });
+    }
+    if (split.status === "unchanged") return localizeUi("ui.modals.importcharactermodal.descriptionNothingToSplit");
+    const fields = split.fields
+      .filter((field) => field !== "description")
+      .map((field) => localizeUi(`ui.characters.descriptionsplitdialog.field.${field}`))
+      .join(", ");
+    return localizeUi("ui.modals.importcharactermodal.descriptionSplitInto", { fields });
+  };
+
+  // Professor Mari works over the app, so the import window closes first.
+  const askMari = (id: string, name: string) => {
+    reset();
+    onClose();
+    requestMariDescriptionSplit({ id, name }, localizeUi("ui.characters.descriptionsplitdialog.mariDraft", { name }));
+  };
+
   const reset = () => {
     setStatus("idle");
     setResults([]);
     setPendingLorebookChoice(null);
     setTagImportMode("all");
     setRegexScriptScope("character");
+    setSplitDescription(false);
   };
 
   return (
@@ -389,6 +424,23 @@ export function ImportCharacterModal({ open, onClose }: Props) {
           </div>
         </div>
 
+        <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--secondary)]/40 p-3">
+          <input
+            type="checkbox"
+            checked={splitDescription}
+            onChange={(e) => setSplitDescription(e.target.checked)}
+            className="h-4 w-4 shrink-0 accent-[var(--primary)]"
+          />
+          <span className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--foreground)]">
+            {localizeUi("ui.modals.importcharactermodal.splitDescriptionIntoFields")}
+            <HelpTooltip
+              text={localizeUi("ui.modals.importcharactermodal.moveLabelledPersonalityAppearanceBackstory")}
+              ariaLabel={localizeUi("ui.modals.importcharactermodal.aboutSplitDescription")}
+              wide
+            />
+          </span>
+        </label>
+
         {/* Drop zone */}
         <div
           onDrop={handleDrop}
@@ -464,6 +516,17 @@ export function ImportCharacterModal({ open, onClose }: Props) {
               {results.filter((result) => result.success).length}{" "}
               {localizeUi("ui.modals.importcharactermodal.succeeded")}{" "}
               {results.filter((result) => !result.success).length} {localizeUi("ui.modals.importcharactermodal.failed")}
+              {results.some((result) => result.descriptionSplit) && (
+                <span className="text-[var(--muted-foreground)]">
+                  ·{" "}
+                  {localizeUi("ui.modals.importcharactermodal.descriptionSplitCounts", {
+                    split: results.filter((result) => result.descriptionSplit?.status === "changed").length,
+                    left: results.filter(
+                      (result) => result.descriptionSplit && result.descriptionSplit.status !== "changed",
+                    ).length,
+                  })}
+                </span>
+              )}
             </div>
 
             <div className="max-h-52 overflow-y-auto rounded-lg border border-[var(--border)]">
@@ -477,9 +540,26 @@ export function ImportCharacterModal({ open, onClose }: Props) {
                   ) : (
                     <XCircle size="0.8125rem" className="mt-0.5 shrink-0 text-[var(--destructive)]" />
                   )}
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="truncate font-medium">{result.filename}</div>
                     <div className="text-[var(--muted-foreground)]">{result.message}</div>
+                    {result.descriptionSplit && (
+                      <div className="mt-1 flex items-center gap-1.5 text-[0.6875rem] text-[var(--muted-foreground)]">
+                        <Scissors size="0.6875rem" className="shrink-0" />
+                        <span className="min-w-0 flex-1">{describeSplit(result.descriptionSplit)}</span>
+                        {result.descriptionSplit.status !== "changed" && result.characterId && (
+                          <button
+                            type="button"
+                            onClick={() => askMari(result.characterId!, result.name ?? result.filename)}
+                            title={localizeUi("ui.characters.descriptionsplitdialog.askMariHelp")}
+                            className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 font-medium text-[var(--primary)] transition-colors hover:bg-[var(--accent)]"
+                          >
+                            <Sparkles size="0.6875rem" />
+                            {localizeUi("ui.characters.descriptionsplitdialog.askMari")}
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

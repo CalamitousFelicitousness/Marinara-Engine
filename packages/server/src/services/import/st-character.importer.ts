@@ -10,11 +10,15 @@ import { createLorebooksStorage } from "../storage/lorebooks.storage.js";
 import { createRegexScriptsStorage } from "../storage/regex-scripts.storage.js";
 import { importSTLorebook } from "./st-lorebook.importer.js";
 import {
+  applyDescriptionSplit,
   capImportedRulesetSheets,
   containsDecisionStatements,
   dropUnreadableOnboarding,
   isPatternSafe,
   ONBOARDING_MAX_QUESTIONS,
+  splitCharacterDescription,
+  type DescriptionSplitField,
+  type DescriptionSplitStatus,
 } from "@marinara-engine/shared";
 import type {
   CharacterBookEntryPosition,
@@ -120,6 +124,8 @@ export interface STCharacterImportOptions {
   existingTagKeys?: ReadonlySet<string>;
   /** Where embedded regex scripts land: scoped to the character (default) or global. */
   regexScriptScope?: "character" | "global";
+  /** Split a labelled description into personality, appearance, backstory and the other card fields. */
+  splitDescription?: boolean;
 }
 
 // SillyTavern regex placement ids → our placement strings (1 = user input, 2 = AI output).
@@ -227,6 +233,20 @@ export async function importSTCharacter(raw: Record<string, unknown>, db: DB, op
     data.character_book = normalizeCharacterBook(rawEmbeddedLorebook);
   }
   data.tags = await filterImportedTags(data.tags, db, tagImportMode, options?.existingTagKeys);
+
+  // Cards that keep everything in the description are split into Marinara's fields when asked.
+  // The outcome is reported for every card, so the import list can say which ones were left alone.
+  let descriptionSplit: { status: DescriptionSplitStatus; reason?: string; fields: DescriptionSplitField[] } | null =
+    null;
+  if (options?.splitDescription) {
+    const split = splitCharacterDescription(data);
+    if (split.status === "changed") Object.assign(data, applyDescriptionSplit(data, split.after));
+    descriptionSplit = {
+      status: split.status,
+      ...(split.reason ? { reason: split.reason } : {}),
+      fields: split.changed,
+    };
+  }
 
   // Tag with browser source if imported from browser
   if (botBrowserSource) {
@@ -391,6 +411,7 @@ export async function importSTCharacter(raw: Record<string, unknown>, db: DB, op
       skipped: hasEmbeddedLorebook && !shouldImportEmbeddedLorebook,
     },
     ...(lorebookResult ? { lorebook: lorebookResult } : {}),
+    ...(descriptionSplit ? { descriptionSplit } : {}),
   };
 }
 

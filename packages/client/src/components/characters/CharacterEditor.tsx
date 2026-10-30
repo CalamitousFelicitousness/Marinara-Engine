@@ -131,14 +131,19 @@ import {
 import { PresetVariablesEditor } from "../presets/PresetVariablesEditor";
 import { requestProfessorMariOpen } from "../../lib/professor-mari-open";
 import { MariContextChip } from "../chat/MariContextChip";
+import { DescriptionSplitDialog } from "./DescriptionSplitDialog";
+import { requestMariDescriptionSplit } from "../../lib/description-split-mari";
 import { cn, copyToClipboard, generateClientId, getAvatarCropStyle } from "../../lib/utils";
 import {
   applyBakedGreetingImages,
+  applyDescriptionSplit,
   findGreetingImageUrls,
   getCardVariableChipNames,
   normalizeAvatarCrop,
   readBakedGreetingImages,
   restoreBakedGreetingImages,
+  splitCharacterDescription,
+  type DescriptionSplitResult,
   type WeekSchedule,
 } from "@marinara-engine/shared";
 import { extractColorsFromImage } from "../../lib/avatar-color-extraction";
@@ -618,6 +623,39 @@ export function CharacterEditor() {
     },
     [markDirty, setExtensionValue],
   );
+
+  // Moves labelled text out of the description into the other card fields. The dialog summarises the
+  // split first; nothing is saved until the user saves the card.
+  const [descriptionSplit, setDescriptionSplit] = useState<DescriptionSplitResult | null>(null);
+  const [descriptionSplitOpen, setDescriptionSplitOpen] = useState(false);
+  const handleSplitDescription = useCallback(
+    (force = false) => {
+      if (!formData) return;
+      setDescriptionSplit(splitCharacterDescription(formData, { force }));
+      setDescriptionSplitOpen(true);
+    },
+    [formData],
+  );
+  const applyDescriptionSplitResult = useCallback(() => {
+    setDescriptionSplitOpen(false);
+    if (descriptionSplit?.status !== "changed") return;
+    const { after } = descriptionSplit;
+    updateFormData((data) => applyDescriptionSplit(data, after));
+    const fields = descriptionSplit.changed
+      .filter((field) => field !== "description")
+      .map((field) => localizeUi(`ui.characters.descriptionsplitdialog.field.${field}`))
+      .join(", ");
+    toast.success(localizeUi("ui.characters.metadatatab.splitDescriptionMovedTextInto", { fields }));
+  }, [descriptionSplit, localizeUi, updateFormData]);
+  // Hands the split to Professor Mari, who edits the saved card; nothing is sent until the user does.
+  const askMariToSplitDescription = useCallback(() => {
+    if (!characterId || !formData) return;
+    setDescriptionSplitOpen(false);
+    requestMariDescriptionSplit(
+      { id: characterId, name: formData.name },
+      localizeUi("ui.characters.descriptionsplitdialog.mariDraft", { name: formData.name }),
+    );
+  }, [characterId, formData, localizeUi]);
 
   const handleGeneratedCharacterSheet = useCallback(
     async (dataUrl: string) => {
@@ -1193,6 +1231,15 @@ export function CharacterEditor() {
           }
         }}
       />
+      <DescriptionSplitDialog
+        open={descriptionSplitOpen}
+        result={descriptionSplit}
+        hasUnsavedChanges={dirty}
+        onAskMari={characterId ? askMariToSplitDescription : undefined}
+        onApply={applyDescriptionSplitResult}
+        onSplitAnyway={() => handleSplitDescription(true)}
+        onClose={() => setDescriptionSplitOpen(false)}
+      />
       <AvatarGenerationModal
         open={avatarGeneratorOpen}
         title={localizeUi("ui.characters.charactereditor.generateCharacterAvatar")}
@@ -1373,6 +1420,7 @@ export function CharacterEditor() {
                 onRemoveAvatar={handleAvatarRemove}
                 removingAvatar={removeAvatar.isPending}
                 hasUnsavedChanges={dirty}
+                onSplitDescription={() => handleSplitDescription()}
               />
             </section>
             <section data-editor-section="card">
@@ -2504,6 +2552,7 @@ function MetadataTab({
   onRemoveAvatar,
   removingAvatar,
   hasUnsavedChanges,
+  onSplitDescription,
 }: {
   characterId: string | null;
   formData: CharacterData;
@@ -2524,6 +2573,7 @@ function MetadataTab({
   onRemoveAvatar: () => void;
   removingAvatar: boolean;
   hasUnsavedChanges: boolean;
+  onSplitDescription: () => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const { t } = useTranslation();
@@ -2697,6 +2747,16 @@ function MetadataTab({
             currentAvatarPath={avatarPreview}
             hasUnsavedChanges={hasUnsavedChanges}
           />
+          <button
+            type="button"
+            onClick={onSplitDescription}
+            disabled={!formData.description.trim()}
+            title={localizeUi("ui.characters.metadatatab.splitDescriptionHelp")}
+            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--secondary)] px-3 py-2 text-xs font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Scissors size="0.875rem" />
+            {localizeUi("ui.characters.metadatatab.splitDescription")}
+          </button>
         </div>
         <label className="space-y-1.5">
           <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">

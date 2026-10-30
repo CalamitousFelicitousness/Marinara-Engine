@@ -5,6 +5,7 @@ import {
   LOCAL_SIDECAR_CONNECTION_ID,
   MARI_PERMISSIONS_MODE_LABELS,
   MARI_PERMISSIONS_MODES,
+  type MariPendingMessageSummary,
 } from "@marinara-engine/shared";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -52,6 +53,7 @@ import { useUIStore } from "../../../stores/ui.store";
 import { InlineDraftOverlay } from "../../ui/InlineDraftOverlay";
 import { ConnectionModelPicker } from "../../connections/ConnectionModelPicker";
 import { MariRow } from "../mari-primitives";
+import { MariPendingQueue } from "./MariPendingQueue";
 import { MariConnectionGuidance } from "./MariConnectionGuidance";
 import { MariAttachButton } from "../MariAttachButton";
 import { MariContextFacetChips } from "../MariContextFacetChips";
@@ -97,13 +99,19 @@ type MariComposerProps = {
   handleOpenHistoryPicker: () => Promise<void>;
   handleSubmit: (
     overrideText?: string,
-    overrideRecovery?: Pick<ProfessorMariRecovery, "attachments" | "context" | "localMessageId" | "references"> & {
+    overrideRecovery?: Pick<
+      ProfessorMariRecovery,
+      "attachments" | "context" | "localMessageId" | "references" | "pendingMessageId"
+    > & {
       reuseSavedMessage?: boolean;
     },
     overrideContext?: ProfessorMariAskContext | null,
   ) => Promise<void>;
   handleSuggestionSelect: (chip: MariSuggestionChip, draft?: boolean, context?: ProfessorMariAskContext) => void;
   isBusy: boolean;
+  pendingMessages: MariPendingMessageSummary[];
+  onRemovePendingMessage: (id: string) => void;
+  onSendHeldMessage: (message: MariPendingMessageSummary) => void;
   isReadingAttachments: boolean;
   jumpToLatest: () => void;
   messages: Message[];
@@ -197,6 +205,9 @@ export function MariComposer({
   handleSubmit,
   handleSuggestionSelect,
   isBusy,
+  pendingMessages,
+  onRemovePendingMessage,
+  onSendHeldMessage,
   isReadingAttachments,
   jumpToLatest,
   messages,
@@ -280,7 +291,7 @@ export function MariComposer({
   const ghostAvailable = Boolean(draftSuffix) && (!liveToken || ghostInToken);
   // A completed name ends the draft and a second Tab would link it: say so where the ghost was, and let a
   // tap link it, since touch screens have no Tab.
-  const linkHint = Boolean(referenceUi?.canLinkCompletion) && !ghostAvailable && !pickerOpen && !isBusy;
+  const linkHint = Boolean(referenceUi?.canLinkCompletion) && !ghostAvailable && !pickerOpen;
   const linkHintText = linkHint ? t(linkHintKey()) : "";
   const ActivePermissionsModeIcon = MARI_PERMISSIONS_MODE_ICONS[permissionsMode];
   // The connection menu shows the chosen connection's models beside the list, like the chat input's
@@ -417,14 +428,15 @@ export function MariComposer({
           event.target.value = "";
         }}
       />
+      <MariPendingQueue
+        messages={pendingMessages}
+        running={workspaceTimelineActive}
+        onRemove={onRemovePendingMessage}
+        onSend={onSendHeldMessage}
+      />
       {/* R11 (composer v5): Mari's own shell, not the regular chat input's: neutral at rest, a primary
                               ring only on focus, quiet controls and one neutral filled Send. */}
-      <div
-        className="mari-workspace-composer outline-none"
-        tabIndex={-1}
-        data-busy={isBusy ? "true" : undefined}
-        data-collapsed={workspaceTimelineActive ? "true" : undefined}
-      >
+      <div className="mari-workspace-composer outline-none" tabIndex={-1}>
         {pickerOpen && referenceUi?.picker ? <MariReferencePicker {...referenceUi.picker} /> : null}
         {attachments.length > 0 ||
         isReadingAttachments ||
@@ -495,14 +507,7 @@ export function MariComposer({
             scrollLeft={composerScroll.left}
             scrollTop={composerScroll.top}
             className="mari-workspace-composer__text"
-            // The textarea is disabled while busy, so the suggestion is not tappable then either.
-            onAccept={
-              isBusy
-                ? undefined
-                : ghostInToken || linkHint
-                  ? () => onPickerAction?.("ghost-link")
-                  : acceptDraftCompletion
-            }
+            onAccept={ghostInToken || linkHint ? () => onPickerAction?.("ghost-link") : acceptDraftCompletion}
           />
           <textarea
             ref={floatingTextareaRef}
@@ -558,7 +563,6 @@ export function MariComposer({
             rows={1}
             placeholder={t("home.professorMari.placeholder")}
             className="mari-workspace-composer__text mari-workspace-composer__input"
-            disabled={isBusy}
           />
         </div>
         {/* Under the text, like Claude's: attach, the connection and the Permissions Mode. */}
@@ -574,7 +578,7 @@ export function MariComposer({
               commandCounts={commandCounts}
               attachedFileCount={attachments.length}
               attachedContextCount={attachedContext?.length ?? 0}
-              disabled={isBusy || isReadingAttachments}
+              disabled={isReadingAttachments}
               isReading={isReadingAttachments}
             />
           </div>
@@ -766,29 +770,27 @@ export function MariComposer({
             ) : null}
           </div>
         </div>
-        {/* While she works the whole bar folds into one labelled Stop pill, and unfolds again after. */}
-        <button
-          type={workspaceTimelineActive ? "button" : "submit"}
-          onClick={workspaceTimelineActive ? () => void stopWorkspace() : undefined}
-          disabled={workspaceTimelineActive ? false : !canSubmitMessage || isBusy}
-          data-mode={workspaceTimelineActive ? "stop" : "send"}
-          className="mari-workspace-composer__send"
-          aria-label={
-            workspaceTimelineActive
-              ? localizeUi("ui.chat.homeprofessormarichat.stopProfessorMariWorkspaceAgent")
-              : t("home.professorMari.send")
-          }
-          title={
-            workspaceTimelineActive
-              ? localizeUi("ui.chat.homeprofessormarichat.stopProfessorMariWorkspaceAgent")
-              : t("home.professorMari.send")
-          }
-        >
-          <ArrowUp size="1rem" strokeWidth={2.25} data-icon="send" aria-hidden="true" />
-          <span data-icon="stop" aria-hidden="true">
-            <Square size="0.7rem" fill="currentColor" strokeWidth={0} />
+        {/* While she works the field stays open, so a message can wait its turn; Stop sits beside Send. */}
+        {workspaceTimelineActive ? (
+          <button
+            type="button"
+            onClick={() => void stopWorkspace()}
+            className="mari-workspace-composer__stop"
+            aria-label={localizeUi("ui.chat.homeprofessormarichat.stopProfessorMariWorkspaceAgent")}
+            title={localizeUi("ui.chat.homeprofessormarichat.stopProfessorMariWorkspaceAgent")}
+          >
+            <Square size="0.7rem" fill="currentColor" strokeWidth={0} aria-hidden="true" />
             {localizeUi("ui.chat.homeprofessormarichat.stop")}
-          </span>
+          </button>
+        ) : null}
+        <button
+          type="submit"
+          disabled={!canSubmitMessage}
+          className="mari-workspace-composer__send"
+          aria-label={t("home.professorMari.send")}
+          title={t("home.professorMari.send")}
+        >
+          <ArrowUp size="1rem" strokeWidth={2.25} aria-hidden="true" />
         </button>
       </div>
     </form>

@@ -46,6 +46,7 @@ import { getFileStorageDir, getPort, getServerProtocol, isDebugAgentsEnabled } f
 import { apiConnections } from "../../db/schema/index.js";
 import { decryptApiKey } from "../../utils/crypto.js";
 import { DATA_DIR } from "../../utils/data-dir.js";
+import { listPendingSummaries, type MariPromptOutcome } from "./workspace-pending-store.js";
 import { logger, logDebugOverride } from "../../lib/logger.js";
 import { tryParseJsonRecord } from "../../lib/json-repair.js";
 import {
@@ -3332,8 +3333,17 @@ export class ProfessorMariWorkspaceService {
       ].filter((approval) => isMariReviewVisibleInChat(approval.sessionId, chatId)),
       history: await getMariDbService(this.app.db).getHistory(),
       latestRun: this.latestRun,
+      // Polled, so summaries only: attachments can be 20 MB each.
+      ...(chatId
+        ? { pendingMessages: await listPendingSummaries(chatId).catch(() => []), pendingMessagesChatId: chatId }
+        : {}),
       error: this.lastError,
     };
+  }
+
+  /** Whether a run holds the slot. The queue's drain checks it so it never aborts a run that started since. */
+  isRunActive() {
+    return this.active;
   }
 
   async abort() {
@@ -3644,8 +3654,10 @@ export class ProfessorMariWorkspaceService {
     context?: ProfessorMariAskContext;
     /** The dated Mari pack the client is showing, if any; it only flavors her voice. */
     seasonalPackId?: string;
+    /** Fires once the user's message is in the thread: a failure before this means it was never saved. */
+    onUserMessageSaved?: () => void;
     onEvent: PromptEventSink;
-  }) {
+  }): Promise<MariPromptOutcome> {
     if (!this.enabled) throw new Error("Professor Mari workspace mode is disabled.");
     const chatStorage = createChatsStorage(this.app.db);
     const connection = await this.resolveConnection(args.connectionId);
@@ -3671,6 +3683,7 @@ export class ProfessorMariWorkspaceService {
       });
       if (!userMessage) throw new Error("Professor Mari could not save the user message.");
     }
+    args.onUserMessageSaved?.();
     const promptText = userMessage.content;
     const runStartedAt = Date.now();
     await saveRunStart(chatStorage, userMessage.id, {
@@ -3713,6 +3726,19 @@ export class ProfessorMariWorkspaceService {
     // the NEXT run can arm silent command frames - the persisted content is
     // only the visible say text, so a content scan can never see the deferral.
     let runEndedWithDeferral = false;
+    let outcome: MariPromptOutcome = "stopped";
+    // Every Accept chip goes through this sink, whichever loop or stop path offered it.
+    let offeredAccept = false;
+    const sendEvent = args.onEvent;
+    args = {
+      ...args,
+      onEvent: (event) => {
+        if (event.type === "suggestions" && event.data.some((chip) => chip.id === MARI_AUTHORIZATION_ACCEPT_CHIP.id)) {
+          offeredAccept = true;
+        }
+        sendEvent(event);
+      },
+    };
     // Slice 71: what the deferred commands would change, saved beside the flag for the "Needs you" card.
     let runHeldChanges: MariHeldChange[] = [];
     let runHeldCalls: WorkspaceCommandCall[] = [];
@@ -4486,6 +4512,19 @@ export class ProfessorMariWorkspaceService {
       await persistAssistantMessage();
       if (runRuntime === "pi") this.piConsecutiveFailures = 0;
       args.onEvent({ type: "metadata", data: { connection: connectionSummary(connection) ?? undefined } });
+      // The queue sends the next message only after a clean end: nothing held for the user, no Accept chip or
+      // question card waiting, and this run was neither stopped nor replaced. A failure throws and an abort is
+      // swallowed below, so both leave the outcome "stopped".
+      if (
+        !runEndedWithDeferral &&
+        !offeredAccept &&
+        (runUnderstoodRequest as MariUnderstoodRequest | null)?.outcome !== "held" &&
+        runQuestions.length === 0 &&
+        !controller.signal.aborted &&
+        this.abortController === controller
+      ) {
+        outcome = "finished";
+      }
     } catch (err) {
       if (controller.signal.aborted) {
         // abort() clears the controller, so only a different live controller means a newer run.
@@ -4567,6 +4606,7 @@ export class ProfessorMariWorkspaceService {
         this.active = false;
       }
     }
+    return outcome;
   }
 
   private async runPiRuntime(args: PiRunInput) {

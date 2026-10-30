@@ -9,6 +9,7 @@ import {
   MARI_RUNTIME_SETTINGS_KEY,
   MARI_SKILL_GATE_SETTINGS_KEY,
   withMariReceiptOutcome,
+  type MariPendingMessage,
 } from "@marinara-engine/shared";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
@@ -22,6 +23,20 @@ import {
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import { createChatsStorage } from "../services/storage/chats.storage.js";
 import { getProfessorMariWorkspaceService } from "../services/professor-mari/workspace-agent.service.js";
+import {
+  addPending,
+  clearPending,
+  drainPendingMessages,
+  holdPending,
+  isSafePendingChatId,
+  type MariPromptOutcome,
+  listPendingSummaries,
+  MariPendingStoreError,
+  removePending,
+  restorePending,
+  takeNextPending,
+  takePending,
+} from "../services/professor-mari/workspace-pending-store.js";
 import { getProfessorMariWorkspaceSkillsService } from "../services/professor-mari/workspace-skills.service.js";
 import { getMariDbService } from "../services/mari-db/mari-db.service.js";
 import { renderMariEditPrompt } from "../services/professor-mari/workspace-edit-render.js";
@@ -47,6 +62,9 @@ export const professorMariPromptSchema = z.object({
   connectionId: z.string().optional().nullable(),
   debugMode: z.boolean().optional().default(false),
   existingUserMessageId: z.string().min(1).optional(),
+  // Send on a held queued message: the server takes it from the queue and uses ITS text, attachments, references
+  // and context instead of the ones above.
+  pendingMessageId: z.string().min(1).max(100).optional(),
   seasonalPackId: z.string().max(40).optional(),
   context: z
     .object({
@@ -163,6 +181,20 @@ export const professorMariPromptSchema = z.object({
     .max(8)
     .optional()
     .default([]),
+});
+
+// A message queued while she works: the prompt's own shapes for what it carries.
+const pendingCreateSchema = professorMariPromptSchema.pick({
+  chatId: true,
+  message: true,
+  attachments: true,
+  references: true,
+  context: true,
+});
+
+const abortSchema = z.object({
+  // Stop from the composer names its chat: that chat's queue comes back to the user instead of staying held.
+  chatId: z.string().min(1).optional(),
 });
 
 const resetSchema = z.object({
@@ -316,7 +348,17 @@ function privileged(request: FastifyRequest, reply: FastifyReply, loopbackOnly =
   });
 }
 
+/** A full or unusable queue is the user's to fix, so it is a plain 4xx with words, not a 500. */
+function sendPendingError(reply: FastifyReply, err: unknown) {
+  if (err instanceof MariPendingStoreError) {
+    return reply.status(err.code === "limit" ? 409 : 400).send({ error: err.message });
+  }
+  throw err;
+}
+
 export async function professorMariWorkspaceRoutes(app: FastifyInstance) {
+  // Counts Stops, so a drain between two messages can tell one came in while no run was there to abort.
+  let stopCount = 0;
   app.get<{ Querystring: { connectionId?: string; chatId?: string } }>("/status", async (req, reply) => {
     if (!privileged(req, reply)) return;
     return getProfessorMariWorkspaceService(app).status(req.query.connectionId ?? null, req.query.chatId ?? null);
@@ -324,8 +366,58 @@ export async function professorMariWorkspaceRoutes(app: FastifyInstance) {
 
   app.post("/abort", async (req, reply) => {
     if (!privileged(req, reply)) return;
+    stopCount += 1;
+    const input = abortSchema.parse(req.body ?? {});
+    // Cleared BEFORE the abort, so the drain that wakes up when the run stops finds nothing left to send. Without
+    // a chatId the queue stays held, as before.
+    let returned: MariPendingMessage[] = [];
+    if (input.chatId) {
+      try {
+        returned = await clearPending(input.chatId);
+      } catch (err) {
+        // Stop must still stop; an unusable queue file leaves its messages held.
+        logger.warn(err, "[professor-mari] Could not return the queued messages for chat %s", input.chatId);
+      }
+    }
     await getProfessorMariWorkspaceService(app).abort();
-    return { ok: true };
+    return { ok: true, returned };
+  });
+
+  // Messages typed while she works. Summaries only on the way out: attachments can be 20 MB each.
+  app.post("/pending", async (req, reply) => {
+    if (!privileged(req, reply)) return;
+    const input = pendingCreateSchema.parse(req.body);
+    const chat = await createChatsStorage(app.db).getById(input.chatId);
+    let metadata: Record<string, unknown> = {};
+    try {
+      metadata = chat?.metadata ? (JSON.parse(chat.metadata) as Record<string, unknown>) : {};
+    } catch {
+      // Unreadable metadata counts as no marker below.
+    }
+    if (!chat || metadata.internalAssistant !== "professor-mari") {
+      return reply.status(404).send({ error: "Professor Mari chat not found" });
+    }
+    try {
+      await addPending(input.chatId, {
+        text: input.message,
+        attachments: input.attachments,
+        references: input.references,
+        context: input.context,
+      });
+    } catch (err) {
+      return sendPendingError(reply, err);
+    }
+    return { pending: await listPendingSummaries(input.chatId) };
+  });
+
+  app.delete<{ Params: { chatId: string; id: string } }>("/pending/:chatId/:id", async (req, reply) => {
+    if (!privileged(req, reply)) return;
+    try {
+      await removePending(req.params.chatId, req.params.id);
+      return { pending: await listPendingSummaries(req.params.chatId) };
+    } catch (err) {
+      return sendPendingError(reply, err);
+    }
   });
 
   app.post("/reset", async (req, reply) => {
@@ -515,18 +607,73 @@ export async function professorMariWorkspaceRoutes(app: FastifyInstance) {
 
     try {
       send({ type: "metadata", data: { phase: "starting" } });
-      await service.prompt({
-        chatId: body.chatId,
-        text: body.message,
-        connectionId: body.connectionId ?? null,
-        debugMode: body.debugMode,
-        attachments: body.attachments,
-        references: body.references,
-        existingUserMessageId: body.existingUserMessageId,
-        context: body.context,
-        seasonalPackId: body.seasonalPackId,
-        onEvent: send,
-      });
+      const runPrompt = (
+        message: Pick<MariPendingMessage, "text" | "attachments" | "references" | "context">,
+        existingUserMessageId?: string,
+        onUserMessageSaved?: () => void,
+      ) =>
+        service.prompt({
+          chatId: body.chatId,
+          text: message.text,
+          connectionId: body.connectionId ?? null,
+          debugMode: body.debugMode,
+          attachments: message.attachments,
+          references: message.references,
+          existingUserMessageId,
+          context: message.context,
+          seasonalPackId: body.seasonalPackId,
+          onUserMessageSaved,
+          onEvent: send,
+        });
+      // A queued message left the file before it reached the thread. If the run is refused in that gap (no
+      // connection, a failed save), it goes back to the front of the queue instead of vanishing.
+      const runQueued = async (message: MariPendingMessage) => {
+        let saved = false;
+        try {
+          return await runPrompt(message, undefined, () => {
+            saved = true;
+          });
+        } catch (err) {
+          if (!saved) await restorePending(body.chatId, message);
+          throw err;
+        }
+      };
+      const stopCountAtStart = stopCount;
+      if (isSafePendingChatId(body.chatId)) {
+        // Best effort: an unusable file only means the drain below finds nothing it can read either.
+        await holdPending(body.chatId).catch((err) => {
+          logger.warn(err, "[professor-mari] Could not hold the queued messages for chat %s", body.chatId);
+        });
+      }
+      let outcome: MariPromptOutcome;
+      if (body.pendingMessageId) {
+        // Send on a held message: it leaves the queue and runs as if typed now.
+        const taken = await takePending(body.chatId, body.pendingMessageId);
+        if (!taken) throw new Error("That queued message is gone. It may have been sent or removed already.");
+        outcome = await runQueued(taken);
+      } else {
+        outcome = await runPrompt(
+          { text: body.message, attachments: body.attachments, references: body.references, context: body.context },
+          body.existingUserMessageId,
+        );
+      }
+      // The queue runs on this same reply, so the client's stream spans the whole drain and "done" waits for it.
+      if (isSafePendingChatId(body.chatId)) {
+        await drainPendingMessages({
+          chatId: body.chatId,
+          outcome,
+          isBusy: () => service.isRunActive() || stopCount !== stopCountAtStart,
+          // Her answer is already saved, so an unreadable file leaves the messages held rather than failing it.
+          takeNext: () =>
+            takeNextPending(body.chatId).catch((err) => {
+              logger.warn(err, "[professor-mari] Could not read the queued messages for chat %s", body.chatId);
+              return null;
+            }),
+          runPrompt: runQueued,
+          onNext: (message) => send({ type: "queue_next", data: { id: message.id, text: message.text } }),
+          putBack: (message) => restorePending(body.chatId, message),
+        });
+      }
       send({ type: "done", data: { ok: true } });
     } catch (err) {
       send({ type: "error", data: err instanceof Error ? err.message : String(err) });

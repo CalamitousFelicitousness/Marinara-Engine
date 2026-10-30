@@ -6,6 +6,7 @@ import { mmdPmx, mmdVmd } from "../scripts/regressions/fixtures/avatar-mmd-fixtu
 import { paintPng, solid, zipFiles } from "../scripts/regressions/fixtures/avatar-2d-fixtures.js";
 import { serveWithServerCsp } from "./server-csp-fixture.js";
 import { seedUIState } from "./ui-state-fixture.js";
+import { UI_PERSISTENCE } from "../packages/client/src/lib/ui-persistence.js";
 
 const MODULE = process.env.MMD_RENDERER_URL ?? "/src/features/avatars/renderers/mmd/mmd-renderer.ts";
 const APP_VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version as string;
@@ -35,16 +36,22 @@ declare global {
     __mmdRaf?: { pending: Set<number>; executed: number };
   }
 }
-async function prepare(page: Page, blank = false) {
+async function prepare(page: Page, { blank = false, setup = false } = {}) {
   await page.route("**/api/app-settings/ui", (route) =>
     route.fulfill({ json: route.request().method() === "GET" ? { value: null } : { success: true } }),
   );
-  await seedUIState(page, {
-    hasCompletedOnboarding: true,
-    sidebarOpen: false,
-    rightPanelOpen: false,
-    chibiProfessorMariEnabled: false,
-  });
+  await seedUIState(
+    page,
+    {
+      hasCompletedOnboarding: true,
+      sidebarOpen: false,
+      rightPanelOpen: false,
+      chibiProfessorMariEnabled: false,
+      theme: "light",
+      ...(setup ? { agentDetailId: "3d-avatars" } : {}),
+    },
+    "if-missing",
+  );
   await page.addInitScript((version) => {
     localStorage.setItem("marinara:whats-new:seen-version", version);
     window.__mmdCsp = [];
@@ -160,7 +167,7 @@ test("PMX imports its bundled texture and Japanese morph, then VMD moves its sav
     const config = await importModel(request, owner, await bundle());
     expect(config.kinds.mmd?.expressionMap.happy?.target).toBe("笑い");
     expect(config.kinds.mmd?.idleAnimation).toBeTruthy();
-    await prepare(page, true);
+    await prepare(page, { blank: true });
     await page.goto("/");
     const outsideCatalogue = {
       ...config,
@@ -260,14 +267,10 @@ test("MMD setup imports, maps and removes model-specific motion for character an
   const characterId = ((await character.json()) as { id: string }).id;
   const personaId = ((await persona.json()) as { id: string }).id;
   try {
-    await prepare(page);
+    await prepare(page, { setup: true });
     await page.route("**/api/capability-packages/installed", (route) => route.fulfill({ json: [PACKAGE] }));
     await page.route("**/api/capability-packages/agents", (route) => route.fulfill({ json: [AGENT] }));
     await page.goto("/");
-    await page.evaluate(async () => {
-      const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
-      useUIStore.getState().openAgentDetail("3d-avatars");
-    });
     const setup = page.locator('[data-avatar-setup="3d-avatars"]');
     await expect(setup).toBeVisible();
     for (const [ownerType, ownerId] of [
@@ -305,13 +308,34 @@ test("MMD setup imports, maps and removes model-specific motion for character an
       await expect(panel.getByText("Your VMD motion", { exact: true })).toBeVisible();
       await panel.getByRole("button", { name: "Remove VMD motion", exact: true }).click();
       await expect(panel.getByRole("button", { name: "Add VMD motion", exact: true })).toBeVisible();
-      for (const theme of ["light", "dark"] as const) {
-        await page.evaluate(async (theme) => {
-          const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
-          useUIStore.getState().setTheme(theme);
-        }, theme);
+      for (const theme of ownerType === "character" ? (["light", "dark"] as const) : (["dark"] as const)) {
+        if ((await page.locator("html").getAttribute("data-theme")) !== theme) {
+          await page.evaluate(
+            ({ name, theme }) => {
+              const stored = JSON.parse(localStorage.getItem(name)!);
+              stored.state.theme = theme;
+              localStorage.setItem(name, JSON.stringify(stored));
+            },
+            { name: UI_PERSISTENCE.name, theme },
+          );
+          await page.reload();
+          await setup.getByLabel("Character or persona").selectOption(`${ownerType}:${ownerId}`);
+          await setup.getByRole("radio", { name: /^MMD PMX model/u }).check();
+        }
         await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-        await panel.screenshot({ path: info.outputPath(`mmd-${ownerType}-${theme}.png`) });
+        const preview = setup.getByRole("img", { name: "Preview", exact: true });
+        await preview.scrollIntoViewIfNeeded();
+        await expect
+          .poll(() =>
+            preview.evaluate((canvas: HTMLCanvasElement) =>
+              canvas
+                .getContext("2d")!
+                .getImageData(0, 0, canvas.width, canvas.height)
+                .data.some((value, index) => index % 4 === 3 && value > 0),
+            ),
+          )
+          .toBe(true);
+        await setup.screenshot({ path: info.outputPath(`mmd-${ownerType}-${theme}.png`) });
       }
       const dimensions = await panel.getByRole("button").evaluateAll((buttons) =>
         buttons.map((button) => ({

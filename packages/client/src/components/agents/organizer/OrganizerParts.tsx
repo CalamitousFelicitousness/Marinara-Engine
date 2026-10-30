@@ -93,7 +93,13 @@ export function AgentAction({
     return (
       <button
         type="button"
-        className={cn(light ? LIGHT_ACTION : PRIMARY_ACTION, sizing, "font-semibold")}
+        className={cn(
+          light
+            ? LIGHT_ACTION
+            : cn(PRIMARY_ACTION, "bg-[var(--primary)]! text-[var(--primary-foreground)]! hover:opacity-90"),
+          sizing,
+          "font-semibold",
+        )}
         disabled={pending}
         onClick={(event) => {
           stop(event);

@@ -25,6 +25,7 @@ const hostAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("revoke-invite") }).strict(),
   z.object({ type: z.literal("pause") }).strict(),
   z.object({ type: z.literal("resume") }).strict(),
+  z.object({ type: z.literal("retry") }).strict(),
   z.object({ type: z.literal("stop") }).strict(),
   z
     .object({

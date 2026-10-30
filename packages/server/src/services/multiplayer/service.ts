@@ -844,6 +844,9 @@ export class MultiplayerService {
       } else if (action.type === "resume") {
         const claim = await host.store.resume();
         if (claim) this.launch(host, claim);
+      } else if (action.type === "retry") {
+        const claim = await host.store.retry();
+        if (claim) this.launch(host, claim);
       } else if (action.type === "configure")
         await host.store.change((room) => {
           if (room.status !== "paused" && room.status !== "lobby") throw new MultiplayerError("busy");

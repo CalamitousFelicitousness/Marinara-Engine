@@ -428,3 +428,38 @@ export function MultiplayerAwayPlayers({ host }: { host: MultiplayerHostState })
     </ul>
   );
 }
+
+/** A Game that could not reach its Game Master, said where the host plays (laptop 2026-10-30: a 503
+ *  left the host with Submit and Pass only, and a failed Start game with nothing on screen). An
+ *  interrupted round is tried again with its actions as they were. */
+export function MultiplayerGenerationFailed({ host }: { host: MultiplayerHostState }) {
+  const { t } = useTranslation();
+  const action = useMultiplayerMutation<unknown, MultiplayerHostAction>("/multiplayer/host/actions");
+  const { snapshot } = host;
+  if (snapshot.mode !== "game") return null;
+  const interrupted = snapshot.status === "paused" && snapshot.round?.phase === "interrupted";
+  const startFailed = snapshot.status === "lobby" && snapshot.generation === "failed";
+  if (!interrupted && !startFailed) return null;
+  return (
+    <div
+      role="alert"
+      data-generation-failed
+      className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--border)] px-3 py-2 text-xs"
+    >
+      <p className="min-w-0 flex-1 break-words">
+        {t(interrupted ? "multiplayer.host.roundFailed" : "multiplayer.host.startFailed")}
+      </p>
+      {interrupted && (
+        <button
+          type="button"
+          className={MULTIPLAYER_BUTTON_CLASS}
+          disabled={action.isPending}
+          onClick={() => action.mutate({ type: "retry" })}
+        >
+          {t("multiplayer.host.retryRound")}
+        </button>
+      )}
+      {action.isError && <p className="w-full text-[var(--destructive)]">{t("multiplayer.host.retryRefused")}</p>}
+    </div>
+  );
+}

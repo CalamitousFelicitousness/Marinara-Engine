@@ -418,6 +418,22 @@ export function createMultiplayerRoomStore(db: DB, chatId: string, roomId: strin
         return closeRound(room, chats);
       });
     },
+    /** The interrupted round again, its actions as they were (laptop 2026-10-30: a 503 mid-round lost
+     *  both players' actions to Resume). Only while the Game Master wrote nothing of it, so nothing it
+     *  did is done twice: its actions, or a pause notice after them, are still the newest messages. */
+    async retry() {
+      return change(async (room, chats) => {
+        if (room.status !== "paused" || room.round?.phase !== "interrupted" || room.generation === "running")
+          throw new MultiplayerError("busy");
+        const newest = (await chats.listMessagesPaginated(chatId, 8))
+          .filter((message) => !(message.role === "narrator" && message.content === "The host paused the session."))
+          .at(-1);
+        if (newest?.role !== "user") throw new MultiplayerError("busy");
+        room.status = "active";
+        room.generation = "idle";
+        return claim(room);
+      });
+    },
     async stop() {
       return change((room) => {
         room.status = "ended";

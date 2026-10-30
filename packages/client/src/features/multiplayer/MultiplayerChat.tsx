@@ -33,7 +33,12 @@ import {
   type MultiplayerGuestLabels,
 } from "./multiplayer-guest-labels";
 import { MultiplayerPersonaFields, MULTIPLAYER_BUTTON_CLASS, MULTIPLAYER_INPUT_CLASS } from "./MultiplayerFields";
-import { MultiplayerAwayPlayers, MultiplayerHostControls, type MultiplayerGameStart } from "./MultiplayerHostControls";
+import {
+  MultiplayerAwayPlayers,
+  MultiplayerGenerationFailed,
+  MultiplayerHostControls,
+  type MultiplayerGameStart,
+} from "./MultiplayerHostControls";
 import { MultiplayerBlankSheets } from "./MultiplayerBlankSheets";
 import { MultiplayerParticipantControls } from "./MultiplayerParticipantControls";
 import { useHostHasDetachedDrawers } from "../../components/ui/drawer-host";
@@ -431,6 +436,7 @@ function HostedMultiplayerChat({ chat, renderGame }: { chat: Chat; renderGame?: 
               />
             </div>
           )}
+          <MultiplayerGenerationFailed host={host} />
           <MultiplayerAwayPlayers host={host} />
           {gameOpenable && !fighting && (
             <MultiplayerBlankSheets metadata={metadata} onOpen={gameShown ? undefined : () => setScreen("game")} />

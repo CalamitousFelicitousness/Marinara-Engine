@@ -4,6 +4,7 @@ import {
   isDiceNotation as sharedIsDiceNotation,
   isWithinDiceLimits,
   formatKeptRolls,
+  isDicePoolNotation,
   isKeptDice,
   keptDice,
   parseDiceNotation,
@@ -736,6 +737,9 @@ for (const testCase of MODIFIER_CASES) {
 
   const composer = rollDice("4d6dl1");
   assert.equal(composer.kept?.length, 3);
+  assert.throws(() => rollDice("150d6dl1"), /out of range/, "a pool past the ceilings is refused, not trimmed");
+  assert.equal(isDicePoolNotation("4d6kh3"), true, "the composer route's notation check reads pools");
+  assert.equal(isDicePoolNotation("4d6kh0"), false);
 
   const slash = await rollThroughSlashCommand("4d6kh3");
   const slashRolled = slashDiceRollResult(slash.posted) as SlashDiceRollResult & { kept?: number[] };

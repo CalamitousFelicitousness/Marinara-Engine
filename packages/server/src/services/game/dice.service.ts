@@ -15,6 +15,9 @@ import {
   formatPoolSlotName,
   isEngineRollableSkillCheckTag,
   isKeptDice,
+  isWithinDiceLimits,
+  MAX_DICE_COUNT,
+  MAX_DICE_SIDES,
   parseDiceNotation,
   parseDicePool,
   parsePoolSlotName,
@@ -34,7 +37,7 @@ import { logger } from "../../lib/logger.js";
 import { logPoolDcFit, pooledSizeForNotation, type GameDicePoolSession } from "./dice-pool.service.js";
 import { SKILL_CHECK_MAX_DC, SKILL_CHECK_MIN_DC } from "./skill-check-resolution.service.js";
 
-export { isDiceNotation } from "@marinara-engine/shared";
+export { isDiceNotation, isDicePoolNotation } from "@marinara-engine/shared";
 
 /**
  * Parse and roll dice using NdM notation (e.g. "2d6+3", "d20", "4d8-1").
@@ -44,6 +47,13 @@ export function rollDice(notation: string): DiceRollResult {
   const parsed = parseDicePool(notation);
   if (!parsed) {
     throw new Error(`Invalid dice notation: "${notation}". Use NdM format (e.g. 2d6, d20+3, 4d8-1, 4d6kh3).`);
+  }
+  // A pool is refused past the ceilings rather than trimmed: trimming the dice would change which
+  // of them a keep or drop leaves counting.
+  if (parsed.keep && !isWithinDiceLimits(parsed)) {
+    throw new Error(
+      `Dice values out of range for "${notation}" (1-${MAX_DICE_COUNT} dice, 1-${MAX_DICE_SIDES} sides).`,
+    );
   }
 
   return rollParsedDice(clampParsedDiceToLimits(parsed));

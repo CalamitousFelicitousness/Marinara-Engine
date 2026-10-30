@@ -40,7 +40,7 @@ export const MAX_DICE_SIDES = 1000;
 export interface ParsedDiceNotation {
   /** The notation as written, trimmed. */
   notation: string;
-  /** The NdM half, lowercased and without the modifier — "d20", "2d6". */
+  /** The dice half, lowercased and without the modifier — "d20", "2d6", or a pool's "4d6kh3". */
   dice: string;
   /** Number of dice to throw (at least 1). */
   count: number;
@@ -158,6 +158,11 @@ export function parseDicePool(value: string): ParsedDiceNotation | null {
 /** Whether the text is dice notation this engine can roll. */
 export function isDiceNotation(value: string): boolean {
   return parseDiceNotation(value) !== null;
+}
+
+/** Whether the text is a dice pool the plain rollers can roll (NdM, or NdM with a keep or drop). */
+export function isDicePoolNotation(value: string): boolean {
+  return parseDicePool(value) !== null;
 }
 
 /** Whether a parsed notation sits inside the shared count and face ceilings. */

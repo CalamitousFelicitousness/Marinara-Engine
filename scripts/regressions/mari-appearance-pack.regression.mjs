@@ -51,8 +51,7 @@ for (const appearance of MARI_APPEARANCE_PACKS) {
     assert.ok(url.endsWith(`?v=${MARI_SPRITE_VERSION}`), `${url} must carry the sprite version`);
   }
   for (const pose of MARI_POSES) {
-    if (appearance.season && ["party", "hungover"].includes(appearance.id)) continue;
-    assert.ok(readFileSync(publicFile(appearance.poses[pose])).length);
+      assert.ok(readFileSync(publicFile(appearance.poses[pose])).length);
   }
   const prefetch = mariAssetUrls(appearance, 2);
   const preload = mariAssetUrls(appearance, 1);
@@ -78,7 +77,6 @@ const require = createRequire(new URL("../../packages/server/package.json", impo
 const sharp = require("sharp");
 for (const appearance of MARI_APPEARANCE_PACKS) {
   assert.equal(getMariAppearancePack(appearance.id), appearance, "registered packs must resolve without fallback");
-  if (appearance.season && ["party", "hungover"].includes(appearance.id)) continue;
   for (const url of Object.values(appearance.portraits)) assert.ok(readFileSync(publicFile(url)).length);
   // P5: the Home Mari widget draws the greet pose at exactly 1x with fixed 106x192 width/height.
   const greet = await sharp(fileURLToPath(publicFile(appearance.poses.greet))).metadata();

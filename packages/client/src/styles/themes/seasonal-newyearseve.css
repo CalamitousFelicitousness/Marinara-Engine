@@ -3,6 +3,8 @@
   --nye-surface: #1d2038;
   --nye-sidebar: #191c32;
   --nye-text: #fff1d6;
+  /* Chrome buttons draw this at 64%, so it needs more contrast than body text. */
+  --nye-button-text: #fff1d6;
   --nye-muted: #d5cbb8;
   --nye-gold: #f2c75c;
   --nye-on-gold: #211800;
@@ -45,12 +47,14 @@
   --marinara-chat-chrome-accent: var(--nye-gold) !important;
   --marinara-chat-chrome-accent-gradient: var(--marinara-app-accent-gradient) !important;
   --marinara-chat-chrome-text: var(--nye-text) !important;
+  --marinara-chat-chrome-button-text-base: var(--nye-button-text) !important;
 }
 :root[data-seasonal-theme="newyearseve"][data-theme="light"] {
   --nye-bg: #fffaf0;
   --nye-surface: #fffdf8;
   --nye-sidebar: #f7f0df;
   --nye-text: #261d12;
+  --nye-button-text: #1a1209;
   --nye-muted: #594b39;
   --nye-gold: #795400;
   --nye-on-gold: #ffffff;

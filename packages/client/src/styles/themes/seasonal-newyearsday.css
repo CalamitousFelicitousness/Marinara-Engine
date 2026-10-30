@@ -3,6 +3,8 @@
   --nyd-surface: #303c46;
   --nyd-sidebar: #293640;
   --nyd-text: #e5edf0;
+  /* Chrome buttons draw this at 64%, so it needs more contrast than body text. */
+  --nyd-button-text: #e5edf0;
   --nyd-muted: #c3d0d6;
   --nyd-rose: #b47788;
   --nyd-on-rose: #171014;
@@ -38,6 +40,7 @@
   --marinara-chat-chrome-accent: var(--nyd-rose) !important;
   --marinara-chat-chrome-accent-gradient: var(--marinara-app-accent-gradient) !important;
   --marinara-chat-chrome-text: var(--nyd-text) !important;
+  --marinara-chat-chrome-button-text-base: var(--nyd-button-text) !important;
 }
 :root[data-seasonal-theme="newyearsday"][data-theme="light"] {
   --nyd-bg: #edf1f2;
@@ -50,8 +53,7 @@
   --nyd-secondary: #e1e6e7;
   --nyd-secondary-text: #354147;
   --nyd-hover: #d9e0e2;
-  /* Chrome buttons draw this at 64%; the dim rose fell to ~3:1 on white, slate keeps ~4.9:1. */
-  --marinara-chat-chrome-button-text-base: #1b2329 !important;
+  --nyd-button-text: #1b2329;
 }
 :root[data-seasonal-theme="newyearsday"] .mari-seasonal-home {
   position: absolute;

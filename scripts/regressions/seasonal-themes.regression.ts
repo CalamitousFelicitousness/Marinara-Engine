@@ -288,6 +288,21 @@ for (const [id, prefix, textPairs] of [
       const ratio = contrast(colorFor(block, foreground), colorFor(block, background));
       assert.ok(ratio >= 4.5, `${id} ${mode}: ${foreground} on ${background} is ${ratio.toFixed(2)}:1, below WCAG AA`);
     }
+    // Chrome buttons (the greeting's "Turn it off") draw their text at 64% over the panel (globals.css).
+    for (const background of ["bg", "surface"]) {
+      const under = colorFor(block, background);
+      const over = colorFor(block, "button-text");
+      const mixed = [1, 3, 5]
+        .map((index) => {
+          const channel = (hex: string) => Number.parseInt(hex.slice(index, index + 2), 16);
+          return Math.round(channel(over) * 0.64 + channel(under) * 0.36)
+            .toString(16)
+            .padStart(2, "0");
+        })
+        .join("");
+      const ratio = contrast(`#${mixed}`, under);
+      assert.ok(ratio >= 4.5, `${id} ${mode}: button text at 64% on ${background} is ${ratio.toFixed(2)}:1, below WCAG AA`);
+    }
   }
 }
 

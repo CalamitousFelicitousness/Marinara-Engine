@@ -755,8 +755,11 @@ try {
     };
     const definition = parsed(document([wolfOnly, thunderClap]));
     const entries = definition.catalogs!.find((catalog) => catalog.id === "spells")!.entries! as RulesetCatalogEntry[];
-    const scene = (slots: number, hurt?: number, on = definition) => {
-      const encounter = fight(on, entries, 8);
+    const scene = (slots: number, hurt?: number, on = definition, wet = false, list = entries) => {
+      const encounter = fight(on, list, 8);
+      // The foes' side of the board under water, the druid on the shore.
+      if (wet)
+        encounter.board!.grid.tiles[0] = encounter.board!.grid.tiles[0]!.map((tile, x) => (x >= 4 ? "water" : tile));
       const druid = who(encounter, "druid");
       druid.sheet!.build.fields.slots_max_1 = slots;
       druid.sheet!.build.fields.spellcasting_ability = "wis";
@@ -797,6 +800,31 @@ try {
     assert.equal(scene(2), "Thunder Clap", "with slots, it casts");
     assert.match(scene(0) ?? "", /^Wild Shape/, "out of slots, it takes the form");
     assert.match(scene(2, 15) ?? "", /^Wild Shape/, "hurt, it takes the form's health before its own");
+    // Where the foes are in water the walking body cannot cross, the form that swims is the one taken
+    // (laptop 2026-10-30: two water fights, the Warhorse every time); on dry ground, the wolf.
+    const shark = beast("reef-shark", "Reef Shark", 1, { health: 22, speed: 20, speeds: { swim: 40 } });
+    const sea = wildShape({
+      into: ["creatures/dire-wolf", "creatures/reef-shark"],
+      upTo: { filter: "cr", at: { const: 1 } },
+      without: [{ speed: "fly" }],
+    });
+    const seaDefinition = parsed(
+      document([sea], (doc) =>
+        doc.catalogs.find((catalog: { holds?: string }) => catalog.holds === "creatures").entries.push(shark),
+      ),
+    );
+    const seaEntries = seaDefinition.catalogs!.find((catalog) => catalog.id === "spells")!
+      .entries! as RulesetCatalogEntry[];
+    assert.equal(
+      scene(0, undefined, seaDefinition, false, seaEntries),
+      "Wild Shape (Dire Wolf)",
+      "the stronger form on land",
+    );
+    assert.equal(
+      scene(0, undefined, seaDefinition, true, seaEntries),
+      "Wild Shape (Reef Shark)",
+      "the one that swims to them",
+    );
     // A form that only swims is not taken on dry ground (laptop pass 6 2026-10-26: a Swarm of Quippers
     // on land).
     const swimmer = parsed(

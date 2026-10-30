@@ -6711,7 +6711,21 @@ function rulesetFormWorth(
   )
     ? 0.4
     : 0;
-  return Math.min(1.5, (2 * 0.6 * gained) / Math.max(1, foeMean) + body - casts);
+  // Water the body it has cannot cross (laptop 2026-10-30: two water fights, and the druid took the
+  // Warhorse every time): a form that swims reaches a foe in it, gets the druid out of it, and has
+  // more board to work with the more of it is water.
+  const tiles = encounter.board?.grid?.tiles;
+  const wet = (one: RulesetCombatant) => {
+    const cell = rulesetPositionOf(one);
+    return !!cell && tiles?.[cell.y]?.[cell.x] === "water";
+  };
+  const cells = tiles?.reduce((count, row) => count + row.length, 0) ?? 0;
+  const water = tiles?.reduce((count, row) => count + row.filter((tile) => tile === "water").length, 0) ?? 0;
+  const reach =
+    form.block.speeds?.swim && !actor.speeds?.swim && !actor.speeds?.fly && cells > 0
+      ? (wet(actor) || foes.some(wet) ? 0.4 : 0) + 0.4 * (water / cells)
+      : 0;
+  return Math.min(1.5, (2 * 0.6 * gained) / Math.max(1, foeMean) + body + reach - casts);
 }
 
 /** What stopping a cast or a blow aimed at this side is worth (an answer that cancels, 5e's

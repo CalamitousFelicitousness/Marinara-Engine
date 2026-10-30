@@ -79,7 +79,7 @@ import { showConfirmDialog, showPromptDialog } from "../../lib/app-dialogs";
 import { formatCardVersionTimestamp, getCardVersionTitle } from "../../lib/card-version-history";
 import { dataImageUrlToFile } from "../../lib/data-image-file";
 import { rebaseForm } from "../../lib/form-rebase";
-import { characterFieldValue, withCharacterFieldValue } from "../../lib/mari-editor-fields";
+import { formFieldValue, withFormFieldValue } from "../../lib/mari-editor-fields";
 import { MariFieldReview, MariFieldReviewProvider, useMariFieldReview } from "./MariFieldReview";
 import { mergeEmbeddedCharacterCardFields } from "../../lib/character-import";
 import { parsePngCharacterCard } from "../../lib/png-parser";
@@ -683,23 +683,23 @@ export function CharacterEditor() {
     takenOverRef.current = null;
   }, [characterId]);
   const mariReview = useMariFieldReview({
-    characterId,
-    current: (fieldId) => characterFieldValue(formData, fieldId),
-    touched: (fieldId) =>
-      dirty && characterFieldValue(formData, fieldId) !== characterFieldValue(loadedDataRef.current, fieldId),
-    edit: (fieldId, text) => updateFormData((prev) => withCharacterFieldValue(prev, fieldId, text)),
+    entityId: characterId,
+    current: (fieldId) => formFieldValue(formData, fieldId),
+    touched: (fieldId) => dirty && formFieldValue(formData, fieldId) !== formFieldValue(loadedDataRef.current, fieldId),
+    edit: (fieldId, text) => updateFormData((prev) => withFormFieldValue(prev, fieldId, text)),
     beforeKeep: async (takenOver) => {
-      takenOverRef.current = characterId
-        ? {
-            characterId,
-            values: Object.fromEntries(
-              takenOver.map((fieldId) => [fieldId, characterFieldValue(formDataRef.current, fieldId)]),
-            ),
-          }
-        : null;
+      if (takenOver)
+        takenOverRef.current = characterId
+          ? {
+              characterId,
+              values: Object.fromEntries(
+                takenOver.map((fieldId) => [fieldId, formFieldValue(formDataRef.current, fieldId)]),
+              ),
+            }
+          : null;
       if (!dirtyRef.current) return "clean";
       if (await handleSave()) return "saved";
-      takenOverRef.current = null;
+      if (takenOver) takenOverRef.current = null;
       return "failed";
     },
     keepDropped: () => {
@@ -707,6 +707,7 @@ export function CharacterEditor() {
     },
   });
   const handledKeptRef = useRef(mariReview.review?.mode === "kept" ? mariReview.review.key : null);
+  const reviewModeRef = useRef(mariReview.review?.mode);
   const restoreTakenOver = useEffectEvent(async () => {
     const taken = takenOverRef.current;
     takenOverRef.current = null;
@@ -721,16 +722,22 @@ export function CharacterEditor() {
       return;
     }
     let merged = rebaseForm(loadedDataRef.current ?? server, formDataRef.current ?? server, server).merged;
-    for (const [fieldId, text] of Object.entries(mine)) merged = withCharacterFieldValue(merged, fieldId, text);
+    for (const [fieldId, text] of Object.entries(mine)) merged = withFormFieldValue(merged, fieldId, text);
     loadedDataRef.current = server;
     toast.dismiss(`character-rebase-${characterId}`);
     updateFormData(() => merged);
   });
   useEffect(() => {
     const review = mariReview.review;
+    const wasBusy = reviewModeRef.current === "busy";
+    reviewModeRef.current = review?.mode;
+    // Her apply failed and the change waits again: the text captured for that Keep is stale.
+    const taken = takenOverRef.current;
+    if (wasBusy && review?.mode === "waiting" && review.fields.some((field) => field.entityId === taken?.characterId))
+      takenOverRef.current = null;
     if (review?.mode !== "kept" || handledKeptRef.current === review.key) return;
     handledKeptRef.current = review.key;
-    if (review.fields.some((field) => field.characterId === characterId)) void restoreTakenOver();
+    if (review.fields.some((field) => field.entityId === characterId)) void restoreTakenOver();
   }, [mariReview.review, characterId]);
 
   // Moves labelled text out of the description into the other card fields. The dialog summarises the
@@ -2630,6 +2637,7 @@ function TextareaTab({
   onChange,
   placeholder,
   rows = 8,
+  textareaClassName,
   helpText,
   textareaRef,
   onFocus,
@@ -2644,6 +2652,8 @@ function TextareaTab({
   onChange: (v: string) => void;
   placeholder: string;
   rows?: number;
+  /** Extra classes on the textarea; wins over the defaults, e.g. a prompt font. */
+  textareaClassName?: string;
   textareaRef?: Ref<HTMLTextAreaElement>;
   onFocus?: () => void;
   /** Shown under the textarea, inside the panel. */
@@ -2672,7 +2682,10 @@ function TextareaTab({
           title={title}
           showMarkdownPreview
           selfCharacterId={selfCharacterId}
-          className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-4 text-sm leading-relaxed outline-none transition-colors placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
+          className={cn(
+            "w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-4 text-sm leading-relaxed outline-none transition-colors placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20",
+            textareaClassName,
+          )}
         />
       </MariFieldReview>
       {footer}
@@ -2948,15 +2961,17 @@ function MetadataTab({
             {localizeUi("ui.characters.metadatatab.name")}{" "}
             <HelpTooltip text={localizeUi("ui.characters.metadatatab.theCharacterSDisplayNameThisIsWhatAppears")} />
           </span>
-          <input
-            value={formData.name}
-            onChange={(e) => updateField("name", e.target.value)}
-            onBlur={() => {
-              const trimmedName = formData.name.trim();
-              if (trimmedName !== formData.name) updateField("name", trimmedName);
-            }}
-            className="w-full rounded-xl border border-[var(--border)] bg-[var(--secondary)] px-3 py-2 text-sm outline-none focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
-          />
+          <MariFieldReview field="name">
+            <input
+              value={formData.name}
+              onChange={(e) => updateField("name", e.target.value)}
+              onBlur={() => {
+                const trimmedName = formData.name.trim();
+                if (trimmedName !== formData.name) updateField("name", trimmedName);
+              }}
+              className="w-full rounded-xl border border-[var(--border)] bg-[var(--secondary)] px-3 py-2 text-sm outline-none focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
+            />
+          </MariFieldReview>
         </label>
         <label className="space-y-1.5 sm:col-span-2">
           <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
@@ -2975,12 +2990,14 @@ function MetadataTab({
             {localizeUi("ui.characters.metadatatab.creator")}{" "}
             <HelpTooltip text={localizeUi("ui.characters.metadatatab.thePersonWhoMadeThisCharacterUsefulForGiving")} />
           </span>
-          <input
-            value={formData.creator}
-            onChange={(e) => updateField("creator", e.target.value)}
-            className="w-full rounded-xl border border-[var(--border)] bg-[var(--secondary)] px-3 py-2 text-sm outline-none focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
-            placeholder={localizeUi("ui.characters.metadatatab.yourName")}
-          />
+          <MariFieldReview field="creator">
+            <input
+              value={formData.creator}
+              onChange={(e) => updateField("creator", e.target.value)}
+              className="w-full rounded-xl border border-[var(--border)] bg-[var(--secondary)] px-3 py-2 text-sm outline-none focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
+              placeholder={localizeUi("ui.characters.metadatatab.yourName")}
+            />
+          </MariFieldReview>
         </label>
         <div className="space-y-1.5" data-mari-field="character_version">
           <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
@@ -3003,13 +3020,15 @@ function MetadataTab({
               labelClassName="text-xs font-medium text-[var(--muted-foreground)]"
             />
           </div>
-          <input
-            value={formData.character_version}
-            onChange={(e) => updateField("character_version", e.target.value)}
-            disabled={formData.extensions.versioningEnabled === false}
-            className="w-full rounded-xl border border-[var(--border)] bg-[var(--secondary)] px-3 py-2 text-sm outline-none focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20 disabled:cursor-not-allowed disabled:opacity-50"
-            placeholder="1.0"
-          />
+          <MariFieldReview field="character_version">
+            <input
+              value={formData.character_version}
+              onChange={(e) => updateField("character_version", e.target.value)}
+              disabled={formData.extensions.versioningEnabled === false}
+              className="w-full rounded-xl border border-[var(--border)] bg-[var(--secondary)] px-3 py-2 text-sm outline-none focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20 disabled:cursor-not-allowed disabled:opacity-50"
+              placeholder="1.0"
+            />
+          </MariFieldReview>
           <CharacterVersionHistoryPanel
             characterId={characterId}
             currentData={formData}
@@ -3385,7 +3404,7 @@ function CharacterVersionHistoryPanel({
 
   return (
     <div className="rounded-xl border border-[var(--border)] bg-[var(--secondary)]/70 p-2.5">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="inline-flex items-center gap-1.5 text-[0.6875rem] font-medium text-[var(--muted-foreground)]">
           <History size="0.75rem" />
           {localizeUi("ui.characters.characterversionhistorypanel.versionHistory")}
@@ -3697,7 +3716,7 @@ function DialogueTab({
   };
 
   const greetingActionButtonClassName =
-    "mari-editor-action mari-editor-action--compact inline-flex h-8 w-8 rounded-lg p-0 disabled:cursor-not-allowed disabled:opacity-40";
+    "mari-editor-action inline-flex h-10 w-10 items-center justify-center rounded-lg disabled:cursor-not-allowed disabled:opacity-40";
 
   // Same read as the Card tab: `safeParse` keeps a malformed block from throwing in render.
   const greetingChipNames = useMemo(() => {
@@ -3782,13 +3801,25 @@ function DialogueTab({
         </div>
       )}
 
-      {/* First Message */}
-      <div className="block space-y-1.5" data-mari-field="first_mes">
-        <div className="flex items-center justify-between gap-3">
-          <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
-            {localizeUi("ui.characters.dialoguetab.firstMessage")}{" "}
-            <HelpTooltip text={localizeUi("ui.characters.dialoguetab.theCharacterSOpeningMessageWhenANewChat")} />
-          </span>
+      {/* First Message, with its Alternate Greetings: every new chat offers them as swipes. */}
+      <TextareaTab
+        title={localizeUi("ui.characters.dialoguetab.firstMessage")}
+        subtitle={localizeUi("ui.characters.dialoguetab.greetingsRoleplayOnly")}
+        helpText={localizeUi("ui.characters.dialoguetab.theCharacterSOpeningMessageWhenANewChat")}
+        mariField="first_mes"
+        value={formData.first_mes}
+        onChange={(value) => updateField("first_mes", value)}
+        textareaRef={(element) => {
+          greetingFieldRefs.current.first = element;
+        }}
+        onFocus={() => setActiveGreeting("first")}
+        rows={6}
+        placeholder={
+          localizeUi("ui.characters.dialoguetab.whatIsTheCharacterSFirstMessageWhenA") +
+          " " +
+          localizeUi("ui.cardFields.seedPlaceholder")
+        }
+        actions={
           <CharacterGreetingWand
             entityId={selfCharacterId}
             card={card}
@@ -3796,173 +3827,140 @@ function DialogueTab({
             onApply={(text) => updateField("first_mes", text)}
             label={localizeUi("ui.characters.dialoguetab.firstMessage")}
           />
-        </div>
-        <p className="text-[0.625rem] text-[var(--muted-foreground)]/70">
-          {localizeUi("ui.characters.dialoguetab.greetingsRoleplayOnly")}
-        </p>
-        <MariFieldReview field="first_mes">
-          <MacroTextarea
-            ariaLabel={localizeUi("ui.characters.dialoguetab.firstMessage")}
-            showTokenCount
-            value={formData.first_mes}
-            onChange={(value) => updateField("first_mes", value)}
-            textareaRef={(element) => {
-              greetingFieldRefs.current.first = element;
-            }}
-            onFocus={() => setActiveGreeting("first")}
-            rows={6}
-            title={localizeUi("ui.characters.dialoguetab.firstMessage")}
-            showMarkdownPreview
-            selfCharacterId={selfCharacterId}
-            className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-4 text-sm leading-relaxed outline-none placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
-            placeholder={
-              localizeUi("ui.characters.dialoguetab.whatIsTheCharacterSFirstMessageWhenA") +
-              " " +
-              localizeUi("ui.cardFields.seedPlaceholder")
-            }
-          />
-        </MariFieldReview>
-        {activeGreeting === "first" && (
-          <GreetingVariableChips names={greetingChipNames} onInsert={(name) => insertGreetingVariable("first", name)} />
-        )}
-      </div>
-
-      {/* Alternate Greetings */}
-      <div className="space-y-3" data-mari-field="alternate_greetings">
-        <div className="flex items-center justify-between">
-          <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
-            {localizeUi("ui.characters.dialoguetab.alternateGreetings")}
-            {formData.alternate_greetings.length})
-            <HelpTooltip
-              text={localizeUi("ui.characters.dialoguetab.alternativeFirstMessagesForVarietyWhenStartingANew")}
-            />
-          </span>
-          <button
-            type="button"
-            onClick={addGreeting}
-            className="mari-editor-action mari-editor-action--compact inline-flex rounded-lg px-3 py-1 text-xs"
-          >
-            {localizeUi("ui.characters.dialoguetab.add")}
-          </button>
-        </div>
-        <p className="text-[0.625rem] text-[var(--muted-foreground)]/70">
-          {localizeUi("ui.characters.dialoguetab.greetingsRoleplayOnly")}
-        </p>
-        {formData.alternate_greetings.map((g, i) => (
-          <div
-            key={greetingKeysRef.current[i] ?? i}
-            className="space-y-2 rounded-xl border border-[var(--border)]/70 bg-[var(--background)]/35 p-2.5"
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-[var(--muted-foreground)]">
-                {localizeUi("ui.characters.dialoguetab.greeting")}
-                {i + 1}
-              </span>
-              <div className="flex shrink-0 items-center gap-1">
-                <CharacterGreetingWand
-                  entityId={selfCharacterId}
-                  card={card}
-                  value={g}
-                  onApply={(text) => updateGreeting(i, text)}
-                  label={localizeUi("ui.characters.dialoguetab.alternateGreetingValue1", { value1: i + 1 })}
-                />
-                <button
-                  type="button"
-                  onClick={() => moveGreeting(i, -1)}
-                  disabled={i === 0}
-                  className={greetingActionButtonClassName}
-                  aria-label={localizeUi("ui.characters.dialoguetab.moveAlternateGreetingValue1Up", { value1: i + 1 })}
-                  title={localizeUi("ui.characters.dialoguetab.moveUp")}
-                >
-                  <ArrowUp size="0.75rem" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => moveGreeting(i, 1)}
-                  disabled={i === formData.alternate_greetings.length - 1}
-                  className={greetingActionButtonClassName}
-                  aria-label={localizeUi("ui.characters.dialoguetab.moveAlternateGreetingValue1Down", {
-                    value1: i + 1,
-                  })}
-                  title={localizeUi("ui.characters.dialoguetab.moveDown")}
-                >
-                  <ArrowDown size="0.75rem" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => removeGreeting(i)}
-                  className={cn(greetingActionButtonClassName, "mari-editor-action--accent")}
-                  aria-label={localizeUi("ui.characters.dialoguetab.removeAlternateGreetingValue1", { value1: i + 1 })}
-                  title={localizeUi("ui.characters.dialoguetab.removeGreeting")}
-                >
-                  <Trash2 size="0.75rem" />
-                </button>
-              </div>
-            </div>
-            <MacroTextarea
-              ariaLabel={localizeUi("ui.characters.dialoguetab.alternateGreetingValue1", { value1: i + 1 })}
-              value={g}
-              onChange={(value) => updateGreeting(i, value)}
-              textareaRef={(element) => {
-                const key = greetingKeysRef.current[i];
-                if (key) greetingFieldRefs.current[key] = element;
-              }}
-              onFocus={() => setActiveGreeting(greetingKeysRef.current[i] ?? null)}
-              rows={3}
-              title={localizeUi("ui.characters.dialoguetab.alternateGreetingValue1", { value1: i + 1 })}
-              showMarkdownPreview
-              selfCharacterId={selfCharacterId}
-              className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-3 text-sm outline-none placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40"
-              placeholder={
-                localizeUi("ui.characters.dialoguetab.greetingValue1", { value1: i + 1 }) +
-                " " +
-                localizeUi("ui.cardFields.seedPlaceholder")
-              }
-            />
-            {activeGreeting === greetingKeysRef.current[i] && (
+        }
+        footer={
+          <>
+            {activeGreeting === "first" && (
               <GreetingVariableChips
                 names={greetingChipNames}
-                onInsert={(name) => insertGreetingVariable(greetingKeysRef.current[i] ?? "", name)}
+                onInsert={(name) => insertGreetingVariable("first", name)}
               />
             )}
-          </div>
-        ))}
-      </div>
+            <div className="space-y-3" data-mari-field="alternate_greetings">
+              <div className="flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
+                {localizeUi("ui.characters.dialoguetab.alternateGreetings")}
+                {formData.alternate_greetings.length})
+                <HelpTooltip
+                  text={localizeUi("ui.characters.dialoguetab.alternativeFirstMessagesForVarietyWhenStartingANew")}
+                />
+              </div>
+              {formData.alternate_greetings.map((g, i) => (
+                <section
+                  key={greetingKeysRef.current[i] ?? i}
+                  aria-label={localizeUi("ui.characters.dialoguetab.alternateGreetingValue1", { value1: i + 1 })}
+                  className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--secondary)]/40 p-3"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-xs font-semibold">
+                      {localizeUi("ui.characters.dialoguetab.greeting")}
+                      {/* First Message is greeting #1. */}
+                      {i + 2}
+                    </h4>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <CharacterGreetingWand
+                        entityId={selfCharacterId}
+                        card={card}
+                        value={g}
+                        onApply={(text) => updateGreeting(i, text)}
+                        label={localizeUi("ui.characters.dialoguetab.alternateGreetingValue1", { value1: i + 1 })}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => moveGreeting(i, -1)}
+                        disabled={i === 0}
+                        className={greetingActionButtonClassName}
+                        aria-label={localizeUi("ui.characters.dialoguetab.moveAlternateGreetingValue1Up", {
+                          value1: i + 1,
+                        })}
+                        title={localizeUi("ui.characters.dialoguetab.moveUp")}
+                      >
+                        <ArrowUp size="0.875rem" aria-hidden />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveGreeting(i, 1)}
+                        disabled={i === formData.alternate_greetings.length - 1}
+                        className={greetingActionButtonClassName}
+                        aria-label={localizeUi("ui.characters.dialoguetab.moveAlternateGreetingValue1Down", {
+                          value1: i + 1,
+                        })}
+                        title={localizeUi("ui.characters.dialoguetab.moveDown")}
+                      >
+                        <ArrowDown size="0.875rem" aria-hidden />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeGreeting(i)}
+                        className={greetingActionButtonClassName}
+                        aria-label={localizeUi("ui.characters.dialoguetab.removeAlternateGreetingValue1", {
+                          value1: i + 1,
+                        })}
+                        title={localizeUi("ui.characters.dialoguetab.removeGreeting")}
+                      >
+                        <Trash2 size="0.875rem" aria-hidden />
+                      </button>
+                    </div>
+                  </div>
+                  <MacroTextarea
+                    ariaLabel={localizeUi("ui.characters.dialoguetab.alternateGreetingValue1", { value1: i + 1 })}
+                    showTokenCount
+                    value={g}
+                    onChange={(value) => updateGreeting(i, value)}
+                    textareaRef={(element) => {
+                      const key = greetingKeysRef.current[i];
+                      if (key) greetingFieldRefs.current[key] = element;
+                    }}
+                    onFocus={() => setActiveGreeting(greetingKeysRef.current[i] ?? null)}
+                    rows={5}
+                    title={localizeUi("ui.characters.dialoguetab.alternateGreetingValue1", { value1: i + 1 })}
+                    showMarkdownPreview
+                    selfCharacterId={selfCharacterId}
+                    className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-3 text-sm leading-relaxed outline-none placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
+                    placeholder={
+                      localizeUi("ui.characters.dialoguetab.greetingValue1", { value1: i + 2 }) +
+                      " " +
+                      localizeUi("ui.cardFields.seedPlaceholder")
+                    }
+                  />
+                  {activeGreeting === greetingKeysRef.current[i] && (
+                    <GreetingVariableChips
+                      names={greetingChipNames}
+                      onInsert={(name) => insertGreetingVariable(greetingKeysRef.current[i] ?? "", name)}
+                    />
+                  )}
+                </section>
+              ))}
+              <button
+                type="button"
+                onClick={addGreeting}
+                className="mari-editor-action inline-flex min-h-10 items-center gap-1.5 rounded-lg px-3 py-2 text-xs"
+              >
+                <Plus size="0.875rem" aria-hidden />
+                {localizeUi("ui.characters.dialoguetab.addAlternateGreeting")}
+              </button>
+            </div>
+          </>
+        }
+      />
 
       {/* Example Messages */}
-      <div className="block space-y-1.5" data-mari-field="mes_example">
-        <div className="flex items-start justify-between gap-3">
-          <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
-            {localizeUi("chat.settings.inlineEditor.fields.exampleDialogue")}{" "}
-            <HelpTooltip
-              text={localizeUi("ui.characters.dialoguetab.sampleConversationsShowingHowTheCharacterTalksHelpsThe")}
-            />
-          </span>
-          {exampleActions}
-        </div>
-        <p className="text-[0.625rem] text-[var(--muted-foreground)]/70">
-          {localizeUi("ui.characters.dialoguetab.useStartToSeparateExchangesUseUserAndChar")}
-        </p>
-        <MariFieldReview field="mes_example">
-          <MacroTextarea
-            ariaLabel={localizeUi("chat.settings.inlineEditor.fields.exampleDialogue")}
-            showTokenCount
-            value={formData.mes_example}
-            onChange={(value) => updateField("mes_example", value)}
-            rows={10}
-            title={localizeUi("chat.settings.inlineEditor.fields.exampleDialogue")}
-            showMarkdownPreview
-            selfCharacterId={selfCharacterId}
-            className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-4 mari-prompt-font text-xs leading-relaxed outline-none placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
-            placeholder={
-              localizeUi("ui.characters.dialoguetab.startUserHelloCharWavesExcitedlyHeyThere") +
-              " " +
-              localizeUi("ui.cardFields.seedPlaceholder")
-            }
-          />
-        </MariFieldReview>
-        {exampleFooter}
-      </div>
+      <TextareaTab
+        title={localizeUi("chat.settings.inlineEditor.fields.exampleDialogue")}
+        subtitle={localizeUi("ui.characters.dialoguetab.useStartToSeparateExchangesUseUserAndChar")}
+        helpText={localizeUi("ui.characters.dialoguetab.sampleConversationsShowingHowTheCharacterTalksHelpsThe")}
+        mariField="mes_example"
+        value={formData.mes_example}
+        onChange={(value) => updateField("mes_example", value)}
+        rows={10}
+        textareaClassName="mari-prompt-font text-xs"
+        placeholder={
+          localizeUi("ui.characters.dialoguetab.startUserHelloCharWavesExcitedlyHeyThere") +
+          " " +
+          localizeUi("ui.cardFields.seedPlaceholder")
+        }
+        actions={exampleActions}
+        footer={exampleFooter}
+      />
     </div>
   );
 }

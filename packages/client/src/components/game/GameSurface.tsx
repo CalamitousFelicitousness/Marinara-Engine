@@ -6917,8 +6917,10 @@ function GameSurfaceComponent({
   useEffect(() => {
     if (introPlayedRef.current || !blueprint?.introSequence?.length) return;
     if (!latestAssistantMsg?.content) return;
-    // Skip intro if this is a restored session (user returning to an existing game)
-    if (isRestoredRef.current) {
+    // Skip intro if this is a restored session (user returning to an existing game), or one the player
+    // has already spoken in: the intro belongs to the opening alone (laptop room playtest 2026-10-30:
+    // the host's Game screen, mounted later, played it after a Continue story and stayed black).
+    if (isRestoredRef.current || messages.some((message) => message.role === "user")) {
       introPlayedRef.current = true;
       return;
     }
@@ -6926,7 +6928,7 @@ function GameSurfaceComponent({
     setIntroCinematicActive(true);
     setDirectionsPlaying(true);
     setActiveDirections(blueprint.introSequence);
-  }, [blueprint, latestAssistantMsg?.content]);
+  }, [blueprint, latestAssistantMsg?.content, messages]);
 
   const applyGameAudioSettings = useCallback(
     (overrides: Partial<GameAudioSettings> = {}, options: { unlock?: boolean } = {}) => {
@@ -13128,6 +13130,8 @@ function GameSurfaceComponent({
               setDirectionsPlaying(playing);
               // When intro cinematic finishes, clear the flag
               if (!playing && introCinematicActive) setIntroCinematicActive(false);
+              // Played out: a remounted engine must never play them again.
+              if (!playing) setActiveDirections((current) => (current.length ? [] : current));
             }}
           >
             {!replayActive && renderStoryboardBackgroundVisual()}

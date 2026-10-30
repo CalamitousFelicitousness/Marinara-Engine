@@ -8,6 +8,7 @@
 //  - keyword sorting is flagged and ignores the character's own name words
 //  - narrator / multi-character cards are skipped unless forced, empty descriptions are skipped
 //  - existing field text is appended to, not duplicated, and applyDescriptionSplit writes the extension fields
+//  - crafted long lines (heading markers, tabs, blank lines, a tab-filled name) finish quickly
 import assert from "node:assert/strict";
 import {
   applyDescriptionSplit,
@@ -302,5 +303,13 @@ assert.equal(applied.description, "Nora is a pilot.");
 assert.equal(applied.personality, existing.after.personality);
 assert.equal(applied.extensions?.appearance, existing.after.appearance);
 assert.equal(applied.extensions?.talkativeness, 0.5, "other extensions are kept");
+
+// 8. Crafted card text stays linear: each of these lines used to backtrack for seconds to minutes.
+const crafted = ["=", "#", "\t", "!", "** ", "\n"].map((c) => c.repeat(20000) + "x");
+const started = performance.now();
+for (const description of crafted) splitCharacterDescription({ name: "Mia", description });
+splitCharacterDescription({ name: "\t".repeat(20000) + "x", description: "Personality: kind." });
+const elapsed = Math.round(performance.now() - started);
+assert.ok(elapsed < 2000, `crafted lines took ${elapsed} ms`);
 
 process.stdout.write("Character description split regression passed.\n");

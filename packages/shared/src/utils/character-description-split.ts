@@ -479,10 +479,11 @@ function collectNames(cardName: string, text: string): Set<string> {
       .replace(/[^\p{L}]/gu, "");
     if (w.length >= 3 && !VOCAB.has(w) && !NAME_STOP.has(w) && !SENTENCE_WORDS.has(w)) names.add(w);
   };
-  const lead = cardName.split(/\s*[|\-–—:(\[,!?♡]\s*|\s+-\s+/)[0] ?? "";
+  const lead = (cardName.split(/[|\-–—:(\[,!?♡]/)[0] ?? "").trim();
   for (const word of lead.split(/\s+/).slice(0, 3)) if (/^\p{Lu}/u.test(word)) add(word);
+  // The line prefix skips no newlines: a blank-line run would be rescanned from each of its lines.
   const nameRe =
-    /^[\s>*•+\-[{]*(?:\*\*)?(?:full\s+)?name(?:\s+and\s+age)?\**\s*[:=(]\s*\**\s*["“]?([^\n"“”(),;\]]{1,60})/gim;
+    /^(?:[^\S\n]|[>*•+\-[{])*(?:\*\*)?(?:full\s+)?name(?:\s+and\s+age)?\**\s*[:=(]\s*\**\s*["“]?([^\n"“”(),;\]]{1,60})/gim;
   for (const m of text.matchAll(nameRe)) for (const word of m[1]!.split(/\s+/).slice(0, 4)) add(word);
   const wppRe = /\b[Cc]haracter\(\s*"?([^"),]{1,40})/g;
   for (const m of text.matchAll(wppRe)) for (const word of m[1]!.split(/\s+/)) add(word);
@@ -495,12 +496,19 @@ function collectNames(cardName: string, text: string): Set<string> {
 //   "[Arya : {{char}}] [Arya's Likes: ...]" -> one piece per bracket group
 //   "{{char}}=[Name(Aspen) Species(Human) Age(20)" -> one piece per W++ entry
 function expandLine(line: string, ctx: Ctx): string[] {
+  // Both tag checks avoid nested or adjacent open-ended repeats, so a long line cannot make them backtrack
+  // quadratically (card text is untrusted).
   let pieces = [line];
-  const openTag = line.match(/^(\s*>*\s*<\s*[A-Za-z{][^<>]{0,60}?>)(.*\S.*)$/);
-  if (openTag && !/^\s*<\//.test(line) && !openTag[2]!.trim().startsWith("<")) pieces = [openTag[1]!, openTag[2]!];
+  const openTag = line.match(/^(\s*(?:>+\s*)?<\s*[A-Za-z{][^<>]{0,60}?>)(.*)$/);
+  const afterOpen = openTag?.[2]!.trim() ?? "";
+  if (afterOpen && !/^\s*<\//.test(line) && !afterOpen.startsWith("<")) pieces = [openTag![1]!, openTag![2]!];
   const last = pieces.length - 1;
-  const closeTag = pieces[last]!.match(/^(.*\S.*?)(<\/[^<>]{1,60}>)\s*$/);
-  if (closeTag && !closeTag[1]!.includes("<")) pieces.splice(last, 1, closeTag[1]!, closeTag[2]!);
+  const tail = pieces[last]!;
+  const at = tail.lastIndexOf("</");
+  const beforeClose = at > 0 ? tail.slice(0, at) : "";
+  if (beforeClose.trim() && !beforeClose.includes("<") && /^<\/[^<>]{1,60}>\s*$/.test(tail.slice(at))) {
+    pieces.splice(last, 1, beforeClose, tail.slice(at).trimEnd());
+  }
   return pieces
     .flatMap(splitBracketGroups)
     .flatMap(splitPlist)
@@ -690,6 +698,58 @@ function parseInline(core: string): Inline | null {
   return null;
 }
 
+/** A heading label between a leading and a trailing whitespace / `lead` or `trail` run / whitespace, read the way a
+ *  lazy `\s*X*\s*(.+?)\s*X*\s*` does: "" when the leading run takes everything, the first character when the
+ *  trailing run would. */
+function stripEnds(text: string, lead: string, trail: string): string {
+  const space = (c: string | undefined) => c !== undefined && /\s/.test(c);
+  let i = 0;
+  while (space(text[i])) i++;
+  while (lead && text[i] === lead) i++;
+  while (space(text[i])) i++;
+  if (i === text.length) return "";
+  let j = text.length;
+  while (j > i && space(text[j - 1])) j--;
+  while (trail && j > i && text[j - 1] === trail) j--;
+  while (j > i && space(text[j - 1])) j--;
+  return j > i ? text.slice(i, j) : text[i]!;
+}
+
+/** The label of an "== Title ==" line, read like `/^={2,}\s*(.+?)\s*={2,}$/`; null when it is not one. */
+function equalsHeading(s: string): string | null {
+  let a = 0;
+  while (s[a] === "=") a++;
+  if (a === s.length) return a >= 5 ? "=" : null;
+  let b = s.length;
+  while (s[b - 1] === "=") b--;
+  if (a < 2 || s.length - b < 2) return null;
+  return s.slice(a, b).trim() || s[b - 1]!;
+}
+
+/** The label of a "**Title:**" line, read like `/^\*\*\s*\[?([^*\]]{1,60}?)\]?\s*:?\s*\*\*\s*:?$/`, whose
+ *  three whitespace runs around the label backtrack cubically; null when it is not one. */
+function boldHeading(s: string): string | null {
+  const close = s.indexOf("*", 2);
+  if (!s.startsWith("**") || close === -1 || !/^\*\*\s*:?$/.test(s.slice(close))) return null;
+  const mid = s.slice(2, close);
+  const space = (i: number) => /\s/.test(mid[i] ?? "x");
+  // The lazy label leaves out the longest "]? \s* :? \s*" tail ...
+  let end = mid.length;
+  while (space(end - 1)) end--;
+  if (mid[end - 1] === ":") end--;
+  while (space(end - 1)) end--;
+  if (mid[end - 1] === "]") end--;
+  // ... and starts after "\s* [?", backing off one character at a time only while it has nothing to hold.
+  let lead = 0;
+  while (space(lead)) lead++;
+  for (const start of mid[lead] === "[" ? [lead + 1, lead, lead - 1] : [lead, lead - 1]) {
+    if (start < 0 || start >= mid.length) continue;
+    const label = mid.slice(start, Math.max(start + 1, end));
+    if (label.length <= 60 && !label.includes("]")) return label;
+  }
+  return null;
+}
+
 function tokenize(text: string, ctx: Ctx): Tok {
   const trimmed = text.trim();
   const indent = text.length - text.trimStart().length;
@@ -710,14 +770,21 @@ function tokenize(text: string, ctx: Ctx): Tok {
   if ((m = s.match(/^<\/\s*([^<>]{1,60}?)\s*>$/))) return { type: "xml-close", tag: m[1]! };
   if ((m = s.match(/^<\s*([A-Za-z{][^<>]{0,60}?)\s*>$/)) && !/^start$/i.test(m[1]!))
     return { type: "xml-open", tag: m[1]! };
-  if ((m = s.match(/^(#{1,6})\s*(.+?)\s*#*$/))) {
-    const colon = m[2]!.match(/^([^:]{1,60}?)\s*:\s*(.*)$/);
-    return { type: "heading", level: m[1]!.length, label: colon ? colon[1]! : m[2]!, value: colon ? colon[2]! : "" };
+  // Heading closers ("## Title ##", "== Title ==", "[[ = Title = ]]") are trimmed in code: a lazy label before
+  // an optional closer backtracks quadratically or worse on a long line, and card text is untrusted.
+  if ((m = s.match(/^(#{1,6})\s*(.+)$/))) {
+    const label = stripEnds(m[2]!, "", "#");
+    const colon = label.match(/^([^:]{1,60}?)\s*:\s*(.*)$/);
+    return { type: "heading", level: m[1]!.length, label: colon ? colon[1]! : label, value: colon ? colon[2]! : "" };
   }
-  if ((m = s.match(/^={2,}\s*(.+?)\s*={2,}$/))) return { type: "heading", level: 2, label: m[1]! };
-  if ((m = s.match(/^\[\[\s*=*\s*(.+?)\s*=*\s*\]\]$/))) return { type: "heading", level: 5, label: m[1]! };
-  if ((m = s.match(/^\*\*\s*\[?([^*\]]{1,60}?)\]?\s*:?\s*\*\*\s*:?$/)))
-    return { type: "heading", level: 5, label: m[1]! };
+  const equals = equalsHeading(s);
+  if (equals !== null) return { type: "heading", level: 2, label: equals };
+  if (s.length > 4 && s.startsWith("[[") && s.endsWith("]]")) {
+    const inner = s.slice(2, -2);
+    return { type: "heading", level: 5, label: stripEnds(inner, "=", "=") || inner.at(-1)! };
+  }
+  const bold = boldHeading(s);
+  if (bold !== null) return { type: "heading", level: 5, label: bold };
   if ((m = s.match(/^`([^`]{1,40})`$/))) return { type: "heading", level: 5, label: m[1]! };
   if ((m = s.match(/^\[\s*([^[\]:]{1,60}?)\s*\]$/)) && isShortTitle(m[1]!))
     return { type: "heading", level: 5, label: m[1]! };
@@ -1263,7 +1330,7 @@ function skipReason(name: string, before: DescriptionSplitFields, force: boolean
     return "the card looks like a narrator, game, world or multi-character card";
   const nameValues = new Set<string>();
   for (const m of before.description.matchAll(
-    /^[\s>*•+\-[{]*(?:\*\*)?(?:full\s+)?name(?:\s+and\s+age)?\**\s*[:=(]\s*\**\s*["“]?([^\n"“”(),;\]]{1,40})/gim,
+    /^(?:[^\S\n]|[>*•+\-[{])*(?:\*\*)?(?:full\s+)?name(?:\s+and\s+age)?\**\s*[:=(]\s*\**\s*["“]?([^\n"“”(),;\]]{1,40})/gim,
   )) {
     nameValues.add(m[1]!.trim().toLowerCase().split(/\s+/)[0]!);
   }
@@ -1318,7 +1385,7 @@ function tidy(lines: string[]): string {
   for (const line of lines) {
     const blank = !line.trim();
     if (blank && (!out.length || !out[out.length - 1]!.trim())) continue;
-    out.push(line.replace(/\s+$/, ""));
+    out.push(line.trimEnd());
   }
   while (out.length && !out[out.length - 1]!.trim()) out.pop();
   // Drop the indentation shared by every line (left behind when a parent header moved or was removed).

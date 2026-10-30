@@ -9,6 +9,7 @@ import { browserWorkerSource } from "../../packages/server/src/routes/personal-e
 import {
   listPersonalExtensionDiceFormats,
   registerPersonalExtensionDiceFormat,
+  removePersonalExtensionDiceFormat,
   removePersonalExtensionDiceFormats,
   resolvePersonalExtensionDiceResponse,
   rollWithPersonalExtensionDiceFormats,
@@ -162,6 +163,16 @@ assert.equal(registerPersonalExtensionDiceFormat(extension, { id: "narrative", l
 assert.equal(registerPersonalExtensionDiceFormat(extension, { id: "narrative", label: "Again" }), false);
 assert.equal(registerPersonalExtensionDiceFormat(extension, { id: "bad id!", label: "Bad" }), false);
 assert.equal(registerPersonalExtensionDiceFormat(extension, { id: "no-label" }), false);
+assert.equal(
+  registerPersonalExtensionDiceFormat(extension, { id: "blank-description", label: "Blank", description: " " }),
+  true,
+  "a blank description is no description, as the sandbox lets it through",
+);
+assert.equal(
+  listPersonalExtensionDiceFormats().find((format) => format.id === "blank-description")?.description,
+  undefined,
+);
+removePersonalExtensionDiceFormat("dice", "hash", "blank-description");
 assert.equal(listPersonalExtensionDiceFormats().length, 1);
 
 answer = (message) =>
@@ -191,6 +202,21 @@ assert.deepEqual(rolled, {
   text: "2 success",
   kept: [1],
 });
+for (const blank of ["", "   "]) {
+  answer = (message) =>
+    message.type === "dice-parse"
+      ? { type: "dice-parse-result", ok: true, dice: [6] }
+      : { type: "dice-read-result", ok: true, total: 3, text: blank };
+  const plain = await rollWithPersonalExtensionDiceFormats("1 boost", () => 3);
+  assert.equal(plain?.total, 3, "blank text still posts the roll");
+  assert.equal(plain && "text" in plain, false);
+}
+answer = (message) =>
+  message.type === "dice-parse"
+    ? message.notation === "2 boost"
+      ? { type: "dice-parse-result", ok: true, dice: [6, 6] }
+      : { type: "dice-parse-result", ok: true, dice: null }
+    : { type: "dice-read-result", ok: true, total: 2, text: "2 success", kept: [1] };
 assert.equal(await rollWithPersonalExtensionDiceFormats("2d6"), null, "no format reads it");
 assert.equal(
   await rollWithPersonalExtensionDiceFormats("x".repeat(PERSONAL_EXTENSION_DICE_LIMITS.notationLength + 1)),

@@ -63,15 +63,21 @@ function boundedText(value: unknown, maxLength: number) {
   return text && text.length <= maxLength ? text : null;
 }
 
+/** An optional text field: absent when missing or blank, null only when it is not text or too long. */
+function optionalText(value: unknown, maxLength: number) {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  if (text.length > maxLength) return null;
+  return text || undefined;
+}
+
 function normalizeFormat(value: unknown): PersonalExtensionDiceFormatDescriptor | null {
   if (!isRecord(value)) return null;
   const id = boundedText(value.id, PERSONAL_EXTENSION_UI_LIMITS.idLength);
   const label = boundedText(value.label, PERSONAL_EXTENSION_UI_LIMITS.labelLength);
   if (!id || !FORMAT_ID_PATTERN.test(id) || !label) return null;
-  const description =
-    value.description === undefined
-      ? undefined
-      : boundedText(value.description, PERSONAL_EXTENSION_UI_LIMITS.descriptionLength);
+  const description = optionalText(value.description, PERSONAL_EXTENSION_UI_LIMITS.descriptionLength);
   if (description === null) return null;
   return { id, label, ...(description ? { description } : {}) };
 }
@@ -195,8 +201,7 @@ export async function rollWithPersonalExtensionDiceFormats(
     const rolls = dice.map((sides) => roll(sides));
     const read = await requestFromFormat(format, { type: "dice-read", rolls }, requestId);
     if (!read || read.ok !== true || typeof read.total !== "number" || !Number.isFinite(read.total)) return null;
-    const text =
-      read.text === undefined ? undefined : boundedText(read.text, PERSONAL_EXTENSION_DICE_LIMITS.textLength);
+    const text = optionalText(read.text, PERSONAL_EXTENSION_DICE_LIMITS.textLength);
     if (text === null) return null;
     if (read.kept !== undefined && !isKeptDice(read.kept, rolls.length)) return null;
     return {

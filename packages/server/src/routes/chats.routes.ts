@@ -1023,7 +1023,7 @@ export async function chatsRoutes(app: FastifyInstance) {
           createdAt: normalized.createdAt,
           updatedAt: normalized.updatedAt,
           metadata: normalized.metadata,
-      } satisfies Omit<Chat, "metadata"> & { metadata: Record<string, unknown> };
+        } satisfies Omit<Chat, "metadata"> & { metadata: Record<string, unknown> };
       });
     return prepareJsonResponse(req, reply, response);
   });

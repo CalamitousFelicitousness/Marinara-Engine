@@ -3765,7 +3765,8 @@ function DialogueTab({
                   <div className="flex items-center justify-between gap-2">
                     <h4 className="text-xs font-semibold">
                       {localizeUi("ui.characters.dialoguetab.greeting")}
-                      {i + 1}
+                      {/* First Message is greeting #1. */}
+                      {i + 2}
                     </h4>
                     <div className="flex shrink-0 items-center gap-1">
                       <CharacterGreetingWand
@@ -3802,7 +3803,7 @@ function DialogueTab({
                       <button
                         type="button"
                         onClick={() => removeGreeting(i)}
-                        className={cn(greetingActionButtonClassName, "mari-editor-action--accent")}
+                        className={greetingActionButtonClassName}
                         aria-label={localizeUi("ui.characters.dialoguetab.removeAlternateGreetingValue1", {
                           value1: i + 1,
                         })}
@@ -3828,7 +3829,7 @@ function DialogueTab({
                     selfCharacterId={selfCharacterId}
                     className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-3 text-sm leading-relaxed outline-none placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
                     placeholder={
-                      localizeUi("ui.characters.dialoguetab.greetingValue1", { value1: i + 1 }) +
+                      localizeUi("ui.characters.dialoguetab.greetingValue1", { value1: i + 2 }) +
                       " " +
                       localizeUi("ui.cardFields.seedPlaceholder")
                     }

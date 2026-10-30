@@ -3399,6 +3399,15 @@ const cases: RegressionCase[] = [
         const minus = Number(resolveMacros("{{roll:2d4-1}}", context));
         assert.equal(Number.isInteger(minus) && minus >= 1 && minus <= 7, true);
       }
+      // A total the dice could push past the exact integers stays literal; a low end never can.
+      assert.equal(resolveMacros("{{roll:1d6+9007199254740991}}", context), "{{roll:1d6+9007199254740991}}");
+      assert.equal(resolveMacros("{{roll:1000d1000000+9007198254740991}}", context).startsWith("{{roll:"), false);
+      assert.equal(
+        resolveMacros("{{roll:1000d1000000+9007198254740992}}", context),
+        "{{roll:1000d1000000+9007198254740992}}",
+      );
+      const low = Number(resolveMacros("{{roll:1d6-9007199254740991}}", context));
+      assert.equal(Number.isSafeInteger(low) && low >= -9007199254740990 && low <= -9007199254740985, true);
     },
   },
   {

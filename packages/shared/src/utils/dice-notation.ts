@@ -3,9 +3,10 @@
 //
 // The tool executor, the /roll service, the GM
 // skill-check tag and the client slash roller all
-// parse through this module. Display-only parsers
-// keep their own: the {{roll}} macro, the dice
-// card's, and the narration badge formatter's.
+// parse through this module; the {{roll}} macro and
+// the narration badge read the same grammar (the
+// macro keeps its own looser count and face limits).
+// The dice card keeps its own display-only reader.
 // Before this module existed, those four command
 // readers each carried their own regex, and they
 // disagreed: bare "d20" was legal in three of them
@@ -200,6 +201,6 @@ export function rollParsedDice(parsed: ParsedDiceNotation, roll: DieRoller = rol
     notation: parsed.notation,
     rolls,
     modifier: parsed.modifier,
-    total: rolls.reduce((sum, roll) => sum + roll, 0) + parsed.modifier,
+    total: rolls.reduce((sum, face) => sum + face, 0) + parsed.modifier,
   };
 }

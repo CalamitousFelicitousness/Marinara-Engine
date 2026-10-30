@@ -3511,7 +3511,9 @@ export function resolveMacros(template: string, ctx: MacroContext, options: Reso
     const s = Math.min(parseInt(sides, 10), MAX_DICE_SIDES);
     if (n < 1 || s < 1) return "0";
     const modifier = modifierText ? parseInt(modifierText, 10) : 0;
-    if (!Number.isSafeInteger(modifier)) return original;
+    // Printed only when every total the dice can make is exact, as parseDiceNotation holds them;
+    // dice only add, so the high end is the one that can leave the safe integers.
+    if (!Number.isSafeInteger(modifier) || !Number.isSafeInteger(modifier + n * s)) return original;
     // Each die keeps its own seed key, so a seeded chat rolls the same faces it always did.
     let die = 0;
     const roll = (faces: number) => randomInteger(options, `${original}:${die++}`, 1, faces);

@@ -18,14 +18,7 @@ import {
   typeOf,
   type OrganizerEntry,
 } from "./organizer-model";
-import {
-  AgentAction,
-  AgentIcon,
-  AgentRow,
-  SECONDARY_ACTION,
-  StoreBanner,
-  useOrganizer,
-} from "./OrganizerParts";
+import { AgentAction, AgentIcon, AgentRow, SECONDARY_ACTION, StoreBanner, useOrganizer } from "./OrganizerParts";
 
 const HOW_TO_STEPS = [1, 2, 3] as const;
 

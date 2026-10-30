@@ -134,6 +134,7 @@ import { resolveProfessorMariContextBudget } from "../../lib/professor-mari-cont
 import {
   appliesWithoutReview,
   findMariField,
+  declinedForHeldChange,
   heldCallsAreEditorText,
   heldEditorFields,
   isMariEditorKind,
@@ -142,7 +143,6 @@ import {
   mariFieldDraft,
   mariFieldText,
 } from "../../lib/mari-editor-fields";
-import { mariFieldLabel } from "../../hooks/use-mari-editor-fields";
 import { rafThrottle } from "../../lib/raf-throttle";
 import {
   cachedMariThread,
@@ -2469,7 +2469,7 @@ export function HomeProfessorMariChat({
       : overrideText !== undefined
         ? []
         : composerReferences.references;
-    const submittedContext = overrideRecovery
+    const baseContext = overrideRecovery
       ? overrideRecovery.context
       : overrideContext !== undefined
         ? overrideContext
@@ -2484,6 +2484,15 @@ export function HomeProfessorMariChat({
               label: handoffContext.field ?? handoffContext.fieldId,
             })
           : handoffContext;
+    // Any Accept (field, card, chip) leaves out the fields declined with Not this one.
+    const declinedFields =
+      text === MARI_AUTHORIZATION_ACCEPT_CHIP.prompt
+        ? declinedForHeldChange(useUIStore.getState().mariFieldReview, useUIStore.getState().mariFieldDeclined)
+        : [];
+    const submittedContext =
+      declinedFields.length > 0
+        ? { source: "home" as const, capability: "edit" as const, ...baseContext, declinedFields }
+        : baseContext;
     const messageText = text || (submittedAttachments.length > 0 ? "Please inspect the attached file." : "");
     if (!messageText || regenerationInFlightRef.current || isReadingAttachments) return;
     // A send that never went out comes back ahead of anything typed since, instead of being lost.
@@ -3095,7 +3104,7 @@ export function HomeProfessorMariChat({
   // Not this one send the same replies as her card; Undo answers the same reviews as her receipt.
   const fieldReviewActions = useRef<{
     keep: () => boolean;
-    decline: (fieldId: string) => boolean;
+    reject: () => boolean;
     undo: (ids: readonly string[]) => void;
     settle: (key: string) => Promise<boolean>;
   } | null>(null);
@@ -3112,11 +3121,9 @@ export function HomeProfessorMariChat({
       handleSuggestionSelect(MARI_AUTHORIZATION_ACCEPT_CHIP);
       return sent;
     },
-    decline: (fieldId) => {
+    reject: () => {
       const sent = canSend();
-      void handleSubmit(
-        `${MARI_AUTHORIZATION_DECLINE_CHIP.prompt} Propose the change again without the ${mariFieldLabel(fieldId)} field.`,
-      );
+      handleSuggestionSelect(MARI_AUTHORIZATION_DECLINE_CHIP);
       return sent;
     },
     undo: (ids) =>
@@ -3158,7 +3165,7 @@ export function HomeProfessorMariChat({
             (change) => !fields.some((field) => field.entityId === change.id),
           ).length,
           keep: () => actions().keep(),
-          decline: (fieldId) => actions().decline(fieldId),
+          reject: () => actions().reject(),
           editorTextOnly: heldCallsAreEditorText(lastLoadedMessageExtra?.mariHeldCalls),
           settle: (key) => actions().settle(key),
         });

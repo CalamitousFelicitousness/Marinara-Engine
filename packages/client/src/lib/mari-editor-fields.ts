@@ -2,6 +2,35 @@
 // id is the key `fieldLabel` takes (`description`, `first_mes`, `extensions.backstory`) and the server's
 // quick edit reads as `fieldId`. A change-card path is the same id under the row's `data.` column.
 
+import {
+  MARI_EDITOR_KINDS,
+  appDataAction,
+  isMariEditorKind,
+  mariEditorKindForAction,
+  mariEditorKindForTable,
+  editorFieldId,
+  mariFieldPath,
+  mariPatchFieldId,
+  mariUpdateCall,
+  type MariDeclinedField,
+  type MariEditorKind,
+} from "@marinara-engine/shared";
+
+export {
+  appDataAction,
+  editorFieldId,
+  isMariEditorKind,
+  mariEditorKindForAction,
+  mariEditorKindForTable,
+  mariFieldPath,
+  mariPatchFieldId,
+};
+export type { MariEditorKind };
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
 /** The anchored fields under `root` in page order, once each, named by `label` (her change cards' `fieldLabel`;
  * passed in so this module stays free of the diff code). */
 export function listMariFields(root: ParentNode, label: (id: string) => string): Array<{ id: string; label: string }> {
@@ -21,11 +50,6 @@ export function mariFieldText(root: ParentNode, id: string): string | null {
   const field = findMariField(root, id);
   const input = field?.matches("textarea, input") ? field : field?.querySelector("textarea, input");
   return input instanceof HTMLTextAreaElement || input instanceof HTMLInputElement ? input.value : null;
-}
-
-/** `data.extensions.backstory` -> `extensions.backstory`. */
-export function editorFieldId(path: string): string {
-  return path.replace(/^data\./, "");
 }
 
 // List and block fields: the focused input is one tag, greeting or onboarding question, not the field's
@@ -59,213 +83,10 @@ export function findMariField(root: ParentNode, path: string): HTMLElement | nul
   return null;
 }
 
-// Prof. Mari's editors, one entry per record kind. A kind lists the app_data action that edits it,
-// the change-card table, the id argument, its editor's `data-mari-field` ids, the patch keys the
-// server accepts under another name (snake_case key -> field id), and the text fields in-field
-// review shows, in editor order. Lorebook and preset join with one entry each.
-const MARI_EDITOR_KINDS = {
-  character: {
-    action: "character.update",
-    table: "characters",
-    idArgs: ["id", "characterId"],
-    // The wrappers the server reads a patch from, besides the top level (normalizeCharacterActionData).
-    wrappers: ["character", "card", "data", "patch"],
-    fieldIds: new Set([
-      "name",
-      "summary",
-      "description",
-      "personality",
-      "scenario",
-      "first_mes",
-      "mes_example",
-      "creator_notes",
-      "system_prompt",
-      "post_history_instructions",
-      "character_version",
-      "alternate_greetings",
-      "tags",
-      "creator",
-      "extensions.backstory",
-      "extensions.appearance",
-      "extensions.depth_prompt",
-      "extensions.onboarding",
-    ]),
-    // `character.update` keys that are not plain card keys (normalizeCharacterActionData).
-    aliases: {
-      first_message: "first_mes",
-      greeting: "first_mes",
-      backstory: "extensions.backstory",
-      appearance: "extensions.appearance",
-    } as Record<string, string>,
-    reviewOrder: [
-      "name",
-      "creator",
-      "character_version",
-      "creator_notes",
-      "summary",
-      "description",
-      "personality",
-      "extensions.backstory",
-      "extensions.appearance",
-      "scenario",
-      "first_mes",
-      "mes_example",
-      "system_prompt",
-      "post_history_instructions",
-    ],
-  },
-  persona: {
-    action: "persona.update",
-    table: "personas",
-    idArgs: ["id", "personaId"],
-    wrappers: ["persona", "data", "patch"],
-    fieldIds: new Set([
-      "name",
-      "comment",
-      "phoneticName",
-      "creator",
-      "tags",
-      "creatorNotes",
-      "summary",
-      "description",
-      "personality",
-      "backstory",
-      "appearance",
-      "imageAppearance",
-      "scenario",
-      "mes_example",
-    ]),
-    // `persona.update` columns are camelCase; a snake_case key names the same column.
-    aliases: {
-      phonetic_name: "phoneticName",
-      creator_notes: "creatorNotes",
-      image_appearance: "imageAppearance",
-    } as Record<string, string>,
-    reviewOrder: [
-      "name",
-      "comment",
-      "phoneticName",
-      "creator",
-      "creatorNotes",
-      "summary",
-      "description",
-      "personality",
-      "backstory",
-      "appearance",
-      // ponytail: no in-field review for imageAppearance; its field is not rendered while its toggle
-      // is off, so a review there could never show. Her card still lists it; add it back with a
-      // toggle-aware review list if users ask.
-      "scenario",
-      "mes_example",
-    ],
-  },
-  lorebook: {
-    action: "lorebook.update",
-    table: "lorebooks",
-    idArgs: ["id", "lorebookId"],
-    wrappers: ["patch", "data", "lorebook"],
-    fieldIds: new Set(["name", "description", "tags"]),
-    aliases: {} as Record<string, string>,
-    reviewOrder: ["name", "description"],
-  },
-  // Entry fields anchor as `entries.<entryId>.<key>` in the lorebook editor (`mariFieldPath`).
-  lorebookEntry: {
-    action: "lorebook.updateentry",
-    table: "lorebook_entries",
-    // The server reads `entryId` first here.
-    idArgs: ["entryId", "id"],
-    wrappers: ["patch", "data", "entry"],
-    fieldIds: new Set(["name", "description", "keys", "secondaryKeys", "content"]),
-    aliases: {} as Record<string, string>,
-    reviewOrder: ["name", "description", "content"],
-  },
-  // Prompt sections are their own records (`preset.updateSection`) and are not covered here.
-  preset: {
-    action: "preset.update",
-    table: "prompt_presets",
-    idArgs: ["id", "presetId", "promptPresetId"],
-    wrappers: ["patch", "data", "preset", "promptPreset"],
-    fieldIds: new Set(["name", "description", "author", "conversationPrompt", "gamePrompt"]),
-    aliases: { conversation_prompt: "conversationPrompt", game_prompt: "gamePrompt" } as Record<string, string>,
-    reviewOrder: ["description", "conversationPrompt", "gamePrompt"],
-  },
-  agent: {
-    action: "agent.update",
-    table: "agent_configs",
-    idArgs: ["id", "agentId", "agentConfigId"],
-    wrappers: ["patch", "data", "agent"],
-    fieldIds: new Set(["description", "promptTemplate"]),
-    aliases: { prompt_template: "promptTemplate", prompt: "promptTemplate" } as Record<string, string>,
-    reviewOrder: ["description", "promptTemplate"],
-  },
-};
-
-export type MariEditorKind = keyof typeof MARI_EDITOR_KINDS;
-
-export const isMariEditorKind = (kind: unknown): kind is MariEditorKind =>
-  typeof kind === "string" && Object.hasOwn(MARI_EDITOR_KINDS, kind);
-
-/** The editor kind an app_data action edits (`character.update` -> character), or null. */
-export function mariEditorKindForAction(action: unknown): MariEditorKind | null {
-  const name = appDataAction(action);
-  return (
-    (Object.keys(MARI_EDITOR_KINDS) as MariEditorKind[]).find((kind) => MARI_EDITOR_KINDS[kind].action === name) ?? null
-  );
-}
-
-/** The editor kind of a change-card table (`personas` -> persona), or null. */
-export function mariEditorKindForTable(table: unknown): MariEditorKind | null {
-  return (
-    (Object.keys(MARI_EDITOR_KINDS) as MariEditorKind[]).find((kind) => MARI_EDITOR_KINDS[kind].table === table) ?? null
-  );
-}
-
-/** A record's field as its editor's `data-mari-field` id: a lorebook entry's sit under `entries.<entryId>.`. */
-export function mariFieldPath(kind: MariEditorKind, entityId: string, path: string): string {
-  return kind === "lorebookEntry" ? `entries.${entityId}.${editorFieldId(path)}` : path;
-}
-
 /** A change-card path whose field the kind's editor anchors (itself or its parent field). */
 export function hasMariField(path: string, kind: MariEditorKind = "character"): boolean {
   const parts = editorFieldId(path).split(".");
   return parts.some((_, end) => MARI_EDITOR_KINDS[kind].fieldIds.has(parts.slice(0, end + 1).join(".")));
-}
-
-/** The server's app_data action aliases (normalizeAppDataActionName): `Characters.Update` -> `character.update`. */
-export function appDataAction(action: unknown): string {
-  if (typeof action !== "string") return "";
-  return action
-    .trim()
-    .toLowerCase()
-    .replace(/[-_\s]+/g, "")
-    .replace(/^promptpresets?\./, "preset.")
-    .replace(/^(character|persona|lorebook|preset|agent)s\./, "$1.")
-    .replace(/^lorebook\.entr(?:y|ies)\.update$/, "lorebook.updateentry");
-}
-
-/** An update patch key (`firstMes`, `backstory`) as its editor field id, or null for other keys. */
-export function mariPatchFieldId(kind: MariEditorKind, key: string): string | null {
-  const { aliases, fieldIds } = MARI_EDITOR_KINDS[kind];
-  if (fieldIds.has(key)) return key;
-  const snake = key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
-  const id = aliases[snake] ?? snake;
-  return fieldIds.has(id) ? id : null;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
-}
-
-/** The record an update app_data call edits, with the patch it sends; null for other calls. */
-function mariUpdateCall(name: unknown, input: unknown) {
-  const args = asRecord(input);
-  if (!args || name !== "app_data") return null;
-  const kind = mariEditorKindForAction(args.action);
-  if (!kind) return null;
-  // The first id argument the server reads, in its order.
-  const entityId = MARI_EDITOR_KINDS[kind].idArgs.map((key) => args[key]).find((id) => typeof id === "string" && id);
-  if (typeof entityId !== "string") return null;
-  return { kind, entityId, patch: patchValues(args, MARI_EDITOR_KINDS[kind].wrappers) };
 }
 
 /** The editor field a running `app_data` step writes, from its tool input. */
@@ -277,15 +98,6 @@ export function mariWorkingFieldFromTool(name: string, input: unknown): { entity
     if (path) return { entityId: call.entityId, path: mariFieldPath(call.kind, call.entityId, path) };
   }
   return null;
-}
-
-/** The patch an update sends. The server reads fields top-level or inside the kind's
- * wrappers; an `extensions` object counts as `extensions.<key>` fields. */
-function patchValues(args: Record<string, unknown>, wrappers: readonly string[]): Record<string, unknown> {
-  const fields: Record<string, unknown> = { ...args };
-  for (const wrapper of wrappers) Object.assign(fields, asRecord(args[wrapper]));
-  for (const [key, value] of Object.entries(asRecord(fields.extensions) ?? {})) fields[`extensions.${key}`] = value;
-  return fields;
 }
 
 export const reviewRank = (kind: MariEditorKind, fieldId: string) =>
@@ -311,14 +123,14 @@ export type MariFieldReview =
       total: number;
       /** Held changes to other records that Keep also applies. */
       others: number;
-      /** False when nothing was sent. */
-      keep: () => boolean;
-      /** Decline the whole change and ask her to propose it again without this field. */
-      decline: (fieldId: string) => boolean;
       /** Every held call only rewrites text fields an editor shows, so Edit can take the whole change over. */
       editorTextOnly: boolean;
       /** The user took over every field with Edit and saved their own text: the held change `key` is answered, nothing is sent. */
       settle: (key: string) => Promise<boolean>;
+      /** Accept the change; the declined fields in the UI store stay out. False when nothing was sent. */
+      keep: () => boolean;
+      /** Decline the whole change. False when nothing was sent. */
+      reject: () => boolean;
     }
   | {
       mode: "kept";
@@ -345,6 +157,7 @@ export function heldChangeSettledByUser(
   const takenOver = Object.keys(before);
   return (
     review.editorTextOnly &&
+    takenOver.length > 0 &&
     review.fields.every((field) => here(field.entityId) && takenOver.includes(field.fieldId)) &&
     takenOver.every((fieldId) => !unsaved(fieldId) && current(fieldId) !== before[fieldId])
   );
@@ -374,6 +187,14 @@ export function heldCallsAreEditorText(heldCalls: unknown) {
       );
     })
   );
+}
+
+/** The fields the user declined on the change that waits now: what every Accept leaves out. */
+export function declinedForHeldChange(
+  review: MariFieldReview | null,
+  declined: { key: string; fields: MariDeclinedField[] },
+): MariDeclinedField[] {
+  return review?.mode === "waiting" && review.key === declined.key ? declined.fields : [];
 }
 
 /** The text fields a held turn's raw calls (`mariHeldCalls`) would write, full values, editor

@@ -27,7 +27,8 @@ interface MariFieldReviewValue {
   current: (fieldId: string) => string;
   /** The user has unsaved text in this field. */
   touched: (fieldId: string) => boolean;
-  declined: string | null;
+  /** Fields the user declined; they keep their old text. */
+  declined: string[];
   kept: { fieldIds: string[]; undoUntil: string | null; undo: () => void; savedUnsaved: boolean } | null;
   dismissKept: (fieldId: string) => void;
 }
@@ -64,14 +65,11 @@ export function useMariFieldReview({
     ids: [],
     before: {},
   });
-  // The held change answered here (Keep or Not this one) until her reply ends; `declined` names
-  // the declined field. A reply that leaves the same change waiting (a failed send) shows it again.
-  const [answered, setAnswered] = useState<{
-    key: string;
-    entityId: string;
-    declined: string | null;
-    busy?: boolean;
-  } | null>(null);
+  // Fields declined with Not this one; every Accept sends them (handleSubmit), so the rest applies without them.
+  const declinedState = useUIStore((state) => state.mariFieldDeclined);
+  // The held change answered here (Keep) until her reply ends. A reply that leaves the same change
+  // waiting (a failed send) shows it again.
+  const [answered, setAnswered] = useState<{ key: string; entityId: string; busy?: boolean } | null>(null);
   const [dismissed, setDismissed] = useState<string[]>([]);
   // The kept review that saved the user's unsaved text first; "pending" until it arrives.
   const [savedFor, setSavedFor] = useState<string | null>(null);
@@ -91,12 +89,19 @@ export function useMariFieldReview({
   }, [undoUntil]);
 
   const editedIds = waitingReview && edited.key === waitingReview.key ? edited.ids : [];
+  const declinedFields = waitingReview && declinedState.key === waitingReview.key ? declinedState.fields : [];
+  // Shown and counted here: only the declined fields of this editor's records.
+  const declinedHere = declinedFields.filter(
+    (field) => field.entityId === entityId || !!memberIds?.has(field.entityId),
+  );
   const answeredHere = answered?.entityId === entityId ? answered : null;
   const waiting =
     (answeredHere?.key === waitingReview?.key ? null : waitingReview)?.fields
       .filter(
         (field) =>
-          (field.entityId === entityId || !!memberIds?.has(field.entityId)) && !editedIds.includes(field.fieldId),
+          (field.entityId === entityId || !!memberIds?.has(field.entityId)) &&
+          !editedIds.includes(field.fieldId) &&
+          !declinedFields.some((item) => item.entityId === field.entityId && item.fieldId === field.fieldId),
       )
       .map(({ fieldId, value }) => ({ fieldId, value })) ?? [];
   // Her header names this count; it is 0 while no character editor is open.
@@ -111,7 +116,22 @@ export function useMariFieldReview({
     if (!waitingReview || answeredHere || keeping.current || settling.current === waitingReview.key) return;
     const here = (id: string) => id === entityId || !!memberIds?.has(id);
     const before = edited.key === waitingReview.key ? edited.before : {};
-    if (!heldChangeSettledByUser(waitingReview, here, before, touched, current)) return;
+    if (
+      !heldChangeSettledByUser(
+        {
+          ...waitingReview,
+          fields: waitingReview.fields.filter(
+            (field) =>
+              !declinedFields.some((item) => item.entityId === field.entityId && item.fieldId === field.fieldId),
+          ),
+        },
+        here,
+        before,
+        touched,
+        current,
+      )
+    )
+      return;
     const { key } = waitingReview;
     settling.current = key;
     void waitingReview.settle(key).then((done) => {
@@ -128,7 +148,6 @@ export function useMariFieldReview({
           )
           .map((field) => field.fieldId)
       : [];
-  const declinedField = answeredHere?.declined ?? null;
   if (answered && !answered.busy && review?.mode === "busy") setAnswered({ ...answered, busy: true });
   if (answered?.busy && review?.mode !== "busy") setAnswered(null);
   // Her Keep reply brought no kept review; a later reply's kept review is not this Keep's.
@@ -149,11 +168,11 @@ export function useMariFieldReview({
   }, []);
 
   const value: MariFieldReviewValue | null =
-    entityId && (waiting.length > 0 || keptIds.length > 0 || declinedField)
+    entityId && (waiting.length > 0 || keptIds.length > 0 || declinedHere.length > 0)
       ? {
           entityId,
           waiting,
-          total: waitingReview?.total ?? 0,
+          total: Math.max((waitingReview?.total ?? 0) - declinedFields.length, 0),
           others: waitingReview?.others ?? 0,
           keep: async () => {
             if (!waitingReview || keeping.current) return false;
@@ -169,7 +188,7 @@ export function useMariFieldReview({
                 return false;
               }
               setSavedFor(saved === "saved" ? "pending" : null);
-              setAnswered({ key, entityId, declined: null });
+              setAnswered({ key, entityId });
               return true;
             } finally {
               keeping.current = false;
@@ -177,7 +196,18 @@ export function useMariFieldReview({
           },
           decline: (fieldId) => {
             if (!waitingReview) return;
-            if (waitingReview.decline(fieldId)) setAnswered({ key: waitingReview.key, entityId, declined: fieldId });
+            const target = waitingReview.fields.find(
+              (field) => field.fieldId === fieldId && (field.entityId === entityId || !!memberIds?.has(field.entityId)),
+            );
+            if (!target) return;
+            const fields = [...declinedFields, { entityId: target.entityId, fieldId }];
+            // Nothing is left to keep: reject the change, as before. Fields she did not show here
+            // (`name`, `tags`) and other records' edits stay on her card, whose Accept also leaves these out.
+            if (fields.length >= waitingReview.total && waitingReview.others === 0) {
+              if (waitingReview.reject()) setAnswered({ key: waitingReview.key, entityId });
+              return;
+            }
+            useUIStore.getState().setMariFieldDeclined({ key: waitingReview.key, fields });
           },
           edit: (fieldId, text) => {
             if (!waitingReview) return;
@@ -195,7 +225,7 @@ export function useMariFieldReview({
           },
           current,
           touched,
-          declined: declinedField,
+          declined: declinedHere.map((field) => field.fieldId),
           kept:
             keptReview && keptIds.length > 0
               ? {
@@ -237,7 +267,7 @@ export function MariFieldReview({ field, children }: { field: string; children: 
     >
       {showReview ? <ReviewBox review={review} index={index} autoFocus={focus === "focused"} /> : children}
       {!showReview && kept ? <KeptLine kept={kept} /> : null}
-      {review?.declined === field ? <DeclinedLine field={field} /> : null}
+      {review?.declined.includes(field) ? <DeclinedLine field={field} /> : null}
     </div>
   );
 }

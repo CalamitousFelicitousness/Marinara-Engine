@@ -74,6 +74,7 @@ import {
   isChatProvider,
   isMariPermissionsMode,
   MARI_AUTHORIZATION_ACCEPT_CHIP,
+  withoutDeclinedMariFields,
   MARI_PERMISSIONS_MODE_SETTINGS_KEY,
   MARI_RUNTIME_SETTINGS_KEY,
   MARI_SKILL_GATE_SETTINGS_KEY,
@@ -4152,15 +4153,21 @@ export class ProfessorMariWorkspaceService {
 
       // The Accept button sends the chip prompt verbatim: apply the stored held calls here, no model request.
       // More calls than the card showed go to the model as before: the user never saw them all.
+      const declinedFields = args.context?.declinedFields ?? [];
       const acceptedCalls =
         manualApprovalArmed &&
         heldMessageId !== null &&
         heldCalls.length > 0 &&
-        heldCalls.length <= MAX_HELD_CHANGES_SHOWN &&
+        // Fields the user declined were reviewed in the editor, so the call count no longer matters.
+        (heldCalls.length <= MAX_HELD_CHANGES_SHOWN || declinedFields.length > 0) &&
         promptText.trim() === MARI_AUTHORIZATION_ACCEPT_CHIP.prompt
-          ? heldCalls
+          ? withoutDeclinedMariFields(heldCalls, declinedFields)
           : null;
-      if (acceptedCalls && heldMessageId !== null) {
+      if (acceptedCalls && acceptedCalls.length === 0) {
+        assistantText = "Nothing was applied: you declined every field of this change.";
+        appendTraceStatus(workspaceTrace, assistantText);
+        for (const chunk of chunkText(assistantText)) args.onEvent({ type: "token", data: chunk });
+      } else if (acceptedCalls && heldMessageId !== null) {
         // Single use: a second Accept for the same held message (two tabs) must not apply the calls again.
         // ponytail: in-memory set, one id per Accept, lost on restart. Upgrade path: a flag on the message extra.
         if (this.acceptedHeldMessageIds.has(heldMessageId)) throw new Error("This change was already accepted.");

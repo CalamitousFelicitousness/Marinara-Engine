@@ -188,7 +188,7 @@ These macros add chance to your prompts. Use the random macro (`{{random}}`) for
 | `{{random:X:Y}}` | A random whole number between X and Y, both included. |
 | `{{random::A::B::C}}` | Picks one option at random, then resolves macros only inside the chosen option. |
 | `{{random::A@2::B@0.5}}` | A weighted random choice. See the weighting rules below. |
-| `{{roll:XdY}}` | A dice roll total. For example, `{{roll:2d6}}` rolls two six-sided dice and adds them. |
+| `{{roll:XdY}}` | A dice roll total. For example, `{{roll:2d6}}` rolls two six-sided dice and adds them. `{{roll:d20}}` rolls one die, and `{{roll:1d8+3}}` adds 3 to the roll. |
 
 Here is a simple random choice you can copy:
 

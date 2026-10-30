@@ -151,8 +151,12 @@ export function AgentCatalogView() {
     [all, installedById],
   );
   const installablePackageIds = useMemo(
-    () => all.filter((entry) => !installedById.has(entry.manifest.id)).map((entry) => entry.manifest.id),
-    [all, installedById],
+    // Until the installed list loads, every package would look installable.
+    () =>
+      installed.data
+        ? all.filter((entry) => !installedById.has(entry.manifest.id)).map((entry) => entry.manifest.id)
+        : [],
+    [all, installed.data, installedById],
   );
   const installedPackageIds = useMemo(() => (installed.data ?? []).map((entry) => entry.id), [installed.data]);
   const bulkActionPending = installAll.isPending || uninstallAll.isPending;
@@ -168,7 +172,9 @@ export function AgentCatalogView() {
   }, [page]);
 
   useEffect(() => {
-    if (initialPackageId) setPage({ kind: "agent", id: initialPackageId });
+    if (!initialPackageId) return;
+    setQuery("");
+    setPage({ kind: "agent", id: initialPackageId });
   }, [initialPackageId]);
 
   const handleInstall = async (entry: CapabilityCatalogPackage) => {
@@ -708,6 +714,7 @@ export function AgentCatalogView() {
           <main ref={mainRef} className="min-h-0 flex-1 overflow-y-auto">
             <div className={cn("space-y-2 border-b border-[var(--border)]/50 p-3 md:hidden", !showAside && "hidden")}>
               {searchField}
+              <AgentModeFilter value={modeFilter} onChange={setModeFilter} />
               <div className="-mx-3 flex gap-1.5 overflow-x-auto px-3 pb-0.5">
                 {[
                   ...navItems.map((item) => ({

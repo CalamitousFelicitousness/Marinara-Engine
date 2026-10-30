@@ -122,7 +122,7 @@ export function AgentUpdatePrompter({
     // must not bring back updates a one-by-one loop had not reached yet. A failed
     // decline only means the notice can return next session (this one already treats them as handled).
     const updates = prompted;
-    await finish(updates);
+    const closed = finish(updates);
     try {
       await decline.mutateAsync(updates);
     } catch (error) {
@@ -133,6 +133,7 @@ export function AgentUpdatePrompter({
         ),
       );
     }
+    await closed;
   }, [decline, finish, localizeUi, phase, prompted]);
 
   const restartNeeded = Object.values(results).some((result) => result.status === "updated" && result.restartRequired);

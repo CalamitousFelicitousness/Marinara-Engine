@@ -10,6 +10,10 @@
 // readers each carried their own regex, and they
 // disagreed: bare "d20" was legal in three of them
 // and an error in the fourth.
+//
+// It also holds the one roller shape (`DieRoller`),
+// so the code that reads a roll never chooses where
+// its dice come from.
 // ──────────────────────────────────────────────
 
 import type { DiceRollResult } from "../types/game.js";
@@ -149,15 +153,31 @@ export function clampParsedDiceToLimits(parsed: ParsedDiceNotation): ParsedDiceN
 }
 
 /**
- * Throw the dice a parsed notation asks for.
+ * One die of `sides` faces, 1..sides inclusive.
  *
- * Unseeded `Math.random()`, exactly as each call site rolled before this module
- * existed — consolidating the grammar deliberately did not touch the RNG.
+ * Every roller in the engine has this shape, so a caller decides where its dice
+ * come from and the code that reads a roll does not: the plain rolls use
+ * `rollDieWithMathRandom`, the server's player-facing rolls use its secure
+ * roller, and a ruleset fight passes its seeded stream so it can be replayed.
  */
-export function rollParsedDice(parsed: ParsedDiceNotation): DiceRollResult {
+export type DieRoller = (sides: number) => number;
+
+/**
+ * Unseeded `Math.random()`, exactly as the plain rolls threw before the roller
+ * could be passed in.
+ */
+export const rollDieWithMathRandom: DieRoller = (sides) => Math.floor(Math.random() * sides) + 1;
+
+/**
+ * Throw the dice a parsed notation asks for, one `roll(sides)` per die.
+ *
+ * Defaults to `rollDieWithMathRandom`, so a caller that passes no roller rolls
+ * exactly as it did before.
+ */
+export function rollParsedDice(parsed: ParsedDiceNotation, roll: DieRoller = rollDieWithMathRandom): DiceRollResult {
   const rolls: number[] = [];
   for (let index = 0; index < parsed.count; index += 1) {
-    rolls.push(Math.floor(Math.random() * parsed.sides) + 1);
+    rolls.push(roll(parsed.sides));
   }
   return {
     notation: parsed.notation,

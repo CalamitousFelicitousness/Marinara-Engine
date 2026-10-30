@@ -6,7 +6,7 @@
 // and attribute-linked modifiers.
 // ──────────────────────────────────────────────
 
-import type { RPGAttributes } from "@marinara-engine/shared";
+import { rollDieWithMathRandom, type RPGAttributes } from "@marinara-engine/shared";
 
 export interface SkillCheckInput {
   /** Skill name (e.g. "Perception", "Stealth"). */
@@ -60,7 +60,7 @@ export interface SkillCheckResult {
 }
 
 function d20(): number {
-  return Math.floor(Math.random() * 20) + 1;
+  return rollDieWithMathRandom(20);
 }
 
 /**

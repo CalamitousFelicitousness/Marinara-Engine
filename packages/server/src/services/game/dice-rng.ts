@@ -15,9 +15,10 @@
 // ──────────────────────────────────────────────
 
 import { randomInt } from "node:crypto";
+import type { DieRoller } from "@marinara-engine/shared";
 
 /** One die of `sides` faces. Injected wherever a roll has to be substitutable in a lane. */
-export type DieRoller = (sides: number) => number;
+export type { DieRoller };
 
 /** Throw one fair die, 1..sides inclusive. */
 export const rollDieSecurely: DieRoller = (sides) => {

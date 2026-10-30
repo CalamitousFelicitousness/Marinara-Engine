@@ -177,6 +177,7 @@ import { SETTINGS_BUTTON_CLASS, SettingsSwitch } from "../panels/settings/Settin
 import {
   characterOnboardingSchema,
   createDefaultRpgStatPools,
+  findPersonaVariableUses,
   getOnboardingVariables,
   getRelevantOnboardingVariables,
   hasOnboardingContent,
@@ -2075,6 +2076,16 @@ function OnboardingTab({
     onboarding.cardVariables ?? [],
     "ui.characters.onboarding.issueUnusedCard",
   );
+  // A greeting that uses a persona question's name is filled in only when the
+  // player creates that persona in the wizard; otherwise the tag shows as written.
+  const greetingPersonaUses = useMemo(
+    () =>
+      findPersonaVariableUses(onboarding, [
+        formData.first_mes,
+        ...((formData.alternate_greetings as string[] | undefined) ?? []),
+      ]),
+    [onboarding, formData.first_mes, formData.alternate_greetings],
+  );
 
   // Example answers, like the prompt-override preview: the first option of a
   // choice, the variable's own name for free text.
@@ -2291,6 +2302,20 @@ function OnboardingTab({
                   })
                 }
               />
+              {greetingPersonaUses.size > 0 && (
+                <p role="status" className="mt-1.5 flex items-start gap-1 text-[0.625rem] text-[var(--foreground)]">
+                  <AlertTriangle
+                    size="0.625rem"
+                    className="mt-0.5 shrink-0 text-[var(--marinara-app-accent-static)]"
+                    aria-hidden
+                  />
+                  <span>
+                    {localizeUi("ui.characters.onboarding.personaQuestionInGreeting", {
+                      value1: [...greetingPersonaUses].map((name) => `{{${name}}}`).join(", "),
+                    })}
+                  </span>
+                </p>
+              )}
             </EditorSectionAnchor>
             {/* One anchor and one nav chip for the whole group: the five fields
                 below are a single template a card provides, so listing five

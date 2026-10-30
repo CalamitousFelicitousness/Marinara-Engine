@@ -78,6 +78,16 @@ export interface OnboardingCardTarget {
   cardFields: OnboardingCardFields;
 }
 
+/**
+ * What the wizard needs to fill the owning card's greetings from the persona
+ * answers: whose template it was, the template, and the answers as given.
+ */
+export type OnboardingPersonaTemplate = {
+  cardId: string;
+  onboarding: CharacterOnboarding;
+  personaAnswers: OnboardingAnswers;
+};
+
 export function CharacterOnboardingModal({
   open,
   cards,
@@ -105,7 +115,7 @@ export function CharacterOnboardingModal({
    */
   participantNames: string[];
   /** The card whose questions become a new persona, when one is being created. */
-  persona?: { characterName: string; onboarding: CharacterOnboarding } | null;
+  persona?: { characterId?: string; characterName: string; onboarding: CharacterOnboarding } | null;
   /**
    * The player's name when it is already known — an existing persona's name.
    * Card questions show `{{user}}` in a heading, and without this they would
@@ -123,7 +133,11 @@ export function CharacterOnboardingModal({
   /** Return to the persona picker without creating anything. */
   onBack: () => void;
   /** The window stays open and locked until this settles. */
-  onCreated: (personaId: string | null, cardVariables: Record<string, string>) => void | Promise<void>;
+  onCreated: (
+    personaId: string | null,
+    cardVariables: Record<string, string>,
+    template: OnboardingPersonaTemplate | null,
+  ) => void | Promise<void>;
   /**
    * Inherit the chat's floating-panel styling, for a window opened from Chat
    * Settings rather than from the full-screen setup wizard.
@@ -302,7 +316,13 @@ export function CharacterOnboardingModal({
           return;
         }
       }
-      await onCreated(personaId, cardVariables);
+      await onCreated(
+        personaId,
+        cardVariables,
+        personaId && persona?.characterId && personaOnboarding
+          ? { cardId: persona.characterId, onboarding: personaOnboarding, personaAnswers }
+          : null,
+      );
     } finally {
       creatingRef.current = false;
       setBusy(false);

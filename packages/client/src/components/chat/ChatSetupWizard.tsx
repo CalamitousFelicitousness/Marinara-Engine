@@ -2918,9 +2918,15 @@ function RoleplaySetupWizard({
       template: OnboardingPersonaTemplate | null,
     ) => {
       // Kept for the greetings written at the end. Replaced on every Create, so a
-      // second persona never fills greetings with the first one's answers.
-      createdPersonaRef.current =
-        personaId && template ? { template, personaId, characterAnswers: cardVariables } : null;
+      // second persona never fills greetings with the first one's answers. Back and
+      // Next reopens the window for the card questions alone, which creates nothing:
+      // the persona made earlier still stands, only the character answers changed.
+      const created = createdPersonaRef.current;
+      createdPersonaRef.current = personaId
+        ? template
+          ? { template, personaId, characterAnswers: cardVariables }
+          : null
+        : created && { ...created, characterAnswers: cardVariables };
       // Chat variables go in their OWN request: `PATCH /chats/:id/metadata`
       // rejects `macroVariables` alongside any other key, and they are a
       // metadata write while `personaId` is a chat-column write.

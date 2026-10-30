@@ -9878,7 +9878,7 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
   for (const [panelName, source] of sidebarPanelSources) {
     assert.match(
       source,
-      /max-md:pr-(?:14|16|20|24|32|36) \[@media\(pointer:coarse\)\]:pr-(?:14|16|20|24|32|36)/u,
+      /max-md:pr-(?:10|14|16|20|24|32|36|\[4\.5rem\]) \[@media\(pointer:coarse\)\]:pr-(?:10|14|16|20|24|32|36|\[4\.5rem\])/u,
       `${panelName} rows must reserve action space only for touch layouts`,
     );
     assert.doesNotMatch(

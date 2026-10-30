@@ -248,7 +248,7 @@ function ReviewBox({ review, index, autoFocus }: { review: MariFieldReviewValue;
     focusSoon(`[data-mari-review="${CSS.escape(target)}"]`);
   };
   // The box unmounts after an answer; focus goes back to the field.
-  const focusField = () => focusSoon(`[data-mari-field="${CSS.escape(fieldId)}"] textarea`);
+  const focusField = () => focusSoon(`[data-mari-field="${CSS.escape(fieldId)}"] :is(textarea, input)`);
   const keep = () => void review.keep().then((done) => done && focusField());
   const decline = () => {
     review.decline(fieldId);
@@ -256,7 +256,7 @@ function ReviewBox({ review, index, autoFocus }: { review: MariFieldReviewValue;
   };
   const edit = () => {
     review.edit(fieldId, value);
-    focusSoon(`[data-mari-field="${CSS.escape(fieldId)}"] textarea`);
+    focusSoon(`[data-mari-field="${CSS.escape(fieldId)}"] :is(textarea, input)`);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
@@ -282,6 +282,8 @@ function ReviewBox({ review, index, autoFocus }: { review: MariFieldReviewValue;
       aria-label={t("mari.fieldReview.label", { field: label })}
       aria-keyshortcuts="Control+Enter Meta+Enter Escape"
       onKeyDown={onKeyDown}
+      // Inside a field's <label>, a click on the diff must not press the first button.
+      onClick={(event) => event.preventDefault()}
     >
       <div className="mari-field-review__strip">
         <img src={pack.portraits.idle} alt="" draggable={false} />

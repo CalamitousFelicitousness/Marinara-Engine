@@ -5733,7 +5733,7 @@ assert.match(
   professorMariHomeSource,
   // #5725 strengthened this guard: it also rejects responses requested for a
   // previous chat and holds mode fields across pending mode writes.
-  /const refreshWorkspaceStatus = useCallback\(\s*async \(shouldApply\?: \(\) => boolean\)[\s\S]{0,700}if \(shouldApply\?\.\(\) === false \|\| activeChatIdRef\.current !== chatIdAtStart\) return status;[\s\S]{0,900}setWorkspaceStatus\(/u,
+  /const refreshWorkspaceStatus = useCallback\(\s*async \(shouldApply\?: \(\) => boolean\)[\s\S]{0,800}if \(shouldApply\?\.\(\) === false \|\| activeChatIdRef\.current !== chatIdAtStart\) return status;[\s\S]{0,900}setWorkspaceStatus\(/u,
   "Professor Mari workspace status loads must recheck an operation guard before applying a response",
 );
 assert.match(

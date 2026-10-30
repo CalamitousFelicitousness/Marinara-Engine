@@ -3729,6 +3729,8 @@ export class ProfessorMariWorkspaceService {
     let outcome: MariPromptOutcome = "stopped";
     // Every Accept chip goes through this sink, whichever loop or stop path offered it.
     let offeredAccept = false;
+    // A change this run staged for review waits for you just as a question does.
+    let stagedForReview = false;
     const sendEvent = args.onEvent;
     args = {
       ...args,
@@ -3784,6 +3786,7 @@ export class ProfessorMariWorkspaceService {
       this.latestUnderstoodRequest = runUnderstoodRequest;
     };
     const settleUnderstood = (failed: boolean, staged: boolean) => {
+      if (staged) stagedForReview = true;
       if (runUnderstoodRequest === null || this.latestUnderstoodRequest !== runUnderstoodRequest) return;
       runUnderstoodRequest = { ...runUnderstoodRequest, outcome: failed ? "failed" : staged ? "held" : "applied" };
       this.latestUnderstoodRequest = runUnderstoodRequest;
@@ -4518,7 +4521,7 @@ export class ProfessorMariWorkspaceService {
       if (
         !runEndedWithDeferral &&
         !offeredAccept &&
-        (runUnderstoodRequest as MariUnderstoodRequest | null)?.outcome !== "held" &&
+        !stagedForReview &&
         runQuestions.length === 0 &&
         !controller.signal.aborted &&
         this.abortController === controller

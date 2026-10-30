@@ -65,6 +65,7 @@ export const professorMariPromptSchema = z.object({
   // Send on a held queued message: the server takes it from the queue and uses ITS text, attachments, references
   // and context instead of the ones above.
   pendingMessageId: z.string().min(1).max(100).optional(),
+  heldPendingIds: z.array(z.string().min(1).max(100)).max(100).optional(),
   seasonalPackId: z.string().max(40).optional(),
   context: z
     .object({
@@ -641,7 +642,7 @@ export async function professorMariWorkspaceRoutes(app: FastifyInstance) {
       const stopCountAtStart = stopCount;
       if (isSafePendingChatId(body.chatId)) {
         // Best effort: an unusable file only means the drain below finds nothing it can read either.
-        await holdPending(body.chatId).catch((err) => {
+        await holdPending(body.chatId, body.heldPendingIds).catch((err) => {
           logger.warn(err, "[professor-mari] Could not hold the queued messages for chat %s", body.chatId);
         });
       }

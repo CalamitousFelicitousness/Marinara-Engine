@@ -1157,7 +1157,9 @@ export function HomeProfessorMariChat({
   }, [ensureProfessorMariChat, effectiveConnectionId, localizeUi]);
 
   // The list the composer shows comes with the status poll; a queue action's answer is just a fresher copy of it.
+  const pendingWriteSeqRef = useRef(0);
   const showPendingMessages = useCallback((forChatId: string, pendingMessages: MariPendingMessageSummary[]) => {
+    pendingWriteSeqRef.current += 1;
     setWorkspaceStatus((current) => current && { ...current, pendingMessages, pendingMessagesChatId: forChatId });
   }, []);
   const refreshWorkspaceStatus = useCallback(
@@ -1171,23 +1173,29 @@ export function HomeProfessorMariChat({
       if (chatIdAtStart) params.set("chatId", chatIdAtStart);
       const query = params.toString();
       const writeSeqAtStart = permissionsModeWriteSeqRef.current;
+      const pendingSeqAtStart = pendingWriteSeqRef.current;
       const status = await api.get<MariWorkspaceStatus>(`/professor-mari/workspace/status${query ? `?${query}` : ""}`);
       if (shouldApply?.() === false || activeChatIdRef.current !== chatIdAtStart) return status;
       // A mode write that landed while this poll was in flight is newer than
       // the polled value - keep the current mode fields, apply the rest.
-      setWorkspaceStatus((current) =>
-        current &&
-        (permissionsModeWriteSeqRef.current !== writeSeqAtStart ||
-          (permissionsModeWritePendingCountRef.current > 0 &&
-            permissionsModeWritePendingChatRef.current === chatIdAtStart))
-          ? {
-              ...status,
-              permissionsMode: current.permissionsMode,
-              permissionsModeDefault: current.permissionsModeDefault,
-              permissionsModeSource: current.permissionsModeSource,
-            }
-          : status,
-      );
+      setWorkspaceStatus((current) => {
+        const next =
+          current &&
+          (permissionsModeWriteSeqRef.current !== writeSeqAtStart ||
+            (permissionsModeWritePendingCountRef.current > 0 &&
+              permissionsModeWritePendingChatRef.current === chatIdAtStart))
+            ? {
+                ...status,
+                permissionsMode: current.permissionsMode,
+                permissionsModeDefault: current.permissionsModeDefault,
+                permissionsModeSource: current.permissionsModeSource,
+              }
+            : status;
+        // The same for the queue: a change made while this poll was in flight is newer than what it read.
+        return current && pendingWriteSeqRef.current !== pendingSeqAtStart
+          ? { ...next, pendingMessages: current.pendingMessages, pendingMessagesChatId: current.pendingMessagesChatId }
+          : next;
+      });
       return status;
     },
     [effectiveConnectionId],
@@ -2430,6 +2438,12 @@ export function HomeProfessorMariChat({
           : handoffContext;
     const messageText = text || (submittedAttachments.length > 0 ? "Please inspect the attached file." : "");
     if (!messageText || regenerationInFlightRef.current || isReadingAttachments) return;
+    // A send that never went out comes back ahead of anything typed since, instead of being lost.
+    const returnToComposer = () => {
+      setDraft((current) => [text, current].filter((part) => part.trim()).join("\n\n"));
+      setAttachments((current) => [...submittedAttachments, ...current]);
+      composerReferences.restoreReferences(submittedReferences);
+    };
     if (isBusy || workspaceTimelineActive) {
       // Only the composer's own send queues. A chip or retry waits, and a command means now, so it keeps its draft.
       if (overrideText !== undefined || overrideRecovery || overrideContext !== undefined || !chatId) return;
@@ -2451,9 +2465,7 @@ export function HomeProfessorMariChat({
         );
         showPendingMessages(chatId, pending);
       } catch (error) {
-        setDraft((current) => [text, current].filter((part) => part.trim()).join("\n\n"));
-        setAttachments((current) => [...submittedAttachments, ...current]);
-        composerReferences.restoreReferences(submittedReferences);
+        returnToComposer();
         setHandoffContext(submittedContext);
         toast.error(t("mari.queue.failed"), { description: describeProfessorMariError(error) });
       }
@@ -2492,6 +2504,11 @@ export function HomeProfessorMariChat({
     let runningContext = submittedContext;
     let runningAttachments = submittedAttachments;
     let runningReferences = submittedReferences;
+    // Taken now: a message you queue while this send starts up is not one of these, and still goes when she finishes.
+    const heldPendingIds =
+      workspaceStatus?.pendingMessagesChatId === chatId
+        ? workspaceStatus?.pendingMessages?.map((message) => message.id)
+        : undefined;
     // Cleared before the first wait: the box stays open during a send, so a second Enter here would queue this text
     // again, and clearing it later would wipe what you typed since. A retry or a chip sends its own text.
     if (overrideText === undefined) {
@@ -2554,6 +2571,7 @@ export function HomeProfessorMariChat({
         submittedReferences,
         {
           pendingMessageId: overrideRecovery?.pendingMessageId,
+          heldPendingIds,
           // She finished and took the next one on the same reply: her answer comes in, your next message follows.
           onQueueNext: async (next) => {
             queuedMessageId = next.id;
@@ -2574,6 +2592,7 @@ export function HomeProfessorMariChat({
               setMessages((current) => [...current, localMessage]);
               setTurnStartMessageId(localMessage.id);
             }
+            pendingWriteSeqRef.current += 1;
             setWorkspaceStatus(
               (current) =>
                 current && {
@@ -2615,17 +2634,13 @@ export function HomeProfessorMariChat({
         }
         if (!localMessageId || !loaded || loaded.findLast(isSavedUserMessage)?.id !== lastSavedUserId) return;
         // The server refused before it saved your message (no admin secret, a 401/403, a dead connection),
-        // so the reload took your bubble away. Give it back in the composer, ahead of anything typed since.
-        setDraft((current) => [text, current].filter((part) => part.trim()).join("\n\n"));
-        setAttachments((current) => [...submittedAttachments, ...current]);
-        composerReferences.restoreReferences(submittedReferences);
+        // so the reload took your bubble away. Give it back in the composer.
+        returnToComposer();
         setRecoveryState((current) => current && { ...current, inComposer: true });
       });
       // The chat never opened, so nothing went out: the text you sent goes back, as above.
       if (!runChatId && overrideText === undefined) {
-        setDraft((current) => [text, current].filter((part) => part.trim()).join("\n\n"));
-        setAttachments((current) => [...submittedAttachments, ...current]);
-        composerReferences.restoreReferences(submittedReferences);
+        returnToComposer();
         setRecoveryState((current) => current && { ...current, inComposer: true });
       }
     } finally {
@@ -2652,6 +2667,7 @@ export function HomeProfessorMariChat({
       setConnectionMenuOpen(true);
       return;
     }
+    pendingWriteSeqRef.current += 1;
     setWorkspaceStatus(
       (current) =>
         current && {

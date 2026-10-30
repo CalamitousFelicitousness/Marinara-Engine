@@ -209,6 +209,26 @@ try {
   assert.equal(text(await store.takePending(holdChat, heldList[1]!.id)), "old two", "Send takes only that one");
   assert.equal((await store.listPending(holdChat)).length, 1, "Send leaves the others held");
 
+  // Only what the client saw waiting is held: a message queued while the send starts up still drains.
+  const startupChat = "startupchat";
+  const seen = await store.addPending(startupChat, { text: "seen" });
+  await store.addPending(startupChat, { text: "queued during startup" });
+  await store.holdPending(startupChat, [seen.id]);
+  assert.equal(text(await store.takeNextPending(startupChat)), "queued during startup");
+  assert.equal(await store.takeNextPending(startupChat), null, "The one it saw stays held");
+
+  // A message put back returns to its typed place, not ahead of older held ones.
+  const orderChat = "orderchat";
+  await store.addPending(orderChat, { text: "older" });
+  const putBack = await store.addPending(orderChat, { text: "put back" });
+  await store.addPending(orderChat, { text: "newer" });
+  assert.equal(text(await store.takePending(orderChat, putBack.id)), "put back");
+  await store.restorePending(orderChat, { ...putBack, createdAt: putBack.createdAt });
+  assert.deepEqual(
+    (await store.listPending(orderChat)).map((message) => message.text),
+    ["older", "put back", "newer"],
+  );
+
   // A file that cannot be read is not an empty queue: writing "empty" over it would lose the messages.
   const unreadableChat = "unreadable";
   await store.addPending(unreadableChat, { text: "still here" });

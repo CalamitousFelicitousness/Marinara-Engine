@@ -7,7 +7,7 @@
 // with no run going is held by definition, so a restart leaves them waiting and nothing auto-sends.
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { resolve, sep } from "node:path";
 import type { MariPendingMessage, MariPendingMessageSummary } from "@marinara-engine/shared";
 import { getFileStorageDir } from "../../config/runtime-config.js";
 import { logger } from "../../lib/logger.js";
@@ -43,7 +43,13 @@ function pendingFilePath(chatId: string) {
   if (!isSafePendingChatId(chatId)) {
     throw new MariPendingStoreError("bad_chat_id", "That chat id cannot be used for queued messages.");
   }
-  return join(getMariPendingDir(), `${chatId}.json`);
+  // The id check already rules out a way out of the folder; this is the same rule in the shape scanners can follow.
+  const folder = resolve(getMariPendingDir());
+  const path = resolve(folder, `${chatId}.json`);
+  if (!path.startsWith(`${folder}${sep}`)) {
+    throw new MariPendingStoreError("bad_chat_id", "That chat id cannot be used for queued messages.");
+  }
+  return path;
 }
 
 // Writes for one chat run one at a time, so two quick adds never read the same list and drop one.
@@ -156,15 +162,20 @@ export async function takeNextPending(chatId: string): Promise<MariPendingMessag
   });
 }
 
-/** A new send begins: whatever still waits was held back by something earlier, and stays until its own Send. */
-export async function holdPending(chatId: string): Promise<void> {
+/**
+ * A new send begins: what still waits was held back by something earlier, and stays until its own Send. `ids` is
+ * what the client saw waiting when you pressed Send, so a message queued while that send starts up is not caught.
+ * Without it, everything is held: the safe side, since a held message only needs a click.
+ */
+export async function holdPending(chatId: string, ids?: readonly string[]): Promise<void> {
   const path = pendingFilePath(chatId);
+  const covers = (message: MariPendingMessage) => !ids || ids.includes(message.id);
   return serialized(chatId, async () => {
     const list = await readList(path);
-    if (list.every((message) => message.held)) return;
+    if (!list.some((message) => !message.held && covers(message))) return;
     await writeList(
       path,
-      list.map((message) => ({ ...message, held: true })),
+      list.map((message) => (covers(message) ? { ...message, held: true } : message)),
     );
   });
 }
@@ -184,10 +195,15 @@ export async function takePending(chatId: string, id: string): Promise<MariPendi
   });
 }
 
-/** Puts a taken message back at the front: the drain lost the race for the slot and must not lose the message. */
+/** Puts a taken message back in its typed place: the drain lost the race for the slot and must not lose it. */
 export async function restorePending(chatId: string, message: MariPendingMessage): Promise<void> {
   const path = pendingFilePath(chatId);
-  return serialized(chatId, async () => writeList(path, [message, ...(await readList(path))]));
+  return serialized(chatId, async () => {
+    const list = await readList(path);
+    const later = list.findIndex((other) => other.createdAt > message.createdAt);
+    const at = later === -1 ? list.length : later;
+    await writeList(path, [...list.slice(0, at), message, ...list.slice(at)]);
+  });
 }
 
 /** Empties the queue and hands everything back, attachments included (Stop returns it to the composer). */

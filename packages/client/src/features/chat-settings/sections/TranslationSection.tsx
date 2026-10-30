@@ -14,6 +14,11 @@ import { useSaveTranslatorDefaults, useTranslatorDefaults } from "../../../hooks
 import { useUpdateChatMetadata } from "../../../hooks/use-chats";
 import { trackChatMetadataSave } from "../../../lib/chat-metadata-save-barrier";
 
+const PROMPT_KEYS = ["translationInputPrompt", "translationOutputPrompt"] as const;
+type PromptKey = (typeof PROMPT_KEYS)[number];
+type PromptCommit = { value: string | null; completion: Promise<unknown>; failed: boolean };
+type PromptCommitState = { chatId: string; fields: Partial<Record<PromptKey, PromptCommit>> };
+
 interface TranslationSectionProps {
   chatId: string;
   metadata: Record<string, unknown>;
@@ -27,13 +32,36 @@ export function TranslationSection({ chatId, metadata, textConnections, onMetada
   const saveDefaults = useSaveTranslatorDefaults();
   // Queue the whole prompt mutation below; nesting its API queue would deadlock.
   const updatePromptMeta = useUpdateChatMetadata();
-  const promptCommit = useRef<{ chatId: string; completion: Promise<unknown> } | null>(null);
+  const promptCommits = useRef<PromptCommitState | null>(null);
   const [savingAction, setSavingAction] = useState<"save" | "forget" | null>(null);
+  const queuePromptCommit = (ownerId: string, key: PromptKey, value: string | null) => {
+    // Register before onMutate can yield; keep each field's failure until it is retried or edited.
+    const completion = trackChatMetadataSave(ownerId, () =>
+      updatePromptMeta.mutateAsync({ id: ownerId, [key]: value }),
+    );
+    const commit = { value, completion, failed: false };
+    const owner: PromptCommitState =
+      promptCommits.current?.chatId === ownerId ? promptCommits.current : { chatId: ownerId, fields: {} };
+    owner.fields[key] = commit;
+    promptCommits.current = owner;
+    void completion.catch(() => {
+      commit.failed = true;
+    });
+    return commit;
+  };
   const saveTranslatorDefaults = async (sourceChatId: string | null) => {
     setSavingAction(sourceChatId ? "save" : "forget");
     try {
-      const commit = promptCommit.current;
-      if (sourceChatId && commit?.chatId === sourceChatId) await commit.completion;
+      const commits = promptCommits.current;
+      if (sourceChatId && commits?.chatId === sourceChatId) {
+        await Promise.all(
+          PROMPT_KEYS.map((key) => {
+            const commit = commits.fields[key];
+            // Only an explicit Save retries a known failure, once per field for this action.
+            return commit?.failed ? queuePromptCommit(sourceChatId, key, commit.value).completion : commit?.completion;
+          }),
+        );
+      }
       await saveDefaults.mutateAsync(sourceChatId);
       toast.success(
         localizeUi(sourceChatId ? "chat.translation.defaults.saved" : "chat.translation.defaults.forgotten"),
@@ -50,7 +78,9 @@ export function TranslationSection({ chatId, metadata, textConnections, onMetada
   const outputTargetLanguage = (metadata.translationOutputTargetLang as string | undefined) ?? legacyTargetLanguage;
   const legacyPrompt = typeof metadata.translationPrompt === "string" ? metadata.translationPrompt : "";
 
-  const readDirectionalPrompt = (key: "translationInputPrompt" | "translationOutputPrompt") => {
+  const readDirectionalPrompt = (key: PromptKey) => {
+    const commit = promptCommits.current?.chatId === chatId ? promptCommits.current.fields[key] : undefined;
+    if (commit?.failed) return commit.value ?? "";
     const value = metadata[key];
     if (value === null) return "";
     const stored = typeof value === "string" ? value : legacyPrompt;
@@ -59,14 +89,9 @@ export function TranslationSection({ chatId, metadata, textConnections, onMetada
   const inputPrompt = readDirectionalPrompt("translationInputPrompt");
   const outputPrompt = readDirectionalPrompt("translationOutputPrompt");
 
-  const updatePrompt = (key: "translationInputPrompt" | "translationOutputPrompt", value: string) => {
+  const updatePrompt = (key: PromptKey, value: string) => {
     const nextPrompt = !value.trim() || value.trim() === DEFAULT_TRANSLATION_SYSTEM_PROMPT.trim() ? null : value;
-    // Register before onMutate can yield, and retain rejection for Save defaults.
-    const completion = trackChatMetadataSave(chatId, () =>
-      updatePromptMeta.mutateAsync({ id: chatId, [key]: nextPrompt }),
-    );
-    promptCommit.current = { chatId, completion };
-    void completion.catch(() => undefined);
+    queuePromptCommit(chatId, key, nextPrompt);
   };
 
   return (

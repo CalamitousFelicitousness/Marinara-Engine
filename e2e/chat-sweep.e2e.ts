@@ -514,6 +514,8 @@ test("Translator defaults wait for edits, survive reload, and apply only to futu
   let connectionId = "";
   let releaseMetadata: (() => void) | undefined;
   let releasePreparation: (() => Promise<void>) | undefined;
+  let releasePromptFailure: (() => void) | undefined;
+  let releaseFirstPromptFailure: (() => void) | undefined;
   const readMetadata = async (id: string) => {
     const chat = await (await request.get(`/api/chats/${id}`)).json();
     return typeof chat.metadata === "string" ? JSON.parse(chat.metadata) : chat.metadata;
@@ -703,7 +705,11 @@ test("Translator defaults wait for edits, survive reload, and apply only to futu
     }
 
     let defaultsWrites = 0;
-    let rejectedPrompts = 0;
+    let promptAttempts = 0;
+    const failedPrompt = "A prompt that cannot be saved.";
+    const laterFailedPrompt = "A later incoming prompt that cannot be saved.";
+    const firstFailureGate = new Promise<void>((resolve) => (releaseFirstPromptFailure = resolve));
+    const failureGate = new Promise<void>((resolve) => (releasePromptFailure = resolve));
     await page.route(`**${settingsPath}`, async (route) => {
       if (route.request().method() === "PUT") defaultsWrites++;
       await route.continue();
@@ -711,30 +717,57 @@ test("Translator defaults wait for edits, survive reload, and apply only to futu
     await page.route(`**/api/chats/${origin.id}/metadata`, async (route) => {
       if (
         route.request().method() === "PATCH" &&
-        route.request().postDataJSON().translationOutputPrompt === "A prompt that cannot be saved."
+        [failedPrompt, laterFailedPrompt].includes(route.request().postDataJSON().translationOutputPrompt)
       ) {
-        rejectedPrompts++;
-        await route.fulfill({ status: 500, json: { error: "Controlled prompt-save failure" } });
-        return;
+        promptAttempts++;
+        if (promptAttempts === 1) await firstFailureGate;
+        if (promptAttempts === 2) await failureGate;
+        if (promptAttempts <= 2) {
+          await route.fulfill({ status: 500, json: { error: "Controlled prompt-save failure" } });
+          return;
+        }
       }
       await route.fallback();
     });
-    await incomingPrompt.fill("A prompt that cannot be saved.");
+    await incomingPrompt.fill(failedPrompt);
     await save.click();
-    await expect.poll(() => rejectedPrompts).toBe(1);
+    await expect.poll(() => promptAttempts).toBe(1);
+    releaseFirstPromptFailure!();
     await expect(save).toBeEnabled();
     expect(defaultsWrites).toBe(0);
     expect((await (await request.get(settingsPath)).json()).value).toBe("");
+
+    const outgoingPrompt = "An outgoing edit must not hide an incoming failure.";
+    await incomingPrompt.fill(laterFailedPrompt);
+    await section.locator("textarea").first().fill(outgoingPrompt);
+    await save.click();
+    await expect.poll(() => promptAttempts).toBe(2);
+    expect(defaultsWrites).toBe(0);
+    releasePromptFailure!();
+    await expect(save).toBeEnabled();
+    expect(defaultsWrites).toBe(0);
+    expect((await (await request.get(settingsPath)).json()).value).toBe("");
+    await expect(incomingPrompt).toHaveValue(laterFailedPrompt);
+
+    // Explicit Save retries the retained failed intent once, without another edit.
+    await save.click();
+    await expect
+      .poll(async () => JSON.parse((await (await request.get(settingsPath)).json()).value || "{}"))
+      .toEqual({ ...expected, translationInputPrompt: outgoingPrompt, translationOutputPrompt: laterFailedPrompt });
+    expect(defaultsWrites).toBe(1);
+    expect(promptAttempts).toBe(3);
 
     const recoveredPrompt = "A fresh successful prompt replaces the failed edit.";
     await incomingPrompt.fill(recoveredPrompt);
     await save.click();
     await expect
       .poll(async () => JSON.parse((await (await request.get(settingsPath)).json()).value || "{}"))
-      .toEqual({ ...expected, translationOutputPrompt: recoveredPrompt });
-    expect(defaultsWrites).toBe(1);
+      .toEqual({ ...expected, translationInputPrompt: outgoingPrompt, translationOutputPrompt: recoveredPrompt });
+    expect(defaultsWrites).toBe(2);
     expect((await readMetadata(origin.id)).translationOutputPrompt).toBe(recoveredPrompt);
   } finally {
+    releaseFirstPromptFailure?.();
+    releasePromptFailure?.();
     await releasePreparation?.().catch(() => undefined);
     releaseMetadata?.();
     await page.close();

@@ -50,6 +50,12 @@ const workspaceAgent =
   readSource("packages/server/src/services/professor-mari/workspace-round-review.ts");
 assert.match(workspaceAgent, /include the confirmatory read in the SAME response whenever you can/u);
 assert.match(workspaceAgent, /never present it with an apology \("Oops", "my bad"\)/u);
+const seasonalFlavors = readSource("packages/server/src/services/professor-mari/workspace-agent.service.ts");
+assert.match(seasonalFlavors, /new Map<string, string>\(\[/u, "dated pack flavors use a Map");
+assert.match(seasonalFlavors, /MARI_SEASON_FLAVORS\.get\(seasonalPackId \?\? ""\)/u);
+assert.match(seasonalFlavors, /\["raccoon", MARI_RACCOON_SEASON_FLAVOR\]/u, "raccoon flavor text remains registered");
+assert.match(seasonalFlavors, /\[\s*"party",\s*`Seasonal flavor:/u);
+assert.match(seasonalFlavors, /\[\s*"hungover",\s*`Seasonal flavor:/u);
 // app_data writes verify themselves via the store read-back (see the
 // mari-write-readback lane); the same-frame read guidance remains for the
 // write/edit/copy/move/bash mutations that have no read-back.

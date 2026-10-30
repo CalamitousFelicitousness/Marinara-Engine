@@ -620,6 +620,26 @@ export function getCardVariableChipNames(onboarding: CharacterOnboarding | null 
   return [...names];
 }
 
+/**
+ * The chips a greeting offers. A card field reads character answers and a persona
+ * field reads persona answers, but a greeting resolves both, so it lists both,
+ * split by who answers them. Persona names need a template to fill them in, and a
+ * name both lists declare is one chat variable, so it stays with the character.
+ */
+export function getGreetingVariableChipNames(onboarding: CharacterOnboarding | null | undefined): {
+  character: string[];
+  persona: string[];
+} {
+  const character = getCardVariableChipNames(onboarding);
+  if (!onboarding?.enabled || !canBuildPersona(onboarding)) return { character, persona: [] };
+  const persona = new Set<string>();
+  for (const variable of getOnboardingVariables(onboarding)) {
+    const name = variable.variableName.trim();
+    if (name && !character.includes(name)) persona.add(name);
+  }
+  return { character, persona: [...persona] };
+}
+
 /** The next card question without an answer, or null when they are all answered. */
 export function getNextCardVariable(
   onboarding: CharacterOnboarding,

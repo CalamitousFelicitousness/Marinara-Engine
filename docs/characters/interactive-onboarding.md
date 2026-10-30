@@ -50,7 +50,7 @@ Lower down the same tab there is a second list, **Character Questions**. Its que
 
 Those five fields are the ones the model reads, so they are the ones a character answer can reach. A greeting can use a character question's `{{name}}` too, and shows the player's answer.
 
-A greeting can also use a persona question's `{{name}}`, such as `Ah, so you are a {{class}}`. It fills in only when the player creates that persona in the new chat wizard, in the first message and its alternate greetings. With an existing persona or Quick Start the tag shows as written, and the Character Editor warns you about that.
+A greeting can also use a persona question's `{{name}}`, such as `Ah, so you are a {{class}}`. It fills in only when the player creates that persona in the new chat wizard, in the first message and its alternate greetings. With an existing persona or Quick Start the tag shows as written, and the Character Editor warns you about that. Click into a greeting and its **Available variables** list both kinds of question, labelled.
 
 The answers are stored as chat variables, so the card reads a different value in every chat and never has to be edited. A card question is asked whenever the card is in the chat, whether or not the player creates a persona. The window shows an **About you** section only when one is being made.
 

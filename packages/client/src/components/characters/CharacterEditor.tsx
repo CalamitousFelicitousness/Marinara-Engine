@@ -145,6 +145,7 @@ import {
   applyBakedGreetingImages,
   findGreetingImageUrls,
   getCardVariableChipNames,
+  getGreetingVariableChipNames,
   normalizeAvatarCrop,
   readBakedGreetingImages,
   hasBakedGreetingImages,
@@ -1641,6 +1642,58 @@ function SectionHeader({
   );
 }
 
+function VariableChip({ name, onInsert }: { name: string; onInsert: (name: string) => void }) {
+  const { t: localizeUi } = useUiTranslation();
+  return (
+    <button
+      type="button"
+      onClick={() => onInsert(name)}
+      title={name}
+      aria-label={localizeUi("ui.characters.onboarding.insertCardVariable", { value1: `{{${name}}}` })}
+      className={cn(
+        SETTINGS_BUTTON_CLASS,
+        "mari-chrome-control--chip mari-chrome-control--regular-label font-mono text-[0.6rem]",
+      )}
+    >
+      <Code2 size="0.625rem" />
+      {"{{" + name + "}}"}
+    </button>
+  );
+}
+
+/** A greeting resolves both kinds of answer, so its chips list both, split by who answers them. */
+function GreetingVariableChips({
+  names,
+  onInsert,
+}: {
+  names: { character: string[]; persona: string[] };
+  onInsert: (name: string) => void;
+}) {
+  const { t: localizeUi } = useUiTranslation();
+  const groups = [
+    { label: localizeUi("ui.characters.onboarding.cardQuestions"), names: names.character },
+    { label: localizeUi("ui.characters.onboarding.questions"), names: names.persona },
+  ].filter((group) => group.names.length > 0);
+  if (groups.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-[0.625rem] font-medium text-[var(--muted-foreground)]">
+        {localizeUi("ui.panels.promptoverrideseditorbody.availableVariables")}
+      </span>
+      {groups.map((group) => (
+        <div key={group.label} className="flex flex-col gap-1">
+          <span className="text-[0.625rem] text-[var(--muted-foreground)]/70">{group.label}</span>
+          <div className="flex flex-wrap gap-1.5">
+            {group.names.map((name) => (
+              <VariableChip key={name} name={name} onInsert={onInsert} />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function CharacterCardTab({
   formData,
   updateField,
@@ -1741,20 +1794,7 @@ function CharacterCardTab({
         </span>
         <div className="flex flex-wrap gap-1.5">
           {chipNames.map((name) => (
-            <button
-              type="button"
-              key={name}
-              onClick={() => insertVariable(field, name)}
-              title={name}
-              aria-label={localizeUi("ui.characters.onboarding.insertCardVariable", { value1: `{{${name}}}` })}
-              className={cn(
-                SETTINGS_BUTTON_CLASS,
-                "mari-chrome-control--chip mari-chrome-control--regular-label font-mono text-[0.6rem]",
-              )}
-            >
-              <Code2 size="0.625rem" />
-              {"{{" + name + "}}"}
-            </button>
+            <VariableChip key={name} name={name} onInsert={(chip) => insertVariable(field, chip)} />
           ))}
         </div>
       </div>
@@ -2351,18 +2391,7 @@ function OnboardingTab({
                           </span>
                           <div className="flex flex-wrap gap-1.5">
                             {variableNames.map((name) => (
-                              <button
-                                type="button"
-                                key={name}
-                                onClick={() => insertVariable(field, name)}
-                                className={cn(
-                                  SETTINGS_BUTTON_CLASS,
-                                  "mari-chrome-control--chip mari-chrome-control--regular-label font-mono text-[0.6rem]",
-                                )}
-                              >
-                                <Code2 size="0.625rem" />
-                                {"{{" + name + "}}"}
-                              </button>
+                              <VariableChip key={name} name={name} onInsert={(chip) => insertVariable(field, chip)} />
                             ))}
                           </div>
                         </div>
@@ -3595,6 +3624,42 @@ function DialogueTab({
   const greetingActionButtonClassName =
     "mari-editor-action mari-editor-action--compact inline-flex h-8 w-8 rounded-lg p-0 disabled:cursor-not-allowed disabled:opacity-40";
 
+  // Same read as the Card tab: `safeParse` keeps a malformed block from throwing in render.
+  const greetingChipNames = useMemo(() => {
+    const parsed = characterOnboardingSchema.safeParse(formData.extensions.onboarding ?? {});
+    return getGreetingVariableChipNames(parsed.success ? parsed.data : null);
+  }, [formData.extensions.onboarding]);
+  // The greeting that last had the caret, so its chips are the ones on screen:
+  // `first`, or an alternate's stable key (moving a greeting keeps its key).
+  const [activeGreeting, setActiveGreeting] = useState<string | null>(null);
+  const greetingFieldRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
+
+  const insertGreetingVariable = (target: string, name: string) => {
+    const token = "{{" + name + "}}";
+    const textarea = greetingFieldRefs.current[target];
+    const alternateIndex = greetingKeysRef.current.indexOf(target);
+    const current = target === "first" ? formData.first_mes : (formData.alternate_greetings[alternateIndex] ?? "");
+    const start = textarea?.selectionStart ?? current.length;
+    const end = textarea?.selectionEnd ?? current.length;
+    const next = current.slice(0, start) + token + current.slice(end);
+    // Without quote normalisation, as on the Card tab: inserting one tag must not
+    // rewrite every quote already in the author's text.
+    updateFormData((data) =>
+      target === "first"
+        ? { ...data, first_mes: next }
+        : {
+            ...data,
+            alternate_greetings: data.alternate_greetings.map((greeting, i) =>
+              i === alternateIndex ? next : greeting,
+            ),
+          },
+    );
+    requestAnimationFrame(() => {
+      textarea?.focus();
+      textarea?.setSelectionRange(start + token.length, start + token.length);
+    });
+  };
+
   return (
     <div className="space-y-6">
       <SectionHeader
@@ -3666,6 +3731,10 @@ function DialogueTab({
             showTokenCount
             value={formData.first_mes}
             onChange={(value) => updateField("first_mes", value)}
+            textareaRef={(element) => {
+              greetingFieldRefs.current.first = element;
+            }}
+            onFocus={() => setActiveGreeting("first")}
             rows={6}
             title={localizeUi("ui.characters.dialoguetab.firstMessage")}
             showMarkdownPreview
@@ -3678,6 +3747,9 @@ function DialogueTab({
             }
           />
         </MariFieldReview>
+        {activeGreeting === "first" && (
+          <GreetingVariableChips names={greetingChipNames} onInsert={(name) => insertGreetingVariable("first", name)} />
+        )}
       </div>
 
       {/* Alternate Greetings */}
@@ -3756,6 +3828,11 @@ function DialogueTab({
               ariaLabel={localizeUi("ui.characters.dialoguetab.alternateGreetingValue1", { value1: i + 1 })}
               value={g}
               onChange={(value) => updateGreeting(i, value)}
+              textareaRef={(element) => {
+                const key = greetingKeysRef.current[i];
+                if (key) greetingFieldRefs.current[key] = element;
+              }}
+              onFocus={() => setActiveGreeting(greetingKeysRef.current[i] ?? null)}
               rows={3}
               title={localizeUi("ui.characters.dialoguetab.alternateGreetingValue1", { value1: i + 1 })}
               showMarkdownPreview
@@ -3767,6 +3844,12 @@ function DialogueTab({
                 localizeUi("ui.cardFields.seedPlaceholder")
               }
             />
+            {activeGreeting === greetingKeysRef.current[i] && (
+              <GreetingVariableChips
+                names={greetingChipNames}
+                onInsert={(name) => insertGreetingVariable(greetingKeysRef.current[i] ?? "", name)}
+              />
+            )}
           </div>
         ))}
       </div>

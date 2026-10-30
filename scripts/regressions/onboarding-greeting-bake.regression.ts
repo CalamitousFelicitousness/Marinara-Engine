@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import {
   characterExtensionsSchema,
   findPersonaVariableUses,
+  getGreetingVariableChipNames,
   greetingMentionsPersonaName,
   resolveOnboardingGreeting,
   shouldFillGreetingFromPersona,
@@ -19,6 +20,41 @@ function onboarding(input: Record<string, unknown>): CharacterOnboarding {
   return parsed as CharacterOnboarding;
 }
 const option = (id: string, value: string, label = value) => ({ id, label, value });
+
+// A greeting's chips offer both kinds of answer, split by who answers them.
+{
+  const both = onboarding({
+    description: "A {{class}}.",
+    variables: [
+      { id: "class", variableName: "class", question: "Class?" },
+      { id: "shared", variableName: "shared", question: "Shared?" },
+    ],
+    cardVariables: [
+      { id: "bond", variableName: "bond", question: "Bond?" },
+      { id: "shared2", variableName: "shared", question: "Shared?" },
+    ],
+  });
+  const names = getGreetingVariableChipNames(both);
+  assert.deepEqual(names.character, ["bond", "shared"], "character questions come first");
+  assert.ok(names.persona.includes("class"), "persona questions are offered too");
+  assert.ok(names.persona.includes("player"), "the built-in player name fills in like any persona question");
+  assert.ok(
+    !names.persona.includes("shared"),
+    "a name in both lists is one chat variable and stays with the character",
+  );
+
+  const cardOnly = onboarding({ cardVariables: [{ id: "bond", variableName: "bond", question: "Bond?" }] });
+  assert.deepEqual(
+    getGreetingVariableChipNames(cardOnly),
+    { character: ["bond"], persona: [] },
+    "without a persona template nothing can fill a persona name, so none is offered",
+  );
+  assert.deepEqual(
+    getGreetingVariableChipNames({ ...both, enabled: false }),
+    { character: [], persona: [] },
+    "the onboarding toggle being off offers no chips",
+  );
+}
 
 // `class` is a choice; `customClass` is asked only for the `custom` option, whose
 // value holds a macro; `pet` is never answered in these tests.
@@ -132,4 +168,3 @@ assert.equal(
   false,
   "no persona was created from a template",
 );
-

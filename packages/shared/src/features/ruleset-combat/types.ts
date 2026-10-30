@@ -1625,7 +1625,7 @@ export interface RulesetCombatAction {
     recover?: number;
     /** What each carried stack of it with clauses of its own adds to the blow (1.644), by its place
      *  in `sheet.items`, and whether it is spent once one of them reaches a target. */
-    riders?: Record<string, { plus: RulesetCombatDamageClause[]; spends?: true }>;
+    riders?: Record<string, { plus: RulesetCombatDamageClause[]; spends?: true; toHit?: number }>;
   };
   /** Shot out of this stack of the holder's (its place in `sheet.items`) only (1.644): a mode
    *  picked for its ammunition, an Arrow of Slaying. */

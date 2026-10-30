@@ -2139,6 +2139,11 @@ export function RulesetCombatMenu({
               )}
             </button>
           )}
+          {!view.window && !view.canYield && view.yieldRefusedBy?.length ? (
+            <span data-yield-refused className={cn("self-center text-[0.65rem] italic", ink.muted)}>
+              {t("game.combat.ruleset.menu.yieldRefused", { names: view.yieldRefusedBy.join(", ") })}
+            </span>
+          ) : null}
         </div>
       </div>
     </div>

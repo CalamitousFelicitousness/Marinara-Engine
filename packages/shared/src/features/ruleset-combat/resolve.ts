@@ -16676,6 +16676,8 @@ function resolveActionBodyIn(
       },
     };
   }
+  // And what it adds to the attack roll (1.804): an Arrow +1's +1.
+  if (rider?.toHit && action.toHit !== undefined) action = { ...action, toHit: action.toHit + rider.toHit };
   if (action.sequence) {
     return resolveSequence(
       ctx,

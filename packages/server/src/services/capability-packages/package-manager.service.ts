@@ -4252,6 +4252,16 @@ function carriesAmmoRider641(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesAmmoRider641(one, depth + 1));
 }
 
+/** Ammunition that adds to the attack roll of the shot it rides (1.804): 5e's Arrow +1. */
+function carriesAmmoToHit804(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAmmoToHit804(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.ammoRider)?.toHit !== undefined) return true;
+  return featureValues(record).some((one) => carriesAmmoToHit804(one, depth + 1));
+}
+
 /** A use that gives back spent pools by itself, so many of them (1.643): 5e's Pearl of Power. */
 function carriesRecoverCount640(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -12745,6 +12755,14 @@ function capabilityPackageInstallIssueFor(
     })()
   ) {
     return "A ruleset whose list rows may be used as rituals (a list's ritual) requires schemaVersion 2 and capabilityApi 1.799 or newer";
+  }
+  // Ammunition that adds to the attack roll of its shot, 1.804.
+  if (
+    !declaresApi(804) &&
+    (carriesAmmoToHit804(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesAmmoToHit804(document)))
+  ) {
+    return "A ruleset with ammunition that adds to the attack roll of its shot (an ammoRider's toHit) requires schemaVersion 2 and capabilityApi 1.804 or newer";
   }
   // How often a rest may be taken, 1.802.
   if (

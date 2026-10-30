@@ -3445,6 +3445,18 @@ function rulesetPartyMayYield(state: CombatDirectorState, encounter: RulesetEnco
     standing.every((one) => state.enemies?.find((unit) => unit.id === one.id)?.tactics?.adjective === "honourable")
   );
 }
+/** Who keeps the party from giving itself up, when honour is in the fight at all (laptop 2026-10-30:
+ *  the button went away as the captain turned methodical, with nothing on screen saying why). The
+ *  standing opponents who are not honourable now, once one standing is or was. */
+function rulesetYieldRefusedBy(state: CombatDirectorState, encounter: RulesetEncounterState): string[] {
+  const standing = encounter.combatants
+    .filter((one) => one.side !== "party" && !one.object && one.calledBy === undefined && rulesetCombatStanding(one))
+    .map((one) => ({ one, tactics: state.enemies?.find((unit) => unit.id === one.id)?.tactics }));
+  const honour = standing.some(
+    ({ tactics }) => tactics?.adjective === "honourable" || tactics?.shiftedFrom === "honourable",
+  );
+  return honour ? standing.filter(({ tactics }) => tactics?.adjective !== "honourable").map(({ one }) => one.name) : [];
+}
 
 /** The fight as a screen reads it. A projection: no sheet build, no live blob and no catalogs.
  *  Nothing changes while it is drawn, so every fighter's sheet is worked out once for it, however
@@ -3501,6 +3513,10 @@ function rulesetViewOf(
     ruleset: { ...encounter.ruleset },
     round: encounter.round,
     ...(!over && rulesetPartyMayYield(state, encounter) ? { canYield: true as const } : {}),
+    ...(() => {
+      const refusedBy = over ? [] : rulesetYieldRefusedBy(state, encounter);
+      return refusedBy.length > 0 ? { yieldRefusedBy: refusedBy.slice(0, 8) } : {};
+    })(),
     order: [...encounter.order],
     ...(grid && distance
       ? {

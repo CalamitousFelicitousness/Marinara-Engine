@@ -2790,6 +2790,7 @@
   "game.combat.ruleset.menu.yield": "Surrender",
   "game.combat.ruleset.menu.yieldConfirm": "Surrender to them? Click again",
   "game.combat.ruleset.menu.yieldConfirmTouch": "Surrender to them? Tap again",
+  "game.combat.ruleset.menu.yieldRefused": "No surrender: {{names}} would not take it now",
   "game.combat.ruleset.mode.plain": "As it is",
   "game.combat.ruleset.mode.prompt": "How is {{label}} used?",
   "game.combat.ruleset.mode.search": "Search",

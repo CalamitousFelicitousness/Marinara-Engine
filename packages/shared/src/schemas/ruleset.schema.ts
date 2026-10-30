@@ -12467,6 +12467,8 @@ const catalogItemObjectSchema = z
     ammoRider: z
       .object({
         plus: z.array(itemPlusClauseSchema).min(1).max(6),
+        /** Added to the attack roll of the shot it rides (1.804): 5e's Arrow +1. */
+        toHit: z.number().int().min(-20).max(20).optional(),
         spentOnUse: z.literal(true).optional(),
       })
       .strict()

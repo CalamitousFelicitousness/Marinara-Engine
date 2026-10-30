@@ -434,6 +434,9 @@ export interface DirectedRulesetView {
   round: number;
   /** Every opponent still standing is honourable (combat AI T6): the party may yield to them. */
   canYield?: true;
+  /** Why the party may not yield, when honour is in the fight: the standing opponents who are not
+   *  honourable now (a captain turned methodical once bloodied). */
+  yieldRefusedBy?: string[];
   order: string[];
   /** The party member the player plays as their own character; the others may be the Engine's. */
   lead?: string;

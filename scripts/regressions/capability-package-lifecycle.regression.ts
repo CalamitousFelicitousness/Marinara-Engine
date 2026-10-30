@@ -104,7 +104,7 @@ try {
   const legacyManifest = capabilityPackageManifestSchema.parse(installedPackage("legacy", ["agent"]).manifest);
   assert.equal(legacyManifest.schemaVersion, 1, "Existing manifest v1 packages must remain readable");
   assert.equal(getCapabilityApiCompatibilityIssue(legacyManifest), null);
-  assert.deepEqual(supportedCapabilityApi, { major: 1, minor: 803 });
+  assert.deepEqual(supportedCapabilityApi, { major: 1, minor: 804 });
 
   const manifestV2 = capabilityPackageManifestSchema.parse({
     ...legacyManifest,
@@ -140,11 +140,11 @@ try {
   });
   assert.match(
     getCapabilityApiCompatibilityIssue(unsupportedMajorManifest) ?? "",
-    /requires capability API 2\.0; this Engine supports 1\.803/,
+    /requires capability API 2\.0; this Engine supports 1\.804/,
   );
   const currentMinorManifest = capabilityPackageManifestSchema.parse({
     ...manifestV2,
-    capabilityApi: { major: 1, minor: 803 },
+    capabilityApi: { major: 1, minor: 804 },
   });
   assert.equal(getCapabilityApiCompatibilityIssue(currentMinorManifest), null);
   assert.equal(
@@ -228,6 +228,7 @@ try {
     [801, "rituals only for those who may"],
     [802, "rests only so often"],
     [803, "a ruleset's language packs"],
+    [804, "ammunition's bonus to hit"],
     [385, "shared gallery image saving"],
     [386, "Home browser openConnection and raw generation debug logging"],
   ];

@@ -2306,7 +2306,7 @@ export function buildGmFormatReminder(
       `DICE:`,
       `- When an outcome turns on chance, you have three ways to write it. Pick by what the outcome is, not by preference.`,
       ``,
-      `- IF THE OUTCOME SPLITS TWO WAYS, WRITE A BRANCH BLOCK. Write the check without numbers, then write both halves. The engine rolls, keeps the half the roll selects, and deletes the other before anyone reads the turn. Neither half may contain a command.`,
+      `- IF THE OUTCOME SPLITS TWO WAYS, WRITE A BRANCH BLOCK. Write the check without numbers, then write both halves. The engine rolls, keeps the half the roll selects, and deletes the other before anyone reads the turn. Neither half may contain a command, but for an [inventory] add of what a success makes or gathers, written in its success half.`,
       `  [skill_check: skill="Stealth" dc="15" branch="crates"]`,
       `  [branch: crates]`,
       `  [on success] The guard's gaze slides over the crates and away. You are past him.`,
@@ -2327,7 +2327,7 @@ export function buildGmFormatReminder(
       ``,
       sightedPool
         ? `- ONLY IF THE NUMBER ITSELF HAS TO DECIDE BETWEEN THREE OR MORE DIFFERENT OUTCOMES, spend a pool value instead: write the value shown below into the check's rolls= and name its slot with pool=, then narrate what it meant in this same turn.`
-        : `- ONLY IF THE NUMBER ITSELF HAS TO DECIDE BETWEEN THREE OR MORE DIFFERENT OUTCOMES, ask for the value instead: write [skill_check: skill="Skill Name" dc="${ctx.ruleset ? "N" : "1-20"}"] or [dice: 3d8+2] and stop at the attempt. The engine rolls it and records it. Narrate what it meant at the start of your next turn.`,
+        : `- ONLY IF THE NUMBER ITSELF HAS TO DECIDE BETWEEN THREE OR MORE DIFFERENT OUTCOMES, ask for the value instead: write [skill_check: skill="Skill Name" dc="${ctx.ruleset ? "N" : "1-20"}"] or [dice: 3d8+2] and stop at the attempt. The engine rolls it and records it. Narrate what it meant at the start of your next turn, with the [inventory] add of anything a success made or gathered.`,
       ``,
       `- A check you write in none of these forms is rolled by the engine and recorded, and this turn ends without its outcome; narrate what the number meant at the start of your next turn.`,
       ``,

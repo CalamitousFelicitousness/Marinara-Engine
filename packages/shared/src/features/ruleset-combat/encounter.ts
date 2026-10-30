@@ -3694,7 +3694,11 @@ function itemAttackActions(
       ? Object.fromEntries(
           shots.map(({ at, rider }) => [
             String(at),
-            { plus: clausesOf(rider.plus), ...(rider.spentOnUse ? { spends: true as const } : {}) },
+            {
+              plus: clausesOf(rider.plus),
+              ...(rider.spentOnUse ? { spends: true as const } : {}),
+              ...(rider.toHit ? { toHit: rider.toHit } : {}),
+            },
           ]),
         )
       : undefined;

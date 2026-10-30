@@ -655,6 +655,17 @@ try {
     assert.equal(yielding.state.summary?.yielded, true, "taken alive");
     const fierce = surrender("reckless");
     assert.equal(fierce.view?.canYield, undefined, "not before one that would not take it");
+    assert.equal(fierce.view?.yieldRefusedBy, undefined, "and no word of it where honour never was");
+    assert.equal(yielding.view?.yieldRefusedBy, undefined);
+    // One that was honourable and turned (bloodied, methodical) is named as why (laptop 2026-10-30).
+    const turned = surrender("honourable");
+    const knight = turned.state.enemies!.find((unit) => unit.id === "knight")!;
+    knight.tactics = { ...knight.tactics!, adjective: "methodical", shifted: true, shiftedFrom: "honourable" };
+    const turnedView = directedRulesetView(definition, turned.state);
+    assert.equal(turnedView?.canYield, undefined);
+    assert.deepEqual(turnedView?.yieldRefusedBy, [
+      rulesetCombatant(turned.state.rulesetFight!.encounter, "knight")!.name,
+    ]);
     assert.equal(commandRulesetCombatDirector(definition, fierce.state, { type: "yield" }).ok, false);
     assert.equal(fierce.state.outcome, undefined);
   }

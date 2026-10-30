@@ -112,10 +112,16 @@ try {
     if (!result.ok) assert.match(result.issues.join("; "), pattern);
   };
   const definition = parsed(document());
-  const kit = (id: string) =>
-    definition.catalogs!.find((catalog) => catalog.id === "kit")!.entries!.find((entry) => entry.id === id)!.item!;
-  const stack = (id: string, name: string, quantity: number, worn = false): RulesetSheetItem => ({
-    item: kit(id),
+  const kit = (id: string, def: RulesetDefinition = definition) =>
+    def.catalogs!.find((catalog) => catalog.id === "kit")!.entries!.find((entry) => entry.id === id)!.item!;
+  const stack = (
+    id: string,
+    name: string,
+    quantity: number,
+    worn = false,
+    def: RulesetDefinition = definition,
+  ): RulesetSheetItem => ({
+    item: kit(id, def),
     quantity,
     worn,
     name,
@@ -129,9 +135,9 @@ try {
   });
   // Every d20 a 5 (the archer hits on +20; a monster fails its save), every other die a 4.
   const faces = (sides: number) => (sides === 20 ? 5 : 4);
-  const fight = (foes = [foe("wyrm", "dragon", 20)]): RulesetEncounterState => {
+  const fight = (foes = [foe("wyrm", "dragon", 20)], def: RulesetDefinition = definition): RulesetEncounterState => {
     const state = createRulesetEncounter({
-      definition,
+      definition: def,
       seed: 1,
       roller: faces,
       combatants: [
@@ -144,9 +150,9 @@ try {
             fields: { level: 5, ac: 14, speed: 30, hp_max: 30 },
           }),
           items: [
-            stack("longbow", "Longbow", 1, true),
-            stack("arrow", "Arrow", 5),
-            stack("dragon-arrow", "Arrow of Dragon Slaying", 1),
+            stack("longbow", "Longbow", 1, true, def),
+            stack("arrow", "Arrow", 5, false, def),
+            stack("dragon-arrow", "Arrow of Dragon Slaying", 1, false, def),
           ],
         },
         ...foes,
@@ -159,9 +165,9 @@ try {
   type EventOf<T extends RulesetCombatEvent["type"]> = Extract<RulesetCombatEvent, { type: T }>;
   const eventsOf = <T extends RulesetCombatEvent["type"]>(events: RulesetCombatEvent[], type: T): EventOf<T>[] =>
     events.filter((event): event is EventOf<T> => event.type === type);
-  const shoot = (state: RulesetEncounterState, target: string, mode?: string) => {
+  const shoot = (state: RulesetEncounterState, target: string, mode?: string, def: RulesetDefinition = definition) => {
     const result = applyRulesetCombatChoice(
-      definition,
+      def,
       state,
       { actorId: "archer", optionId: "item:0", targetIds: [target], ...(mode ? { mode } : {}) },
       faces,
@@ -287,6 +293,34 @@ try {
     });
     assert.equal(getCapabilityPackageInstallIssue(manifest(643) as never, document()), gate);
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(644) as never, document()), gate);
+  }
+
+  // ── A bonus to hit on the shot it rides (1.804: the real Arrow +1 added nothing to the roll) ──
+  {
+    const plusOne = document((rider) => {
+      rider.toHit = 3;
+    });
+    const toHitGate =
+      "A ruleset with ammunition that adds to the attack roll of its shot (an ammoRider's toHit) requires schemaVersion 2 and capabilityApi 1.804 or newer";
+    const manifest = (minor: number) => ({
+      schemaVersion: 2,
+      capabilityApi: { major: 1, minor },
+      id: "fivee",
+      name: "5e",
+      version: "1.0.0",
+      kind: ["ruleset"],
+      entrypoints: {},
+      contributions: { assets: { paths: ["ruleset.json"] } },
+      files: [{ path: "ruleset.json", sha256: "0".repeat(64), bytes: 10 }],
+      permissions: [],
+      restartRequired: false,
+    });
+    const hit = parsed(plusOne);
+    const rolled = (mode?: string) =>
+      eventsOf(shoot(fight([foe("wolf", "beast", 200)], hit), "wolf", mode, hit).events, "attack")[0]!.total;
+    assert.equal(rolled("shot:2") - rolled(), 3, "the shot it rides is rolled 3 higher, a plain one not");
+    assert.equal(getCapabilityPackageInstallIssue(manifest(803) as never, plusOne), toHitGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(804) as never, plusOne), toHitGate);
   }
 
   console.log(

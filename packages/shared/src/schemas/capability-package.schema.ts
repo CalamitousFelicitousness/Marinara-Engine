@@ -1534,7 +1534,9 @@ const capabilityPackageManifestBaseSchema = z
 // 1.803: a ruleset's language packs: a catalog entry's `locales`, one `<id>-<version>.<lang>.json` per
 //        language, fetched only in the Engine's language; and a ruleset package file a player shares may
 //        carry `locales/<lang>.json`, of which an import keeps the Engine's language alone.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 803 } as const);
+// 1.804: an `ammoRider`'s `toHit`: what magic ammunition adds to the attack roll of the shot it rides
+//        (5e's Arrow +1).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 804 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

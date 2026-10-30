@@ -3104,10 +3104,18 @@ function GameSurfaceComponent({
   const [queuedEncounter, setQueuedEncounter] = useState<{ encounter: CombatEncounterTag; messageId: string } | null>(
     null,
   );
-  const [queuedCombatGeneration, setQueuedCombatGeneration] = useState<{ messageId: string; notify: boolean } | null>(
-    null,
-  );
+  /** `asked`: the player (or an Experience) asked for this fight, so it opens the moment it is ready
+   *  instead of waiting for the narration to be stepped through (laptop room playtest 2026-10-30). */
+  const [queuedCombatGeneration, setQueuedCombatGeneration] = useState<{
+    messageId: string;
+    notify: boolean;
+    asked?: boolean;
+  } | null>(null);
   const [preparedCombatState, setPreparedCombatState] = useState<PreparedCombatState | null>(null);
+  const preparedCombatStateRef = useRef(preparedCombatState);
+  preparedCombatStateRef.current = preparedCombatState;
+  const queuedCombatGenerationRef = useRef(queuedCombatGeneration);
+  queuedCombatGenerationRef.current = queuedCombatGeneration;
   const [combatGenerationPending, setCombatGenerationPending] = useState(false);
   const [combatGenerationError, setCombatGenerationError] = useState<string | null>(null);
   /** The last failed setup stopped part way: the model ran out of room to answer (B1). */
@@ -9330,7 +9338,10 @@ function GameSurfaceComponent({
     !!latestAssistantMsg?.id &&
     queuedCombatGeneration.messageId === latestAssistantMsg.id;
   const combatStartGateReached =
-    queuedCombatMatchesLatest && !isStreaming && !scenePreparing && (!latestNarrationText || narrationDone);
+    queuedCombatMatchesLatest &&
+    !isStreaming &&
+    !scenePreparing &&
+    (!latestNarrationText || narrationDone || !!queuedCombatGeneration?.asked);
   const combatStarting = combatStartGateReached && combatGenerationPending && !combatUiActive;
   const combatGenerationFailedAtGate = combatStartGateReached && !!combatGenerationError && !combatUiActive;
 
@@ -10454,7 +10465,13 @@ function GameSurfaceComponent({
         if (notify) toast.error(localizeUi("ui.game.gamesurfacecomponent.theGmNeedsToWriteAtLeastOneTurn"));
         return "no-turn";
       }
-      setQueuedCombatGeneration({ messageId, notify });
+      // A fight already made for this turn, waiting to open, is never made twice (laptop room playtest
+      // 2026-10-30: a second Combat press generated a second encounter); asking again opens it now.
+      if (preparedCombatStateRef.current && queuedCombatGenerationRef.current?.messageId === messageId) {
+        setQueuedCombatGeneration((queued) => (queued ? { ...queued, asked: true } : queued));
+        return "pending";
+      }
+      setQueuedCombatGeneration({ messageId, notify, asked: true });
       setPreparedCombatState(null);
       setCombatGenerationError(null);
       generateCombatRef.current(messageId, notify);

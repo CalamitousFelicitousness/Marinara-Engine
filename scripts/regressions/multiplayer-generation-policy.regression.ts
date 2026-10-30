@@ -73,6 +73,18 @@ for (const status of ["paused", "lobby", "broken"]) {
   );
 }
 assert.equal(resolveRoomGenerationPolicy("private_chat", {}, []), null);
+const carded = resolveRoomGenerationPolicy(
+  "chat_12345",
+  { ...metadata, gameCharacterCards: [{ name: "Guest Hero", multiplayerParticipantId: "guest_12345" }] },
+  characterIds,
+  authority,
+)!;
+runWithRoomGeneration(carded, () =>
+  assert.ok(
+    roomRosterPrompt()?.includes("Alex controls Rowan and plays the game character Guest Hero"),
+    "the GM is told which game card each player plays, so it never voices it",
+  ),
+);
 for (const characters of [
   undefined,
   "not-a-roster",
@@ -140,6 +152,7 @@ try {
   await runWithRoomGeneration(policy, async () => {
     assert.ok(roomRosterPrompt()?.includes("Exact <leaf> & {{user}}"), "approved persona leaves stay verbatim");
     assert.ok(roomRosterPrompt()?.includes("Alex controls Rowan"));
+    assert.ok(!roomRosterPrompt()?.includes("plays the game character"), "no bound game card, no extra name");
     assert.ok(roomRosterPrompt()?.includes("Narrator: GM"));
     assert.ok(roomRosterPrompt()?.includes("Companion: AI character"));
     assert.ok(!roomRosterPrompt()?.includes("Pending"), "pending roster changes do not enter the current round");

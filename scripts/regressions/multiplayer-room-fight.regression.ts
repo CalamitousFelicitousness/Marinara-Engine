@@ -421,6 +421,14 @@ try {
       hostSurface,
       /for \(const guest of roomHumans\?\.guests \?\? \[\]\) \{\s*const gc = findGameCard\(guest\.name\);/u,
     );
+    // Combat asked for opens once ready, without stepping through the narration, and a second press
+    // opens the fight already made instead of making another (laptop room playtest 2026-10-30).
+    assert.match(hostSurface, /\(!latestNarrationText \|\| narrationDone \|\| !!queuedCombatGeneration\?\.asked\)/u);
+    assert.match(
+      hostSurface,
+      /if \(preparedCombatStateRef\.current && queuedCombatGenerationRef\.current\?\.messageId === messageId\) \{/u,
+    );
+    assert.match(hostSurface, /setQueuedCombatGeneration\(\{ messageId, notify, asked: true \}\);/u);
     assert.match(chat, /data-multiplayer-room-header\s+data-chat-window-top-obstacle/u);
     assert.match(
       read("../../packages/client/src/components/ui/FloatingWindow.tsx"),

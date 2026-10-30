@@ -50,6 +50,8 @@
   --nyd-secondary: #e1e6e7;
   --nyd-secondary-text: #354147;
   --nyd-hover: #d9e0e2;
+  /* Chrome buttons draw this at 64%; the dim rose fell to ~3:1 on white, slate keeps ~4.9:1. */
+  --marinara-chat-chrome-button-text-base: #1b2329 !important;
 }
 :root[data-seasonal-theme="newyearsday"] .mari-seasonal-home {
   position: absolute;

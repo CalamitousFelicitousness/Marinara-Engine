@@ -14,7 +14,9 @@ import {
   clampParsedDiceToLimits,
   formatPoolSlotName,
   isEngineRollableSkillCheckTag,
+  isKeptDice,
   parseDiceNotation,
+  parseDicePool,
   parsePoolSlotName,
   parseSkillCheckTagBody,
   readGmTagAttributes,
@@ -39,9 +41,9 @@ export { isDiceNotation } from "@marinara-engine/shared";
  * Returns individual rolls, modifier, and total.
  */
 export function rollDice(notation: string): DiceRollResult {
-  const parsed = parseDiceNotation(notation);
+  const parsed = parseDicePool(notation);
   if (!parsed) {
-    throw new Error(`Invalid dice notation: "${notation}". Use NdM format (e.g. 2d6, d20+3, 4d8-1).`);
+    throw new Error(`Invalid dice notation: "${notation}". Use NdM format (e.g. 2d6, d20+3, 4d8-1, 4d6kh3).`);
   }
 
   return rollParsedDice(clampParsedDiceToLimits(parsed));
@@ -73,11 +75,21 @@ export function parseRollDiceToolResult(raw: string): DiceRollResult | null {
   if (!Number.isFinite(modifier)) return null;
   const dc = payload.dc;
   if (dc !== undefined && (typeof dc !== "number" || !Number.isSafeInteger(dc))) return null;
+  const kept = payload.kept;
+  if (kept !== undefined && !isKeptDice(kept, rolls.length)) return null;
   // A fresh tool result names its roller in `reason`; a saved roll read back (a continued turn) in `label`.
   const named = typeof payload.label === "string" ? payload.label : payload.reason;
   const label = typeof named === "string" ? cleanRollLabel(named) : "";
 
-  return { notation, rolls, modifier, total, ...(dc !== undefined ? { dc } : {}), ...(label ? { label } : {}) };
+  return {
+    notation,
+    rolls,
+    modifier,
+    total,
+    ...(kept !== undefined ? { kept } : {}),
+    ...(dc !== undefined ? { dc } : {}),
+    ...(label ? { label } : {}),
+  };
 }
 
 /** A roller's name or a roll's reason as the card shows it: one line, nothing that could close a tag. */

@@ -27,6 +27,7 @@ import {
   withHeldChangeDeclineChip,
   MARI_STARTER_CHIPS,
   mariReceiptReviewIds,
+  sanitizeMariQuestions,
   sanitizeMariSuggestionChips,
   type APIConnection,
   type Chat,
@@ -205,6 +206,7 @@ import { isHardStepFailure } from "./mari/MariWorkTimeline";
 import { MariSeesPanel } from "./mari/MariSeesPanel";
 import { MariChatsPanel } from "./mari/MariChatsPanel";
 import { MariComposer } from "./mari/MariComposer";
+import { MariQuestionCard } from "./mari/MariQuestionCard";
 import { MariTranscript } from "./mari/MariTranscript";
 import { MariWindowHeader } from "./mari/MariWindowHeader";
 import { useMariSkillMemoryActions } from "./mari/use-mari-skill-memory-actions";
@@ -680,12 +682,6 @@ export function HomeProfessorMariChat({
   const mariChipsChatId = useAgentStore((state) => state.mariChipsChatId);
   const setMariChips = useAgentStore((state) => state.setMariChips);
   const clearMariChips = useAgentStore((state) => state.clearMariChips);
-  const mariPlan = useAgentStore((state) => state.mariPlan);
-  const mariPlanChatId = useAgentStore((state) => state.mariPlanChatId);
-  const mariPlanCursor = useAgentStore((state) => state.mariPlanCursor);
-  const setMariPlan = useAgentStore((state) => state.setMariPlan);
-  const recordMariPlanAnswer = useAgentStore((state) => state.recordMariPlanAnswer);
-  const clearMariPlan = useAgentStore((state) => state.clearMariPlan);
   const professorMariSuggestionsEnabled = useUIStore((state) => state.professorMariSuggestionsEnabled);
   const showContextUsage = useUIStore((state) => state.showContextUsage);
 
@@ -763,6 +759,11 @@ export function HomeProfessorMariChat({
   const savedChips =
     chatId !== null && loadedMessagesChatId === chatId && !isBusy && lastLoadedMessage?.role === "assistant"
       ? sanitizeMariSuggestionChips(lastLoadedMessageExtra?.mariSuggestions, { maxChips: 6 })
+      : [];
+  // The card her last answer ended on. Any later message of yours moves the last row on, which answers it.
+  const pendingQuestions =
+    chatId !== null && loadedMessagesChatId === chatId && lastLoadedMessage?.role === "assistant"
+      ? sanitizeMariQuestions(lastLoadedMessageExtra?.mariQuestions)
       : [];
   const storeChipsForChat = mariChipsChatId === chatId && mariChips.length > 0 ? mariChips : savedChips;
   const visibleSuggestionChips =
@@ -1992,9 +1993,8 @@ export function HomeProfessorMariChat({
     toast.success(localizeUi("ui.chat.homeprofessormarichat.professorMariSPreviousChatWasSaved"));
   }, [chatHistoryOpen, clearMariChips, loadChatHistory, qc, setDraft, startMariThread, localizeUi]);
 
-  const guidedPlan = professorMariSuggestionsEnabled && mariPlanChatId === chatId ? mariPlan : null;
-  const guidedPlanStep = guidedPlan ? (guidedPlan[mariPlanCursor] ?? null) : null;
-  const chipRowChips = guidedPlanStep ? guidedPlanStep.chips : visibleSuggestionChips;
+  // A question card replaces chips: tapping one would send past the question.
+  const chipRowChips = pendingQuestions.length > 0 ? [] : visibleSuggestionChips;
   // #5820: the Accept action for held edits is NOT a suggestion. Captioning
   // the row "Suggestions only" told users the one control that applies Mari's
   // pending changes was optional flavour text, so they concluded she had
@@ -2003,10 +2003,9 @@ export function HomeProfessorMariChat({
   const chipRowAwaitsApproval = chipRowChips.some(isMariHeldChangeApprovalChip);
   // Slice 71 (N7): a held change is a "Needs you" card under her answer that says what Accept does and
   // carries Accept / Don't apply itself, so its chip row, hint line and status words go.
-  const heldChangeCard = chipRowAwaitsApproval && !guidedPlanStep;
-  const suggestionQuestion = guidedPlanStep
-    ? guidedPlanStep.question
-    : chipRowChips.length > 0
+  const heldChangeCard = chipRowAwaitsApproval;
+  const suggestionQuestion =
+    chipRowChips.length > 0
       ? messages.length === 0
         ? localizeUi("ui.chat.homeprofessormarichat.suggestions.start")
         : latestActionResults.length > 0
@@ -2016,22 +2015,21 @@ export function HomeProfessorMariChat({
   const suggestionsSuppressed = !["empty", "history", "completed"].includes(mariPresentationState);
   const showSuggestionPrompt =
     !heldChangeCard && !suggestionsSuppressed && Boolean(suggestionQuestion) && chipRowChips.length > 0;
-  // M5b: plain next steps are cards under the turn; a plan step or a held change keeps its answer chips by the composer.
-  const showNextStepCards = showSuggestionPrompt && messages.length > 0 && !guidedPlanStep && !chipRowAwaitsApproval;
+  // M5b: plain next steps are cards under the turn; a held change keeps its answer chips by the composer.
+  const showNextStepCards = showSuggestionPrompt && messages.length > 0 && !chipRowAwaitsApproval;
 
   const runRestart = useCallback(async () => {
     if (isBusy) return;
     setSending(true);
     try {
       await handleRestart();
-      clearMariPlan();
     } catch (error) {
       console.error("[Professor Mari] Failed to restart", error);
       toast.error(localizeUi("ui.chat.homeprofessormarichat.professorMariCouldNotRestartHerNotes"));
     } finally {
       setSending(false);
     }
-  }, [clearMariPlan, handleRestart, isBusy, localizeUi]);
+  }, [handleRestart, isBusy, localizeUi]);
 
   // Keep and restore live in a shared hook so the omnibar's approval rows do the
   // same thing, with the same toasts, as this pane.
@@ -2118,7 +2116,6 @@ export function HomeProfessorMariChat({
     setCancelledChatId(chatId);
     workspaceAbortRef.current?.abort();
     clearMariChips();
-    clearMariPlan();
     try {
       await api.post("/professor-mari/workspace/abort");
     } catch (error) {
@@ -2129,7 +2126,7 @@ export function HomeProfessorMariChat({
         duration: 12_000,
       });
     }
-  }, [chatId, clearMariChips, clearMariPlan, localizeUi]);
+  }, [chatId, clearMariChips, localizeUi]);
 
   const {
     handleNewSkill,
@@ -2259,7 +2256,6 @@ export function HomeProfessorMariChat({
   const { failRun, sendWorkspaceMessage, refreshAfterWorkspaceRun } = useMariWorkspaceRun({
     activeChatIdRef,
     chatId,
-    clearMariPlan,
     effectiveConnectionId,
     handoffContext,
     invalidateActionResult,
@@ -2269,7 +2265,6 @@ export function HomeProfessorMariChat({
     refreshWorkspaceStatus,
     setCancelledChatId,
     setMariChips,
-    setMariPlan,
     setRecovery,
     setWorkspaceActive,
     setWorkspaceRunClock,
@@ -2365,7 +2360,6 @@ export function HomeProfessorMariChat({
       if (overrideText === undefined) setDraft("");
       setMariChips(chat.id, []);
       setResolvedPrompts([]);
-      clearMariPlan();
       if (!overrideRecovery) setAttachments([]);
       setHandoffContext(persistentResourceContext(submittedContext));
       let existingUserMessageId: string | undefined;
@@ -2494,21 +2488,6 @@ export function HomeProfessorMariChat({
     if (chip.id === MARI_AUTHORIZATION_ACCEPT_CHIP.id || chip.id === MARI_AUTHORIZATION_DECLINE_CHIP.id) {
       void handleSubmit(chip.prompt);
       keepKeyboardInWindow();
-      return;
-    }
-    if (guidedPlanStep) {
-      const result = recordMariPlanAnswer(guidedPlanStep.fieldKey, chip.prompt);
-      if (result === "complete") {
-        const answers = useAgentStore.getState().mariPlanAnswers;
-        const summary = Object.entries(answers)
-          .map(([key, value]) => `${key}: ${value}`)
-          .join("; ");
-        clearMariPlan();
-        setDraft((current) =>
-          current.trim() ? `${current.trimEnd()} Create it - ${summary}` : `Create it - ${summary}`,
-        );
-        focusComposer();
-      }
       return;
     }
     if (chip.action) {
@@ -2731,6 +2710,16 @@ export function HomeProfessorMariChat({
       onDecline={() => handleSuggestionSelect(MARI_AUTHORIZATION_DECLINE_CHIP)}
     />
   ) : null;
+  const questionCardNode =
+    pendingQuestions.length > 0 ? (
+      <MariQuestionCard
+        key={`question:${lastLoadedMessage?.id}`}
+        questions={pendingQuestions}
+        disabled={isBusy || isReadingAttachments}
+        // The composer's draft and files are a message of their own, so they stay in the composer.
+        onSubmit={(answer) => void handleSubmit(answer, { attachments: [], context: handoffContext })}
+      />
+    ) : null;
   const answerAll = async (entries: ReadonlyArray<{ approval: MariWorkspacePendingApproval }>, keep: boolean) => {
     for (const { approval } of entries) await answerApproval(approval, keep);
   };
@@ -2838,7 +2827,8 @@ export function HomeProfessorMariChat({
       ({ approval }) =>
         !(approval.kind === "applied_review" && covered.has(approval.id) && !isMariReviewWaiting(approval)),
     );
-    if (entries.length === 0 && actionResults.length === 0 && !(messageId === lastAssistantId && heldCardNode)) {
+    const turnCards = messageId === lastAssistantId ? [heldCardNode, questionCardNode].filter(Boolean) : [];
+    if (entries.length === 0 && actionResults.length === 0 && turnCards.length === 0) {
       return NO_TURN_REVIEWS;
     }
     const waiting = entries.filter(({ approval, outcome }) => !outcome && isMariReviewWaiting(approval));
@@ -2866,7 +2856,7 @@ export function HomeProfessorMariChat({
     return {
       changed: entries.filter((entry) => !waiting.includes(entry)).map(renderTurnPrompt),
       needsOk: [
-        ...(messageId === lastAssistantId && heldCardNode ? [heldCardNode] : []),
+        ...turnCards,
         ...(deleteGroup ? [deleteGroup] : []),
         ...waiting.filter((entry) => !deleteGroup || !deletes.includes(entry as never)).map(renderTurnPrompt),
       ],
@@ -3184,6 +3174,7 @@ export function HomeProfessorMariChat({
         headerMenuOpen={headerMenuOpen}
         headerMenuRef={headerMenuRef}
         heldChangeCard={heldChangeCard}
+        questionCardWaiting={pendingQuestions.length > 0}
         isBusy={isBusy}
         noConnection={noConnection}
         mariPresentationState={mariPresentationState}
@@ -3392,7 +3383,6 @@ export function HomeProfessorMariChat({
                           emptyStateReady={emptyStateReady}
                           focusedCharacter={focusedCharacter}
                           focusedLorebook={focusedLorebook}
-                          guidedPlanStep={guidedPlanStep}
                           handleDeleteMessage={handleDeleteMessage}
                           handleNewAboutContext={handleNewAboutContext}
                           handleRegenerateMessage={handleRegenerateMessage}
@@ -3431,8 +3421,6 @@ export function HomeProfessorMariChat({
                           showConnectionFirstHint={showConnectionFirstHint}
                           showJumpToLatest={showJumpToLatest}
                           showNextStepCards={showNextStepCards}
-                          showSuggestionPrompt={showSuggestionPrompt}
-                          suggestionQuestion={suggestionQuestion}
                           transcriptHeadMessages={transcriptHeadMessages}
                           workspaceRunClock={workspaceRunClock}
                           workspaceStatus={workspaceStatus}

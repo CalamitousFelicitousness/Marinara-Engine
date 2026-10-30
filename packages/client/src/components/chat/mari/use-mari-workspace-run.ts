@@ -5,7 +5,6 @@ import {
   MessageRole,
   MariWorkspaceStatus,
   MariSuggestionChip,
-  MariGuidedPlanStep,
   Chat,
   MariComposerReference,
 } from "@marinara-engine/shared";
@@ -45,7 +44,6 @@ import {
 type MariWorkspaceRunInput = {
   activeChatIdRef: RefObject<string | null>;
   chatId: string | null;
-  clearMariPlan: () => void;
   effectiveConnectionId: string;
   handoffContext: ProfessorMariAskContext | null;
   invalidateActionResult: (result: MariWorkspaceActionResult) => Promise<void>;
@@ -72,7 +70,6 @@ type MariWorkspaceRunInput = {
   refreshWorkspaceStatus: (shouldApply?: () => boolean) => Promise<MariWorkspaceStatus>;
   setCancelledChatId: Dispatch<SetStateAction<string | null>>;
   setMariChips: (chatId: string | null, chips: MariSuggestionChip[]) => void;
-  setMariPlan: (chatId: string | null, steps: MariGuidedPlanStep[]) => void;
   setRecovery: (value: ProfessorMariRecovery | null) => void;
   setWorkspaceActive: Dispatch<SetStateAction<boolean>>;
   setWorkspaceRunClock: Dispatch<SetStateAction<{ startedAt: number; endedAt: number | null } | null>>;
@@ -85,7 +82,6 @@ type MariWorkspaceRunInput = {
 export function useMariWorkspaceRun({
   activeChatIdRef,
   chatId,
-  clearMariPlan,
   effectiveConnectionId,
   handoffContext,
   invalidateActionResult,
@@ -95,7 +91,6 @@ export function useMariWorkspaceRun({
   refreshWorkspaceStatus,
   setCancelledChatId,
   setMariChips,
-  setMariPlan,
   setRecovery,
   setWorkspaceActive,
   setWorkspaceRunClock,
@@ -295,12 +290,6 @@ export function useMariWorkspaceRun({
             ) {
               setMariChips(chat.id, chips);
             }
-          } else if (event.type === "plan") {
-            if (useUIStore.getState().professorMariSuggestionsEnabled) {
-              const steps = Array.isArray(event.data) ? (event.data as MariGuidedPlanStep[]) : [];
-              if (steps.length > 0) setMariPlan(chat.id, steps);
-              else clearMariPlan();
-            }
           } else if (event.type === "metadata") {
             const data = asRecord(event.data);
             if (data?.narration === true) setWorkspaceTimeline(markNarrationTimeline);
@@ -364,7 +353,6 @@ export function useMariWorkspaceRun({
       return { received, runId, hiddenDuringStream: pageWasHiddenDuringStream };
     },
     [
-      clearMariPlan,
       effectiveConnectionId,
       handoffContext,
       invalidateActionResult,
@@ -372,7 +360,6 @@ export function useMariWorkspaceRun({
       qc,
       setCancelledChatId,
       setMariChips,
-      setMariPlan,
       setWorkspaceActive,
       setWorkspaceRunClock,
       setWorkspaceTimeline,

@@ -4075,6 +4075,53 @@ details[open] > .mari-disclosure .mari-disclosure__chevron {
 }
 
 /* ---- foot: Why, then the state in words and at most one main action ---- */
+.mari-question__title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.mari-question__recommended {
+  flex-shrink: 0;
+  border: 1px solid var(--mari-divider);
+  border-radius: 999px;
+  padding: 0 0.4rem;
+  color: var(--primary);
+  font-size: var(--mari-card-fact, 0.75rem);
+  font-weight: 500;
+}
+
+.mari-question__other {
+  display: block;
+  width: 100%;
+  min-height: 2.75rem;
+  border: 0;
+  border-top: 1px solid var(--mari-divider);
+  background: transparent;
+  padding: 0.35rem var(--mari-card-pad-inline);
+  color: var(--foreground);
+  font: inherit;
+}
+
+.mari-question__other::placeholder {
+  color: color-mix(in srgb, var(--foreground) 60%, transparent);
+}
+
+/* Touch: the composer's text size, so iOS does not zoom into the field. */
+@media (pointer: coarse) {
+  .mari-question__other {
+    font-size: var(--mari-composer-text);
+  }
+}
+
+.mari-question .mari-receipt__actions:first-child {
+  margin-inline-start: 0;
+}
+
+.mari-question__other:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
 .mari-receipt__foot {
   display: flex;
   min-height: 3rem;

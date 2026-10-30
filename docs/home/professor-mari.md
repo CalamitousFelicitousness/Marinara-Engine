@@ -64,7 +64,7 @@ On an empty Professor Mari chat, starter chips such as **Create a Character**, *
 
 Guided flows ask one focused question at a time instead of presenting a long form all at once.
 
-For a complete create or edit request, Professor Mari can return a bounded guided plan. Each step has a small set of suggestions. Selecting one fills the current draft and advances the plan locally. Your text remains in the draft when you change a suggestion. The plan belongs to the current Professor Mari chat, so switching chats, restarting, stopping a run, or completing the plan clears stale steps. Malformed or excessive suggestions are discarded, and the chips are disabled while Professor Mari is working.
+When a request leaves real decisions open, Professor Mari can stop and ask on a question card under her reply: up to four questions, one at a time, each with a few options, her recommended one marked. Some questions take several answers. Pick an option or type your own, then press **Submit**: your answers go as your next message, so nothing is hidden and you can see what she was told. Her turn ends when she asks, and nothing she proposed alongside the question runs until you answer. You can also ignore the card and type in the message box; your next message answers it.
 
 Suggestions are available only in Professor Mari chats. Other characters do not receive Professor Mari's chips.
 
@@ -294,7 +294,7 @@ Professor Mari is a helper, not the full documentation. Keep these limits in min
 - Creating new content is usually safe, since nothing gets overwritten. Editing existing content deserves more care.
 - A reviewed dependency is third-party code with the same runtime access as the Marinara code that imports it. Check the package name, exact version, purpose, and integrity shown in the approval card.
 - For edits, name the exact item and the exact field you want changed. A request like "rewrite this whole character" is riskier than "make Luna's greeting shorter, keep her personality the same."
-- For multi-step creation, use the suggestion chips to answer one focused question at a time instead of trying to provide every field at once.
+- For multi-step creation, answer her question card or use the suggestion chips instead of trying to provide every field at once.
 - If she says she finished a task but the app does not show it, trust the app. Finish the task yourself from the matching panel.
 - If you reach Marinara from another device instead of the same computer, her editing actions need remote access set up. See the remote access guide.
 

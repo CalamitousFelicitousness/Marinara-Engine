@@ -908,6 +908,8 @@ export function AgentEditor() {
   useEffect(() => () => setActiveEditorField(null), [agentDetailId, setActiveEditorField]);
   const reportField = (id: string, label: string) => () => setActiveEditorField({ id, label });
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
+  const [headerCompact, setHeaderCompact] = useState(false);
+  const compact = hasBanner && headerCompact;
   const [showCustomAgentNotice, setShowCustomAgentNotice] = useState(true);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
@@ -2113,7 +2115,8 @@ export function AgentEditor() {
         className={cn(
           "mari-editor-header",
           hasBanner &&
-            "relative isolate aspect-[16/7] h-auto! max-h-[260px] content-between! border-b-0! bg-transparent! p-4! sm:aspect-[16/5]",
+            "relative isolate aspect-[16/7] h-auto! max-h-[260px] content-between! border-b-0! bg-transparent! p-4! transition-[max-height] duration-300 motion-reduce:transition-none sm:aspect-[16/5]",
+          compact && "max-h-[4.5rem] flex-nowrap! py-3!",
         )}
       >
         {hasBanner && storeEntry && (
@@ -2130,15 +2133,16 @@ export function AgentEditor() {
           type="button"
           onClick={handleClose}
           aria-label={localizeUi("ui.agents.agenteditor.backToAgents")}
-          className={cn("mari-editor-action inline-flex", hasBanner && "order-1")}
+          className={cn("mari-editor-action inline-flex", hasBanner && !compact && "order-1")}
         >
           <ArrowLeft size="1.125rem" />
         </button>
         <div
           className={cn(
             "mari-editor-icon-tile",
-            storeEntry?.store?.iconUrl && "h-14! w-14! rounded-2xl!",
-            hasBanner && "order-3 bg-[var(--marinara-editor-bg,var(--background))]!",
+            storeEntry?.store?.iconUrl && (compact ? "h-9! w-9! rounded-xl!" : "h-14! w-14! rounded-2xl!"),
+            hasBanner && !compact && "order-3",
+            hasBanner && "bg-[var(--marinara-editor-bg,var(--background))]!",
           )}
         >
           {storeEntry?.store?.iconUrl ? (
@@ -2158,14 +2162,16 @@ export function AgentEditor() {
           onFocus={reportField("name", localizeUi("ui.agents.agenteditor.nameField"))}
           className={cn(
             "mari-editor-title-input min-w-0 flex-1 placeholder:text-[var(--marinara-editor-muted)]",
-            hasBanner && "order-3 [text-shadow:0_1px_6px_rgb(0_0_0/0.6)]",
+            hasBanner && !compact && "order-3",
+            hasBanner && "[text-shadow:0_1px_6px_rgb(0_0_0/0.6)]",
           )}
           placeholder={localizeUi("ui.agents.agenteditor.agentName")}
         />
         <div
           className={cn(
             "mari-editor-actions flex max-md:w-full max-md:justify-end max-md:border-t max-md:border-[var(--marinara-editor-divider)] max-md:pt-2",
-            hasBanner && "order-2 ml-auto max-md:w-auto! max-md:border-t-0! max-md:pt-0!",
+            hasBanner && !compact && "order-2",
+            hasBanner && "ml-auto max-md:w-auto! max-md:border-t-0! max-md:pt-0!",
           )}
         >
           {saveError && (
@@ -2211,7 +2217,7 @@ export function AgentEditor() {
           )}
         </div>
         {/* Breaks the banner header into a top row (Back, actions) and a bottom row (logo, name). */}
-        {hasBanner && <span className="order-2 basis-full" />}
+        {hasBanner && !compact && <span className="order-2 basis-full" />}
       </div>
 
       {/* Unsaved warning */}
@@ -2275,7 +2281,15 @@ export function AgentEditor() {
       )}
 
       {/* ── Body ── */}
-      <div className="mari-editor-content min-w-0 max-w-full overflow-x-hidden max-md:p-4">
+      <div
+        className="mari-editor-content min-w-0 max-w-full overflow-x-hidden max-md:p-4"
+        onScroll={(e) => {
+          // Two thresholds so the header height change cannot toggle it back at once.
+          const top = e.currentTarget.scrollTop;
+          if (top > 48) setHeaderCompact(true);
+          else if (top < 4) setHeaderCompact(false);
+        }}
+      >
         <div className="mari-editor-content-inner mari-editor-content-inner--wide w-full min-w-0 max-w-full space-y-6">
           {isNewCustomAgent && showCustomAgentNotice && (
             <div

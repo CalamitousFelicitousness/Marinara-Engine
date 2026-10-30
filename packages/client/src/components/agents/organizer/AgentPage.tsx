@@ -22,7 +22,6 @@ import {
   AgentAction,
   AgentIcon,
   AgentRow,
-  MenuButton,
   SECONDARY_ACTION,
   StoreBanner,
   useOrganizer,
@@ -160,7 +159,6 @@ export function AgentPage({
                 {localizeUi("ui.agents.organizer.settings")}
               </button>
             )}
-            <MenuButton entry={entry} className="h-10 w-10" />
           </div>
         </header>
         {checkReason !== null && (

@@ -264,7 +264,21 @@ Click the **Chats** button in her header to open your saved Professor Mari chats
 
 Click the **New chat** button to start a fresh conversation with her. It first saves your current chat into the **Chats** list. You can also type `/new` (or `/restart`) in the message box to do the same thing. You see the message "Professor Mari's previous chat was saved."
 
-While she is working, the send button turns into a **Stop** button. Click it to cancel the current task.
+While she is working, a **Stop** button sits beside the send button. Click it to cancel the current task.
+
+### Sending messages while she works
+
+The message box stays open while she works. Send a message and it waits in a list above the box, marked **Sends when she finishes**. Files and `@` links wait with it. When she finishes cleanly, she takes the waiting messages one at a time, in order. Click the **X** on a message to remove it. A chat can hold up to 20 waiting messages.
+
+Waiting messages do not send by themselves in these cases:
+
+- **You press Stop.** They come back into the message box, so you can edit or resend them.
+- **She is waiting for you**, for an approval or an answer to a question. They show **Held**, with a **Send** button.
+- **The run failed, or the app restarted.** They also show **Held**. Nothing is lost.
+
+A held message stays held until you send or remove it. **Send** sends only that one, and typing a new message does not release the others.
+
+`/restart` and `/title` do nothing while she works, and they stay in the box until she is done.
 
 ## Leaving her window
 

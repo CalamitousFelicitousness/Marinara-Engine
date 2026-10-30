@@ -128,6 +128,13 @@ export function useMariWorkspaceRun({
       existingUserMessageId?: string,
       context: ProfessorMariAskContext | null = handoffContext,
       references: readonly MariComposerReference[] = [],
+      queue?: {
+        /** Send on a held message: the server takes it (files included) from the queue. */
+        pendingMessageId?: string;
+        /** What you queued after pressing Send: the server holds everything else. */
+        queuedSinceSendIds?: string[];
+        onQueueNext?: (next: { id: string; text: string }) => Promise<void>;
+      },
     ) => {
       // A mode change immediately before send must not race its PUTs: the run
       // resolves the mode server-side, so the WHOLE shared write chain - the
@@ -205,6 +212,8 @@ export function useMariWorkspaceRun({
             context: context ?? undefined,
             references: references.length > 0 ? references : undefined,
             existingUserMessageId,
+            pendingMessageId: queue?.pendingMessageId,
+            queuedSinceSendIds: queue?.queuedSinceSendIds,
             // Flavors her voice only while the dated pack is the one on screen.
             seasonalPackId: shownPack.season ? shownPack.id : undefined,
           },
@@ -325,6 +334,23 @@ export function useMariWorkspaceRun({
                 console.error("[Professor Mari] Failed to refresh action result", error);
               });
             }
+          } else if (event.type === "queue_next") {
+            const data = asRecord(event.data);
+            if (typeof data?.id === "string" && typeof data.text === "string") {
+              await queue?.onQueueNext?.({ id: data.id, text: data.text });
+            }
+            // A new turn on the same stream: everything the last one drew starts over, its clock too.
+            workspaceTextThrottle.cancel();
+            pendingWorkspaceTextRef.current = "";
+            clearDraft();
+            workingToolId = null;
+            useUIStore.getState().setMariWorkingField(null);
+            setWorkspaceRunClock({ startedAt: Date.now(), endedAt: null });
+            setWorkspaceTimeline([]);
+            setMariChips(chat.id, []);
+            useChatStore.getState().clearStreamBuffer(chat.id);
+            useChatStore.getState().clearThinkingBuffer(chat.id);
+            useChatStore.getState().setMariPhase(chat.id, "thinking");
           } else if (event.type === "done") {
             received = true;
             sawDone = true;

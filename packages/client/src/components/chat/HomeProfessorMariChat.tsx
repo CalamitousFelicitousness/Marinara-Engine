@@ -39,6 +39,9 @@ import {
   type MariWorkspaceSkillsResponse,
   type MariInstructionDetail,
   type MariInstructionsResponse,
+  type MariComposerReference,
+  type MariPendingMessage,
+  type MariPendingMessageSummary,
   type MariWorkspaceStatus,
   type Message,
   type ProfessorMariAskContext,
@@ -669,9 +672,7 @@ export function HomeProfessorMariChat({
     suggestionFocusFrameRef.current = window.requestAnimationFrame(() => {
       suggestionFocusFrameRef.current = null;
       const textarea = floatingTextareaRef.current ?? embeddedTextareaRef.current;
-      // UX-02: the field is disabled during a run; hold focus on its shell until the run ends (below).
-      if (textarea?.disabled) textarea.closest<HTMLElement>(".mari-workspace-composer")?.focus({ preventScroll: true });
-      else textarea?.focus();
+      textarea?.focus();
     });
   }, []);
 
@@ -1156,6 +1157,13 @@ export function HomeProfessorMariChat({
     setContextViewerOpen(true);
   }, [ensureProfessorMariChat, effectiveConnectionId, localizeUi]);
 
+  // The list the composer shows comes with the status poll; a queue action's answer is just a fresher copy of it.
+  const pendingWriteSeqRef = useRef(0);
+  const queuedSinceSendRef = useRef<string[]>([]);
+  const showPendingMessages = useCallback((forChatId: string, pendingMessages: MariPendingMessageSummary[]) => {
+    pendingWriteSeqRef.current += 1;
+    setWorkspaceStatus((current) => current && { ...current, pendingMessages, pendingMessagesChatId: forChatId });
+  }, []);
   const refreshWorkspaceStatus = useCallback(
     async (shouldApply?: () => boolean) => {
       // #5725: the server resolves the EFFECTIVE mode (chat override ?? global
@@ -1167,23 +1175,29 @@ export function HomeProfessorMariChat({
       if (chatIdAtStart) params.set("chatId", chatIdAtStart);
       const query = params.toString();
       const writeSeqAtStart = permissionsModeWriteSeqRef.current;
+      const pendingSeqAtStart = pendingWriteSeqRef.current;
       const status = await api.get<MariWorkspaceStatus>(`/professor-mari/workspace/status${query ? `?${query}` : ""}`);
       if (shouldApply?.() === false || activeChatIdRef.current !== chatIdAtStart) return status;
       // A mode write that landed while this poll was in flight is newer than
       // the polled value - keep the current mode fields, apply the rest.
-      setWorkspaceStatus((current) =>
-        current &&
-        (permissionsModeWriteSeqRef.current !== writeSeqAtStart ||
-          (permissionsModeWritePendingCountRef.current > 0 &&
-            permissionsModeWritePendingChatRef.current === chatIdAtStart))
-          ? {
-              ...status,
-              permissionsMode: current.permissionsMode,
-              permissionsModeDefault: current.permissionsModeDefault,
-              permissionsModeSource: current.permissionsModeSource,
-            }
-          : status,
-      );
+      setWorkspaceStatus((current) => {
+        const next =
+          current &&
+          (permissionsModeWriteSeqRef.current !== writeSeqAtStart ||
+            (permissionsModeWritePendingCountRef.current > 0 &&
+              permissionsModeWritePendingChatRef.current === chatIdAtStart))
+            ? {
+                ...status,
+                permissionsMode: current.permissionsMode,
+                permissionsModeDefault: current.permissionsModeDefault,
+                permissionsModeSource: current.permissionsModeSource,
+              }
+            : status;
+        // The same for the queue: a change made while this poll was in flight is newer than what it read.
+        return current && pendingWriteSeqRef.current !== pendingSeqAtStart
+          ? { ...next, pendingMessages: current.pendingMessages, pendingMessagesChatId: current.pendingMessagesChatId }
+          : next;
+      });
       return status;
     },
     [effectiveConnectionId],
@@ -2184,12 +2198,29 @@ export function HomeProfessorMariChat({
     [],
   );
 
+  // Stop hands back what was still queued, ahead of anything typed since. A ref, because the references hook
+  // comes later in this component.
+  const restoreQueuedLinksRef = useRef<(references: readonly MariComposerReference[]) => void>(() => undefined);
   const stopWorkspace = useCallback(async () => {
     setCancelledChatId(chatId);
     workspaceAbortRef.current?.abort();
     clearMariChips();
     try {
-      await api.post("/professor-mari/workspace/abort");
+      const { returned = [] } = await api.post<{ returned?: MariPendingMessage[] }>(
+        "/professor-mari/workspace/abort",
+        chatId ? { chatId } : {},
+      );
+      if (returned.length > 0) {
+        setDraft((current) =>
+          [...returned.map((message) => message.text), current].filter((part) => part.trim()).join("\n\n"),
+        );
+        setAttachments((current) => [
+          ...returned.flatMap((message) => (message.attachments ?? []) as ProfessorMariAttachment[]),
+          ...current,
+        ]);
+        restoreQueuedLinksRef.current(returned.flatMap((message) => message.references ?? []));
+      }
+      if (chatId) showPendingMessages(chatId, []);
     } catch (error) {
       setCancelledChatId(null);
       console.error("[Professor Mari] Failed to stop workspace task", error);
@@ -2198,7 +2229,7 @@ export function HomeProfessorMariChat({
         duration: 12_000,
       });
     }
-  }, [chatId, clearMariChips, localizeUi]);
+  }, [chatId, clearMariChips, localizeUi, setDraft, showPendingMessages]);
 
   const {
     handleNewSkill,
@@ -2375,7 +2406,10 @@ export function HomeProfessorMariChat({
   });
   const handleSubmit = async (
     overrideText?: string,
-    overrideRecovery?: Pick<ProfessorMariRecovery, "attachments" | "context" | "localMessageId" | "references"> & {
+    overrideRecovery?: Pick<
+      ProfessorMariRecovery,
+      "attachments" | "context" | "localMessageId" | "references" | "pendingMessageId"
+    > & {
       /** A retry: reuse your message when the server already saved it, instead of sending it twice. */
       reuseSavedMessage?: boolean;
     },
@@ -2405,7 +2439,43 @@ export function HomeProfessorMariChat({
             })
           : handoffContext;
     const messageText = text || (submittedAttachments.length > 0 ? "Please inspect the attached file." : "");
-    if (!messageText || isBusy || regenerationInFlightRef.current || isReadingAttachments) return;
+    if (!messageText || regenerationInFlightRef.current || isReadingAttachments) return;
+    // A send that never went out comes back ahead of anything typed since, instead of being lost.
+    const returnToComposer = () => {
+      setDraft((current) => [text, current].filter((part) => part.trim()).join("\n\n"));
+      setAttachments((current) => [...submittedAttachments, ...current]);
+      composerReferences.restoreReferences(submittedReferences);
+    };
+    if (isBusy || workspaceTimelineActive) {
+      // Only the composer's own send queues. A chip or retry waits, and a command means now, so it keeps its draft.
+      if (overrideText !== undefined || overrideRecovery || overrideContext !== undefined || !chatId) return;
+      if (/^\/(restart|title)(\s|$)/iu.test(messageText)) return;
+      // Cleared first, like a normal send, so what you type next is never swept away with this one.
+      setDraft("");
+      setAttachments([]);
+      setHandoffContext(persistentResourceContext(submittedContext));
+      // Taken before the wait: a late answer belongs to the send this was queued during, not whichever started since.
+      const sendIds = queuedSinceSendRef.current;
+      try {
+        const { addedId, pending } = await api.post<{ addedId: string; pending: MariPendingMessageSummary[] }>(
+          "/professor-mari/workspace/pending",
+          {
+            chatId,
+            message: messageText,
+            attachments: submittedAttachments,
+            references: submittedReferences.length > 0 ? submittedReferences : undefined,
+            context: submittedContext ?? undefined,
+          },
+        );
+        sendIds.push(addedId);
+        showPendingMessages(chatId, pending);
+      } catch (error) {
+        returnToComposer();
+        setHandoffContext(submittedContext);
+        toast.error(t("mari.queue.failed"), { description: describeProfessorMariError(error) });
+      }
+      return;
+    }
 
     if (messageText === "/restart") {
       await runRestart();
@@ -2433,6 +2503,21 @@ export function HomeProfessorMariChat({
     // Your newest question the server holds now: a different one after the failure means it saved this one
     // (an id, not a count, because the thread loads only its newest page).
     let lastSavedUserId = messagesRef.current.findLast(isSavedUserMessage)?.id;
+    // A queued message's files live on the server, so a failure on one has its own way back (see the catch).
+    let queuedMessageId = overrideRecovery?.pendingMessageId;
+    let runningText = messageText;
+    let runningContext = submittedContext;
+    let runningAttachments = submittedAttachments;
+    let runningReferences = submittedReferences;
+    // Counted from now: a message you queue while this send starts up still goes when she finishes. The server holds
+    // the rest, including one this tab never saw, so it needs no copy of the list here.
+    queuedSinceSendRef.current = [];
+    // Cleared before the first wait: the box stays open during a send, so a second Enter here would queue this text
+    // again, and clearing it later would wipe what you typed since. A retry or a chip sends its own text.
+    if (overrideText === undefined) {
+      setDraft("");
+      if (!overrideRecovery) setAttachments([]);
+    }
     try {
       const chat = await ensureProfessorMariChat(effectiveConnectionId);
       runChatId = chat.id;
@@ -2442,14 +2527,12 @@ export function HomeProfessorMariChat({
           isSavedUserMessage,
         )?.id;
       }
-      // A retry or a chip sends its own text: leave whatever you have typed since in the composer.
-      if (overrideText === undefined) setDraft("");
       setMariChips(chat.id, []);
       setResolvedPrompts([]);
-      if (!overrideRecovery) setAttachments([]);
+      if (!overrideRecovery && overrideText !== undefined) setAttachments([]);
       setHandoffContext(persistentResourceContext(submittedContext));
       let existingUserMessageId: string | undefined;
-      if (overrideRecovery?.reuseSavedMessage) {
+      if (overrideRecovery?.reuseSavedMessage && !queuedMessageId) {
         const loaded = await loadMessages(chat.id, { restoreFocus: false }).catch(() => undefined);
         existingUserMessageId = findSavedUserMessage(loaded, messageText)?.id;
       }
@@ -2489,6 +2572,39 @@ export function HomeProfessorMariChat({
         existingUserMessageId,
         submittedContext,
         submittedReferences,
+        {
+          pendingMessageId: overrideRecovery?.pendingMessageId,
+          queuedSinceSendIds: queuedSinceSendRef.current,
+          // She finished and took the next one on the same reply: her answer comes in, your next message follows.
+          onQueueNext: async (next) => {
+            queuedMessageId = next.id;
+            runningText = next.text;
+            runningContext = null;
+            runningAttachments = [];
+            runningReferences = [];
+            localMessageId = undefined;
+            const known = new Set(messagesRef.current.map((message) => message.id));
+            const loaded = await loadMessages(chat.id, { restoreFocus: false }).catch(() => undefined);
+            const lastRow = loaded?.at(-1);
+            if (lastRow && isSavedUserMessage(lastRow) && lastRow.content === next.text && !known.has(lastRow.id)) {
+              setTurnStartMessageId(lastRow.id);
+            } else {
+              lastSavedUserId = loaded?.findLast(isSavedUserMessage)?.id ?? lastSavedUserId;
+              const localMessage = createLocalUserMessage(chat.id, next.text, [], null, []);
+              localMessageId = localMessage.id;
+              setMessages((current) => [...current, localMessage]);
+              setTurnStartMessageId(localMessage.id);
+            }
+            pendingWriteSeqRef.current += 1;
+            setWorkspaceStatus(
+              (current) =>
+                current && {
+                  ...current,
+                  pendingMessages: current.pendingMessages?.filter((message) => message.id !== next.id),
+                },
+            );
+          },
+        },
       );
       // No answer at all is a failure like any other: the same red state and card, not a toast that leaves.
       if (!received && !hiddenDuringStream)
@@ -2497,30 +2613,77 @@ export function HomeProfessorMariChat({
     } catch (error) {
       // Like Claude: your message stays where you sent it and one error card with Retry sits under the turn.
       // No toast over her header, and the text is not pushed back into the composer as a duplicate.
-      if (!isProfessorMariAbortError(error)) setHandoffContext(submittedContext);
+      if (!isProfessorMariAbortError(error)) setHandoffContext(runningContext);
       // Awaited so `sending` holds until the reload lands: a new send cannot start under it.
       await failRun(
         error,
         {
-          text: messageText,
-          attachments: submittedAttachments,
-          context: submittedContext,
-          references: [...submittedReferences],
+          text: runningText,
+          attachments: runningAttachments,
+          context: runningContext,
+          references: [...runningReferences],
           localMessageId,
         },
         runChatId ?? undefined,
       )?.then((loaded) => {
+        if (queuedMessageId) {
+          // Saved: the saved failure's own Retry brings its files. Not saved: the server put it back in the
+          // queue, so Retry takes it from there and it never lands in the composer as a duplicate. A failed reload
+          // proves neither, and counts as not saved: the server refuses a message that is gone.
+          const saved = loaded !== undefined && loaded.findLast(isSavedUserMessage)?.id !== lastSavedUserId;
+          const pendingMessageId = queuedMessageId;
+          setRecoveryState((current) => (current && !saved ? { ...current, pendingMessageId } : null));
+          return;
+        }
         if (!localMessageId || !loaded || loaded.findLast(isSavedUserMessage)?.id !== lastSavedUserId) return;
         // The server refused before it saved your message (no admin secret, a 401/403, a dead connection),
-        // so the reload took your bubble away. Give it back in the composer, ahead of anything typed since.
-        setDraft((current) => [text, current].filter((part) => part.trim()).join("\n\n"));
-        setAttachments((current) => [...submittedAttachments, ...current]);
-        composerReferences.restoreReferences(submittedReferences);
+        // so the reload took your bubble away. Give it back in the composer.
+        returnToComposer();
         setRecoveryState((current) => current && { ...current, inComposer: true });
       });
+      // The chat never opened, so nothing went out: the text you sent goes back, as above.
+      if (!runChatId && overrideText === undefined) {
+        returnToComposer();
+        setRecoveryState((current) => current && { ...current, inComposer: true });
+      }
     } finally {
       setSending(false);
+      void refreshWorkspaceStatus().catch(() => undefined);
     }
+  };
+
+  const pendingMessages = workspaceStatus?.pendingMessagesChatId === chatId ? workspaceStatus?.pendingMessages : null;
+  const removePendingMessage = async (id: string) => {
+    if (!chatId) return;
+    try {
+      const { pending } = await api.delete<{ pending: MariPendingMessageSummary[] }>(
+        `/professor-mari/workspace/pending/${chatId}/${id}`,
+      );
+      showPendingMessages(chatId, pending);
+    } catch (error) {
+      toast.error(t("mari.queue.removeFailed"), { description: describeProfessorMariError(error) });
+    }
+  };
+  const sendHeldMessage = (message: MariPendingMessageSummary) => {
+    if (!chatId || isBusy || workspaceTimelineActive || regenerationInFlightRef.current || isReadingAttachments) return;
+    if (!effectiveConnectionId) {
+      setConnectionMenuOpen(true);
+      return;
+    }
+    pendingWriteSeqRef.current += 1;
+    setWorkspaceStatus(
+      (current) =>
+        current && {
+          ...current,
+          pendingMessages: current.pendingMessages?.filter((item) => item.id !== message.id),
+        },
+    );
+    void handleSubmit(message.text, {
+      attachments: [],
+      context: message.context ?? null,
+      references: message.references,
+      pendingMessageId: message.id,
+    });
   };
 
   // Each handoff is one request id, sent once. The effect also depends on `draft`,
@@ -2541,11 +2704,20 @@ export function HomeProfessorMariChat({
     // Not marked handled yet: an empty, still-busy, or still-loading-connections
     // moment must retry, not drop it — connections load asynchronously, so
     // `effectiveConnectionId` can still be null here even once `draft` is set.
-    if (!draft.trim() || isBusy || connectionsLoading) return;
+    if (!draft.trim() || isBusy || workspaceTimelineActive || connectionsLoading) return;
     handledSubmitRequestRef.current = submitDraftRequest;
     submitHandoffDraft(initialAskContext);
     keepKeyboardInWindow();
-  }, [connectionsLoading, draft, initialAskContext, isBusy, keepKeyboardInWindow, omnibarMode, submitDraftRequest]);
+  }, [
+    connectionsLoading,
+    draft,
+    initialAskContext,
+    isBusy,
+    keepKeyboardInWindow,
+    omnibarMode,
+    workspaceTimelineActive,
+    submitDraftRequest,
+  ]);
 
   // M5b: an action card runs the same deterministic navigation as the omnibar rows, with no Mari round-trip.
   const runSuggestionAction = (action: MariSuggestionAction) => {
@@ -2694,6 +2866,9 @@ export function HomeProfessorMariChat({
     if (editorResource && isMariEditorKind(editorResource.kind))
       useUIStore.getState().revealMariField(editorResource.id, field.id);
   };
+  useEffect(() => {
+    restoreQueuedLinksRef.current = (references) => composerReferences.restoreReferences(references);
+  });
   const composerReferences = useMariComposerReferences({
     draft,
     setDraft,
@@ -2814,7 +2989,12 @@ export function HomeProfessorMariChat({
     undo: (ids: readonly string[]) => void;
   } | null>(null);
   // handleSubmit's own guards: when one holds, nothing is sent (it may open the connection menu).
-  const canSend = () => !isBusy && !regenerationInFlightRef.current && !isReadingAttachments && !!effectiveConnectionId;
+  const canSend = () =>
+    !isBusy &&
+    !workspaceTimelineActive &&
+    !regenerationInFlightRef.current &&
+    !isReadingAttachments &&
+    !!effectiveConnectionId;
   fieldReviewActions.current = {
     keep: () => {
       const sent = canSend();
@@ -3513,6 +3693,9 @@ export function HomeProfessorMariChat({
                         />
 
                         <MariComposer
+                          pendingMessages={pendingMessages ?? []}
+                          onRemovePendingMessage={(id) => void removePendingMessage(id)}
+                          onSendHeldMessage={sendHeldMessage}
                           workspaceStatus={workspaceStatus}
                           refreshWorkspaceStatus={refreshWorkspaceStatus}
                           acceptDraftCompletion={acceptDraftCompletion}

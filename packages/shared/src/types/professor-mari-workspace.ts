@@ -1,5 +1,6 @@
 import type { MariPermissionsMode } from "../constants/mari-permissions-mode.js";
 import type { MariRuntime } from "../constants/mari-runtime.js";
+import type { MariComposerReference } from "./chat.js";
 // ──────────────────────────────────────────────
 // Professor Mari Workspace Agent Contracts
 // ──────────────────────────────────────────────
@@ -1098,8 +1099,40 @@ export interface MariWorkspaceStatus {
   history: MariDbHistoryEntry[];
   /** The newest run, or null before any run in this server process. */
   latestRun: MariWorkspaceLatestRun | null;
+  /** Messages the user queued for this chat while she works (or left held). Summaries only: this is polled. */
+  pendingMessages?: MariPendingMessageSummary[];
+  /** Whose list that is: a poll can outlive a switch to another chat. */
+  pendingMessagesChatId?: string;
   error?: string | null;
 }
+
+/** A file the user attached in Professor Mari's composer, as the prompt route receives it. */
+export interface ProfessorMariPromptAttachment {
+  type: string;
+  data: string;
+  name?: string;
+  filename?: string;
+}
+
+/**
+ * A message typed while she works, waiting its turn. Not stored as "held": with no run going, a pending
+ * message is held by definition.
+ */
+export interface MariPendingMessage {
+  /** Was still waiting when a later send began. It now goes only on its own Send. */
+  held?: boolean;
+  id: string;
+  text: string;
+  createdAt: string;
+  attachments: ProfessorMariPromptAttachment[];
+  references: MariComposerReference[];
+  context?: ProfessorMariAskContext;
+}
+
+/** What /status and the pending routes return: attachments reduced to name and type, never their data. */
+export type MariPendingMessageSummary = Omit<MariPendingMessage, "attachments"> & {
+  attachments: Array<{ name: string; type: string }>;
+};
 
 export type MariWorkspacePromptEvent =
   | { type: "token"; data: string }
@@ -1138,5 +1171,7 @@ export type MariWorkspacePromptEvent =
       data: Record<string, unknown> & { actionResult?: MariWorkspaceActionResult; narration?: boolean };
     }
   | { type: "suggestions"; data: MariSuggestionChip[] }
+  // A queued message is about to run on this same reply; the client moves it from the pending list into the transcript.
+  | { type: "queue_next"; data: { id: string; text: string } }
   | { type: "done"; data?: unknown }
   | { type: "error"; data: string };

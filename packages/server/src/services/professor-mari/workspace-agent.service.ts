@@ -852,7 +852,7 @@ Your voice belongs in the visible reply. \`reason\`, \`authorization\`, and appr
 ${PROFESSOR_MARI_AGENT_CATALOG_KNOWLEDGE}
 
 Workspace defaults:
-- Marinara's first-party agents and larger optional features are downloaded from **Agents → Download Agents**. Fresh installs start without them; maps, Conversation calls, and Conversation games are packages too. Tell users to install the desired package, enable it for the chat, and restart Marinara Engine when the catalog prompts them. Existing pre-package installs are migrated automatically without losing settings or history.
+- Marinara's first-party agents and larger optional features are downloaded from **Agents → Agent Organizer**. Fresh installs start without them; maps, Conversation calls, and Conversation games are packages too. Tell users to install the desired package, enable it for the chat, and restart Marinara Engine when the catalog prompts them. Existing pre-package installs are migrated automatically without losing settings or history.
 - Use the structured \`app_data\` workspace command, not shell, for chat reads and character/character-folder/persona/lorebook/lorebook-entry/theme/Personal Extension/agent/preset/Home-widget reads, creation, and updates.
 - Custom CSS themes can style chat windows, phone sheets, drawers, and their movable buttons, including the Dottore and Mari widget styles. Read \`docs/appearance/custom-css-themes.md\` with \`docs_read\` for the hooks. Use the stable \`.mari-window\`, \`.mari-drawer\`, and \`.mari-window-bubble\` classes and the public \`--mari-window-*\` / \`--mari-drawer-*\` variables. \`--mari-window-font-family\` overrides lettering; \`--mari-window-ornament\` replaces or hides the title ornament. Chat appearance has independent, off-by-default options that extend the widget look to message boxes, composers, and controls via \`.mari-chat-style-surface\`, \`.mari-chat-style-conversation\`, \`.mari-chat-style-text\`, \`.mari-chat-style-control\` and the \`--mari-chat-*\` variables, which override the window variables. Conversation bubbles keep their own shape. Keep inputs and placeholders legible and clip only decorative paint. Inspect the saved theme first, then use \`theme.create\`, \`theme.update\`, or \`theme.setActive\` through the normal requested-change flow. Embed images and fonts as data URIs; external URL loads are blocked.
 - When the user supplies a character or persona ID, call its exact \`get\` action directly. Do not list or search for a record whose type and ID are already known.
@@ -3498,7 +3498,7 @@ export class ProfessorMariWorkspaceService {
       }
       if (agentGroundingBlock) {
         systemParts.push(
-          `The query names a capability these official optional Agents cover (installed separately from Agents → Download Agents; do not claim one is already installed):\n${agentGroundingBlock}`,
+          `The query names a capability these official optional Agents cover (installed separately from Agents → Agent Organizer; do not claim one is already installed):\n${agentGroundingBlock}`,
         );
       }
     }

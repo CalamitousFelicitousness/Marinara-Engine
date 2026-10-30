@@ -449,7 +449,23 @@ try {
       /if \(preparedCombatStateRef\.current && queuedCombatGenerationRef\.current\?\.messageId === messageId\) \{/u,
     );
     assert.match(hostSurface, /setQueuedCombatGeneration\(\{ messageId, notify, asked: true \}\);/u);
+    // The blueprint intro is the opening's alone, and played directions never replay (laptop room
+    // playtest 2026-10-30: black Game screen after Continue story until Skip effects).
+    assert.match(
+      hostSurface,
+      /if \(isRestoredRef\.current \|\| messages\.some\(\(message\) => message\.role === "user"\)\) \{/u,
+    );
+    assert.match(
+      hostSurface,
+      /if \(!playing\) setActiveDirections\(\(current\) => \(current\.length \? \[\] : current\)\);/u,
+    );
     assert.match(chat, /data-multiplayer-room-header\s+data-chat-window-top-obstacle/u);
+    // The room view's own header, where Stop hosting sits, keeps the Chat Settings bubble off it too:
+    // inside [data-chat-mode], the selector's first half reaches it.
+    assert.match(
+      read("../../packages/client/src/features/multiplayer/MultiplayerGuestView.tsx"),
+      /data-chat-mode=\{snapshot\?\.mode\}[\s\S]*<header\s+data-chat-window-top-obstacle\s/u,
+    );
     assert.match(
       read("../../packages/client/src/components/ui/FloatingWindow.tsx"),
       /\[data-multiplayer-room-header\]\[data-chat-window-top-obstacle\]/u,

@@ -142,7 +142,12 @@ export function MultiplayerGuestView({ state, onAction, labels, onOpenPlayers }:
       data-chat-mode={snapshot?.mode}
       className="flex h-full min-h-0 flex-col overflow-y-auto bg-[var(--background)] text-[var(--foreground)]"
     >
-      <header className="sticky top-0 z-10 flex shrink-0 items-center gap-2 border-b border-[var(--border)] bg-[var(--background)] px-3 py-2">
+      {/* An obstacle for the host's Chat Settings bubble, which otherwise sat on Stop hosting (laptop room
+          playtest 2026-10-30). */}
+      <header
+        data-chat-window-top-obstacle
+        className="sticky top-0 z-10 flex shrink-0 items-center gap-2 border-b border-[var(--border)] bg-[var(--background)] px-3 py-2"
+      >
         {snapshot && <ChatModeIcon mode={snapshot.mode} size={18} className="shrink-0 text-[var(--primary)]" />}
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-sm font-semibold">{snapshot?.name ?? labels.title}</h1>

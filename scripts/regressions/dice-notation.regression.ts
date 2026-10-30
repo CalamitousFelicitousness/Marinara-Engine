@@ -16,6 +16,7 @@ import {
 } from "../../packages/shared/dist/index.js";
 import {
   isDiceNotation,
+  isRollableDiceNotation,
   parseRollDiceToolResult,
   rollDice,
 } from "../../packages/server/src/services/game/dice.service.js";
@@ -740,6 +741,12 @@ for (const testCase of MODIFIER_CASES) {
   assert.throws(() => rollDice("150d6dl1"), /out of range/, "a pool past the ceilings is refused, not trimmed");
   assert.equal(isDicePoolNotation("4d6kh3"), true, "the composer route's notation check reads pools");
   assert.equal(isDicePoolNotation("4d6kh0"), false);
+  assert.equal(isRollableDiceNotation("4d6kh3"), true, "the composer route takes a pool");
+  for (const oversized of ["500d6kh3", "101d6kh3", "2d1001kl1", "500d6dl1"]) {
+    assert.equal(isRollableDiceNotation(oversized), false, `the composer route refuses ${oversized} up front`);
+  }
+  assert.equal(isRollableDiceNotation("500d6"), true, "plain NdM past the ceilings is still clamped");
+  assert.equal(rollDice("500d6").rolls.length, 100);
 
   const slash = await rollThroughSlashCommand("4d6kh3");
   const slashRolled = slashDiceRollResult(slash.posted) as SlashDiceRollResult & { kept?: number[] };

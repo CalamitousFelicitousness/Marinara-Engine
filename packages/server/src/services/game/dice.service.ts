@@ -40,6 +40,16 @@ import { SKILL_CHECK_MAX_DC, SKILL_CHECK_MIN_DC } from "./skill-check-resolution
 export { isDiceNotation, isDicePoolNotation } from "@marinara-engine/shared";
 
 /**
+ * Whether `rollDice` takes this notation: any NdM or pool, except a pool past the dice ceilings.
+ * A pool is refused there rather than trimmed, since trimming the dice would change which of them
+ * a keep or drop leaves counting. Plain NdM is still clamped.
+ */
+export function isRollableDiceNotation(notation: string): boolean {
+  const parsed = parseDicePool(notation);
+  return !!parsed && (!parsed.keep || isWithinDiceLimits(parsed));
+}
+
+/**
  * Parse and roll dice using NdM notation (e.g. "2d6+3", "d20", "4d8-1").
  * Returns individual rolls, modifier, and total.
  */
@@ -48,9 +58,7 @@ export function rollDice(notation: string): DiceRollResult {
   if (!parsed) {
     throw new Error(`Invalid dice notation: "${notation}". Use NdM format (e.g. 2d6, d20+3, 4d8-1, 4d6kh3).`);
   }
-  // A pool is refused past the ceilings rather than trimmed: trimming the dice would change which
-  // of them a keep or drop leaves counting.
-  if (parsed.keep && !isWithinDiceLimits(parsed)) {
+  if (!isRollableDiceNotation(notation)) {
     throw new Error(
       `Dice values out of range for "${notation}" (1-${MAX_DICE_COUNT} dice, 1-${MAX_DICE_SIDES} sides).`,
     );

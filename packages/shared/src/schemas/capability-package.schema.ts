@@ -1488,7 +1488,9 @@ const capabilityPackageManifestBaseSchema = z
 //        `chat-read`, like `listMessages`.
 // 1.388: `api.registerService(key, service, { hostOnly: true })` keeps a service out of `runtime.services.get`, so only
 //        the Engine reads it.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 388 } as const);
+// 1.389: `persistence.setMessagesHiddenFromAI(chatId, messageIds, hidden)` hides or shows a chat's messages from the
+//        AI and resolves the ids it changed. Requires `chat-write`; skips messages the user set by hand.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 389 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

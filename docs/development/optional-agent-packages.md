@@ -1787,6 +1787,23 @@ exit button available on every package screen and use `aria-pressed` to reflect 
 must update the button without replacing unfinished forms. Packages depending on this control
 declare capability API 1.376 or newer; older packages can keep their existing layouts.
 
+### Capability API 1.389: hide or show messages from the AI
+
+`persistence.setMessagesHiddenFromAI(chatId, messageIds, hidden)` hides messages of one chat from the AI,
+or shows them again, as the Engine's summary does with **Hide summarised messages**. It needs the
+`chat-write` permission and changes the message and every swipe. A chat that is not found rejects.
+
+- Ids that are not messages of this chat are ignored.
+- A message whose visibility the user set by hand is never changed.
+- It resolves the ids whose flag this call changed. A message that was already hidden (by the summary,
+  for example) is not returned, so record the returned ids and show only those again later.
+
+Older Engines do not have the method: check that it exists, or declare 1.389.
+
+```ts
+const hidden = (await api.runtime.persistence.setMessagesHiddenFromAI?.(chatId, messageIds, true)) ?? [];
+```
+
 ### Capability API 1.388: a service only the Engine can read
 
 Every service a package registers is readable by every other package through `runtime.services.get(key)`. A

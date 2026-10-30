@@ -1127,6 +1127,10 @@ from a regression) and so the upstream-hot store shrinks to re-exports plus stat
 - Persist migration v95 -> v96. The old `migrate` ended with an unconditional
   `delete persisted.trackerPanelWidth` from when upstream removed free width; leaving it would have
   wiped the new field on every rehydrate, so it is gone.
+- The server-synced blob had the same leftover. `use-settings-sync.ts` (an upstream file) converted
+  a synced `trackerPanelWidth` into `trackerPanelSizeProfile` and deleted the width, so the width
+  never reached another device. It now calls `migrateSyncedTrackerPanelSize`, which migrates legacy
+  keys only when present and otherwise clamps the width.
 
 Pinned by `scripts/regressions/tracker-panel-size.regression.ts`, mutation-verified.
 

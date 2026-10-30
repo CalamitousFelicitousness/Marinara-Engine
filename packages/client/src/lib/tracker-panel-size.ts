@@ -189,3 +189,21 @@ export function migrateTrackerPanelSize(persisted: {
     placement: normalizeTrackerPanelPlacement(persisted.trackerPanelPlacement, persisted.trackerPanelNarrowBehavior),
   };
 }
+
+const LEGACY_SIZE_KEYS = ["trackerPanelSizeProfile", "trackerPanelDensity", "trackerPanelNarrowBehavior"] as const;
+
+/**
+ * Same migration for the server-synced settings blob, in place. A blob with no
+ * legacy keys keeps its text size and placement as written; only the width is clamped.
+ */
+export function migrateSyncedTrackerPanelSize(settings: Record<string, unknown>): void {
+  if (LEGACY_SIZE_KEYS.some((key) => key in settings)) {
+    const size = migrateTrackerPanelSize(settings);
+    settings.trackerPanelWidth = size.width;
+    settings.trackerPanelTextSize = size.textSize;
+    settings.trackerPanelPlacement = size.placement;
+    for (const key of LEGACY_SIZE_KEYS) delete settings[key];
+  } else if ("trackerPanelWidth" in settings) {
+    settings.trackerPanelWidth = clampTrackerPanelWidth(settings.trackerPanelWidth);
+  }
+}

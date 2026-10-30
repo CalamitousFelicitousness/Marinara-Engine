@@ -22,6 +22,7 @@ import {
 import { api } from "../lib/api-client";
 import { normalizeConversationTimeZone } from "../lib/conversation-time-zone";
 import { normalizeChatWidgetFont } from "../lib/font-family";
+import { migrateSyncedTrackerPanelSize } from "../lib/tracker-panel-size";
 import {
   normalizeChatWidgetColor,
   normalizeChatWidgetButtonSize,
@@ -29,7 +30,6 @@ import {
   normalizeChatWidgetShape,
   normalizeTrackerPanelCollapsedSections,
   normalizeTrackerPanelSectionOrder,
-  normalizeTrackerPanelSizeProfile,
   normalizeTrackerStatDisplayMode,
   normalizeTrackerTemperatureUnit,
   normalizeTrackerThoughtBubbleDisplay,
@@ -233,13 +233,7 @@ export function useSettingsSync() {
                 delete parsed.settings.convoGradientFrom;
                 delete parsed.settings.convoGradientTo;
               }
-              if ("trackerPanelSizeProfile" in parsed.settings || "trackerPanelWidth" in parsed.settings) {
-                parsed.settings.trackerPanelSizeProfile = normalizeTrackerPanelSizeProfile(
-                  parsed.settings.trackerPanelSizeProfile,
-                  parsed.settings.trackerPanelWidth,
-                );
-                delete parsed.settings.trackerPanelWidth;
-              }
+              migrateSyncedTrackerPanelSize(parsed.settings);
               // The synced blob predates every section added after it was written, so a
               // server order captured before a new tracker section shipped would hide
               // that section forever — `migrate` only normalizes the browser-local copy,

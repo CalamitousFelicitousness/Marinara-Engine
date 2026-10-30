@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 
 import {
   clampTrackerPanelWidth,
+  migrateSyncedTrackerPanelSize,
   migrateTrackerPanelSize,
   nearestTrackerPanelPreset,
   nextTrackerPanelTextSize,
@@ -198,5 +199,20 @@ assert.equal(resolveTrackerPanelColumnRoom("scale", 8, 96), 104);
 assert.equal(clampPanelWidth(300, 240, 640), 300);
 assert.equal(clampPanelWidth(100, 240, 640), 240);
 assert.equal(clampPanelWidth(900, 240, 640), 640);
+
+// ── Server-synced blob ──
+// A current blob keeps its width; the old sync path turned it into a profile and dropped it.
+const synced: Record<string, unknown> = { trackerPanelWidth: 500, trackerPanelTextSize: "s", trackerPanelPlacement: "float" };
+migrateSyncedTrackerPanelSize(synced);
+assert.deepEqual(synced, { trackerPanelWidth: 500, trackerPanelTextSize: "s", trackerPanelPlacement: "float" });
+const clamped: Record<string, unknown> = { trackerPanelWidth: 9000 };
+migrateSyncedTrackerPanelSize(clamped);
+assert.deepEqual(clamped, { trackerPanelWidth: 640 });
+const legacy: Record<string, unknown> = { trackerPanelSizeProfile: "expanded", trackerPanelDensity: "compact" };
+migrateSyncedTrackerPanelSize(legacy);
+assert.deepEqual(legacy, { trackerPanelWidth: 420, trackerPanelTextSize: "s", trackerPanelPlacement: "dock" });
+const untouched: Record<string, unknown> = { chatFontSize: 16 };
+migrateSyncedTrackerPanelSize(untouched);
+assert.deepEqual(untouched, { chatFontSize: 16 });
 
 console.log("tracker-panel-size regression passed.");

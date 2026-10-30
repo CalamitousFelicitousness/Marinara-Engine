@@ -403,6 +403,23 @@ const withoutMarket = (doc: Record<string, any>) => {
   assert.match(unpaid.content, /item="Rope" count="1" result="refused" reason="unpaid"/, unpaid.content);
   assert.match(unpaid.content, /item="Torch" count="1" result="ok"/, unpaid.content);
   assert.match(unpaid.content, /item="Lamp" count="1" who="Bram" result="ok"/, "another bag's add is its own");
+  // What a bag adds after a check it failed, in the same reply, it made or found on a roll it lost
+  // (laptop room playtest 2026-10-30: a pouch out of a failed leatherworking check).
+  const lost = answered(
+    '[inventory: action="add" item="Lamp" who="Bram"] ' +
+      '[skill_check: skill="Leatherworker\'s tools" dc="12" who="Bram" rolls="7" modifier="0" total="7" result="failure"] ' +
+      '[inventory: action="add" item="Rope" who="Bram"] [inventory: action="add" item="Torch"] ' +
+      '[inventory: action="add" item="Lantern" who="Bram" source="story"]',
+  );
+  assert.match(lost.content, /item="Lamp" count="1" who="Bram" result="ok"/, "an add before the roll stands");
+  assert.match(lost.content, /item="Rope" count="1" who="Bram" result="refused" reason="check-failed"/, lost.content);
+  assert.match(lost.content, /item="Torch" count="1" result="ok"/, "another bag's add is its own");
+  assert.match(lost.content, /item="Lantern" count="1" who="Bram" result="ok"/, "a source stands");
+  const won = answered(
+    '[skill_check: skill="Leatherworker\'s tools" dc="12" who="Bram" rolls="17" modifier="0" total="17" result="success"] ' +
+      '[inventory: action="add" item="Rope" who="Bram"]',
+  );
+  assert.match(won.content, /item="Rope" count="1" who="Bram" result="ok"/, won.content);
   assert.equal(
     answered('[inventory: action="pay" amount="2 florins"]').content,
     '[inventory: action="pay" item="florins" count="2" result="refused" reason="unknown-coin"]',

@@ -630,18 +630,26 @@ export function generateTacticalBattlefield(
   }
 
   // Scattered over the open ground the features left, never in a deployment strip; a route the
-  // scatter closes is carved open again below.
+  // scatter closes is carved open again below. The share is of the whole board as a player counts it
+  // (laptop 2026-10-30: "every other cell" came out a third, the strips and features dry), so the open
+  // ground it may fall on takes more of it, all of it at the most.
   if (brief?.scatter) {
+    const open: Array<{ x: number; y: number }> = [];
+    let board = 0;
     for (let y = 0; y < grid.height; y++)
-      for (let x = 0; x < grid.width; x++)
-        if (
-          grid.tiles[y]![x] === "plains" &&
-          !grid.outside?.[y]?.[x] &&
-          !inSpawnZone(grid, x, y) &&
-          !protectedTiles.has(tileKey(x, y)) &&
-          rng() < brief.scatter.share
-        )
-          set(grid, x, y, brief.scatter.terrain);
+      for (let x = 0; x < grid.width; x++) {
+        if (grid.outside?.[y]?.[x]) continue;
+        board += 1;
+        if (grid.tiles[y]![x] === "plains" && !inSpawnZone(grid, x, y) && !protectedTiles.has(tileKey(x, y)))
+          open.push({ x, y });
+      }
+    const already = grid.tiles.reduce(
+      (count, row, y) =>
+        count + row.filter((terrain, x) => terrain === brief.scatter!.terrain && !grid.outside?.[y]?.[x]).length,
+      0,
+    );
+    const chance = open.length > 0 ? Math.min(1, Math.max(0, brief.scatter.share * board - already) / open.length) : 0;
+    for (const { x, y } of open) if (rng() < chance) set(grid, x, y, brief.scatter.terrain);
   }
 
   const { party: partyAnchor, enemy: enemyAnchor } = spawnAnchors(grid);

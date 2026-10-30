@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   multiplayerErrorCodeSchema,
@@ -247,8 +247,26 @@ function HostedMultiplayerChat({ chat, renderGame }: { chat: Chat; renderGame?: 
       : undefined,
   );
   const [setupSaving, setSetupSaving] = useState(false);
+  // A connection the host picks in Chat Settings before the start is the Game Master's from then on
+  // (laptop room playtest 2026-10-30: Start game went back to the one the setup was made with).
+  const chatConnectionId = chat.connectionId ?? null;
+  const seenConnectionId = useRef(chatConnectionId);
+  useEffect(() => {
+    if (seenConnectionId.current === chatConnectionId) return;
+    seenConnectionId.current = chatConnectionId;
+    if (!chatConnectionId) return;
+    setGameStart((start) => (start ? { ...start, gmConnectionId: chatConnectionId } : start));
+    const saved = chat.metadata.multiplayerGameSetup;
+    if (saved && saved.gmConnectionId !== chatConnectionId)
+      updateMetadataRef.current.mutate({
+        id: chat.id,
+        multiplayerGameSetup: { ...saved, gmConnectionId: chatConnectionId },
+      });
+  }, [chat.id, chat.metadata.multiplayerGameSetup, chatConnectionId]);
   const rosterAction = useMultiplayerMutation<unknown, MultiplayerHostAction>("/multiplayer/host/actions");
   const updateMetadata = useUpdateChatMetadata();
+  const updateMetadataRef = useRef(updateMetadata);
+  updateMetadataRef.current = updateMetadata;
   const action = useMultiplayerParticipantAction(true);
   const stop = useMultiplayerMutation<unknown, { type: "stop" }>("/multiplayer/host/actions");
   const finishSetup = async (setup?: MultiplayerGameStart) => {

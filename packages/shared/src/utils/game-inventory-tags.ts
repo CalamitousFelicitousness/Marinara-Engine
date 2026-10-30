@@ -32,6 +32,7 @@ import {
   releaseGameInventoryUnmetBindings,
   markGameInventoryInspected,
 } from "./game-inventory-stacks.js";
+import { createSkillCheckTagRegex, parseSkillCheckTagBody } from "./skill-check-tag.js";
 import { payGameInventoryCoinsTogether, type GameInventoryPayment } from "./game-inventory-coins.js";
 import {
   createInventoryTagRegex,
@@ -423,7 +424,16 @@ export function applyGameInventoryTags(
   // with money they did not have, and is refused too (laptop room playtest 2026-10-30: tools came into
   // a bag after "cannot-afford").
   const unpaid = new Set<string>();
-  const next = content.replace(createInventoryTagRegex(), (_whole, body: string) => {
+  // The checks this reply failed, where they sit and whose they are: what that bag then adds with no
+  // `source` was made or found on a roll it lost, and is refused (laptop room playtest 2026-10-30: a
+  // pouch came out of a failed leatherworking check written before its roll).
+  const failedChecks = [...content.matchAll(createSkillCheckTagRegex())].flatMap((match) => {
+    const check = parseSkillCheckTagBody(match[1] ?? "");
+    return check?.resolvedResult && !check.resolvedResult.success
+      ? [{ at: match.index ?? 0, bag: inventoryBagKey(check.who) }]
+      : [];
+  });
+  const next = content.replace(createInventoryTagRegex(), (_whole, body: string, offset: number) => {
     tags += 1;
     const tagIndex = tags - 1;
     // Past the cap a tag is answered as refused rather than left as written, so a result the Game
@@ -496,6 +506,13 @@ export function applyGameInventoryTags(
         }
         if (request.action === "add" && unpaid.has(inventoryBagKey(request.who)) && !requests[tagIndex]?.sourced) {
           return serializeInventoryTag(shown, { ok: false, reason: "unpaid" });
+        }
+        if (
+          request.action === "add" &&
+          !requests[tagIndex]?.sourced &&
+          failedChecks.some((check) => check.at < offset && check.bag === inventoryBagKey(request.who))
+        ) {
+          return serializeInventoryTag(shown, { ok: false, reason: "check-failed" });
         }
         if (request.action === "add") {
           // A proposal first makes the item of the ruleset it describes, or finds the one of that name

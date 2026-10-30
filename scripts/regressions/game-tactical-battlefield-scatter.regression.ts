@@ -29,6 +29,17 @@ assert.ok(
   `about half the open ground is water: ${water} water, with ${open} open cells before`,
 );
 assert.deepEqual(flooded.battlefield.brief?.scatter, { terrain: "water", share: 0.5 }, "the brief is kept");
+// Of the whole board as a player counts it, strips and all (laptop 2026-10-30: 0.5 came out a third
+// on a small board), on every size.
+for (const size of ["small", "medium", "large"] as const) {
+  const board = generateTacticalBattlefield(4, deterministicRng(9, 0), "plains", {
+    size,
+    scatter: { terrain: "water", share: 0.5 },
+  });
+  assert.ok(board.ok);
+  const share = count(board.grid.tiles, "water") / board.grid.tiles.flat().length;
+  assert.ok(share > 0.42 && share < 0.58, `${size}: half the board is water, not ${share.toFixed(2)}`);
+}
 // The deployment strips (two columns at each side) stay as they were.
 for (const row of flooded.grid.tiles)
   for (const x of [0, 1, row.length - 2, row.length - 1]) assert.notEqual(row[x], "water");
@@ -41,5 +52,5 @@ assert.deepEqual(salvageTacticalBattlefieldBrief({ size: "large", scatter: { ter
 });
 
 console.log(
-  `Battlefield scatter: half the open ground of a large plain is water (${water} cells), the strips stay dry.`,
+  `Battlefield scatter: half the board is water on every size (${water} cells on a large plain), the strips stay dry.`,
 );

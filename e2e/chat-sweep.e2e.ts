@@ -611,8 +611,8 @@ test("Translator defaults wait for edits, survive reload, and apply only to futu
       await route.continue();
     });
     await incomingPrompt.fill(expected.translationOutputPrompt);
-    await expect.poll(() => heldPatch).toBe(true);
     await save.click();
+    await expect.poll(() => heldPatch).toBe(true);
     await expect(section.getByRole("button", { name: "Saving…", exact: true })).toBeDisabled();
     // Hold the real autosave before persistence: Save must not capture the older prompt.
     expect((await (await request.get(settingsPath)).json()).value).toBe("");

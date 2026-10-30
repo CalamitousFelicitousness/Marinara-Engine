@@ -2,6 +2,7 @@ import { Languages, RotateCcw, Save } from "lucide-react";
 import { DEFAULT_TRANSLATION_SYSTEM_PROMPT, estimateTextTokens } from "@marinara-engine/shared";
 import { formatEstimatedTokens } from "../../../lib/character-token-count";
 import { HelpTooltip } from "../../../components/ui/HelpTooltip";
+import { DraftTextarea } from "../../../components/ui/DraftTextarea";
 import { SettingsSwitch } from "../../../components/panels/settings/SettingControls";
 import { ChatSettingsSection } from "../ChatSettingsSection";
 import type { ChatConnectionOption } from "./ConnectionSection";
@@ -119,12 +120,14 @@ export function TranslationSection({ chatId, metadata, textConnections, onMetada
             </div>
 
             <TranslationPromptField
+              key={`${chatId}:input`}
               label={localizeUi("ui.chatSettings.translationsection.outgoingMessagePrompt")}
               customPrompt={inputPrompt}
               onChange={(value) => updatePrompt("translationInputPrompt", value)}
               onRestore={() => onMetadataChange({ translationInputPrompt: null })}
             />
             <TranslationPromptField
+              key={`${chatId}:output`}
               label={localizeUi("ui.chatSettings.translationsection.incomingResponsePrompt")}
               customPrompt={outputPrompt}
               onChange={(value) => updatePrompt("translationOutputPrompt", value)}
@@ -311,9 +314,9 @@ function TranslationPromptField({
           </button>
         )}
       </div>
-      <textarea
+      <DraftTextarea
         value={customPrompt || DEFAULT_TRANSLATION_SYSTEM_PROMPT}
-        onChange={(event) => onChange(event.target.value)}
+        onCommit={onChange}
         rows={5}
         className="min-h-28 w-full resize-y rounded-lg bg-[var(--secondary)] px-3 py-2 font-mono text-xs leading-relaxed outline-none ring-1 ring-transparent transition-shadow focus:ring-[var(--primary)]/40"
       />

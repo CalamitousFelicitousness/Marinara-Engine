@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import { DEFAULT_TRANSLATION_SYSTEM_PROMPT } from "../packages/shared/src/constants/defaults.js";
 import { seedUIState } from "./ui-state-fixture";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
@@ -151,9 +152,19 @@ test("Translation prompt drafts keep the caret, clear normally, and save to thei
     await openSettings();
     await expect(prompts.nth(0)).toHaveValue("First chat has an unblurred draft.");
     await expect(prompts.nth(1)).toHaveValue(fields[1]!.replacement);
+    await prompts.nth(1).fill("");
+    await expect(prompts.nth(1)).toHaveValue("");
+    await section.getByRole("combobox").first().focus();
+    await expect.poll(async () => (await readMetadata(first.id)).translationOutputPrompt).toBe(null);
+    await expect(prompts.nth(1)).toHaveValue(DEFAULT_TRANSLATION_SYSTEM_PROMPT);
+    await page.reload();
+    await expect(page.locator("textarea[data-chat-composer]")).toBeVisible();
+    await openSettings();
+    await expect(prompts.nth(0)).toHaveValue("First chat has an unblurred draft.");
+    await expect(prompts.nth(1)).toHaveValue(DEFAULT_TRANSLATION_SYSTEM_PROMPT);
     await section.getByRole("button", { name: "Restore", exact: true }).first().click();
     await expect.poll(async () => (await readMetadata(first.id)).translationInputPrompt).toBe(null);
-    await expect(prompts.nth(0)).not.toHaveValue("");
+    await expect(prompts.nth(0)).toHaveValue(DEFAULT_TRANSLATION_SYSTEM_PROMPT);
     expect(paidRequests).toEqual([]);
   } finally {
     await page.close();

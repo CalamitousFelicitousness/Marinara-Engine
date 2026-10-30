@@ -90,9 +90,10 @@ export function MariQuestionCard({
               role={question.multiple ? "checkbox" : "radio"}
               aria-checked={selected}
               disabled={disabled}
-              // A pick moves to the next question, under the same pointer: a double-click must not answer that one too.
+              // A single pick moves to the next question, under the same pointer: a double-click must not answer that one
+              // too. A multi-select pick only toggles, so its second click is a real one.
               onClick={(event) => {
-                if (event.detail < 2) pick(option.label);
+                if (question.multiple || event.detail < 2) pick(option.label);
               }}
             />
           );

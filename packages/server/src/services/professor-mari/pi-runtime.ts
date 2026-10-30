@@ -661,13 +661,15 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
     }
     const questions = questionsIn(current);
     const asking = questions.length > 0;
+    const askCalled = current.calls.some((call) => (call.name as string) === "ask");
     // Counted here because a call the schema rejects never reaches the tool.
-    if (!asking && current.calls.some((call) => (call.name as string) === "ask") && ++invalidAsks >= 3) {
+    if (!asking && askCalled && ++invalidAsks >= 3) {
       stopRequested = true;
     }
-    // A change beside a question never ran, so it is neither a failed attempt nor something the audit may credit.
+    // A change beside a question, even an invalid one, never ran, so it is neither a failed attempt nor something the
+    // audit may credit.
     const workspaceCalls = current.calls.filter(
-      (call) => !isUiTool(call.name) && !(asking && isMutatingWorkspaceCommand(call)),
+      (call) => !isUiTool(call.name) && !(askCalled && isMutatingWorkspaceCommand(call)),
     );
     const hasWorkspaceCalls = workspaceCalls.length > 0;
     const mutating = workspaceCalls.filter(isMutatingWorkspaceCommand);

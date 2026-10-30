@@ -1624,6 +1624,12 @@ try {
       askService,
     );
     await badPi.done;
+    // Held back is not failed, so the next turn must not read it as a write that failed.
+    assert.doesNotMatch(
+      String((await lastAssistant(badPi.chat.id))?.extra.mariWorkspaceContinuity),
+      /ask-invalid-pi\.txt/u,
+      "pi: a change held back beside an invalid card is not recorded",
+    );
     assert.equal(
       existsSync(join(workspaceDir, "ask-invalid-pi.txt")),
       false,

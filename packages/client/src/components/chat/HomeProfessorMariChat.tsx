@@ -127,7 +127,13 @@ import {
   transcriptScrollAction,
 } from "../../lib/professor-mari-transcript-scroll";
 import { resolveProfessorMariContextBudget } from "../../lib/professor-mari-context-budget";
-import { heldCharacterFields, keptCharacterFields, mariFieldDraft, mariFieldText } from "../../lib/mari-editor-fields";
+import {
+  findMariField,
+  heldCharacterFields,
+  keptCharacterFields,
+  mariFieldDraft,
+  mariFieldText,
+} from "../../lib/mari-editor-fields";
 import { fieldLabel } from "../../lib/mari-edit-diff";
 import { rafThrottle } from "../../lib/raf-throttle";
 import {
@@ -252,6 +258,8 @@ type HomeProfessorMariChatProps = {
   arrivalFixContext?: ProfessorMariAskContext | null;
   /** The open editor beside her (omnibar); her pending context follows it when it changes. */
   editorResource?: ProfessorMariContextResource | null;
+  /** She sits beside the editor (companion panel or sheet): her field follows editor focus and is marked. */
+  editorCompanion?: boolean;
   onChatWindowOpenChange?: (open: boolean) => void;
   onChatWindowExitComplete?: () => void;
 };
@@ -262,6 +270,19 @@ const NO_TURN_REVIEWS: MariTurnReviews = { changed: [], needsOk: [], records: ne
 /** The newest page of her thread. The first load starts it beside the arrival routing, not after it. */
 function fetchMariThreadMessages(id: string, signal?: AbortSignal) {
   return api.get<Message[]>(`/chats/${id}/messages?limit=80`, { signal });
+}
+
+/** Points her context at an editor field, with the field's current text as its draft. */
+function withCapturedEditorField(
+  current: ProfessorMariAskContext | null,
+  editor: ProfessorMariContextResource | null,
+  field: { id: string; label: string },
+) {
+  const ui = useUIStore.getState();
+  const root = ui.mariCompanionRoot?.closest<HTMLElement>(".mari-editor-shell") ?? ui.mariCompanionRoot;
+  const value = root ? mariFieldText(root, field.id) : null;
+  const captured = value === null ? null : mariFieldDraft(field.id, value, null, null);
+  return withEditorField(current, editor, { ...field, ...(captured ? { draft: { value: captured.value } } : {}) });
 }
 
 export function HomeProfessorMariChat({
@@ -285,6 +306,7 @@ export function HomeProfessorMariChat({
   onArrivalAction,
   arrivalFixContext = null,
   editorResource = null,
+  editorCompanion = false,
   onChatWindowOpenChange,
   onChatWindowExitComplete,
 }: HomeProfessorMariChatProps) {
@@ -853,6 +875,9 @@ export function HomeProfessorMariChat({
   // Companion mode keeps her open while the user switches or closes the editor beside her, so the
   // context the next send carries must follow the editor, not stay on the one she was opened over.
   const lastEditorResourceRef = useRef(editorResource);
+  const activeEditorField = useUIStore((state) => state.activeEditorField);
+  // Last anchored field id seen; a refocus of the same field (or an unanchored control in between) changes nothing.
+  const lastEditorFieldIdRef = useRef(activeEditorField?.id);
   useEffect(() => {
     const previous = lastEditorResourceRef.current;
     if (
@@ -861,9 +886,55 @@ export function HomeProfessorMariChat({
       previous?.label === editorResource?.label
     )
       return;
+    // Another record: its first focused field is new, even with the same id.
+    if (previous?.kind !== editorResource?.kind || previous?.id !== editorResource?.id)
+      lastEditorFieldIdRef.current = undefined;
     lastEditorResourceRef.current = editorResource;
     setHandoffContext((current) => retargetEditorContext(current, previous, editorResource));
   }, [editorResource]);
+  // Companion mode: her field chip follows the anchored editor field the user focuses next.
+  useEffect(() => {
+    if (!activeEditorField || activeEditorField.id === lastEditorFieldIdRef.current) return;
+    // The store value can outlive a record switch for one render; only a field that really has focus counts.
+    const focused = document.activeElement?.closest<HTMLElement>("[data-mari-field]");
+    if (focused?.dataset.mariField !== activeEditorField.id) return;
+    lastEditorFieldIdRef.current = activeEditorField.id;
+    if (!editorCompanion || !editorResource) return;
+    setHandoffContext((current) =>
+      current?.fieldId === activeEditorField.id
+        ? current
+        : withCapturedEditorField(current, editorResource, activeEditorField),
+    );
+  }, [activeEditorField, editorCompanion, editorResource]);
+  // ...and that field carries a faint mark in the editor (styles/mari.css).
+  const companionRoot = useUIStore((state) => state.mariCompanionRoot);
+  const markedFieldId =
+    editorCompanion &&
+    editorResource &&
+    handoffContext?.resource?.kind === editorResource.kind &&
+    handoffContext.resource.id === editorResource.id
+      ? handoffContext.fieldId
+      : undefined;
+  const markedElementRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!markedFieldId) return;
+    // Two anchors can share an id (the header name and the Metadata name): prefer the focused one, then the last one.
+    const focused = document.activeElement?.closest<HTMLElement>("[data-mari-field]");
+    const last = markedElementRef.current;
+    const root = companionRoot?.closest<HTMLElement>(".mari-editor-shell") ?? companionRoot;
+    const field =
+      focused?.dataset.mariField === markedFieldId
+        ? focused
+        : last?.isConnected && last.dataset.mariField === markedFieldId
+          ? last
+          : root && findMariField(root, markedFieldId);
+    if (!field) return;
+    markedElementRef.current = field;
+    field.dataset.mariFocus = "";
+    return () => {
+      delete field.dataset.mariFocus;
+    };
+  }, [companionRoot, markedFieldId, activeEditorField]);
   useEffect(() => {
     initialAskContextRef.current = initialAskContext;
     if (initialAskContext) setHandoffContext(initialAskContext);
@@ -2322,7 +2393,17 @@ export function HomeProfessorMariChat({
       ? overrideRecovery.context
       : overrideContext !== undefined
         ? overrideContext
-        : handoffContext;
+        : // The field may have been typed in since she took it: send its text as it is now.
+          handoffContext?.fieldId &&
+            editorResource &&
+            useUIStore.getState().mariCompanionRoot &&
+            handoffContext.resource?.kind === editorResource.kind &&
+            handoffContext.resource.id === editorResource.id
+          ? withCapturedEditorField(handoffContext, editorResource, {
+              id: handoffContext.fieldId,
+              label: handoffContext.field ?? handoffContext.fieldId,
+            })
+          : handoffContext;
     const messageText = text || (submittedAttachments.length > 0 ? "Please inspect the attached file." : "");
     if (!messageText || isBusy || regenerationInFlightRef.current || isReadingAttachments) return;
 
@@ -2624,14 +2705,9 @@ export function HomeProfessorMariChat({
   };
   // An `@` field pick: she takes that field (its text as it is now) and the editor shows it.
   const focusEditorField = (field: { id: string; label: string }) => {
-    const ui = useUIStore.getState();
-    const root = ui.mariCompanionRoot?.closest<HTMLElement>(".mari-editor-shell") ?? ui.mariCompanionRoot;
-    const value = root ? mariFieldText(root, field.id) : null;
-    const captured = value === null ? null : mariFieldDraft(field.id, value, null, null);
-    setHandoffContext((current) =>
-      withEditorField(current, editorResource, { ...field, ...(captured ? { draft: { value: captured.value } } : {}) }),
-    );
-    if (editorResource?.kind === "character") ui.revealMariField(editorResource.id, field.id);
+    lastEditorFieldIdRef.current = field.id;
+    setHandoffContext((current) => withCapturedEditorField(current, editorResource, field));
+    if (editorResource?.kind === "character") useUIStore.getState().revealMariField(editorResource.id, field.id);
   };
   const composerReferences = useMariComposerReferences({
     draft,

@@ -910,6 +910,7 @@ export function AgentEditor() {
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
   const [headerCompact, setHeaderCompact] = useState(false);
   const compact = hasBanner && headerCompact;
+  const headerRef = useRef<HTMLDivElement>(null);
   const [showCustomAgentNotice, setShowCustomAgentNotice] = useState(true);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
@@ -2112,6 +2113,7 @@ export function AgentEditor() {
       {/* ── Header ── */}
       {/* Downloaded agents: the store banner is the header, with Back and actions on top and logo and name below. */}
       <div
+        ref={headerRef}
         className={cn(
           "mari-editor-header",
           hasBanner &&
@@ -2285,9 +2287,11 @@ export function AgentEditor() {
         className="mari-editor-content min-w-0 max-w-full overflow-x-hidden max-md:p-4"
         onScroll={(e) => {
           // Two thresholds so the header height change cannot toggle it back at once.
-          const top = e.currentTarget.scrollTop;
-          if (top > 48) setHeaderCompact(true);
-          else if (top < 4) setHeaderCompact(false);
+          const el = e.currentTarget;
+          // Collapse only if the body still overflows past the expand threshold once the header shrinks to 72px.
+          const shrink = Math.max(0, (headerRef.current?.offsetHeight ?? 72) - 72);
+          if (el.scrollTop > 48 && el.scrollHeight - el.clientHeight - shrink > 8) setHeaderCompact(true);
+          else if (el.scrollTop < 4) setHeaderCompact(false);
         }}
       >
         <div className="mari-editor-content-inner mari-editor-content-inner--wide w-full min-w-0 max-w-full space-y-6">

@@ -9,7 +9,8 @@
 //   - W++ "Label(value)" / "Label(" with the values on the next lines, "{{char}}'s Likes (...)"
 //   - one-line cards: "[Name: age (21), sex (Female), ...]", "Name: Daiyu ... Hair: Black ... Sex: Female"
 //   - JSON descriptions (converted to "Key: value" lines)
-//   - <START> example blocks and interview-style dialogue runs ("Interviewer:" / "{{char}}:")
+//   - <START> example blocks and interview-style dialogue runs ("Interviewer:" / "{{char}}:"); an interview
+//     whose questions name fields ("{{user}}: Appearance?") puts each answer in that field instead
 //   - unlabelled prose sorted by keywords, and OOC / rules text moved to the system prompt
 //
 // Guarantees
@@ -255,7 +256,7 @@ const SENTENCE_WORDS = new Set(
     " ",
   ),
 );
-const LEAD_STOP = new Set(["the", "a", "an", "my", "her", "his", "their"]);
+const LEAD_STOP = new Set(["the", "a", "an", "my", "her", "his", "their", "your"]);
 const NAME_STOP = new Set(
   "your you the a an my please give being expelled welcome academy blank isekai land multiversal monster lisa".split(
     " ",
@@ -321,8 +322,9 @@ const PROSE_LEXICON: Array<[DescriptionSplitField, RegExp]> = [
     /\b(setting|takes place|set in|genre|modern[- ]day|century|medieval|fantasy world|world|realm|kingdoms?|empire|continent|academy|city|village|town|located|built|currently|tonight|today|recently|has just|have just|the story (?:begins|starts)|begins when|starts when|this (?:story|scenario|roleplay)|the scenario|the roleplay|the story)\b/gi,
   ],
 ];
-function classifyProse(text: string): DescriptionSplitField | null {
-  const t = text.trim();
+function classifyProse(text: string, ctx: Ctx): DescriptionSplitField | null {
+  // The character's own name words do not count ("Rock Jaw" is not a jaw).
+  const t = (ctx.nameRe ? text.replace(ctx.nameRe, " ") : text).trim();
   if (t.length < 25) return null;
   // Introductions ("{{char}}'s name is ...", "an 18 year old ...") stay in the description.
   if (
@@ -355,6 +357,8 @@ function classifyProse(text: string): DescriptionSplitField | null {
 type Resolved = { field?: DescriptionSplitField; how?: "exact" | "rule" | "fuzzy" | "keywords"; kind?: "title" };
 interface Ctx {
   names: Set<string>;
+  /** Matches the words in `names`, for stripping them before keyword scoring. */
+  nameRe: RegExp | null;
 }
 
 const MACRO = String.raw`\{\{[^{}]*\}\}`;
@@ -504,17 +508,19 @@ function expandLine(line: string, ctx: Ctx): string[] {
     .flatMap((p) => splitInlineLabels(p, ctx));
 }
 
-// PList: "[ {{char}}: trait, trait; {{char}}'s body: ...; ]" -> one piece per "Label: ..." section + "]".
-// Only semicolons outside brackets cut, and only when a label follows them. The later pieces keep
-// their leading space, which nests them under the first one (unknown labels follow its field).
+// PList: "[ {{char}}: trait, trait; {{char}}'s body: ...; ]" -> one piece per "Label: ..." section + "]",
+// with or without the brackets. Only semicolons outside brackets cut, and only when a label follows them.
+// The later pieces keep their leading space, which nests them under the first one (unknown labels follow
+// its field).
 const PLIST_LABEL = new RegExp(String.raw`^\s*(?:${MACRO_OWN}|\p{Lu}[\p{L}'’]*)(?:\s+[\p{L}'’]+){0,3}\s*:\s`, "u");
 function splitPlist(s: string): string[] {
   const t = s.trim();
-  if (!t.startsWith("[") || !t.endsWith("]") || !PLIST_LABEL.test(t.slice(1))) return [s];
-  const inner = t.slice(0, -1);
+  const bracketed = t.startsWith("[") && t.endsWith("]");
+  if (!PLIST_LABEL.test(bracketed ? t.slice(1) : t)) return [s];
+  const inner = bracketed ? t.slice(0, -1) : t;
   const pieces: string[] = [];
   let start = 0;
-  for (let i = 1; i < inner.length; i++) {
+  for (let i = bracketed ? 1 : 0; i < inner.length; i++) {
     const c = inner[i];
     if (c === "(" || c === "[" || c === "{") {
       const close = matchClose(inner, i);
@@ -527,7 +533,7 @@ function splitPlist(s: string): string[] {
   }
   if (!pieces.length) return [s];
   pieces.push(inner.slice(start));
-  return [...pieces, "]"];
+  return bracketed ? [...pieces, "]"] : pieces;
 }
 
 // "Name: Daiyu, The Priestess Hair: Black, long Sex/Gender: Female" -> one piece per known label.
@@ -583,10 +589,13 @@ function splitBracketGroups(s: string): string[] {
 
 const WPP_ENTRY = new RegExp(String.raw`[\s,;+]*((?:${MACRO_OWN}\s*)?[A-Za-z][\w'’/&\- ]{0,40}?)\s*(${WPP_OPEN})`, "y");
 const WPP_FIRST = new RegExp(String.raw`(?:${MACRO_OWN}\s*)?[A-Za-z][\w'’/&\- ]{0,40}?\s*${WPP_OPEN}`);
-/** "Adriana Hayes" / "{{char}}" / "Character Sheet": a prefix that names the character rather than a field. */
+/**
+ * "Adriana Hayes" / "{{char}}" / "Character Sheet" / "{{char}}'s persona": a prefix that names the character
+ * rather than a field.
+ */
 function isNamePrefix(label: string, ctx: Ctx): boolean {
   const norm = normLabel(label, ctx.names);
-  if (TITLE_WORDS.has(norm)) return true;
+  if (TITLE_WORDS.has(norm) || norm === "persona" || norm === "description") return true;
   const words = label.trim().split(/\s+/);
   return words.length <= 3 && !resolveLabel(norm).field && words.every((w) => /^(?:\p{Lu}|\{\{)/u.test(w));
 }
@@ -594,7 +603,10 @@ function splitWpp(s: string, ctx: Ctx): string[] {
   const first = s.search(WPP_FIRST);
   if (first < 0) return [s];
   const prefix = s.slice(0, first);
-  const prefixLabel = prefix.replace(/[[\]{}=:;\s]+/g, " ").trim();
+  const prefixLabel = prefix
+    .replace(/\{\{\s*char\s*\}\}(?:['’]s)?/gi, " ")
+    .replace(/[[\]{}=:;\s]+/g, " ")
+    .trim();
   if (prefixLabel && !isNamePrefix(prefixLabel, ctx)) return [s];
   const cuts: number[] = [];
   let i = first;
@@ -631,7 +643,7 @@ type Tok =
       anchors: boolean;
       listy: boolean;
     }
-  | { type: "text"; bullet: boolean; indent: number; speaker: string | null; quoted: boolean };
+  | { type: "text"; bullet: boolean; indent: number; speaker: string | null; quoted: boolean; value?: string };
 
 const RE_STRUCTURAL = /^(?:-{3,}|\*{3,}|_{3,}|={3,}|[[\]{}()]{1,3}|>|\]\s*\}|\}\s*\]|\)\s*\])$/;
 const LABEL_BODY = String.raw`(?:${MACRO}|\([^()]{0,40}\)|[^:=()\[\]{}"“”*\n])+?`;
@@ -734,9 +746,16 @@ function tokenize(text: string, ctx: Ctx): Tok {
 
   let inline = parseInline(core);
   if (inline && !inline.wpp && isNamePrefix(inline.label, ctx)) {
-    // "[Adriana Hayes: age (21 years)" / "[{{char}}: Clothing: ..." -> look past the name prefix
-    const inner = parseInline(inline.value.replace(/^[\s[]+/, ""));
-    if (inner && labelLooksValid(inner.label) && resolveLabel(normLabel(inner.label, ctx.names)).field) inline = inner;
+    // "[Adriana Hayes: age (21 years)" / "[{{char}}: Clothing: ..." -> look past the name prefix, unless more
+    // W++ entries follow on the line (splitWpp could not cut them): "{{char}}'s persona: gender(male) eyes(red)"
+    // is then one trait list under its own label.
+    const rest = inline.value.replace(/^[\s[]+/, "");
+    const inner = parseInline(rest);
+    const close = inner?.wpp ? matchClose(rest, rest.search(/[([{]/)) : -1;
+    const whole = close === -1 || !WPP_FIRST.test(rest.slice(close + 1));
+    if (inner && whole && labelLooksValid(inner.label) && resolveLabel(normLabel(inner.label, ctx.names)).field) {
+      inline = inner;
+    }
   }
   if (inline && labelLooksValid(inline.label)) {
     const norm = normLabel(inline.label, ctx.names);
@@ -746,7 +765,7 @@ function tokenize(text: string, ctx: Ctx): Tok {
     const dialogue = /^["“*]/.test(value) || DIALOGUE_SPEAKERS.has(norm);
     const voice = inline.wpp ? null : speakerOf(inline.label, inline.value, ctx);
     if (voice && (res.kind === "title" || !known))
-      return { type: "text", bullet, indent, speaker: voice, quoted: false };
+      return { type: "text", bullet, indent, speaker: voice, quoted: false, value: inline.value };
     const rejected =
       (res.kind === "title" && dialogue) ||
       (!known && (dialogue || looksLikeSentence(norm))) ||
@@ -773,9 +792,11 @@ function tokenize(text: string, ctx: Ctx): Tok {
   }
   if ((quote && isShortTitle(core)) || (isAllCapsHeading(core) && !bullet))
     return { type: "heading", level: 5, label: core };
-  let speaker = inline && !inline.wpp ? speakerOf(inline.label, inline.value, ctx) : null;
-  if (!speaker && /^\{\{\s*char\s*\}\}\s+["“*]/i.test(core)) speaker = "char"; // '{{char}} "UGH, don't..."'
-  return { type: "text", bullet, indent, speaker, quoted: /^["“]/.test(core) };
+  const speaker = inline && !inline.wpp ? speakerOf(inline.label, inline.value, ctx) : null;
+  if (speaker) return { type: "text", bullet, indent, speaker, quoted: false, value: inline!.value };
+  // '{{char}} "UGH, don't..."'
+  const bare = /^\{\{\s*char\s*\}\}\s+["“*]/i.test(core) ? "char" : null;
+  return { type: "text", bullet, indent, speaker: bare, quoted: /^["“]/.test(core) };
 }
 
 /** "Interviewer: ...", "{{char}}: *grins*", "Mei: \"Hi\"" -> who is speaking, or null when the line is not dialogue. */
@@ -799,23 +820,46 @@ function speakerOf(label: string, value: string, ctx: Ctx): string | null {
  *   Interviewer: "Describe your appearance?"
  *   {{char}}: "Oh, you know, just your average goblin-kin..."
  */
-function markExamples(toks: Tok[]): boolean[] {
+type ExampleMark = "start" | "run" | null;
+function markExamples(toks: Tok[]): ExampleMark[] {
   const skip = (i: number) => toks[i]!.type === "blank";
-  for (let i = 1; i < toks.length; i++) {
-    // a bare quoted line right after a speaker line continues that speech
-    const tok = toks[i]!;
-    if (tok.type !== "text" || !tok.quoted || tok.speaker) continue;
-    let prev = i - 1;
-    while (prev > 0 && toks[prev]!.type === "blank") prev--;
-    const before = toks[prev]!;
-    if (before.type === "text" && before.speaker) tok.speaker = before.speaker;
-  }
   const speakerAt = (i: number): string | null => {
     const tok = toks[i];
     return tok?.type === "text" ? tok.speaker : null;
   };
+  const neighbour = (i: number, step: number) => {
+    let k = i + step;
+    while (k >= 0 && k < toks.length && skip(k)) k += step;
+    return k;
+  };
+  for (let i = 0; i < toks.length; i++) {
+    const tok = toks[i]!;
+    // "{{char}}: lol ok" next to a {{user}} line is the character speaking, even without quotes or asterisks
+    if (
+      tok.type === "inline" &&
+      tok.res.kind === "title" &&
+      !tok.listy &&
+      tok.value &&
+      /^\{\{\s*char\s*\}\}$/i.test(tok.label.trim()) &&
+      (speakerAt(neighbour(i, -1)) === "user" || speakerAt(neighbour(i, 1)) === "user")
+    ) {
+      toks[i] = {
+        type: "text",
+        bullet: tok.bullet,
+        indent: tok.indent,
+        speaker: "char",
+        quoted: false,
+        value: tok.value,
+      };
+      continue;
+    }
+    // a bare quoted line right after a speaker line continues that speech
+    if (i === 0 || tok.type !== "text" || !tok.quoted || tok.speaker) continue;
+    const before = toks[neighbour(i, -1)];
+    if (before?.type === "text" && before.speaker) tok.speaker = before.speaker;
+  }
   const isDialogue = (i: number) => Boolean(speakerAt(i));
-  const example: boolean[] = new Array(toks.length).fill(false);
+  const example: ExampleMark[] = new Array(toks.length).fill(null);
   for (let i = 0; i < toks.length; i++) {
     if (toks[i]!.type === "start") {
       let j = i + 1;
@@ -831,7 +875,7 @@ function markExamples(toks: Tok[]): boolean[] {
         }
         j++;
       }
-      for (let k = i; k < j; k++) example[k] = true;
+      for (let k = i; k < j; k++) example[k] = "start";
       i = j - 1;
       continue;
     }
@@ -844,10 +888,52 @@ function markExamples(toks: Tok[]): boolean[] {
     }
     const speakers = new Set(run.map((k) => speakerAt(k)));
     const qualifies = run.length >= 2 && (speakers.size >= 2 || speakers.has("user"));
-    if (qualifies) for (let k = i; k < j; k++) example[k] = true;
+    if (qualifies) for (let k = i; k < j; k++) example[k] = "run";
     i = j - 1;
   }
   return example;
+}
+
+/**
+ * An interview whose questions name fields is a profile in disguise:
+ *   {{user}}: Appearance?
+ *   {{char}}: *She places her hand on her chest.* Oh well, if you want to look at me...
+ * Each answer lands in the field its question names ("Introduction?" names the description) and the
+ * interview's other answers stay in the description (map value null). An interview with no such question is
+ * left out and stays example dialogue.
+ */
+function markInterview(toks: Tok[], example: ExampleMark[], ctx: Ctx): Map<number, DescriptionSplitField | null> {
+  const fields = new Map<number, DescriptionSplitField | null>();
+  const questionField = (tok: Tok): DescriptionSplitField | null => {
+    if (tok.type !== "text" || tok.speaker !== "user" || !tok.value) return null;
+    const question = tok.value.replace(/^[\s"“*]+|[\s"”*?.!]+$/g, "");
+    if (!labelLooksValid(question)) return null;
+    const norm = normLabel(question, ctx.names);
+    if (looksLikeSentence(norm)) return null;
+    // "Introduction?" / "Introduce yourself?" asks who the character is, not for an opening scene
+    if (/^(?:brief |short )?(?:intro|introduction|introduce yourself|who are you)$/.test(norm)) return "description";
+    const res = resolveLabel(norm);
+    return res.field && (res.how === "exact" || res.how === "keywords") ? res.field : null;
+  };
+  for (let i = 0; i < toks.length; i++) {
+    if (example[i] !== "run") continue;
+    let j = i;
+    while (j < toks.length && example[j] === "run") j++;
+    const run = new Map<number, DescriptionSplitField | null>();
+    let field: DescriptionSplitField | null = null;
+    let named = false;
+    for (let k = i; k < j; k++) {
+      const tok = toks[k]!;
+      if (tok.type === "text" && tok.speaker === "user") {
+        field = questionField(tok);
+        named ||= Boolean(field);
+      }
+      run.set(k, field);
+    }
+    if (named) for (const [k, f] of run) fields.set(k, f);
+    i = j - 1;
+  }
+  return fields;
 }
 
 function isListy(value: string): boolean {
@@ -935,6 +1021,7 @@ function assignFields(items: Item[], ctx: Ctx, opts: AssignOptions): LineRecord[
     return tok;
   });
   const example = markExamples(toks);
+  const interview = markInterview(toks, example, ctx);
   const records: LineRecord[] = [];
   items.forEach((item, index) => {
     const tok = toks[index]!;
@@ -942,8 +1029,13 @@ function assignFields(items: Item[], ctx: Ctx, opts: AssignOptions): LineRecord[
     records.push(rec);
 
     if (example[index] && tok.type !== "blank") {
-      rec.field = "mes_example";
-      rec.how = "example";
+      if (interview.has(index)) {
+        rec.field = interview.get(index) ?? sectionField() ?? "description";
+        rec.how = "interview";
+      } else {
+        rec.field = "mes_example";
+        rec.how = "example";
+      }
       anchor = null;
       return;
     }
@@ -1065,7 +1157,7 @@ function assignFields(items: Item[], ctx: Ctx, opts: AssignOptions): LineRecord[
         if (tok.res.kind === "title") {
           if (!nested) popHeadings(5); // "[CHARACTER: Autumn Pendleton]" starts a new block
           // A trait list behind the name ("{{char}}: intelligent, lonely, likes(...)") is sorted like prose.
-          const traits = opts.prose && tok.listy ? classifyProse(tok.value) : null;
+          const traits = opts.prose && tok.listy ? classifyProse(tok.value, ctx) : null;
           rec.field = traits ?? sectionField() ?? "description";
           rec.how = traits ? "prose" : "title";
           anchor = null;
@@ -1117,7 +1209,7 @@ function assignFields(items: Item[], ctx: Ctx, opts: AssignOptions): LineRecord[
         } else if (generic && !introKept) {
           introKept = true;
         } else if (generic && opts.prose) {
-          const field = classifyProse(item.text);
+          const field = classifyProse(item.text, ctx);
           if (field) {
             rec.field = field;
             rec.how = "prose";
@@ -1272,7 +1364,8 @@ function split(before: DescriptionSplitFields, name: string, opts: AssignOptions
     keywordSorted: false,
     notes: [],
   };
-  const ctx: Ctx = { names: collectNames(name, before.description) };
+  const names = collectNames(name, before.description);
+  const ctx: Ctx = { names, nameRe: names.size ? new RegExp(`\\b(?:${[...names].join("|")})\\b`, "gi") : null };
   const json = tryJson(before.description);
   const sourceLines = json ? jsonToLines(json) : before.description.split(/\r?\n/);
   if (json) result.notes.push("description was JSON; converted to 'Key: value' lines");

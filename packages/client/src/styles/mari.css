@@ -3099,7 +3099,7 @@ details[open] > .mari-disclosure .mari-disclosure__chevron {
   padding-inline-start: 1.375rem;
 }
 
-/* Slice 72: her words for the round that opened the phase, as its caption above its steps. */
+/* Slice 72: her words from the phase's rounds, as its caption above its steps. */
 .mari-phase__caption {
   margin: -0.15rem 0 0.1rem calc(-1.375rem + 1.3rem);
   color: color-mix(in srgb, var(--muted-foreground) 88%, transparent);

@@ -192,7 +192,7 @@ export function buildMessageMacroContext({
     variables,
     // A copy per context: {{setvar}} writes into localVariables, and showing a
     // message must never change the chat's variables or leak into another message.
-    localVariables: { ...chatVariables },
+    ...(chatVariables ? { localVariables: { ...chatVariables } } : {}),
     lastInput,
     characterFields: fallbackCharacter
       ? {

@@ -5,8 +5,8 @@ import type { AvatarConfig, AvatarOwnerRef } from "@marinara-engine/shared";
 import { mmdPmx, mmdVmd } from "../scripts/regressions/fixtures/avatar-mmd-fixtures.js";
 import { paintPng, solid, zipFiles } from "../scripts/regressions/fixtures/avatar-2d-fixtures.js";
 import { serveWithServerCsp } from "./server-csp-fixture.js";
-import { seedUIState } from "./ui-state-fixture.js";
-import { UI_PERSISTENCE } from "../packages/client/src/lib/ui-persistence.js";
+import { isolateSyncedUISettings, seedUIState } from "./ui-state-fixture.js";
+import { clickTopbarPanel } from "./topbar-navigation.js";
 
 // Keep the controlled package registry visible after reload: a production PWA worker bypasses page.route.
 test.use({ serviceWorkers: "block" });
@@ -40,9 +40,7 @@ declare global {
   }
 }
 async function prepare(page: Page, { blank = false, setup = false } = {}) {
-  await page.route("**/api/app-settings/ui", (route) =>
-    route.fulfill({ json: route.request().method() === "GET" ? { value: null } : { success: true } }),
-  );
+  await isolateSyncedUISettings(page);
   await seedUIState(
     page,
     {
@@ -313,14 +311,16 @@ test("MMD setup imports, maps and removes model-specific motion for character an
       await expect(panel.getByRole("button", { name: "Add VMD motion", exact: true })).toBeVisible();
       for (const theme of ["light", "dark"] as const) {
         if ((await page.locator("html").getAttribute("data-theme")) !== theme) {
-          await page.evaluate(
-            ({ name, theme }) => {
-              const stored = JSON.parse(localStorage.getItem(name)!);
-              stored.state.theme = theme;
-              localStorage.setItem(name, JSON.stringify(stored));
-            },
-            { name: UI_PERSISTENCE.name, theme },
-          );
+          await clickTopbarPanel(page, "settings");
+          await page.getByRole("tab", { name: "Appearance", exact: true }).click();
+          await page.locator("#settings-control-theme-mode select").selectOption(theme);
+          await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+          await clickTopbarPanel(page, "settings");
+          if (!(await setup.isVisible())) {
+            await clickTopbarPanel(page, "agents");
+            await page.getByRole("button", { name: /^3D Avatars\b/u }).click();
+            await expect(setup).toBeVisible();
+          }
           await page.reload();
           await setup.getByLabel("Character or persona").selectOption(`${ownerType}:${ownerId}`);
           await setup.getByRole("radio", { name: /^MMD PMX model/u }).check();

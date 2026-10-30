@@ -201,7 +201,7 @@ import {
 import { resolveAssetTag } from "../../lib/asset-fuzzy-match";
 import { filterGameAssetMap, parseGameAssetExcludedFolders } from "../../lib/game-asset-selection";
 import { resolveCombatFullBodyPose, resolveDialogueFullBodyPose } from "../../lib/game-full-body-pose";
-import { characterNamesMatch, findNamedEntry } from "../../lib/game-character-name-match";
+import { characterNamesMatch, findNamedEntry, hasExactNamedEntry } from "../../lib/game-character-name-match";
 import { normalizeGameSegmentEdit, serializeGameSegmentEdit, type GameSegmentEdit } from "../../lib/game-segment-edits";
 import { findReplayStoryboardKeyframe } from "../../lib/game-storyboard-keyframes";
 import {
@@ -9583,17 +9583,34 @@ function GameSurfaceComponent({
       const gameCharacterCards = Array.isArray(chatMeta.gameCharacterCards)
         ? (chatMeta.gameCharacterCards as StoredGameCombatCard[])
         : [];
-      const partyCombatants = Array.isArray(combatState.party)
-        ? combatState.party.map((member, index) =>
-            generatedPartyMemberToCombatant(
-              member,
-              index,
-              combatAvatarCandidates,
-              fallbackLevel,
-              findGameCombatCard(gameCharacterCards, member.name),
-            ),
-          )
-        : [];
+      // Each member its own id: one matched to a name another already took gets its own (laptop room
+      // playtest 2026-10-30: a rejoined guest's "Guest Hero", not yet on the party list, took the
+      // host's "persona:active" and no fight would open). Members named exactly as a unit claim it
+      // first, so a name-variant match never takes the unit or its picture from them.
+      const party = Array.isArray(combatState.party) ? combatState.party : [];
+      const isExact = (member: CombatPartyMember) =>
+        hasExactNamedEntry(combatAvatarCandidates, member.name, (entry) => entry.name);
+      const exactFirst = party
+        .map((member, index) => ({ member, index }))
+        .sort((a, b) => Number(!isExact(a.member)) - Number(!isExact(b.member)));
+      const takenIds = new Set<string>();
+      const partyCombatants: Combatant[] = new Array(party.length);
+      for (const { member, index } of exactFirst) {
+        const combatant = generatedPartyMemberToCombatant(
+          member,
+          index,
+          combatAvatarCandidates.filter((candidate) => !takenIds.has(candidate.id)),
+          fallbackLevel,
+          findGameCombatCard(gameCharacterCards, member.name),
+        );
+        if (takenIds.has(combatant.id)) {
+          // Another member already holds that unit, so this one keeps neither its id nor its picture.
+          combatant.id = `generated-party-${index}-${slugifyCombatantId(member.name)}`;
+          combatant.sprite = undefined;
+        }
+        takenIds.add(combatant.id);
+        partyCombatants[index] = combatant;
+      }
       const enemyCombatants = Array.isArray(combatState.enemies)
         ? combatState.enemies.map((enemy, index) => generatedEnemyToCombatant(enemy, index, fallbackLevel))
         : [];

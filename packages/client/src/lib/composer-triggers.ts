@@ -182,3 +182,15 @@ export function composerKeyAction(input: ComposerKeyInput): ComposerKeyAction {
   if (input.key === "Enter" && !input.shiftKey && (input.enterToSend || input.metaKey || input.ctrlKey)) return "send";
   return "none";
 }
+
+/**
+ * The files a paste should attach. A screenshot arrives as a file with no text. A copy from Word or Excel
+ * carries its text and a picture of it, and that paste should stay text.
+ */
+export function pastedFiles(data: Pick<DataTransfer, "items" | "getData">): File[] {
+  if (data.getData("text/plain").trim()) return [];
+  return Array.from(data.items).flatMap((item) => {
+    const file = item.kind === "file" ? item.getAsFile() : null;
+    return file ? [file] : [];
+  });
+}

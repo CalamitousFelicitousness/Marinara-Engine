@@ -2194,7 +2194,7 @@ export function HomeProfessorMariChat({
     setWorkspaceTimeline,
   });
   const handleAttachmentUpload = useCallback(
-    async (files: FileList | null) => {
+    async (files: FileList | readonly File[] | null) => {
       const acceptedFiles = Array.from(files ?? []).filter((file) => {
         if (file.size > PROFESSOR_MARI_ATTACHMENT_MAX_BYTES) {
           toast.error(localizeUi("ui.chat.homeprofessormarichat.value1IsTooLargeMax20Mb", { value1: file.name }));

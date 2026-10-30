@@ -4082,8 +4082,8 @@ assert.ok(!("mariDetailId" in mariSession));
   );
   assert.match(
     headerChromeSource,
-    /const needsYouCount =[\s\S]*?isMariReviewWaiting\(approval\)[\s\S]*?\(heldChangeCard \? 1 : 0\);/u,
-    "the omnibar header asks for an answer only for a real approval or a held change",
+    /const needsYouCount =[\s\S]*?isMariReviewWaiting\(approval\)[\s\S]*?\(heldChangeCard \? 1 : 0\) \+\s*\(questionCardWaiting \? 1 : 0\);/u,
+    "the omnibar header asks for an answer only for a real approval, a held change or a question card",
   );
   // UX-04: the top-bar pill, the Now row, the empty state and the open-with-review flags count only waiting reviews.
   // An applied change (Keep/Undo) is not a question, so it never raises "Needs you".

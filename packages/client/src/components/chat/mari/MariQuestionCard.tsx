@@ -32,6 +32,10 @@ export function MariQuestionCard({
   );
   const answer = formatMariQuestionAnswers(questions, answers);
 
+  const goTo = (next: number) => {
+    lastPickedQuestion.current = null;
+    setStep(next);
+  };
   const pick = (label: string) => {
     lastPickedQuestion.current = question.id;
     if (question.multiple) {
@@ -113,13 +117,13 @@ export function MariQuestionCard({
           if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
           event.preventDefault();
           if (isLast) submit();
-          else setStep(step + 1);
+          else goTo(step + 1);
         }}
       />
       <div className="mari-receipt__foot">
         <span className="mari-receipt__actions">
           {step > 0 ? (
-            <button type="button" className="mari-link" onClick={() => setStep(step - 1)}>
+            <button type="button" className="mari-link" onClick={() => goTo(step - 1)}>
               {localizeUi("mari.question.back")}
             </button>
           ) : null}
@@ -130,7 +134,7 @@ export function MariQuestionCard({
               {localizeUi("mari.question.submit")}
             </button>
           ) : (
-            <button type="button" className="mari-btn" onClick={() => setStep(step + 1)}>
+            <button type="button" className="mari-btn" onClick={() => goTo(step + 1)}>
               {localizeUi("mari.question.next")}
             </button>
           )}

@@ -7212,7 +7212,6 @@
   "ui.characters.onboarding.cardQuestionsHeading": "Character questions",
   "ui.characters.onboarding.cardQuestionsHelp": "Saved on the chat, so this card reads each chat's own answer. Use the name in Description, Personality, Backstory, Appearance or Scenario.",
   "ui.characters.onboarding.cardQuestionsIntro": "Questions players answer while they set up a Roleplay chat. Their answers are saved on the chat. Use",
-  "ui.characters.onboarding.cardVariableInGreeting": "Greetings don't read chat variables, so {{value1}} shows as written. Put the name in a card field instead.",
   "ui.characters.onboarding.cardVariablesFailed": "Your answers couldn't be saved. The chat will use each card's own default text instead.",
   "ui.characters.onboarding.createFailed": "Couldn't create the persona. Please try again.",
   "ui.characters.onboarding.createPersona": "Create persona",

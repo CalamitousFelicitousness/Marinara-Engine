@@ -490,29 +490,6 @@ function onboardingCardFieldTexts(card: OnboardingCardFields | null | undefined)
 }
 
 /**
- * Card texts that reference a card variable but would NOT be resolved in the
- * prompt, so an author can be told. The greeting is the notable one: it is
- * displayed from the client's own macro context, which does not read chat
- * variables, so a `{{name}}` there shows literally (deferred, see the PR).
- * ponytail: a text scan, not the engine — these fields are never macro-resolved
- * on the cards path, so there is nothing to measure against.
- */
-export function findUnresolvedCardVariableUses(
-  onboarding: CharacterOnboarding,
-  greetings: readonly string[] = [],
-): Set<string> {
-  const names = new Set((onboarding.cardVariables ?? []).map((variable) => variable.variableName));
-  const found = new Set<string>();
-  if (names.size === 0) return found;
-  for (const text of greetings) {
-    for (const match of text.matchAll(/\{\{([A-Za-z_]\w*)\}\}/g)) {
-      if (names.has(match[1]!)) found.add(match[1]!);
-    }
-  }
-  return found;
-}
-
-/**
  * Whether this card's onboarding offers the player anything, used to suppress
  * the wizard's marker and trigger for an enabled-but-empty block. A card with no
  * questions is still meaningful when its fields carry text: it ships a

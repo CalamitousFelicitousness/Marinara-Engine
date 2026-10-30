@@ -92,6 +92,7 @@ import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { chatKeys, rememberRecentMessageContentEdit } from "../../hooks/use-chats";
 import { useShallow } from "zustand/react/shallow";
 import { createMessageMacroResolver } from "../../lib/chat-macros";
+import { readChatVariables } from "../../lib/state-editor/chat-variables-editor-source";
 import { useApplyRegex } from "../../hooks/use-apply-regex";
 import { getDefaultChatTextColor, useUIStore } from "../../stores/ui.store";
 import { useChatStore } from "../../stores/chat.store";
@@ -2657,6 +2658,9 @@ export const ChatMessage = memo(function ChatMessage({
     [activeChatMetadata],
   );
   const scopedRegexMode = useMemo(() => parseChatMetadata(activeChatMetadata).scopedRegexMode, [activeChatMetadata]);
+  // The chat's variables, so {{name}} in a message shows what the model reads. Memoized on the raw
+  // metadata: a new object every render would rebuild every message's display text.
+  const chatVariables = useMemo(() => readChatVariables(activeChatMetadata), [activeChatMetadata]);
   // Roleplay can show a private note to one character; it stays private only when each character replies alone.
   const noteSharing = useMemo<MessageNoteSharing | undefined>(() => {
     if (!isRoleplay || !chatCharacterIds?.length) return undefined;
@@ -2742,6 +2746,7 @@ export const ChatMessage = memo(function ChatMessage({
     (content: string) => {
       const macroContext = {
         variables: presetVariables,
+        chatVariables,
         userName,
         persona: {
           name: userName,
@@ -2777,6 +2782,7 @@ export const ChatMessage = memo(function ChatMessage({
       applyToAIOutput,
       scopedRegexMode,
       presetVariables,
+      chatVariables,
       message.characterId,
       charName,
       isSystem,

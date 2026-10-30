@@ -48,7 +48,7 @@ Lower down the same tab there is a second list, **Character Questions**. Its que
 {{char}} treats {{relationshipToUser}} with open warmth.
 ```
 
-Those five fields are the ones the model reads, so they are the ones a character answer can reach.
+Those five fields are the ones the model reads, so they are the ones a character answer can reach. A greeting can use a character question's `{{name}}` too, and shows the player's answer.
 
 The answers are stored as chat variables, so the card reads a different value in every chat and never has to be edited. A card question is asked whenever the card is in the chat, whether or not the player creates a persona. The window shows an **About you** section only when one is being made.
 

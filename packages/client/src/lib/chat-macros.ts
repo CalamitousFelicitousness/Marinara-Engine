@@ -165,6 +165,7 @@ export function buildMessageMacroContext({
   inactiveCharacterIds,
   userName,
   variables = {},
+  chatVariables,
   lastInput,
 }: {
   persona?: MacroPersonaData | null;
@@ -173,6 +174,8 @@ export function buildMessageMacroContext({
   inactiveCharacterIds?: unknown;
   userName?: string;
   variables?: Record<string, string>;
+  /** The chat's own variables (`metadata.macroVariables`). Preset `variables` win over them, as in the prompt. */
+  chatVariables?: Record<string, string>;
   lastInput?: string;
 }): MacroContext {
   const fallbackCharacter = primaryCharacter ?? characters[0] ?? null;
@@ -187,6 +190,9 @@ export function buildMessageMacroContext({
       .map((character) => character.name)
       .filter((name) => name.trim().length > 0),
     variables,
+    // A copy per context: {{setvar}} writes into localVariables, and showing a
+    // message must never change the chat's variables or leak into another message.
+    localVariables: { ...chatVariables },
     lastInput,
     characterFields: fallbackCharacter
       ? {

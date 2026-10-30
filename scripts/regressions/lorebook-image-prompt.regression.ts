@@ -143,6 +143,21 @@ assert.equal(fake.requests.length, 2);
 assert.equal(fake.requests[1]![1]!.images, undefined);
 assert.match(fake.requests[1]![1]!.content, /Blue coat/);
 assert.equal(notices, 1);
+const llama = new FakeProvider();
+llama.error = new LLMHttpError(
+  "Custom OpenAI-compatible endpoint error 500: image input is not supported - hint: if this is unexpected, you may need to provide the mmproj",
+  { status: 500 },
+);
+let llamaNotices = 0;
+const llamaResponse = await withLorebookImageCompatibility(llama, urls, () => llamaNotices++).chatComplete(
+  messages,
+  options,
+);
+assert.equal(llamaResponse.content, "ok", "explicit llama.cpp image-incompatibility500 retries as text");
+assert.equal(llama.requests.length, 2);
+assert.equal(llama.requests[1]![1]!.images, undefined);
+assert.match(llama.requests[1]![1]!.content, /Blue coat/);
+assert.equal(llamaNotices, 1);
 await wrapped.chatComplete(
   [...messages, { role: "user", content: "attachment", images: ["data:image/png;base64,dXNlcg=="] }],
   options,

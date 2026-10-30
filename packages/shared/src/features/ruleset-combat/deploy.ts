@@ -84,6 +84,40 @@ function nearestOpen(target: Cell, open: Set<string>, held: Set<string>): Cell |
 }
 
 /**
+ * The placements with each opponent at home in water begun in it (laptop 2026-10-30: four reef sharks
+ * "in the deep water" stood on the plains and bit from there): one that swims at least as fast as it
+ * walks and does not fly starts in the free water cell nearest where it was put, when the board has
+ * one. The party, and everybody else, stays where they are.
+ */
+export function rulesetWaterStarts(
+  grid: TacticalGrid,
+  placements: Record<string, Cell>,
+  swimmers: readonly { id: string; side: string; walk: number; swim?: number; fly?: number }[],
+): Record<string, Cell> {
+  const water: Cell[] = [];
+  grid.tiles.forEach((row, y) =>
+    row.forEach((tile, x) => tile === "water" && !grid.outside?.[y]?.[x] && water.push({ x, y })),
+  );
+  if (water.length === 0) return placements;
+  const next = { ...placements };
+  const key = (cell: Cell) => `${cell.x},${cell.y}`;
+  const taken = new Set(Object.values(next).map(key));
+  for (const one of swimmers) {
+    if (one.side === "party" || !one.swim || one.fly || one.walk > one.swim) continue;
+    const at = next[one.id];
+    if (!at || grid.tiles[at.y]?.[at.x] === "water") continue;
+    const free = water.filter((cell) => !taken.has(key(cell)));
+    if (free.length === 0) break;
+    const far = (cell: Cell) => (cell.x - at.x) ** 2 + (cell.y - at.y) ** 2;
+    const best = free.reduce((a, b) => (far(b) < far(a) ? b : a));
+    taken.delete(key(at));
+    taken.add(key(best));
+    next[one.id] = best;
+  }
+  return next;
+}
+
+/**
  * The placements with each one the Game Master started somewhere moved there, and each companion
  * the AI plays set by its role (a marksman or a caster a little back from the front, one who fights
  * hand to hand a little forward of it). Nobody is moved where the fight does not reach, and nobody

@@ -144,6 +144,7 @@ import {
   rulesetCombatantMind,
   rulesetCombatantForesees,
   rulesetStartPlacements,
+  rulesetWaterStarts,
   rulesetDeployCells,
   type CombatStartPlace,
   rulesetAirborne,
@@ -1791,7 +1792,19 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
           ? `${one.creature.catalogId}/${one.creature.entryId}`
           : one.name.replace(/\s*#?\d+$/, "").toLowerCase(),
     }));
-    const placements = rulesetStartPlacements(laid.grid, laid.placements, stands, places, nudged);
+    const placements = rulesetWaterStarts(
+      laid.grid,
+      rulesetStartPlacements(laid.grid, laid.placements, stands, places, nudged),
+      encounter.combatants
+        .filter((one) => !one.object && !one.sheet)
+        .map((one) => ({
+          id: one.id,
+          side: one.side,
+          walk: one.block?.speed ?? 0,
+          swim: one.speeds?.swim,
+          fly: one.speeds?.fly,
+        })),
+    );
     if (JSON.stringify(placements) !== JSON.stringify(laid.placements))
       encounter = encounterOn((laid = { ...laid, placements }));
     // A Game Master who placed the whole party placed nobody in particular (laptop party A: everyone

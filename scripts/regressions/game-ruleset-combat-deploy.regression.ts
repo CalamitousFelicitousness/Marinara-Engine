@@ -20,6 +20,7 @@ import {
   parseRulesetDefinition,
   rulesetPositionOf,
   rulesetStartPlacements,
+  rulesetWaterStarts,
   type RulesetDefinition,
 } from "../../packages/shared/src/index.js";
 import type { TacticalGrid } from "../../packages/shared/src/features/tactical-combat/types.js";
@@ -238,6 +239,39 @@ try {
     const roles = rulesetStartPlacements(grid, placements, stands, {}, { a: "spellcaster", c: "bruiser" });
     assert.ok(roles.a!.x < placements.a.x, `the caster is set back: ${JSON.stringify(roles.a)}`);
     assert.ok(roles.c!.x > placements.c.x, `the bruiser forward: ${JSON.stringify(roles.c)}`);
+  }
+
+  {
+    // One at home in water begins in it (laptop 2026-10-30: reef sharks "in the deep water" stood on the
+    // plains and bit from there); a walker, a flier, the party and a dry board change nothing.
+    const tiles = Array.from({ length: 6 }, () => Array.from({ length: 12 }, () => "plains"));
+    for (const row of tiles) for (let x = 6; x <= 8; x++) row[x] = "water";
+    const grid = { width: 12, height: 6, tiles } as never as TacticalGrid;
+    const placements = {
+      hero: { x: 1, y: 2 },
+      shark: { x: 10, y: 2 },
+      croc: { x: 10, y: 3 },
+      wolf: { x: 10, y: 4 },
+      gull: { x: 11, y: 2 },
+      merfolk: { x: 1, y: 3 },
+    };
+    const swimmers = [
+      { id: "hero", side: "party", walk: 30, swim: 30 },
+      { id: "shark", side: "enemy", walk: 0, swim: 40 },
+      { id: "croc", side: "enemy", walk: 20, swim: 30 },
+      { id: "wolf", side: "enemy", walk: 50 },
+      { id: "gull", side: "enemy", walk: 10, swim: 30, fly: 60 },
+      { id: "merfolk", side: "party", walk: 10, swim: 40 },
+    ];
+    const wet = rulesetWaterStarts(grid, placements, swimmers);
+    assert.equal(tiles[wet.shark!.y]![wet.shark!.x], "water");
+    assert.deepEqual(wet.shark, { x: 8, y: 2 }, "the nearest water to where it was put");
+    assert.equal(tiles[wet.croc!.y]![wet.croc!.x], "water", "one that swims faster than it walks");
+    for (const id of ["hero", "wolf", "gull", "merfolk"] as const) assert.deepEqual(wet[id], placements[id], id);
+    const keys = Object.values(wet).map((cell) => `${cell.x},${cell.y}`);
+    assert.equal(new Set(keys).size, keys.length, "nobody onto anybody else");
+    const dry = { width: 12, height: 6, tiles: Array.from({ length: 6 }, () => Array(12).fill("plains")) } as never;
+    assert.deepEqual(rulesetWaterStarts(dry, placements, swimmers), placements, "no water, no change");
   }
 
   {

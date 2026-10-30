@@ -165,6 +165,22 @@ export const avatarKindDataSchema = z
     pngtuber: pngtuberAvatarDataSchema.optional(),
     "mesh-avatar": meshAvatarDataSchema.optional(),
     vrm: vrmAvatarDataSchema.optional(),
+    mmd: z
+      .object({
+        file: avatarFilePathSchema.refine((path) => path.startsWith("mmd/")),
+        texturePaths: z.record(
+          z.string().min(1),
+          avatarFilePathSchema.refine((path) => path.startsWith("mmd/")),
+        ),
+        expressionMap: avatarExpressionMapSchema,
+        expressionNames: z.array(z.string().min(1).max(128)).optional(),
+        idleAnimation: avatarFilePathSchema
+          .refine((path) => path.startsWith("mmd/"))
+          .nullable()
+          .optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

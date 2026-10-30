@@ -1,6 +1,6 @@
 # 2D and 3D Avatars
 
-Two downloadable agents give your characters and personas an animated avatar that reacts while a reply streams in. **2D Avatars** shows PNGTuber-style sprites or mesh avatars, and **3D Avatars** shows VRM models. Faces follow the reply, and mouths move with the text or with text-to-speech.
+Two downloadable agents give your characters and personas an animated avatar that reacts while a reply streams in. **2D Avatars** shows PNGTuber-style sprites or mesh avatars, and **3D Avatars** shows VRM and MMD PMX models. Faces follow the reply, and mouths move with the text or with text-to-speech.
 
 Live2D models are not supported. Live2D's licence needs a separate agreement with Live2D even for free open-source apps, and its runtime cannot be shipped with Marinara Engine.
 
@@ -21,7 +21,7 @@ The agents send no extra requests to your AI connections while you chat. They ne
 Avatars are set up on each agent's own page. Open **Agents**, open **2D Avatars** or **3D Avatars**, and use the **Avatars** section near the top.
 
 1. In **Character or persona**, choose who gets the avatar. Names marked "(has an avatar)" already have one saved.
-2. In **Avatar type**, choose the kind to set up. 2D Avatars offers **PNGTuber sprites** and **Mesh avatar**. 3D Avatars offers **VRM model**.
+2. In **Avatar type**, choose the kind to set up. 2D Avatars offers **PNGTuber sprites** and **Mesh avatar**. 3D Avatars offers **VRM model** and **MMD PMX model**.
 3. Set it up in that type's own section below the switches: use your sprites or import a file, choose the face for each feeling, or remove it. See [2D avatars](#2d-avatars-pngtuber-sprites-and-mesh-avatars) and [3D avatars](#3d-avatars-vrm-models).
 4. Use **Preview** to see it. **Try a face** switches feelings and **Talk** moves the mouth. When there is nothing to show yet, the preview shows an example avatar.
 
@@ -98,6 +98,18 @@ Some files can't be used, and the import says why:
 - **Incomplete models.** A model whose skeleton is missing bones VRM needs or points to parts that aren't in the file, or that points to files outside itself, is refused.
 
 There is no size limit beyond the app's usual upload limit, but large models take longer to load, especially on phones.
+
+## MMD avatars: PMX models and VMD motions
+
+On the **3D Avatars** page, choose **MMD PMX model** under **Avatar type**. Select **Import PMX or ZIP** and choose a ZIP containing one PMX model and its textures. Keep the model's relative texture folders and filenames in the ZIP, including Japanese names. A model without external textures can be imported as a `.pmx` on its own. The import refuses missing textures, unsafe paths and damaged records before replacing your saved model.
+
+Under **Faces and mouth shapes**, choose a model morph for each feeling, mouth shape and blink. Common English and Japanese names are matched when possible; check the preview and correct the guesses. A model without suitable morphs can still show and move its body, but cannot invent facial expressions.
+
+Under **VMD motion**, optionally add a `.vmd` made for the model's bone and morph names. Its bone animation and unbound morphs play while **Idle motion** is on. Faces you mapped to the chat director keep following the reply instead of the motion's face tracks. Reduced motion stops idle animation while retaining chat faces and lip sync. Without a VMD, the model sways gently. Replacing a PMX removes its old VMD, because MMD motions depend on the model's bone names; add a compatible motion again. Removing an MMD model deletes its textures and motion too, leaving other avatar types intact.
+
+**Supported files.** PMX 2.0 is supported, with PNG, JPEG, BMP and TGA textures (including image-backed `.sph` and `.spa` sphere maps). Compatible PMX 2.1 models that use only 2.0 records are accepted. UTF-8 text is converted to UTF-16 when importing, and compatible 2.1 headers are converted to 2.0 for the player; geometry is unchanged. QDEF, flip/impulse morphs, soft bodies and other 2.1-only records are refused explicitly. PMD, VPD poses, VMD camera/light tracks and physics simulation are not supported. Models with hair or clothing that depend on physics may look different from native MikuMikuDance. Check the result with your own model; automated fixtures do not establish native MMD fidelity or performance on every device.
+
+The player requires WebGL2 and uses the same pause, frame-rate and framing controls as the other avatars. Models and textures are served only from your Engine's stored avatar files; the renderer does not fetch a model's external URLs. Follow the model and motion authors' licences and usage terms before using or sharing them. Neither importing nor playing an MMD avatar calls an AI provider.
 
 ## Get a 3D model
 

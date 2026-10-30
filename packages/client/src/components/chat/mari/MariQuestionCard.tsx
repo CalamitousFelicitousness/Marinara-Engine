@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { CheckCircle2, CheckSquare, Circle, MessageCircleQuestion, Square } from "lucide-react";
 import { formatMariQuestionAnswers } from "@marinara-engine/shared";
@@ -23,6 +23,7 @@ export function MariQuestionCard({
   const [step, setStep] = useState(0);
   const [picked, setPicked] = useState<Record<string, string[]>>({});
   const [typed, setTyped] = useState<Record<string, string>>({});
+  const lastPickedQuestion = useRef<string | null>(null);
   const question = questions[step];
   if (!question) return null;
   const isLast = step === questions.length - 1;
@@ -32,6 +33,7 @@ export function MariQuestionCard({
   const answer = formatMariQuestionAnswers(questions, answers);
 
   const pick = (label: string) => {
+    lastPickedQuestion.current = question.id;
     if (question.multiple) {
       const current = picked[question.id] ?? [];
       setPicked({
@@ -91,9 +93,9 @@ export function MariQuestionCard({
               aria-checked={selected}
               disabled={disabled}
               // A single pick moves to the next question, under the same pointer: a double-click must not answer that one
-              // too. A multi-select pick only toggles, so its second click is a real one.
+              // too. A repeat click on the question it picked in is a real one, which a multi-select toggles.
               onClick={(event) => {
-                if (question.multiple || event.detail < 2) pick(option.label);
+                if (event.detail < 2 || lastPickedQuestion.current === question.id) pick(option.label);
               }}
             />
           );

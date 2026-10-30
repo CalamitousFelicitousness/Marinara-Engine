@@ -1,6 +1,7 @@
 // ──────────────────────────────────────────────
 // Server Entry Point
 // ──────────────────────────────────────────────
+import "./lib/compromised-certificate-authorities.js";
 import { dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { buildApp } from "./app.js";

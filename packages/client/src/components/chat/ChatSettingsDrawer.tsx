@@ -26,6 +26,7 @@ import { useKeepFocusedFieldAboveKeyboard } from "../../hooks/use-keep-focused-f
 import {
   X,
   Users,
+  UserPlus,
   User,
   BookOpen,
   ChevronDown,
@@ -88,6 +89,7 @@ import {
   Shield,
   Wallpaper,
   Search,
+  UserRound,
 } from "lucide-react";
 import { NEUTRAL_PANEL_SCROLL_AREA } from "../ui/neutral-surface-styles";
 import { FloatingWindow } from "../ui/FloatingWindow";
@@ -116,9 +118,15 @@ import { TranslationSection } from "../../features/chat-settings/sections/Transl
 import { CapabilityElement } from "../capabilities/CapabilityElement";
 import type { AvatarCrop, MultiplayerHostAction } from "@marinara-engine/shared";
 import {
+  AVATAR_AGENT_IDS,
   BUILT_IN_AGENTS,
   VIDEO_FIRST_FRAMES,
   normalizeVideoFirstFrame,
+  type CardOnboarding,
+  canBuildPersona,
+  getRelevantCardVariables,
+  hasOnboardingContent,
+  readCardOnboarding,
   DEFAULT_GAME_DICE_POOL_AGE_TURNS as DEFAULT_DICE_POOL_AGE_TURNS,
   DEFAULT_GAME_DICE_POOL_WINDOW as DEFAULT_DICE_POOL_WINDOW,
   advancedMemoryProblems,
@@ -145,16 +153,19 @@ import {
   AgentSettingsSubsection,
   AgentSettingsTextarea,
   AgentSettingsToggle,
+  MediaScopeSelect,
   GamePromptTemplateSelect,
   GenerationSettingsLink,
 } from "./AgentSettingsControls";
 import { ExpressionSpriteSettings } from "./ExpressionSpriteSettings";
+import { AvatarLayoutSettings, type AvatarLayoutControls } from "./AvatarLayoutSettings";
 import { AgentPromptTemplateSelect } from "./AgentPromptTemplateSelect";
 import { HapticConnectionPanel } from "./HapticConnectionPanel";
 import { HAPTIC_SENSITIVITY_OPTIONS } from "./haptic-sensitivity-options";
 import { ChatModeIcon } from "./ChatModeIcon";
 import { SettingsSwitch } from "../panels/settings/SettingControls";
 import { ChoiceSelectionModal } from "../presets/ChoiceSelectionModal";
+import { CharacterOnboardingModal } from "../characters/CharacterOnboardingModal";
 import { SecretPlotPanel } from "../agents/SecretPlotPanel";
 import { SummariesEditorModal } from "./SummariesEditorModal";
 import { AdvancedMemorySettings } from "./AdvancedMemorySettings";
@@ -449,6 +460,8 @@ interface ChatSettingsDrawerProps {
   onSpriteSideChange?: (side: "left" | "right", characterId?: string) => void;
   spriteVisualSettings?: LocalSpriteVisualSettings;
   onSpriteVisualSettingsChange?: (patch: Partial<LocalSpriteVisualSettings>) => void;
+  /** The Avatars drawer's controls, in chats whose stage can show avatars. */
+  avatarLayout?: AvatarLayoutControls;
   onOpenScheduleEditor?: (characterId: string, options?: { initialDay?: string | null }) => void;
 }
 
@@ -585,6 +598,8 @@ function renderRoleplayAgentMenuIcon(agentId: string, variant: "card" | "chip" =
       return <MapIcon size={size} className={className} />;
     case "custom-agents":
       return <Bot size={size} className={className} />;
+    case "avatars":
+      return <UserRound size={size} className={className} />;
     default:
       return <Puzzle size={size} className={className} />;
   }
@@ -947,6 +962,7 @@ export function ChatSettingsDrawer({
   onSpriteSideChange,
   spriteVisualSettings,
   onSpriteVisualSettingsChange,
+  avatarLayout,
   onOpenScheduleEditor,
 }: ChatSettingsDrawerProps) {
   const { t: localizeUi } = useUiTranslation();
@@ -2000,6 +2016,12 @@ export function ChatSettingsDrawer({
   const lorebookKeeperActive = activeAgentIds.includes("lorebook-keeper");
   const cardEvolutionAuditorActive = activeAgentIds.includes("card-evolution-auditor");
   const expressionActive = activeAgentIds.includes("expression");
+  // One drawer for the 2D and 3D Avatars agents, in chats whose stage can show avatars.
+  const avatarLayoutActive =
+    metadata.enableAgents === true &&
+    Boolean(avatarLayout) &&
+    AVATAR_AGENT_IDS.some((id) => activeAgentIds.includes(id));
+  const avatarSettingsOrder = Math.min(...AVATAR_AGENT_IDS.map(getRoleplayAgentSettingsOrder));
   const illustratorActive = activeAgentIds.includes("illustrator");
   const echoChamberActive = activeAgentIds.includes("echo-chamber");
   const proseGuardianActive = activeAgentIds.includes("prose-guardian");
@@ -2263,7 +2285,12 @@ export function ChatSettingsDrawer({
     });
   }, [chat.id, illustratorUseAvatarReferences, updateMeta]);
   const resetIllustratorCharacterAppearance = useCallback(() => {
-    updateMeta.mutate({ id: chat.id, illustratorIncludeCharacterAppearance: null });
+    // Both halves of Attach Card Appearance: images back to the agent's default, videos back to off.
+    updateMeta.mutate({
+      id: chat.id,
+      illustratorIncludeCharacterAppearance: null,
+      illustratorVideoIncludeCharacterAppearance: null,
+    });
   }, [chat.id, updateMeta]);
   const resetIllustratorAvatarReferences = useCallback(() => {
     updateMeta.mutate({ id: chat.id, illustratorUseAvatarReferences: null });
@@ -2558,6 +2585,14 @@ export function ChatSettingsDrawer({
       const agent = availableAgents.find((candidate) => candidate.id === agentId);
       addLink(agentId, activeAgentIds.includes(agentId), agent?.name ?? capabilityPackage.manifest.name);
     }
+    if (avatarLayoutActive) {
+      links.push({
+        id: "avatars",
+        label: localizeUi("avatars.setup.title"),
+        targetId: getAgentSettingsMenuId(chat.id, "avatars"),
+        order: avatarSettingsOrder,
+      });
+    }
     if (activeCustomAgents.length > 0) {
       links.push({
         id: "custom-agents",
@@ -2572,6 +2607,8 @@ export function ChatSettingsDrawer({
     activeCustomAgents,
     activeAgentIds,
     availableAgents,
+    avatarLayoutActive,
+    avatarSettingsOrder,
     beholderAgent,
     cardEvolutionAuditorActive,
     cardEvolutionAuditorAgentMeta.name,
@@ -2595,6 +2632,7 @@ export function ChatSettingsDrawer({
     isGame,
     isRoleplayMode,
     getRoleplayAgentSettingsOrder,
+    localizeUi,
     knowledgeRetrievalActive,
     knowledgeRetrievalAgentMeta.name,
     knowledgeRouterActive,
@@ -2713,6 +2751,56 @@ export function ChatSettingsDrawer({
         .map((characterId) => characters.find((character) => character.id === characterId))
         .filter((character): character is { id: string; data: string; avatarPath: string | null } => !!character),
     [chatCharIds, characters],
+  );
+
+  // One parse pass over every card, shared by the available-list badge, the
+  // persona rows and the in-chat question action. The gate is the wizard's:
+  // onboarding is enabled and offers something. A card that is enabled but empty
+  // never shows a marker or a row.
+  const onboardingByCharacterId = useMemo(() => {
+    const byId = new Map<string, CardOnboarding>();
+    for (const character of characters) {
+      const cardOnboarding = readCardOnboarding(character.data);
+      if (!cardOnboarding?.onboarding.enabled || !hasOnboardingContent(cardOnboarding.onboarding)) continue;
+      byId.set(character.id, cardOnboarding);
+    }
+    return byId;
+  }, [characters]);
+
+  // Every character in this chat whose card can build a persona from interactive
+  // onboarding. Roleplay only: the Roleplay wizard is what asks onboarding, and
+  // Game Mode's party uses a separate picker. The wizard offers exactly the same
+  // rows (`canBuildPersona`), so a card is offered here under the same rule.
+  const onboardingPersonaTemplates = useMemo(() => {
+    if (isGame || isConversation) return [];
+    return chatCharIds.flatMap((characterId) => {
+      const character = characters.find((entry) => entry.id === characterId);
+      const cardOnboarding = onboardingByCharacterId.get(characterId);
+      if (!character || !cardOnboarding || !canBuildPersona(cardOnboarding.onboarding)) return [];
+      return [{ character, cardOnboarding }];
+    });
+  }, [characters, chatCharIds, isConversation, isGame, onboardingByCharacterId]);
+
+  // The characters whose cards declare questions the CURRENT no-answer context
+  // makes relevant: exactly the rule the wizard uses to decide whether to ask a
+  // card at all. The marker on a Characters row opens this card's questions alone,
+  // so an answer can be changed or restored after the setup wizard is gone.
+  // Roleplay only, like the persona rows above.
+  const onboardingCardQuestionTargets = useMemo(() => {
+    if (isGame || isConversation) return [];
+    return chatCharIds.flatMap((characterId) => {
+      const character = characters.find((entry) => entry.id === characterId);
+      const cardOnboarding = onboardingByCharacterId.get(characterId);
+      if (!character || !cardOnboarding) return [];
+      const questions = getRelevantCardVariables(cardOnboarding.onboarding, cardOnboarding.cardFields, {});
+      if (questions.length === 0) return [];
+      return [{ character, cardOnboarding }];
+    });
+  }, [characters, chatCharIds, isConversation, isGame, onboardingByCharacterId]);
+  // Lookup for the row render; the list is rebuilt only when the roster changes.
+  const onboardingCardQuestionsById = useMemo(
+    () => new Map(onboardingCardQuestionTargets.map((entry) => [entry.character.id, entry])),
+    [onboardingCardQuestionTargets],
   );
 
   const chatCharacterCount = allCharacters == null ? chatCharIds.length : chatCharacters.length;
@@ -3448,6 +3536,19 @@ export function ChatSettingsDrawer({
     };
   };
 
+  const avatarLayoutCard =
+    avatarLayoutActive && avatarLayout ? (
+      <AgentSettingsCard
+        id={getAgentSettingsMenuId(chat.id, "avatars")}
+        icon={renderRoleplayAgentMenuIcon("avatars")}
+        title={localizeUi("avatars.setup.title")}
+        description={localizeUi("avatars.layout.description")}
+        order={isGame ? undefined : avatarSettingsOrder}
+      >
+        <AvatarLayoutSettings chatId={chat.id} layout={avatarLayout} />
+      </AgentSettingsCard>
+    ) : null;
+
   const renderStandaloneRoleplayAgentSettingsCard = (agent: (typeof availableAgents)[number]) => {
     let settings: React.ReactNode = null;
 
@@ -3888,6 +3989,76 @@ export function ChatSettingsDrawer({
   }, [chat.id]);
   const [connectionSearch, setConnectionSearch] = useState("");
   const [personaSearch, setPersonaSearch] = useState("");
+  // The onboarding template whose questions window is open, picked from the
+  // persona picker. A character, not a persona: nothing exists until Create.
+  const [onboardingTemplateId, setOnboardingTemplateId] = useState<string | null>(null);
+  const onboardingTemplate = onboardingTemplateId
+    ? (onboardingPersonaTemplates.find((entry) => entry.character.id === onboardingTemplateId) ?? null)
+    : null;
+  // The card can leave the chat while its window is open. Drop the stale choice
+  // with it, or re-adding the card later would pop the window open again.
+  useEffect(() => {
+    if (onboardingTemplateId && !onboardingTemplate) setOnboardingTemplateId(null);
+  }, [onboardingTemplate, onboardingTemplateId]);
+  useEffect(() => {
+    setOnboardingTemplateId(null);
+  }, [chat.id]);
+  /**
+   * A persona created from a card's onboarding questions in this drawer (#7796).
+   * The persona already exists by the time this runs, so a failed selection must
+   * close the window: leaving it open would let a second Create duplicate it. The
+   * persona stays in the library, and the picker opens so it can be picked there.
+   */
+  const handleOnboardingPersonaCreated = useCallback(
+    async (personaId: string | null) => {
+      setOnboardingTemplateId(null);
+      if (!personaId) return;
+      try {
+        await updateChat.mutateAsync({ id: chat.id, personaId, personaCharacterId: null });
+      } catch {
+        toast.error(localizeUi("ui.characters.onboarding.selectFailed"));
+        setShowPersonaPicker(true);
+      }
+    },
+    [chat.id, localizeUi, updateChat],
+  );
+
+  // The card whose character questions are open from the Characters list. Kept
+  // separate from the persona template: this window writes chat variables only.
+  const [onboardingQuestionsCharacterId, setOnboardingQuestionsCharacterId] = useState<string | null>(null);
+  const onboardingQuestionsTarget = onboardingQuestionsCharacterId
+    ? (onboardingCardQuestionsById.get(onboardingQuestionsCharacterId) ?? null)
+    : null;
+  // The card can leave the chat while its questions are open; drop the stale id
+  // with it so re-adding the card doesn't reopen the window.
+  useEffect(() => {
+    if (onboardingQuestionsCharacterId && !onboardingQuestionsTarget) setOnboardingQuestionsCharacterId(null);
+  }, [onboardingQuestionsCharacterId, onboardingQuestionsTarget]);
+  useEffect(() => {
+    setOnboardingQuestionsCharacterId(null);
+  }, [chat.id]);
+  /**
+   * Save the answers from an isolated character-questions window (#7797). The
+   * merge is the wizard's own, so untouched questions carry their default value
+   * (which restores a deleted one) and every other card's variables stay as they
+   * were.
+   */
+  const handleOnboardingAnswersSaved = useCallback(
+    async (_personaId: string | null, cardVariables: Record<string, string>) => {
+      if (Object.keys(cardVariables).length > 0) {
+        try {
+          await updateMeta.mutateAsync({ id: chat.id, macroVariables: cardVariables });
+        } catch {
+          // Nothing was created here, so a retry is safe: keep the window (and the
+          // answers it holds) open instead of discarding the player's edits.
+          toast.error(localizeUi("ui.characters.onboarding.cardVariablesFailed"));
+          return;
+        }
+      }
+      setOnboardingQuestionsCharacterId(null);
+    },
+    [chat.id, localizeUi, updateMeta],
+  );
   const [pendingToolIds, setPendingToolIds] = useState<string[]>([]);
   const [charSearch, setCharSearch] = useState("");
   const [lbSearch, setLbSearch] = useState("");
@@ -5995,6 +6166,50 @@ export function ChatSettingsDrawer({
                   onClose={() => setShowPersonaPicker(false)}
                   placeholder={localizeUi("ui.chat.chatsettingsdrawer.searchPersonas")}
                 >
+                  {/* Onboarding templates, above None like the setup wizard's
+                      Your Persona picker: Create is a positive choice, not an
+                      escape hatch. One row per card in this chat that can build
+                      a persona. */}
+                  {onboardingPersonaTemplates.map(({ character }) => {
+                    const name = charName(character);
+                    return (
+                      <button
+                        key={`onboarding-template-${character.id}`}
+                        type="button"
+                        onClick={() => {
+                          setShowPersonaPicker(false);
+                          setOnboardingTemplateId(character.id);
+                        }}
+                        className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition-all hover:bg-[var(--accent)]"
+                      >
+                        {character.avatarPath ? (
+                          <span className="relative block h-6 w-6 shrink-0 overflow-hidden rounded-full">
+                            <img
+                              src={character.avatarPath}
+                              alt=""
+                              loading="lazy"
+                              className="h-full w-full object-cover"
+                              style={getAvatarCropStyle(getCharacterInfo(character).avatarCrop)}
+                            />
+                          </span>
+                        ) : (
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-[0.625rem] font-semibold">
+                            {name[0]}
+                          </span>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <span className="flex items-center gap-1 truncate text-xs font-medium">
+                            <UserPlus size="0.625rem" className="shrink-0 text-[var(--primary)]" />
+                            {localizeUi("ui.characters.onboarding.modalTitle")}
+                          </span>
+                          <span className="block truncate text-[0.625rem] text-[var(--muted-foreground)]">
+                            {localizeUi("ui.characters.onboarding.templateSource", { value1: name })}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {onboardingPersonaTemplates.length > 0 && <div className="border-t border-[var(--border)]" />}
                   {/* None option */}
                   <button
                     onClick={() => {
@@ -6300,6 +6515,19 @@ export function ChatSettingsDrawer({
                               )}
                             </button>
                           )}
+                          {/* The interactive-onboarding marker, now an action:
+                              answers this card's character questions alone. */}
+                          {onboardingCardQuestionsById.has(c.id) && (
+                            <button
+                              type="button"
+                              onClick={() => setOnboardingQuestionsCharacterId(c.id)}
+                              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[var(--primary)] transition-colors hover:bg-[var(--accent)]"
+                              title={localizeUi("ui.characters.onboarding.answerCharacterQuestions")}
+                              aria-label={localizeUi("ui.characters.onboarding.answerCharacterQuestions")}
+                            >
+                              <UserPlus size="0.6875rem" />
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => toggleInlineResourceEditor("character", c.id)}
@@ -6384,6 +6612,19 @@ export function ChatSettingsDrawer({
                               </span>
                             )}
                           </div>
+                          {/* Same badge the setup wizard shows, so a card with
+                              interactive onboarding is recognisable before it is
+                              added. The in-chat row marker does the answering. */}
+                          {!isConversation && onboardingByCharacterId.has(c.id) && (
+                            <span
+                              role="img"
+                              aria-label={localizeUi("ui.characters.onboarding.hasOnboarding")}
+                              title={localizeUi("ui.characters.onboarding.hasOnboarding")}
+                              className="shrink-0 text-[var(--primary)]"
+                            >
+                              <UserPlus size="0.75rem" />
+                            </span>
+                          )}
                           <Plus size="0.75rem" className="text-[var(--muted-foreground)]" />
                         </button>
                       );
@@ -7206,32 +7447,6 @@ export function ChatSettingsDrawer({
                             {renderIllustratorPromptConnectionSelect()}
                             {renderIllustratorImageStyleSelect()}
                             {renderIllustratorImagesPerGeneration()}
-                            <AgentSettingsToggle
-                              label={localizeUi("ui.chat.agentaddsetupfields.sendAvatarReferences")}
-                              description={localizeUi(
-                                "ui.chat.chatsettingsdrawer.sendTheMatchingCharacterAvatarOrSpriteAsA",
-                              )}
-                              enabled={selfieUseAvatarReferences}
-                              onToggle={() =>
-                                updateMeta.mutate({
-                                  id: chat.id,
-                                  selfieUseAvatarReferences: !selfieUseAvatarReferences,
-                                })
-                              }
-                            />
-                            <AgentSettingsToggle
-                              label={localizeUi("ui.chat.agentaddsetupfields.attachCardAppearance")}
-                              description={localizeUi(
-                                "ui.chat.chatsettingsdrawer.appendTheMatchingCharacterCardAppearanceTextToGenerated",
-                              )}
-                              enabled={selfieIncludeCharacterAppearance}
-                              onToggle={() =>
-                                updateMeta.mutate({
-                                  id: chat.id,
-                                  selfieIncludeCharacterAppearance: !selfieIncludeCharacterAppearance,
-                                })
-                              }
-                            />
                             <p className="text-[0.55rem] text-[var(--muted-foreground)]">
                               {localizeUi(
                                 "ui.chat.chatsettingsdrawer.usedForCharacterSelfiesWhenCommandsAreEnabledThe",
@@ -7331,7 +7546,12 @@ export function ChatSettingsDrawer({
                             >
                               {VIDEO_FIRST_FRAMES.map((mode) => (
                                 <option key={mode} value={mode}>
-                                  {localizeUi(`ui.chat.chatsettingsdrawer.videoFirstFrame.${mode}`)}
+                                  {/* Send Avatar References for videos gives Prompt only the avatar to start from. */}
+                                  {localizeUi(
+                                    mode === "prompt_only" && metadata.selfieVideoUseAvatarReferences === true
+                                      ? "ui.chat.chatsettingsdrawer.videoFirstFrame.prompt_only_avatar"
+                                      : `ui.chat.chatsettingsdrawer.videoFirstFrame.${mode}`,
+                                  )}
                                 </option>
                               ))}
                             </select>
@@ -7346,6 +7566,35 @@ export function ChatSettingsDrawer({
                           <p className="text-[0.55rem] text-[var(--muted-foreground)]">
                             {localizeUi("ui.chat.chatsettingsdrawer.videoMessagesHelp")}
                           </p>
+                        </div>
+
+                        <div className="space-y-2 border-t border-[var(--border)]/60 pt-3">
+                          <MediaScopeSelect
+                            label={localizeUi("ui.chat.agentaddsetupfields.sendAvatarReferences")}
+                            description={localizeUi("ui.chat.chatsettingsdrawer.conversationAvatarReferencesScopeHelp")}
+                            images={selfieUseAvatarReferences}
+                            videos={metadata.selfieVideoUseAvatarReferences === true}
+                            onChange={({ images, videos }) =>
+                              updateMeta.mutate({
+                                id: chat.id,
+                                selfieUseAvatarReferences: images,
+                                selfieVideoUseAvatarReferences: videos,
+                              })
+                            }
+                          />
+                          <MediaScopeSelect
+                            label={localizeUi("ui.chat.agentaddsetupfields.attachCardAppearance")}
+                            description={localizeUi("ui.chat.chatsettingsdrawer.characterAppearanceScopeHelp")}
+                            images={selfieIncludeCharacterAppearance}
+                            videos={metadata.selfieVideoIncludeCharacterAppearance === true}
+                            onChange={({ images, videos }) =>
+                              updateMeta.mutate({
+                                id: chat.id,
+                                selfieIncludeCharacterAppearance: images,
+                                selfieVideoIncludeCharacterAppearance: videos,
+                              })
+                            }
+                          />
                         </div>
                       </AgentSettingsCard>
                     )}
@@ -7855,7 +8104,7 @@ export function ChatSettingsDrawer({
               label={localizeUi("chat.settings.authorNotes")}
               icon={<PenLine size="0.875rem" />}
               help={localizeUi("chat.settings.authorNotesHelp")}
-              fillWindow
+              fill
             >
               {chatTools.authorNotes}
             </Section>
@@ -8363,6 +8612,7 @@ export function ChatSettingsDrawer({
                       }
                     />
                   )}
+                  {isGame && avatarLayoutCard}
 
                   {!isGame && (
                     <div className="flex flex-col gap-2">
@@ -8805,6 +9055,8 @@ export function ChatSettingsDrawer({
                         </AgentSettingsCard>
                       )}
 
+                      {avatarLayoutCard}
+
                       {metadata.enableAgents && isRoleplayMode && echoChamberActive && (
                         <AgentSettingsCard
                           id={getAgentSettingsMenuId(chat.id, "echo-chamber")}
@@ -8886,14 +9138,22 @@ export function ChatSettingsDrawer({
                               "ui.chat.chatsettingsdrawer.usesTheBackgroundResolutionFromSettingsGenerationsTrackerLocations",
                             )}
                           </p>
-                          <AgentSettingsToggle
+                          <MediaScopeSelect
                             label={localizeUi("ui.chat.agentaddsetupfields.attachCardAppearance")}
-                            description={localizeUi(
-                              "ui.chat.agentaddsetupfields.appendMatchedCharacterAppearanceLinesToImagePromptsUsing",
-                            )}
-                            enabled={illustratorIncludeCharacterAppearance}
-                            onToggle={toggleIllustratorCharacterAppearance}
-                            overridden={typeof metadata.illustratorIncludeCharacterAppearance === "boolean"}
+                            description={localizeUi("ui.chat.chatsettingsdrawer.characterAppearanceScopeHelp")}
+                            images={illustratorIncludeCharacterAppearance}
+                            videos={metadata.illustratorVideoIncludeCharacterAppearance === true}
+                            onChange={({ images, videos }) =>
+                              updateMeta.mutate({
+                                id: chat.id,
+                                illustratorIncludeCharacterAppearance: images,
+                                illustratorVideoIncludeCharacterAppearance: videos,
+                              })
+                            }
+                            overridden={
+                              typeof metadata.illustratorIncludeCharacterAppearance === "boolean" ||
+                              metadata.illustratorVideoIncludeCharacterAppearance === true
+                            }
                             onReset={resetIllustratorCharacterAppearance}
                           />
                           <AgentSettingsToggle
@@ -10230,6 +10490,56 @@ export function ChatSettingsDrawer({
         existingChoices={metadata.presetChoices ?? {}}
         chatFloatingPanel
       />
+
+      {/* Create a persona from a card's onboarding questions (#7796). Persona
+          questions only: `cards` is empty on purpose, so opening this window in a
+          running chat can never replace character-question answers with defaults. */}
+      {onboardingTemplate && (
+        <CharacterOnboardingModal
+          // Re-keyed by the template so switching cards starts from fresh answers.
+          key={onboardingTemplate.character.id}
+          open
+          cards={[]}
+          participantNames={[onboardingTemplate.cardOnboarding.name || charName(onboardingTemplate.character)]}
+          persona={{
+            characterName: onboardingTemplate.cardOnboarding.name || charName(onboardingTemplate.character),
+            onboarding: onboardingTemplate.cardOnboarding.onboarding,
+          }}
+          withPersona
+          chatFloatingPanel
+          onBack={() => setOnboardingTemplateId(null)}
+          onCreated={handleOnboardingPersonaCreated}
+        />
+      )}
+
+      {/* Re-answer ONE card's character questions from the Characters list
+          (#7797). Isolated on purpose: the window asks only this card, so it can
+          never overwrite another card's answers. */}
+      {onboardingQuestionsTarget && (
+        <CharacterOnboardingModal
+          key={onboardingQuestionsTarget.character.id}
+          open
+          cards={[
+            {
+              characterId: onboardingQuestionsTarget.character.id,
+              name: onboardingQuestionsTarget.cardOnboarding.name || charName(onboardingQuestionsTarget.character),
+              onboarding: onboardingQuestionsTarget.cardOnboarding.onboarding,
+              cardFields: onboardingQuestionsTarget.cardOnboarding.cardFields,
+            },
+          ]}
+          participantNames={[
+            onboardingQuestionsTarget.cardOnboarding.name || charName(onboardingQuestionsTarget.character),
+          ]}
+          // The answers this chat already holds, so the window opens on them: an
+          // untouched question keeps its value instead of being reset to its first
+          // option by the save.
+          initialAnswers={chatMacroVariables}
+          withPersona={false}
+          chatFloatingPanel
+          onBack={() => setOnboardingQuestionsCharacterId(null)}
+          onCreated={handleOnboardingAnswersSaved}
+        />
+      )}
 
       {/* Automatic summarization editor */}
       <SummariesEditorModal chat={chat} open={showSummariesModal} onClose={() => setShowSummariesModal(false)} />

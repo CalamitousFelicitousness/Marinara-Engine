@@ -799,6 +799,11 @@ export function buildQuickContextPayload(
   });
 }
 
+// Sent only while the client shows the dated raccoon pack (its window, minus a user opt-out). Flavor only: it
+// may color `say`, never what she does or the literal approval text.
+const MARI_RACCOON_SEASON_FLAVOR =
+  "Seasonal flavor: it is Halloween week and you are wearing your feral raccoon onesie. In `say` only, you may add one light, playful raccoon or Halloween touch (gnawing, rummaging, a tiny growl). Answers, facts, actions, `reason`, `authorization`, and approval, review, or diff text stay exactly as they would be any other day.";
+
 const MARI_SYSTEM_PROMPT = `You are Professor Mari, Marinara Engine's Home-screen local workspace helper.
 
 Voice:
@@ -2533,7 +2538,10 @@ export function resolveWorkspaceMutationVerification(
   return mutationSeen ? "verified" : "none";
 }
 
-export function workspaceTextClaimsMutationCompletion(text: string): boolean {
+export function workspaceTextClaimsMutationCompletion(
+  text: string,
+  options: { selfAttributedOnly?: boolean } = {},
+): boolean {
   const normalized = text.trim().replace(/[’‘]/gu, "'").replace(/\s+/gu, " ");
   if (!normalized) return false;
   if (/^(?:have|has|did|is|are|was|were)\b[^.!]*\?$/iu.test(normalized)) return false;
@@ -2549,13 +2557,13 @@ export function workspaceTextClaimsMutationCompletion(text: string): boolean {
       normalized.slice(0, match.index),
     ) || /^\s*by default\b/iu.test(normalized.slice((match.index ?? 0) + match[0].length));
   const claims = (pattern: RegExp) => [...normalized.matchAll(pattern)].some((match) => !describesFeature(match));
+  const selfClaim = claims(
+    new RegExp(`\\b(?:i(?:'ve| have)?|we(?:'ve| have)?)\\s+${adverbs}(?:${completedMutation})\\b`, "giu"),
+  );
+  if (options.selfAttributedOnly) return selfClaim;
   return (
-    claims(
-      new RegExp(
-        `\\b(?:i(?:'ve| have)?|we(?:'ve| have)?|it(?:'s| is)?|that(?:'s| is)?)\\s+${adverbs}(?:${completedMutation})\\b`,
-        "giu",
-      ),
-    ) ||
+    selfClaim ||
+    claims(new RegExp(`\\b(?:it(?:'s| is)?|that(?:'s| is)?)\\s+${adverbs}(?:${completedMutation})\\b`, "giu")) ||
     claims(new RegExp(`\\b(?:is|are|was|were|has been|have been)\\s+${adverbs}(?:${completedMutation})\\b`, "giu")) ||
     new RegExp(`^(?:(?:the )?(?:edit|change|update)s?\\s+)${adverbs}(?:${completedMutation})\\b[^?]*[.!]?$`, "iu").test(
       normalized,
@@ -2632,9 +2640,9 @@ export type WorkspaceClaimAudit = {
  * #5830: a claim about work from BEFORE this scope (an earlier run, or steps
  * already audited) is backable by a successful STATE read - the exact action
  * the coaching demands - so a truthful recap converges instead of looping
- * into the repair budget; a terminal summary directly after a passed audit
- * needs nothing new. A bare claim with nothing behind it at all stays
- * challenged, and NEITHER escape applies to a scope containing a failed,
+ * into the repair budget; a terminal summary without a self-attributed mutation
+ * claim, or repeating the last passed claim exactly, needs nothing new. A bare
+ * claim stays challenged, and NEITHER escape applies to a scope containing a failed,
  * preview, or dry-run mutating attempt - "none" to the resolver, but active
  * evidence of non-completion to the audit.
  *
@@ -2651,7 +2659,7 @@ export type WorkspaceClaimAudit = {
 export function auditWorkspaceCompletionClaim(
   action: Pick<AssistantWorkspaceAction, "commands" | "stop" | "visibleText">,
   results: readonly WorkspaceCommandResult[],
-  options: { auditFrom?: number; hadPassedClaimAudit?: boolean } = {},
+  options: { auditFrom?: number; hadPassedClaimAudit?: boolean; lastPassedClaimText?: string | null } = {},
 ): WorkspaceClaimAudit {
   const auditFrom = options.auditFrom ?? 0;
   const hadPassedClaimAudit = options.hadPassedClaimAudit ?? false;
@@ -2673,14 +2681,31 @@ export function auditWorkspaceCompletionClaim(
   }
   if (verification === "mismatch") return { issue: "mismatch", advanceWatermark: false };
   if (verification === "none") {
+    const selfAttributedClaim = workspaceTextClaimsMutationCompletion(action.visibleText, { selfAttributedOnly: true });
     // Escape hatches exist for truthful RECAPS of work outside this scope.
     // A scope containing any mutating-shaped attempt that did not apply is
     // not a recap scope - it is a failure being papered over - so both
     // escapes are denied outright there (strict: not clearable by a read,
     // because there is no applied evidence for the read to confirm).
     if (!scopeHasUnappliedMutationAttempt(results, auditFrom)) {
-      if (scopeHasSuccessfulStateRead(results, auditFrom)) return { issue: null, advanceWatermark: true };
-      if (isTerminal && hadPassedClaimAudit) return { issue: null, advanceWatermark: false };
+      // A read cannot establish that Mari performed a write (#7879). Read-only
+      // tasks may still conclude "Done", or report the observed state; first-person
+      // mutation claims need an applied mutation in this scope, unless repeating a passed claim below.
+      if (
+        scopeHasSuccessfulStateRead(results, auditFrom) &&
+        (!selfAttributedClaim || results.slice(auditFrom).some(isAppliedWorkspaceMutation))
+      ) {
+        return { issue: null, advanceWatermark: true };
+      }
+      // The flag alone cannot back a new self-attributed claim. Only an exact repeat
+      // of the last passed claim may reuse consumed evidence; changed or extended claims need their own.
+      if (
+        isTerminal &&
+        hadPassedClaimAudit &&
+        (!selfAttributedClaim || action.visibleText.trim() === options.lastPassedClaimText?.trim())
+      ) {
+        return { issue: null, advanceWatermark: false };
+      }
     }
     return { issue: "none", advanceWatermark: false };
   }
@@ -2955,6 +2980,12 @@ export function workspaceMutationTargetForPath(
 export class ProfessorMariWorkspaceService {
   private enabled = true;
   private lastError: string | null = null;
+  private piConsecutiveFailures = 0;
+
+  resetRuntimeFailures() {
+    this.piConsecutiveFailures = 0;
+  }
+
   private active = false;
   /** The newest run and how it ended; the top-bar pill and the window's timer both read it. */
   private latestRun: MariWorkspaceLatestRun | null = null;
@@ -3052,6 +3083,7 @@ export class ProfessorMariWorkspaceService {
       skills: skillsResponse.skills.map(({ content: _content, ...summary }) => summary),
       skillDiagnostics: skillsResponse.diagnostics,
       active: this.active,
+      piConsecutiveFailures: this.piConsecutiveFailures,
       ...(await (async () => {
         const runtime = await this.readRuntime(connection);
         return { runtimeSelected: runtime.selected, runtimeActive: runtime.active, runtimeNote: runtime.note };
@@ -3381,6 +3413,8 @@ export class ProfessorMariWorkspaceService {
     attachments?: ProfessorMariPromptAttachment[];
     existingUserMessageId?: string;
     context?: ProfessorMariAskContext;
+    /** The dated Mari pack the client is showing, if any; it only flavors her voice. */
+    seasonalPackId?: string;
     onEvent: PromptEventSink;
   }) {
     if (!this.enabled) throw new Error("Professor Mari workspace mode is disabled.");
@@ -3428,6 +3462,7 @@ export class ProfessorMariWorkspaceService {
     const workspaceTrace: MariWorkspaceTraceItem[] = [];
     /** R14: set when the run fails, so the saved turn says so instead of reading as a quiet stop. */
     let runError: { message: string } | null = null;
+    let runRuntime: MariRuntime | null = null;
     let assistantText = "";
     let thinkingText = "";
     let totalUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
@@ -3560,6 +3595,7 @@ export class ProfessorMariWorkspaceService {
       this.activeDecisionContext = { db: this.app.db, chatId: args.chatId, userMessageId: userMessage.id };
       const provider = createProviderForConnection(connection);
       const runtime = await this.readRuntime(connection);
+      runRuntime = runtime.active;
       const usePi = runtime.active === "pi";
       if (runtime.note) {
         appendTraceStatus(workspaceTrace, runtime.note);
@@ -3571,6 +3607,7 @@ export class ProfessorMariWorkspaceService {
         permissionsMode,
         handoffContextPrompt,
         runtime.active,
+        args.seasonalPackId,
       );
       const baseOptions: ChatOptions = {
         ...this.baseChatOptions(
@@ -4142,6 +4179,7 @@ export class ProfessorMariWorkspaceService {
           const finalVerificationIssue = auditWorkspaceCompletionClaim(finalAction, commandResultsForContinuity, {
             auditFrom: reviewState.claimAuditWatermark,
             hadPassedClaimAudit: reviewState.hadPassedClaimAudit,
+            lastPassedClaimText: reviewState.lastPassedClaimText,
           }).issue;
           if (finalVerificationIssue) {
             const content =
@@ -4184,6 +4222,7 @@ export class ProfessorMariWorkspaceService {
       }
 
       await persistAssistantMessage();
+      if (runRuntime === "pi") this.piConsecutiveFailures = 0;
       args.onEvent({ type: "metadata", data: { connection: connectionSummary(connection) ?? undefined } });
     } catch (err) {
       if (controller.signal.aborted) {
@@ -4213,6 +4252,7 @@ export class ProfessorMariWorkspaceService {
         }
       } else {
         this.lastError = err instanceof Error ? err.message : String(err);
+        if (runRuntime === "pi") this.piConsecutiveFailures += 1;
         runError = { message: compactTraceText(this.lastError, 600) };
         // Persist whatever completed rounds produced before this failure — e.g. a proxy rate limit
         // that outlasted the retries — so the user does not lose the work and can ask Mari to
@@ -4279,6 +4319,7 @@ export class ProfessorMariWorkspaceService {
     permissionsMode: MariPermissionsMode,
     handoffContextPrompt: string | null,
     runtime: MariRuntime = "classic",
+    seasonalPackId?: string,
   ): Promise<{
     messages: ChatMessage[];
     manualApprovalArmed: boolean;
@@ -4328,6 +4369,7 @@ export class ProfessorMariWorkspaceService {
       `Embedding model: ${embeddingModelConfigured ? "configured" : "none"}`,
       `permissionsMode: ${permissionsMode}`,
       `decisionAuthoring: ${JSON.stringify(decisionContext)}`,
+      ...(seasonalPackId === "raccoon" ? [MARI_RACCOON_SEASON_FLAVOR] : []),
       `</workspace_context>`,
     ].join("\n");
     const messages: ChatMessage[] = [

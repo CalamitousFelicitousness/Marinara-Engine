@@ -775,7 +775,7 @@ export function AuthorNotesPanel({ chatId, chatMeta }: { chatId: string; chatMet
         placeholder={localizeUi("ui.chat.authornotespanel.eGKeepTheToneDarkAndSuspensefulThe")}
         rows={4}
         ariaLabel={localizeUi("ui.chat.authornotespanel.authorSNotes")}
-        wrapperClassName="mari-author-notes-field flex min-w-0 flex-1 flex-col"
+        wrapperClassName="mari-author-notes-field flex min-w-0 flex-auto flex-col"
         tokenCountFooter={
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="flex shrink-0 items-center gap-2">
@@ -825,7 +825,7 @@ export function AuthorNotesPanel({ chatId, chatMeta }: { chatId: string; chatMet
             </div>
           </div>
         }
-        className="mari-chrome-field flex-1 resize-none !rounded-md px-2.5 py-2 text-xs leading-relaxed"
+        className="mari-chrome-field !min-h-24 flex-auto !rounded-md px-2.5 py-2 text-xs leading-relaxed"
       />
 
       <p className="mt-1 text-[0.5625rem] text-[var(--muted-foreground)]/60">
@@ -987,7 +987,7 @@ export function AuthorNotesPanel({ chatId, chatMeta }: { chatId: string; chatMet
                     onClick={() => handleDeletePreset(preset.id)}
                     aria-label={localizeUi("ui.chat.authornotespanel.deletePreset", { name: preset.name })}
                     title={localizeUi("ui.chat.authornotespanel.deletePreset", { name: preset.name })}
-                    className="shrink-0 rounded p-0.5 text-[var(--muted-foreground)] transition-colors hover:text-red-400"
+                    className="shrink-0 rounded p-0.5 text-[var(--muted-foreground)] transition-colors hover:text-[var(--destructive)]"
                   >
                     <Trash2 size="0.625rem" />
                   </button>

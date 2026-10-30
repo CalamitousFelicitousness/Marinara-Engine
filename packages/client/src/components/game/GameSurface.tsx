@@ -43,6 +43,7 @@ import {
   lazy,
   memo,
   Suspense,
+  type ComponentProps,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useTranslation, useTranslation as useUiTranslation } from "react-i18next";
@@ -65,7 +66,12 @@ import {
   useFloatingWindowStore,
 } from "../../stores/floating-window.store";
 import { useProvideChatGalleryActions } from "../../hooks/use-chat-gallery-actions";
-import { CHAT_CONTROL_WINDOW_IDS, ChatConnectedChatWindow, ChatControlWindow } from "../chat/ChatControlWindow";
+import {
+  CHAT_CONTROL_WINDOW_IDS,
+  ChatConnectedChatWindow,
+  ChatControlWindow,
+  closeChatControlSheet,
+} from "../chat/ChatControlWindow";
 import type { ChatImage } from "../../hooks/use-gallery";
 import { useGameStateStore } from "../../stores/game-state.store";
 import { useGalleryStore } from "../../stores/gallery.store";
@@ -2246,6 +2252,11 @@ interface GameSurfaceProps {
   onPeekPrompt?: (messageId: string) => void;
   multiSelectMode?: boolean;
   selectedMessageIds?: Set<string>;
+  /** Where avatars stand, their size and framing, and Arrange mode: the chat's layout, which Chat Settings edits. */
+  avatarStage: Pick<
+    ComponentProps<typeof AvatarStage>,
+    "placements" | "characterVisualSettings" | "scale" | "framings" | "editing" | "onPlacementChange" | "onShownChange"
+  >;
 }
 
 function GameSurfaceComponent({
@@ -2266,6 +2277,7 @@ function GameSurfaceComponent({
   multiSelectMode = false,
   selectedMessageIds,
   isMessagesLoading,
+  avatarStage,
 }: GameSurfaceProps) {
   const { t: localizeUi } = useUiTranslation();
   const { t } = useTranslation();
@@ -8826,10 +8838,11 @@ function GameSurfaceComponent({
   const dungeonMapOpen = useMemo(() => gameDungeonMapFromMetadata(chatMeta) !== null, [chatMeta]);
   const dungeonShown =
     dungeonMapOpen && chatMeta.gameDungeonView !== "scene" && !experienceOwnsGame && !combatUiActive && !replayActive;
-  const handleToggleDungeonView = useCallback(
-    () => updateChatMetadata.mutate({ id: activeChatId, gameDungeonView: dungeonShown ? "scene" : "map" }),
-    [activeChatId, dungeonShown, updateChatMetadata],
-  );
+  // The view switches live in Game controls; on a phone its sheet covers the new view, so a switch closes it.
+  const handleToggleDungeonView = useCallback(() => {
+    updateChatMetadata.mutate({ id: activeChatId, gameDungeonView: dungeonShown ? "scene" : "map" });
+    closeChatControlSheet(CHAT_CONTROL_WINDOW_IDS.gameControls);
+  }, [activeChatId, dungeonShown, updateChatMetadata]);
   const overworldShown =
     !dungeonShown &&
     (gameWorld !== null || gameWorldPending) &&
@@ -8847,17 +8860,16 @@ function GameSurfaceComponent({
   // town. Another game's side is never carried over.
   const worldSideRef = useRef<{ chatId: string; side: "overworld" | "town" } | null>(null);
   if (overworldShown) worldSideRef.current = { chatId: activeChatId, side: townShown ? "town" : "overworld" };
-  const handleToggleWorldView = useCallback(
-    () =>
-      setWorldView(
-        overworldShown
-          ? "scene"
-          : worldSideRef.current?.chatId === activeChatId
-            ? worldSideRef.current.side
-            : "overworld",
-      ),
-    [activeChatId, overworldShown, setWorldView],
-  );
+  const handleToggleWorldView = useCallback(() => {
+    setWorldView(
+      overworldShown
+        ? "scene"
+        : worldSideRef.current?.chatId === activeChatId
+          ? worldSideRef.current.side
+          : "overworld",
+    );
+    closeChatControlSheet(CHAT_CONTROL_WINDOW_IDS.gameControls);
+  }, [activeChatId, overworldShown, setWorldView]);
   // Effective combat style: active encounter pin ?? runtime metadata override
   // (settings drawer) ?? wizard setup choice ?? legacy default "classic".
   const combatSetupConfig = chatMeta.gameSetupConfig as Record<string, unknown> | undefined;
@@ -8889,8 +8901,6 @@ function GameSurfaceComponent({
   }, [activeChatId]);
   const tacticalCombatActive = combatUiActive && effectiveCombatStyle === "tactical";
   const topOverlayOffsetClass = "top-3";
-  // Tactical combat's bar takes the top of the chat (top-14 against top-3): the control bubbles start below it.
-  const controlRowOffset = tacticalCombatActive ? 44 : 0;
   const queuedCombatMatchesLatest =
     !!queuedCombatGeneration?.messageId &&
     !!latestAssistantMsg?.id &&
@@ -12815,7 +12825,7 @@ function GameSurfaceComponent({
                 participants={avatarParticipants}
                 enabledAgentIds={avatarAgentIds}
                 side="center"
-                scale={gameFullBodySpriteScale}
+                {...avatarStage}
               />
             </Suspense>
           )}
@@ -13250,7 +13260,7 @@ function GameSurfaceComponent({
                           type="button"
                           onClick={handleReturnToPreCombatTurn}
                           disabled={!latestAssistantMsg?.id}
-                          className="mari-chat-style-control mari-game-scene-control mari-game-scene-control--amber flex items-center gap-1.5 rounded-lg border border-amber-300/25 bg-amber-500/20 px-3 py-1.5 text-xs font-semibold text-amber-100 shadow-lg backdrop-blur-md transition-colors hover:bg-amber-500/30 disabled:opacity-50"
+                          className="mari-chat-style-control mari-game-scene-control mari-game-scene-control--amber flex items-center gap-1.5 rounded-lg border border-[var(--marinara-app-accent-static)]/25 bg-[var(--marinara-app-accent-static)]/20 px-3 py-1.5 text-xs font-semibold text-[var(--marinara-app-accent-static)] shadow-lg backdrop-blur-md transition-colors hover:bg-[var(--marinara-app-accent-static)]/30 disabled:opacity-50"
                           title={localizeUi("ui.game.gamesurfacecomponent.exitCombatAndRemoveTheTurnThatStartedIt")}
                         >
                           <RotateCcw size={13} />
@@ -13825,7 +13835,7 @@ function GameSurfaceComponent({
             </button>
             <button
               onClick={() => confirmInterrupt("risky")}
-              className="rounded-lg bg-red-500/20 px-3 py-1.5 text-xs font-semibold text-red-200 ring-1 ring-red-500/40 transition-colors hover:bg-red-500/30"
+              className="rounded-lg bg-[var(--marinara-app-accent-static)]/20 px-3 py-1.5 text-xs font-semibold text-[var(--marinara-app-accent-static)] ring-1 ring-[var(--marinara-app-accent-static)]/40 transition-colors hover:bg-[var(--marinara-app-accent-static)]/30"
               title={localizeUi("ui.game.gamesurfacecomponent.attemptAnInFictionInterruptionOutcomesCanFail")}
             >
               {localizeUi("ui.game.gamesurfacecomponent.yes")}
@@ -13910,7 +13920,6 @@ function GameSurfaceComponent({
 
       {!introCinematicActive && !replayActive && !experienceOwnsGame && (
         <MobileMapButton
-          rowOffset={controlRowOffset}
           chatId={activeChatId}
           map={viewedMap}
           maps={availableMaps}
@@ -13935,7 +13944,6 @@ function GameSurfaceComponent({
       {!introCinematicActive && !replayActive && !experienceOwnsGame && (
         <GamePartyBar
           key={activeChatId}
-          rowOffset={controlRowOffset}
           partyMembers={partyMembers}
           partyCards={partyCards}
           onRemovePartyMember={handleRemovePartyMemberFromBar}
@@ -13948,7 +13956,6 @@ function GameSurfaceComponent({
       {!introCinematicActive && !replayActive && (
         <>
           <ChatControlWindow
-            rowOffset={controlRowOffset}
             id={CHAT_CONTROL_WINDOW_IDS.gameControls}
             title={t("chat.controls.gameControls")}
             icon={
@@ -13997,7 +14004,6 @@ function GameSurfaceComponent({
             </div>
           </ChatControlWindow>
           <ChatControlWindow
-            rowOffset={controlRowOffset}
             id={CHAT_CONTROL_WINDOW_IDS.session}
             title={t("game.toolbar.session")}
             icon={<Feather size={14} />}
@@ -14010,7 +14016,6 @@ function GameSurfaceComponent({
             {renderSessionPanel()}
           </ChatControlWindow>
           <ChatControlWindow
-            rowOffset={controlRowOffset}
             id={CHAT_CONTROL_WINDOW_IDS.volume}
             title={t("game.toolbar.volume")}
             icon={audioMuted || masterVolume === 0 ? <VolumeX size={14} /> : <Volume2 size={14} />}
@@ -14036,7 +14041,6 @@ function GameSurfaceComponent({
             />
           </ChatControlWindow>
           <ChatControlWindow
-            rowOffset={controlRowOffset}
             id={CHAT_CONTROL_WINDOW_IDS.assets}
             title={t("game.toolbar.assets")}
             icon={<Folder size={14} />}
@@ -14049,11 +14053,7 @@ function GameSurfaceComponent({
             {renderGameAssetsPanel()}
           </ChatControlWindow>
           {onSwitchChat ? (
-            <ChatConnectedChatWindow
-              name={connectedChatName}
-              onSwitch={handleSwitchConnectedChat}
-              rowOffset={controlRowOffset}
-            />
+            <ChatConnectedChatWindow name={connectedChatName} onSwitch={handleSwitchConnectedChat} />
           ) : null}
         </>
       )}

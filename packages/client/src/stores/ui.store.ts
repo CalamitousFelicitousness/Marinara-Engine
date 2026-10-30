@@ -4,7 +4,12 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { generateClientId } from "../lib/utils";
-import { getMariAppearancePack } from "../lib/mari-work-animations";
+import {
+  activeSeasonalMariPack,
+  getMariAppearancePack,
+  mariSeasonKey,
+  resolveMariAppearancePack,
+} from "../lib/mari-work-animations";
 import {
   IMAGE_STYLE_PROFILES_STORAGE_KEY,
   LOCAL_SIDECAR_CONNECTION_ID,
@@ -69,9 +74,18 @@ export {
 import { deferEditorLeave } from "../lib/editor-leave";
 import { OMNIBAR_ASIDE_DELAY_MS, readLegacyMariConnectionId } from "../lib/omnibar-aside-text";
 import { markOmnibarOpenStart } from "../lib/omnibar-open-timing";
-import { UI_PERSISTENCE } from "../lib/ui-persistence";
+import { readUIPersistence, UI_PERSISTENCE, UI_PERSISTENCE_HOST_COPY } from "../lib/ui-persistence";
+import { addApprovedRemoteImageUrl, normalizeApprovedRemoteImageUrls } from "../lib/remote-images";
 import { normalizeChatWidgetFont } from "../lib/font-family";
 import type { ChatWizardDefaults, ChatWizardMode } from "../lib/chat-wizard-defaults";
+import {
+  readSeasonalPreview,
+  seasonalThemeFor,
+  withSeasonalYear,
+  type SeasonalPreview,
+  type SeasonalThemeId,
+  type SeasonalYears,
+} from "../lib/seasonal-themes";
 
 export type Panel =
   | "chat"
@@ -710,6 +724,8 @@ interface UIState {
   settingsTargetSectionId: string | null;
   /** Not saved: a Home surface to open once Home mounts (see `requestHome`). */
   homeRequest: HomeRequest | null;
+  /** Not saved: the What's New window should open again (see `requestWhatsNew`). */
+  whatsNewRequested: boolean;
   modal: { type: string; props?: Record<string, unknown> } | null;
   /** Not saved: an Advanced Memory scene to open, or a Fix to start, once its Chat Settings section shows. */
   advancedMemoryRequest: { chatId: string; sceneId?: string; fix?: boolean } | null;
@@ -743,6 +759,10 @@ interface UIState {
   mariAppearancePackId: string;
   /** R12: packs whose play-time rule was met once; the one-time "unlocked" toast has been shown for them. */
   mariUnlockedPackIds: string[];
+  /** `mariSeasonKey` of the dated pack window the user picked another pack in; "" follows the dated pack. */
+  mariSeasonOptOut: string;
+  /** The same for a `?seasonalPreview=` page: this page load only, never saved or synced. */
+  mariSeasonPreviewOptOut: string;
   /** Connection Professor Mari's window answers with. Null until she is first given one. */
   mariConnectionId: string | null;
   chatBackground: string | null;
@@ -989,6 +1009,10 @@ interface UIState {
   quoteFormat: QuoteFormat;
   /** When true, common LaTeX symbol commands render as plain Unicode symbols in chat text. */
   convertLatexSymbols: boolean;
+  /** When true, images from other websites in messages load right away instead of waiting for a click. */
+  loadRemoteMessageImages: boolean;
+  /** Images from other websites the user chose to load (absolute URLs, newest first). */
+  approvedRemoteImageUrls: string[];
   /** When true, model responses are trimmed back to the last complete sentence before saving. */
   trimIncompleteModelOutput: boolean;
   /** When true, /continue separates appended text with a blank line. */
@@ -1007,6 +1031,14 @@ interface UIState {
   omnibarSuggestionsEnabled: boolean;
   /** When true, achievements appear on Home and announce unlocks. Backend tracking stays silent either way. */
   achievementsEnabled: boolean;
+  /** When true, holiday looks such as Halloween never switch on by themselves (lib/seasonal-themes.ts). */
+  seasonalThemesDisabled: boolean;
+  /** Per seasonal theme, the year its greeting was last shown. */
+  seasonalGreetingYears: SeasonalYears;
+  /** Per seasonal theme, the year it was turned off from its greeting. */
+  seasonalThemeOffYears: SeasonalYears;
+  /** `?seasonalPreview=` on this page load, with its own greeting and "Turn it off" records; never saved or synced. */
+  seasonalPreview: SeasonalPreview | null;
   /** When true, show the global Music Player surface. */
   musicPlayerEnabled: boolean;
   /** Which Music Player surface to show. */
@@ -1236,6 +1268,8 @@ interface UIState {
   setSettingsTargetControlId: (controlId: string | null) => void;
   requestHome: (request: HomeRequest) => void;
   consumeHomeRequest: () => void;
+  requestWhatsNew: () => void;
+  consumeWhatsNewRequest: () => void;
   setSettingsTargetSectionId: (sectionId: string | null) => void;
   openModal: (type: string, props?: Record<string, unknown>) => void;
   closeModal: () => void;
@@ -1405,6 +1439,8 @@ interface UIState {
   setDisableInlineNameGradients: (v: boolean) => void;
   setQuoteFormat: (v: QuoteFormat) => void;
   setConvertLatexSymbols: (v: boolean) => void;
+  setLoadRemoteMessageImages: (v: boolean) => void;
+  approveRemoteImageUrl: (href: string) => void;
   setTrimIncompleteModelOutput: (v: boolean) => void;
   setContinueAddsNewline: (v: boolean) => void;
   setSpeechToTextEnabled: (v: boolean) => void;
@@ -1414,6 +1450,9 @@ interface UIState {
   setCommandCenterMariEnabled: (v: boolean) => void;
   setOmnibarSuggestionsEnabled: (v: boolean) => void;
   setAchievementsEnabled: (v: boolean) => void;
+  setSeasonalThemesDisabled: (v: boolean) => void;
+  markSeasonalGreetingShown: (id: SeasonalThemeId, year: number) => void;
+  turnOffSeasonalTheme: (id: SeasonalThemeId, year: number) => void;
   setMusicPlayerEnabled: (v: boolean) => void;
   setMusicPlayerSource: (v: MusicPlayerSource) => void;
   setYoutubePlayerVolume: (v: number) => void;
@@ -1565,6 +1604,21 @@ function normalizePersistedMainSurface(persisted: Record<string, unknown>) {
 }
 
 /**
+ * The pack Professor Mari wears for this state (`resolveMariAppearancePack`). Its dated pack follows the seasonal
+ * theme worn for the user (`seasonalThemeFor`), and a preview page reads its own unsaved opt-out.
+ */
+export function shownMariAppearancePack(state: UIState, playHours: number | null = null, now: Date = new Date()) {
+  return resolveMariAppearancePack(
+    state.mariAppearancePackId,
+    state.mariUnlockedPackIds,
+    playHours,
+    state.seasonalPreview ? state.mariSeasonPreviewOptOut : state.mariSeasonOptOut,
+    seasonalThemeFor(state, now).themeId,
+    now,
+  );
+}
+
+/**
  * Returns the subset of UI state that is synced to the server so it persists
  * across devices and browsers. Excludes device-local sizing preferences,
  * legacy migration flags, auto-computed fields (userStatus), and items tracked
@@ -1671,6 +1725,8 @@ export function pickSyncedSettings(state: UIState) {
     disableInlineNameGradients: state.disableInlineNameGradients,
     quoteFormat: state.quoteFormat,
     convertLatexSymbols: state.convertLatexSymbols,
+    loadRemoteMessageImages: state.loadRemoteMessageImages,
+    approvedRemoteImageUrls: state.approvedRemoteImageUrls,
     trimIncompleteModelOutput: state.trimIncompleteModelOutput,
     continueAddsNewline: state.continueAddsNewline,
     speechToTextEnabled: state.speechToTextEnabled,
@@ -1691,8 +1747,12 @@ export function pickSyncedSettings(state: UIState) {
     omnibarWindowHeightRem: normalizeOmnibarWindowHeightRem(state.omnibarWindowHeightRem),
     mariAppearancePackId: getMariAppearancePack(state.mariAppearancePackId).id,
     mariUnlockedPackIds: state.mariUnlockedPackIds,
+    mariSeasonOptOut: state.mariSeasonOptOut,
     mariConnectionId: state.mariConnectionId,
     achievementsEnabled: state.achievementsEnabled,
+    seasonalThemesDisabled: state.seasonalThemesDisabled,
+    seasonalGreetingYears: state.seasonalGreetingYears,
+    seasonalThemeOffYears: state.seasonalThemeOffYears,
     musicPlayerEnabled: state.musicPlayerEnabled,
     musicPlayerSource: state.musicPlayerSource,
     youtubePlayerVolume: state.youtubePlayerVolume,
@@ -1852,6 +1912,7 @@ export function pickPersistedUIState(state: UIState) {
     omnibarWindowHeightRem: normalizeOmnibarWindowHeightRem(state.omnibarWindowHeightRem),
     mariAppearancePackId: getMariAppearancePack(state.mariAppearancePackId).id,
     mariUnlockedPackIds: state.mariUnlockedPackIds,
+    mariSeasonOptOut: state.mariSeasonOptOut,
     mariConnectionId: state.mariConnectionId,
     chatBackground: state.chatBackground,
     defaultRoleplayBackground: state.defaultRoleplayBackground,
@@ -1929,6 +1990,8 @@ export function pickPersistedUIState(state: UIState) {
     disableInlineNameGradients: state.disableInlineNameGradients,
     quoteFormat: state.quoteFormat,
     convertLatexSymbols: state.convertLatexSymbols,
+    loadRemoteMessageImages: state.loadRemoteMessageImages,
+    approvedRemoteImageUrls: state.approvedRemoteImageUrls,
     trimIncompleteModelOutput: state.trimIncompleteModelOutput,
     continueAddsNewline: state.continueAddsNewline,
     speechToTextEnabled: state.speechToTextEnabled,
@@ -1938,6 +2001,9 @@ export function pickPersistedUIState(state: UIState) {
     commandCenterMariEnabled: state.commandCenterMariEnabled,
     omnibarSuggestionsEnabled: state.omnibarSuggestionsEnabled,
     achievementsEnabled: state.achievementsEnabled,
+    seasonalThemesDisabled: state.seasonalThemesDisabled,
+    seasonalGreetingYears: state.seasonalGreetingYears,
+    seasonalThemeOffYears: state.seasonalThemeOffYears,
     musicPlayerEnabled: state.musicPlayerEnabled,
     musicPlayerSource: state.musicPlayerSource,
     youtubePlayerVolume: state.youtubePlayerVolume,
@@ -2025,6 +2091,9 @@ export function pickPersistedUIState(state: UIState) {
   };
 }
 
+/** `?seasonalPreview=` on this page load, read once when the store is made. */
+const pageSeasonalPreviewId = readSeasonalPreview(globalThis.location?.search ?? "");
+
 export const useUIStore = create<UIState>()(
   persist(
     (setState, get) => {
@@ -2066,6 +2135,7 @@ export const useUIStore = create<UIState>()(
         lastAppError: null,
         settingsTargetControlId: null,
         homeRequest: null,
+        whatsNewRequested: false,
         settingsTargetSectionId: null,
         modal: null,
         advancedMemoryRequest: null,
@@ -2090,6 +2160,8 @@ export const useUIStore = create<UIState>()(
         omnibarWindowHeightRem: null,
         mariAppearancePackId: "basic",
         mariUnlockedPackIds: [],
+        mariSeasonOptOut: "",
+        mariSeasonPreviewOptOut: "",
         mariConnectionId: null,
         chatBackground: null,
         defaultRoleplayBackground: DEFAULT_ROLEPLAY_BACKGROUND_URL,
@@ -2223,6 +2295,8 @@ export const useUIStore = create<UIState>()(
         disableInlineNameGradients: false,
         quoteFormat: "straight" as QuoteFormat,
         convertLatexSymbols: true,
+        loadRemoteMessageImages: false,
+        approvedRemoteImageUrls: [],
         trimIncompleteModelOutput: false,
         continueAddsNewline: true,
         speechToTextEnabled: false,
@@ -2232,6 +2306,10 @@ export const useUIStore = create<UIState>()(
         commandCenterMariEnabled: true,
         omnibarSuggestionsEnabled: true,
         achievementsEnabled: true,
+        seasonalThemesDisabled: false,
+        seasonalGreetingYears: {},
+        seasonalThemeOffYears: {},
+        seasonalPreview: pageSeasonalPreviewId ? { themeId: pageSeasonalPreviewId, greeted: {}, turnedOff: {} } : null,
         musicPlayerEnabled: true,
         musicPlayerSource: "youtube" as MusicPlayerSource,
         youtubePlayerVolume: 70,
@@ -2446,6 +2524,8 @@ export const useUIStore = create<UIState>()(
         setSettingsTargetControlId: (controlId) => set({ settingsTargetControlId: controlId }),
         requestHome: (homeRequest) => set({ homeRequest }),
         consumeHomeRequest: () => set({ homeRequest: null }),
+        requestWhatsNew: () => set({ whatsNewRequested: true }),
+        consumeWhatsNewRequest: () => set({ whatsNewRequested: false }),
         setSettingsTargetSectionId: (sectionId) => set({ settingsTargetSectionId: sectionId }),
         openModal: (type, props) => set({ modal: { type, props } }),
         closeModal: () => set({ modal: null }),
@@ -2469,7 +2549,17 @@ export const useUIStore = create<UIState>()(
         setMariWindowWidthRem: (width) => set({ mariWindowWidthRem: normalizeMariWindowWidthRem(width) }),
         setOmnibarWindowWidthRem: (width) => set({ omnibarWindowWidthRem: normalizeOmnibarWindowWidthRem(width) }),
         setOmnibarWindowHeightRem: (height) => set({ omnibarWindowHeightRem: normalizeOmnibarWindowHeightRem(height) }),
-        setMariAppearancePack: (packId) => set({ mariAppearancePackId: getMariAppearancePack(packId).id }),
+        // A dated pack is never stored: picking it clears the opt-out, so the user's own pick returns after its window.
+        // A preview page keeps its opt-out unsaved, so trying the preview never opts out of the real holiday.
+        setMariAppearancePack: (packId) => {
+          const pack = getMariAppearancePack(packId);
+          const state = get();
+          const seasonal = activeSeasonalMariPack(seasonalThemeFor(state).themeId);
+          const optOut = (key: string) =>
+            state.seasonalPreview ? { mariSeasonPreviewOptOut: key } : { mariSeasonOptOut: key };
+          if (pack.season) set(optOut(""));
+          else set({ mariAppearancePackId: pack.id, ...(seasonal && optOut(mariSeasonKey(seasonal))) });
+        },
         markMariPackUnlocked: (packId) =>
           set((state) =>
             state.mariUnlockedPackIds.includes(packId)
@@ -3118,6 +3208,9 @@ export const useUIStore = create<UIState>()(
         setDisableInlineNameGradients: (v) => set({ disableInlineNameGradients: v }),
         setQuoteFormat: (v) => set({ quoteFormat: normalizeQuoteFormat(v) }),
         setConvertLatexSymbols: (v) => set({ convertLatexSymbols: v }),
+        setLoadRemoteMessageImages: (v) => set({ loadRemoteMessageImages: v }),
+        approveRemoteImageUrl: (href) =>
+          set((state) => ({ approvedRemoteImageUrls: addApprovedRemoteImageUrl(state.approvedRemoteImageUrls, href) })),
         setTrimIncompleteModelOutput: (v) => set({ trimIncompleteModelOutput: v }),
         setShowHomeBrowserAddressBar: (visible) => set({ showHomeBrowserAddressBar: visible }),
         setShowHomeBrowserDesktopBookmarksOnOtherTabs: (visible) =>
@@ -3132,6 +3225,22 @@ export const useUIStore = create<UIState>()(
         setCommandCenterMariEnabled: (v) => set({ commandCenterMariEnabled: v }),
         setOmnibarSuggestionsEnabled: (v) => set({ omnibarSuggestionsEnabled: v }),
         setAchievementsEnabled: (v) => set({ achievementsEnabled: v }),
+        // Switching seasonal themes back on also undoes a "Turn it off" from this year's greeting.
+        setSeasonalThemesDisabled: (v) =>
+          set(v ? { seasonalThemesDisabled: true } : { seasonalThemesDisabled: false, seasonalThemeOffYears: {} }),
+        // A preview page records its greeting and "Turn it off" in its own unsaved preview only.
+        markSeasonalGreetingShown: (id, year) =>
+          set(({ seasonalPreview: preview, seasonalGreetingYears }) =>
+            preview
+              ? { seasonalPreview: { ...preview, greeted: withSeasonalYear(preview.greeted, id, year) } }
+              : { seasonalGreetingYears: withSeasonalYear(seasonalGreetingYears, id, year) },
+          ),
+        turnOffSeasonalTheme: (id, year) =>
+          set(({ seasonalPreview: preview, seasonalThemeOffYears }) =>
+            preview
+              ? { seasonalPreview: { ...preview, turnedOff: withSeasonalYear(preview.turnedOff, id, year) } }
+              : { seasonalThemeOffYears: withSeasonalYear(seasonalThemeOffYears, id, year) },
+          ),
         setMusicPlayerEnabled: (v) => set({ musicPlayerEnabled: v }),
         setMusicPlayerSource: (v) =>
           set({
@@ -3245,6 +3354,7 @@ export const useUIStore = create<UIState>()(
             omnibarWindowWidthRem: OMNIBAR_WINDOW_WIDTH_DEFAULT_REM,
             omnibarWindowHeightRem: null,
             mariAppearancePackId: "basic",
+            mariSeasonOptOut: "",
             chatBackground: null,
             defaultRoleplayBackground: DEFAULT_ROLEPLAY_BACKGROUND_URL,
             chatBackgroundBlur: 0,
@@ -3439,6 +3549,12 @@ export const useUIStore = create<UIState>()(
         const flush = () => {
           if (pendingName !== null && pendingValue !== null) {
             localStorage.setItem(pendingName, pendingValue);
+            try {
+              localStorage.setItem(UI_PERSISTENCE_HOST_COPY, pendingValue);
+            } catch {
+              // A full quota must not undo the real save, and a stale copy must never be loaded over it.
+              localStorage.removeItem(UI_PERSISTENCE_HOST_COPY);
+            }
             pendingName = null;
             pendingValue = null;
           }
@@ -3458,7 +3574,19 @@ export const useUIStore = create<UIState>()(
         }
 
         return {
-          getItem: (name: string) => localStorage.getItem(name),
+          getItem: (name: string) => {
+            const stored = localStorage.getItem(name);
+            const value = readUIPersistence(stored, localStorage.getItem(UI_PERSISTENCE_HOST_COPY));
+            if (value !== stored && value !== null) {
+              try {
+                // Put the Engine's own save back, so the older blob's leftovers leave the key as well.
+                localStorage.setItem(name, value);
+              } catch {
+                // Loading the copy is what matters; a failed write here must not fail hydration.
+              }
+            }
+            return value;
+          },
           setItem: (name: string, value: string) => {
             const previousValue = pendingValue ?? localStorage.getItem(name);
             pendingName = name;
@@ -3470,7 +3598,10 @@ export const useUIStore = create<UIState>()(
             if (timer) clearTimeout(timer);
             timer = setTimeout(flush, 1000);
           },
-          removeItem: (name: string) => localStorage.removeItem(name),
+          removeItem: (name: string) => {
+            localStorage.removeItem(name);
+            localStorage.removeItem(UI_PERSISTENCE_HOST_COPY);
+          },
         };
       }),
       migrate: (persisted: any, version: number) => {
@@ -4093,6 +4224,9 @@ export const useUIStore = create<UIState>()(
           mariUnlockedPackIds: Array.isArray(persisted.mariUnlockedPackIds)
             ? persisted.mariUnlockedPackIds.filter((id): id is string => typeof id === "string")
             : [],
+          mariSeasonOptOut: typeof persisted.mariSeasonOptOut === "string" ? persisted.mariSeasonOptOut : "",
+          loadRemoteMessageImages: persisted.loadRemoteMessageImages === true,
+          approvedRemoteImageUrls: normalizeApprovedRemoteImageUrls(persisted.approvedRemoteImageUrls),
           conversationBackgroundImageOpacity: normalizeConversationBackgroundImageOpacity(
             persisted.conversationBackgroundImageOpacity,
           ),

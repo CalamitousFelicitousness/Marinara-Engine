@@ -1795,6 +1795,8 @@ export function ConversationInput({
       }
 
       if (isSendBlocked) return;
+      // The user sent this GIF, so it shows in the chat without asking again.
+      useUIStore.getState().approveRemoteImageUrl(gifUrl);
 
       await generate({
         chatId: activeChatId,

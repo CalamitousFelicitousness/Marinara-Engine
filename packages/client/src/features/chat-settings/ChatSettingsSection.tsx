@@ -12,9 +12,9 @@ interface ChatSettingsSectionProps {
   style?: CSSProperties;
   initialOpen?: boolean;
   forceOpen?: boolean;
-  /** Popped out, the content fills the window's height (see Drawer). */
-  fillWindow?: boolean;
   contentClassName?: string;
+  /** Popped out, the content fills its window (see Drawer `fill`). */
+  fill?: boolean;
   children: ReactNode;
 }
 
@@ -27,8 +27,8 @@ export function ChatSettingsSection({
   style,
   initialOpen = false,
   forceOpen = false,
-  fillWindow,
   contentClassName,
+  fill,
   children,
 }: ChatSettingsSectionProps) {
   const rememberedOpen = useUIStore((s) => (id ? s.chatSettingsExpandedSections[id] : undefined));
@@ -59,9 +59,9 @@ export function ChatSettingsSection({
       help={help}
       open={open}
       onOpenChange={setOpenRemembered}
-      fillWindow={fillWindow}
       style={style}
       bodyClassName={contentClassName}
+      fill={fill}
       rootAttributes={{ "data-chat-settings-section": id }}
     >
       {children}

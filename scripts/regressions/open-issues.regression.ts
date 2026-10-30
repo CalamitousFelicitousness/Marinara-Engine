@@ -46,7 +46,12 @@ import {
   orderConversationRespondersByDelay,
   remainingConversationPresenceDelay,
 } from "../../packages/server/src/routes/generate/conversation-presence-runtime.js";
-import { AGENT_SUITE_TRACKER_SLICES } from "../../packages/client/src/lib/agent-suite-tracker-slices.js";
+import {
+  AGENT_SUITE_TRACKER_SLICES,
+  TRACKER_SLICE_ERROR_KEYS,
+  trackerSliceErrorMessage,
+  type TrackerSliceError,
+} from "../../packages/client/src/lib/agent-suite-tracker-slices.js";
 import type { GameState } from "../../packages/shared/src/types/game-state.js";
 
 const REPOSITORY_ROOT = fileURLToPath(new URL("../../", import.meta.url));
@@ -6188,6 +6193,12 @@ for (const project of [desktopPlaywrightProject, mobilePlaywrightProject]) {
 for (const project of playwrightConfig.projects ?? []) {
   if (!/chromium/u.test(project.name ?? "")) assert.ok(!project.use?.launchOptions?.args?.length, project.name);
 }
+// WebKit on Linux opens its audio device through GStreamer on the page's main thread (the first tap's audio
+// unlock), and a hung audio stack froze that tap. The config ranks the fake audio sink first for every browser.
+assert.ok(
+  process.env.GST_PLUGIN_FEATURE_RANK?.split(",").includes("fakeaudiosink:MAX"),
+  "WebKit e2e browsers play to GStreamer's fake audio sink",
+);
 const playwrightServerSource = readFileSync(join(REPOSITORY_ROOT, "e2e/start-servers.mjs"), "utf8");
 assert.match(playwrightServerSource, /startProject\("mobile", mobileClientPort, mobileServerPort\)/u);
 assert.match(playwrightServerSource, /startProject\("desktop", desktopClientPort, desktopServerPort\)/u);
@@ -10380,7 +10391,7 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
     "Persona inventory edits must preserve skills, status, and other player stats",
   );
   assert.deepEqual(AGENT_SUITE_TRACKER_SLICES["world-state"]!.buildPatch(gameState, { worldCustomFields: "invalid" }), {
-    error: "World custom fields must be a JSON array",
+    error: { code: "notArray", field: "worldCustomFields" },
   });
   assert.deepEqual(
     AGENT_SUITE_TRACKER_SLICES["persona-stats"]!.buildPatch(gameState, { personaStats: [] }),
@@ -10396,25 +10407,73 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
     currencies: [],
     equipped: [],
     inventory: [{ foo: 1 }],
-  }) as { error?: string };
-  assert.match(
-    String(malformedRows.error),
-    /inventory/iu,
+  });
+  assert.deepEqual(
+    malformedRows,
+    { error: { code: "invalidInventoryRow", group: "inventory", problem: { code: "missingName", index: 0 } } },
     "a row without a name must be reported, naming the group it came from",
   );
-  assert.match(
-    String(
-      (
-        inventorySlice.buildPatch(gameState, {
-          currencies: [],
-          equipped: [],
-          inventory: [{ name: "Rope", qty: 0 }],
-        }) as { error?: string }
-      ).error,
-    ),
-    /qty/iu,
+  assert.deepEqual(
+    inventorySlice.buildPatch(gameState, {
+      currencies: [],
+      equipped: [],
+      inventory: [{ name: "Rope", qty: 0 }],
+    }),
+    { error: { code: "invalidInventoryRow", group: "inventory", problem: { code: "qtyBelowOne", index: 0 } } },
     "a quantity below 1 must be reported rather than silently clamped",
   );
+
+  // #7738: slice errors are codes the UI localizes. Every code must name an English key, and the
+  // English text must read as it did before the errors were localized.
+  const collectKeys = (value: unknown): string[] =>
+    typeof value === "string" ? [value] : Object.values(value as object).flatMap(collectKeys);
+  const trackerErrorKeys = collectKeys(TRACKER_SLICE_ERROR_KEYS);
+  assert.equal(trackerErrorKeys.length, 17, "every tracker slice error code has a key");
+  for (const key of trackerErrorKeys) {
+    assert.equal(typeof englishLocale[key], "string", `${key} must exist in en.json`);
+  }
+  const renderEnglish = (error: TrackerSliceError) =>
+    trackerSliceErrorMessage(error, (key, values) =>
+      englishLocale[key]!.replace(/\{\{(\w+)\}\}/gu, (_, name: string) => {
+        const value = (values as Record<string, unknown> | undefined)?.[name];
+        assert.ok(value !== undefined, `${key} needs {{${name}}}`);
+        return String(value);
+      }),
+    );
+  const sliceError = (slice: string, parsed: unknown) =>
+    (AGENT_SUITE_TRACKER_SLICES[slice]!.buildPatch(gameState, parsed) as { error: TrackerSliceError }).error;
+  const inventoryRows = (inventory: unknown[]) =>
+    sliceError("inventory-tracker", { currencies: [], equipped: [], inventory });
+  for (const [error, english] of [
+    [sliceError("world-state", []), "Scene data must be a JSON object"],
+    [sliceError("world-state", { worldCustomFields: "invalid" }), "World custom fields must be a JSON array"],
+    [sliceError("character-tracker", {}), "Present characters must be a JSON array"],
+    [sliceError("persona-stats", []), "Persona stats data must be a JSON object"],
+    [sliceError("persona-stats", { personaStats: {} }), "Persona stats must be a JSON array"],
+    [sliceError("persona-stats", { inventory: {} }), "Inventory must be a JSON array"],
+    [sliceError("custom-tracker", {}), "Custom tracker fields must be a JSON array"],
+    [sliceError("inventory-tracker", null), "Inventory Tracker data must be a JSON object"],
+    [
+      sliceError("inventory-tracker", { currencies: [] }),
+      "Inventory Tracker data must include currencies, equipped, and inventory arrays",
+    ],
+    [
+      { code: "invalidInventoryRow", group: "currencies", problem: { code: "notArray" } },
+      'Inventory Tracker "currencies": must be an array',
+    ],
+    [inventoryRows(["Rope"]), 'Inventory Tracker "inventory": row 0 must be an object'],
+    [inventoryRows([{ foo: 1 }]), 'Inventory Tracker "inventory": row 0 is missing a string "name"'],
+    [inventoryRows([{ name: "Rope" }, { name: "  " }]), 'Inventory Tracker "inventory": row 1 has an empty "name"'],
+    [
+      inventoryRows([{ name: "Rope", location: 3 }]),
+      'Inventory Tracker "inventory": row 0 has a non-string "location"',
+    ],
+    [inventoryRows([{ name: "Rope", qty: "lots" }]), 'Inventory Tracker "inventory": row 0 has a non-numeric "qty"'],
+    [inventoryRows([{ name: "Rope", qty: 0 }]), 'Inventory Tracker "inventory": row 0 has a "qty" below 1'],
+    [sliceError("quest", {}), "Active quests must be a JSON array"],
+  ] as const) {
+    assert.equal(renderEnglish(error), english);
+  }
 
   // Accepted payloads still get the shared invariants applied.
   const equippedWins = inventorySlice.buildPatch(gameState, {

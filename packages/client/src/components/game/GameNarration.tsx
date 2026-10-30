@@ -77,6 +77,7 @@ import { animateTextHtml } from "./AnimatedText";
 import { ttsService } from "../../lib/tts-service";
 import { TTS_RETRY_BASE_DELAY_MS, type TTSSynthesisPolicy } from "../../lib/tts-synthesis-policy";
 import {
+  findTTSCharacterIdBySpeakerName,
   resolveTTSChunkCharLimit,
   resolveTTSNarratorVoice,
   resolveTTSVoiceForSpeaker,
@@ -104,6 +105,7 @@ import { HISTORY_PAGER_BUTTON_CLASS } from "../chat/TranscriptWindowControls";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { formatNarration } from "./game-narration-format";
 import { publishAvatarGameLine } from "../../features/avatars/director/game-line-feed";
+import { prepareAvatarAudioBlob, setGameVoicePlayback } from "../../features/avatars/audio/avatar-audio";
 import {
   CroppedAvatar,
   ExpressionReaction,
@@ -255,7 +257,15 @@ function narrationSegmentAnchorKey(segment: NarrationSegment): string {
 
 type GameSegmentVoiceEntry =
   | { status: "loading"; speaker?: string; tone?: string; voice?: string; chunks: string[] }
-  | { status: "ready"; speaker?: string; tone?: string; voice?: string; chunks: string[]; urls: string[] }
+  | {
+      status: "ready";
+      speaker?: string;
+      tone?: string;
+      voice?: string;
+      chunks: string[];
+      urls: string[];
+      blobs: Blob[];
+    }
   | { status: "error"; speaker?: string; tone?: string; voice?: string; chunks: string[] };
 
 const GAME_VOICE_CACHE_MAX_ENTRIES = 80;
@@ -2296,6 +2306,7 @@ export function GameNarration({
     // Tear down every live voice element, not just the current ref — interleaved
     // playback attempts can orphan earlier elements off the single ref (#2647).
     for (const audio of gameVoiceActiveAudiosRef.current) {
+      setGameVoicePlayback(null, audio);
       audio.pause();
       audio.onended = null;
       audio.onerror = null;
@@ -2328,6 +2339,7 @@ export function GameNarration({
           queueLogScrollTopRestore();
           setGameVoicePlayingKey(null);
           setGameVoicePausedKey(null);
+          if (gameVoiceAudioRef.current) setGameVoicePlayback(null, gameVoiceAudioRef.current);
           gameVoiceAudioRef.current = null;
           return;
         }
@@ -2357,6 +2369,15 @@ export function GameNarration({
         audio.muted = normalizedGameVoiceVolume <= 0;
         gameVoiceActiveAudiosRef.current.add(audio);
         gameVoiceAudioRef.current = audio;
+        const blob = entry.blobs[urlIndex];
+        if (blob)
+          setGameVoicePlayback({
+            element: audio,
+            blob,
+            chatId: latestAssistant?.chatId ?? null,
+            characterId: findTTSCharacterIdBySpeakerName(entry.speaker, activeCharacterEntries),
+            text: entry.chunks[urlIndex] ?? "",
+          });
 
         let started = false;
         const markStarted = () => {
@@ -2365,6 +2386,7 @@ export function GameNarration({
           options?.onStarted?.(key);
         };
         const markFailed = () => {
+          setGameVoicePlayback(null, audio);
           gameVoiceActiveAudiosRef.current.delete(audio);
           if (gameVoiceSequenceRef.current !== sequence || gameVoiceAudioRef.current !== audio) return;
           queueLogScrollTopRestore();
@@ -2376,6 +2398,7 @@ export function GameNarration({
 
         audio.onplaying = markStarted;
         audio.onended = () => {
+          setGameVoicePlayback(null, audio);
           gameVoiceActiveAudiosRef.current.delete(audio);
           if (gameVoiceSequenceRef.current !== sequence || gameVoiceAudioRef.current !== audio) return;
           urlIndex += 1;
@@ -2403,7 +2426,13 @@ export function GameNarration({
 
       playNext();
     },
-    [normalizedGameVoiceVolume, queueLogScrollTopRestore, stopGameVoicePlayback],
+    [
+      activeCharacterEntries,
+      latestAssistant?.chatId,
+      normalizedGameVoiceVolume,
+      queueLogScrollTopRestore,
+      stopGameVoicePlayback,
+    ],
   );
 
   const playGameVoiceKey = useCallback(
@@ -2443,6 +2472,9 @@ export function GameNarration({
     setGameVoicePausedKey(null);
     void audio.play().catch(() => {
       if (gameVoiceAudioRef.current !== audio) return;
+      // An interrupted play() promise can reject while the resumed clip is genuinely playing (#2647).
+      if (!audio.paused && !audio.ended) return;
+      setGameVoicePlayback(null, audio);
       setGameVoicePlayingKey(null);
       setGameVoicePausedKey(null);
       gameVoiceAudioRef.current = null;
@@ -3171,8 +3203,25 @@ export function GameNarration({
 
   // Avatars show the line on screen with the Game Master's expression for it (not while reviewing past turns).
   useEffect(() => {
-    if (messageOffset === 0) publishAvatarGameLine(latestAssistant?.chatId ?? null, active);
-  }, [active, latestAssistant?.chatId, messageOffset]);
+    if (messageOffset !== 0) return;
+    const key = active ? getVoiceKeyForSegment(active) : null;
+    const entry = key ? gameVoiceCacheRef.current.get(key) : null;
+    publishAvatarGameLine(latestAssistant?.chatId ?? null, active, {
+      expected:
+        gameVoiceEnabled &&
+        !!key &&
+        (entry?.status === "ready" || (!disableVoiceGeneration && entry?.status !== "error")),
+      pending: gameVoiceEnabled && !!key && (!entry || entry.status === "loading") && !disableVoiceGeneration,
+    });
+  }, [
+    active,
+    disableVoiceGeneration,
+    gameVoiceEnabled,
+    gameVoiceVersion,
+    getVoiceKeyForSegment,
+    latestAssistant?.chatId,
+    messageOffset,
+  ]);
 
   // How many segments are prepended before the actual GM narration segments
   const playerSegmentOffset = latestUserMessage?.content && latestAssistant ? 1 : 0;
@@ -3372,6 +3421,7 @@ export function GameNarration({
           if (controller.signal.aborted) break;
           try {
             const blob = await generateGameVoiceJobBlob(job, controller);
+            prepareAvatarAudioBlob(blob);
             blobs.push(blob);
           } catch (err) {
             if (controller.signal.aborted || (err instanceof Error && err.name === "AbortError")) break;
@@ -3392,6 +3442,7 @@ export function GameNarration({
               tone: audioJobs[0]?.tone,
               voice: audioJobs[0]?.voice,
               urls,
+              blobs,
             });
           } else {
             for (const url of urls) URL.revokeObjectURL(url);
@@ -3605,9 +3656,7 @@ export function GameNarration({
       }
       pendingRequests.clear();
       for (const entry of cachedVoices.values()) {
-        if (entry.status === "ready") {
-          for (const url of entry.urls) URL.revokeObjectURL(url);
-        }
+        revokeGameVoiceEntry(entry);
       }
       cachedVoices.clear();
     };

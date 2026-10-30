@@ -43,7 +43,11 @@ import {
 } from "../../lib/chat-lorebooks";
 import { getChatCharacterIds } from "../../lib/chat-macros";
 import { filterLanguageGenerationConnections } from "../../lib/connection-filters";
-import { AGENT_SUITE_TRACKER_SLICES } from "../../lib/agent-suite-tracker-slices";
+import {
+  AGENT_SUITE_TRACKER_SLICES,
+  trackerSliceErrorMessage,
+  trackerSlicePatchError,
+} from "../../lib/agent-suite-tracker-slices";
 import { cn } from "../../lib/utils";
 import { useAgentStore } from "../../stores/agent.store";
 import { useChatStore } from "../../stores/chat.store";
@@ -755,7 +759,8 @@ export function AgentSuiteModal({ chat, open, onClose, onCloseGuardChange, agent
       if (!snapshot) throw new Error("No tracker snapshot to update");
       qc.setQueryData(gameStateKey, snapshot);
       const patch = slice.buildPatch(snapshot, JSON.parse(draftText));
-      if ("error" in patch && typeof patch.error === "string") throw new Error(patch.error);
+      const sliceError = trackerSlicePatchError(patch);
+      if (sliceError) throw new Error(trackerSliceErrorMessage(sliceError, localizeUi));
       // Target the exact row the snapshot came from, like use-game-state-patcher.
       await api.patch(`/chats/${chat.id}/game-state`, {
         ...patch,
@@ -767,7 +772,7 @@ export function AgentSuiteModal({ chat, open, onClose, onCloseGuardChange, agent
       });
       await refreshGameState();
     },
-    [chat.id, gameStateKey, qc, refreshGameState],
+    [chat.id, gameStateKey, localizeUi, qc, refreshGameState],
   );
 
   const clearAgentMemory = useCallback(async () => {

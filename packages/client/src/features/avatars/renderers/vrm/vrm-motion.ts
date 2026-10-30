@@ -5,12 +5,18 @@
 // loaded model every frame the stage asks for.
 import type { AvatarExpressionMap, AvatarFrameInput, AvatarViseme } from "@marinara-engine/shared";
 import { AVATAR_EMOTIONS, AVATAR_VISEMES, PNGTUBER_DEFAULT_MOTION } from "@marinara-engine/shared";
+import type { AvatarFraming } from "../../contract";
 import { pngtuberBlinkWaitMs } from "../pngtuber/pngtuber-layers";
 
 /** Seconds for an eased value to cover about 63% of the way to its target. */
 const EMOTION_EASE_SECONDS = 0.15;
 const MOUTH_EASE_SECONDS = 0.05;
 const POSE_EASE_SECONDS = 0.35;
+/** A body-only model's talking nod follows the voice this quickly, so each phrase shows instead of averaging out. */
+const TALK_EASE_SECONDS = 0.08;
+/** A model with no mouth shapes (a generated body) sways this much more, and nods and tilts its head as it
+ *  talks: its body is the only thing left to show that it is alive and speaking. */
+const BODY_ONLY_GAIN = 2.5;
 /** Below this the mouth counts as closed. */
 const MOUTH_CLOSED = 0.02;
 /** An eased weight this close to its target lands on it. Easing alone never reaches 0, and three-vrm treats
@@ -169,10 +175,12 @@ export interface IdleMotionState {
   tilt: number;
   nod: number;
   lean: number;
+  /** A body-only model's voice, eased just enough to nod once per phrase. */
+  talk: number;
 }
 
 export function createIdleMotionState(): IdleMotionState {
-  return { tilt: 0, nod: 0, lean: 0 };
+  return { tilt: 0, nod: 0, lean: 0, talk: 0 };
 }
 
 /** VRM 0.x models face -Z in their normalized bone space, so x and z rotations flip sign there. */
@@ -181,13 +189,15 @@ export function vrm0Mirror(metaVersion: string | undefined): 1 | -1 {
 }
 
 /** Arms resting at the sides, plus (when `animate`) breathing, a slow sway and a head pose for the state:
- *  tilted and looking up while thinking, leaning in while listening, nodding a little while talking. */
+ *  tilted and looking up while thinking, leaning in while listening, nodding a little while talking. A
+ *  `bodyOnly` model (no mouth shapes) moves more, and nods and tilts its head with each phrase it speaks. */
 export function computeBodyPose(
   state: IdleMotionState,
   timeSeconds: number,
   frame: AvatarFrameInput,
   animate: boolean,
   dtSeconds: number,
+  bodyOnly = false,
 ): BodyPose {
   const pose: BodyPose = {
     hips: [0, 0, 0],
@@ -204,6 +214,7 @@ export function computeBodyPose(
     state.tilt = 0;
     state.nod = 0;
     state.lean = 0;
+    state.talk = 0;
     return pose;
   }
   const talking = frame.state === "talking" ? clamp01(frame.mouthOpen) : 0;
@@ -212,18 +223,27 @@ export function computeBodyPose(
       ? { tilt: 0.08, nod: -0.06, lean: 0 }
       : frame.state === "listening"
         ? { tilt: -0.05, nod: 0.03, lean: 0.03 }
-        : { tilt: 0, nod: talking * 0.04, lean: 0 };
+        : { tilt: 0, nod: bodyOnly ? 0 : talking * 0.04, lean: 0 };
   state.tilt = ease(state.tilt, goal.tilt, dtSeconds, POSE_EASE_SECONDS);
   state.nod = ease(state.nod, goal.nod, dtSeconds, POSE_EASE_SECONDS);
   state.lean = ease(state.lean, goal.lean, dtSeconds, POSE_EASE_SECONDS);
+  state.talk = ease(state.talk, bodyOnly ? talking : 0, dtSeconds, TALK_EASE_SECONDS);
 
+  // A model with a face keeps gain 1 and talk 0, so its pose is exactly what it always was.
+  const gain = bodyOnly ? BODY_ONLY_GAIN : 1;
   const t = timeSeconds * Math.PI * 2;
-  const breath = Math.sin(t / 4.2);
-  pose.spine = [breath * 0.012 + state.lean, 0, Math.sin(t / 5.9) * 0.012];
-  pose.chest = [breath * 0.015, 0, 0];
-  pose.hips = [0, Math.sin(t / 7.3) * 0.025, 0];
-  pose.neck = [state.nod * 0.4, Math.sin(t / 6.7) * 0.02, 0];
-  pose.head = [state.nod * 0.6 + Math.sin(t / 3.1) * 0.006, Math.sin(t / 8.3) * 0.03, state.tilt];
+  const breath = Math.sin(t / 4.2) * gain;
+  const talk = state.talk * gain;
+  const nod = state.nod + talk * 0.04;
+  pose.spine = [breath * 0.012 + state.lean, 0, Math.sin(t / 5.9) * 0.012 * gain];
+  pose.chest = [breath * 0.015 + talk * 0.012, 0, 0];
+  pose.hips = [0, Math.sin(t / 7.3) * 0.025 * gain, 0];
+  pose.neck = [nod * 0.4, Math.sin(t / 6.7) * 0.02 * gain, 0];
+  pose.head = [
+    nod * 0.6 + Math.sin(t / 3.1) * 0.006 * gain,
+    Math.sin(t / 8.3) * 0.03 * gain,
+    state.tilt + Math.sin(t / 2.3) * state.talk * 0.06,
+  ];
   pose.leftUpperArm = [0, 0, -ARM_DOWN + breath * 0.012];
   pose.rightUpperArm = [0, 0, ARM_DOWN - breath * 0.012];
   return pose;
@@ -258,6 +278,8 @@ export interface BodyHeights {
   footY: number;
   /** The top of the model (hair, ears, a hat), when measured. */
   topY?: number;
+  /** The bottom of the model (the soles), when measured. */
+  bottomY?: number;
 }
 
 export interface CameraFraming {
@@ -265,29 +287,43 @@ export interface CameraFraming {
   distance: number;
 }
 
-/** Fits the head and shoulders into a camera with this aspect and vertical field of view, from bone
- *  heights (the head's size scales with the hips-to-head distance) and the top of the model. The head stays
- *  near the top: a narrower canvas, which needs the camera further back to fit the shoulders, shows more of
- *  the body below, down to the whole figure. The framing changes smoothly with the canvas shape, so a resize
- *  never flips it. */
-export function frameCamera(body: BodyHeights, aspect: number, fovDegrees: number): CameraFraming {
+/** Fits the framed part of the model into a camera with this aspect and vertical field of view, from bone
+ *  heights (the head's size scales with the hips-to-head distance) and the measured top and bottom of the
+ *  model. Portrait fits the head and shoulders, half body reaches the hips, and full body fits the whole
+ *  model from the top of its hair or hat to its soles, with a little floor below. The head stays near the
+ *  top: a narrower canvas, which needs the camera further back to fit the width, shows more of the body
+ *  below, down to the whole figure. The framing changes smoothly with the canvas shape, so a resize never
+ *  flips it. */
+export function frameCamera(
+  body: BodyHeights,
+  aspect: number,
+  fovDegrees: number,
+  framing: AvatarFraming = "portrait",
+): CameraFraming {
   const safeAspect = Number.isFinite(aspect) && aspect > 0 ? aspect : 1;
   const unit = Math.max(0.1, body.headY - body.hipsY);
+  const measuredTop = Number.isFinite(body.topY) ? body.topY! : -Infinity;
   // A head and a bit above the head bone reaches the top of most heads. Hair, ears or a hat that rise higher
   // (a Tripo model's reach 0.3 m and more above its head bone) raise the top, never lower it, so other models
-  // frame as before. At most one unit above the head: a stray part far above must not shrink the face.
+  // frame as before. Closer framings count at most one unit above the head, so a stray part far above can't
+  // shrink the face; full body shows all of the model.
   const top = Math.max(
     body.headY + 0.42 * unit,
-    Number.isFinite(body.topY) ? Math.min(body.topY!, body.headY + unit) : -Infinity,
+    framing === "full-body" ? measuredTop : Math.min(measuredTop, body.headY + unit),
   );
-  const bustBottom = body.headY - 0.6 * unit;
-  const feet = Math.min(body.footY - 0.03, bustBottom);
+  const soles = Math.min(body.footY - 0.03, Number.isFinite(body.bottomY) ? body.bottomY! : Infinity);
+  const bottom =
+    framing === "full-body"
+      ? soles - 0.05 * unit
+      : framing === "half-body"
+        ? body.hipsY - 0.25 * unit
+        : body.headY - 0.6 * unit;
+  const feet = framing === "full-body" ? bottom : Math.min(body.footY - 0.03, bottom);
+  // Shoulders for a bust; with the hips in view the hanging arms widen it.
+  const width = (framing === "portrait" ? 1.1 : 1.4) * unit;
   const margin = 1.08;
   const tanHalf = Math.tan((fovDegrees * Math.PI) / 360);
-  const distance = Math.max(
-    ((top - bustBottom) * margin) / 2 / tanHalf,
-    (1.1 * unit * margin) / 2 / (tanHalf * safeAspect),
-  );
+  const distance = Math.max(((top - bottom) * margin) / 2 / tanHalf, (width * margin) / 2 / (tanHalf * safeAspect));
   const halfView = distance * tanHalf;
   return { targetY: Math.max(top - halfView / margin, (top + feet) / 2), distance };
 }

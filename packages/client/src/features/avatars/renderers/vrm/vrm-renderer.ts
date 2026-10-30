@@ -18,6 +18,7 @@ import {
   Object3D,
   PerspectiveCamera,
   Scene,
+  TextureLoader,
   Vector3,
   WebGLRenderer,
 } from "three";
@@ -26,6 +27,7 @@ import { VRMLoaderPlugin, VRMMetaLoaderPlugin, VRMUtils, type VRM, type VRMCore 
 import { VRMAnimationLoaderPlugin, createVRMAnimationClip, type VRMAnimation } from "@pixiv/three-vrm-animation";
 import {
   AVATAR_EXPRESSION_SLOTS,
+  AVATAR_VISEMES,
   DEFAULT_AVATAR_FEATURE_FLAGS,
   avatarModelFilePath,
   type AvatarExpressionMap,
@@ -35,7 +37,12 @@ import {
   type AvatarOwnerRef,
 } from "@marinara-engine/shared";
 import { api } from "../../../../lib/api-client";
-import { AVATAR_RENDER_BUDGET, type AvatarRenderer, type AvatarRendererMountOptions } from "../../contract";
+import {
+  AVATAR_RENDER_BUDGET,
+  type AvatarFraming,
+  type AvatarRenderer,
+  type AvatarRendererMountOptions,
+} from "../../contract";
 import {
   POSE_BONES,
   canvasPixels,
@@ -116,7 +123,13 @@ async function loadStoredGltf(
   const manager = new LoadingManager();
   manager.setURLModifier((url) => (/^(?:blob|data):/iu.test(url) ? url : "data:,"));
   const loader = new GLTFLoader(manager);
-  loader.register(plugin);
+  loader.register((parser) => {
+    // The model's pictures load as images, which the Engine's img-src allows from blob: and data: URLs.
+    // GLTFLoader's default ImageBitmapLoader reads them with fetch, which connect-src refuses for those URLs,
+    // so every texture failed quietly and the model drew plain white.
+    parser.textureLoader = new TextureLoader(manager);
+    return plugin(parser);
+  });
   return loader.parseAsync(bytes, "");
 }
 
@@ -170,11 +183,14 @@ class VrmAvatarRenderer implements AvatarRenderer {
   private pixelHeight = 0;
   private aspect = 1;
   private body: BodyHeights | null = null;
+  private framing: AvatarFraming = "portrait";
   private distance = 1;
   private time = 0;
   private mirror: 1 | -1 = 1;
   private bindings: AvatarExpressionMap = {};
   private mouthHolders: ReadonlySet<string> = new Set();
+  /** No mouth shape is bound (a generated body), so the body and head carry the life and the talking. */
+  private bodyOnly = false;
   private readonly weights = createExpressionWeights();
   private readonly blink = createBlinkTimer();
   private readonly idle = createIdleMotionState();
@@ -232,6 +248,7 @@ class VrmAvatarRenderer implements AvatarRenderer {
       if (binding?.target && vrm.expressionManager?.getExpression(binding.target)) this.bindings[slot] = binding;
     }
     this.mouthHolders = softenMouthOverrides(this.bindings, (name) => vrm.expressionManager?.getExpression(name));
+    this.bodyOnly = !AVATAR_VISEMES.some((slot) => this.bindings[slot]);
 
     // Measure the body at rest with the arms down, then frame it.
     this.applyPose(computeBodyPose(this.idle, 0, REST_FRAME, false, 0));
@@ -265,7 +282,7 @@ class VrmAvatarRenderer implements AvatarRenderer {
     const animate = this.features.idleMotion && !this.reducedMotion;
 
     if (this.mixer && animate) this.mixer.update(dt);
-    else this.applyPose(computeBodyPose(this.idle, this.time, frame, animate, dt));
+    else this.applyPose(computeBodyPose(this.idle, this.time, frame, animate, dt, this.bodyOnly));
 
     stepExpressionWeights(this.weights, this.bindings, frame, this.features, dt, this.mouthHolders);
     const expressions = vrm.expressionManager;
@@ -301,10 +318,18 @@ class VrmAvatarRenderer implements AvatarRenderer {
     this.pixelHeight = pixels.height;
     this.aspect = width > 0 && height > 0 ? width / height : 1;
     this.updateCamera();
+    this.redraw();
   }
 
   setPaused(paused: boolean): void {
     this.paused = paused;
+  }
+
+  setFraming(framing: AvatarFraming): void {
+    if (this.disposed || framing === this.framing) return;
+    this.framing = framing;
+    this.updateCamera();
+    this.redraw();
   }
 
   dispose(): void {
@@ -353,7 +378,7 @@ class VrmAvatarRenderer implements AvatarRenderer {
 
   private updateCamera(): void {
     if (!this.body) return;
-    const framing = frameCamera(this.body, this.aspect, FIELD_OF_VIEW);
+    const framing = frameCamera(this.body, this.aspect, FIELD_OF_VIEW, this.framing);
     this.distance = framing.distance;
     this.camera.aspect = this.aspect;
     this.camera.near = Math.max(0.01, framing.distance * 0.05);
@@ -361,6 +386,12 @@ class VrmAvatarRenderer implements AvatarRenderer {
     this.camera.position.set(0, framing.targetY, framing.distance);
     this.camera.lookAt(0, framing.targetY, 0);
     this.camera.updateProjectionMatrix();
+  }
+
+  /** Draws the current pose at the new size or framing right away, as the 2D renderers do: the stage's next
+   *  frame may be a while off (or paused), and until then the canvas would show a stretched picture. */
+  private redraw(): void {
+    if (this.vrm && this.pixelWidth && this.pixelHeight) this.draw();
   }
 
   private draw(): void {
@@ -391,16 +422,19 @@ class VrmAvatarRenderer implements AvatarRenderer {
 
 const boneWorld = new Vector3();
 
-/** Bone heights and the top of the posed model (skinned meshes measure where their bones put them). */
+/** Bone heights and the top and bottom of the posed model (skinned meshes measure where their bones put them). */
 function measureBody(vrm: VRM): BodyHeights {
   const height = (bone: "head" | "hips" | "leftFoot" | "rightFoot") =>
     vrm.humanoid.getRawBoneNode(bone)?.getWorldPosition(boneWorld).y ?? 0;
-  const topY = new Box3().setFromObject(vrm.scene).max.y;
+  const bounds = new Box3().setFromObject(vrm.scene);
+  const topY = bounds.max.y;
+  const bottomY = bounds.min.y;
   return {
     headY: height("head"),
     hipsY: height("hips"),
     footY: Math.min(height("leftFoot"), height("rightFoot")),
     ...(Number.isFinite(topY) ? { topY } : {}),
+    ...(Number.isFinite(bottomY) ? { bottomY } : {}),
   };
 }
 

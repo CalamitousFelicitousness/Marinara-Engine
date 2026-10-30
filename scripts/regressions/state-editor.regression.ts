@@ -5,12 +5,15 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import type { GameState } from "@marinara-engine/shared";
 import {
+  blankStateArrayItem,
+  blankStateValueLike,
   collectStateChanges,
   getStateSectionDraftStatus,
   humanizeStateKey,
   layoutStateJson,
   searchStateSections,
   setStateValueAtPath,
+  shapeStateEntry,
   statePathKey,
   tokenizeStateJson,
 } from "../../packages/client/src/lib/state-editor/state-editor-json.js";
@@ -180,6 +183,11 @@ assert.deepEqual(scene.patch, { location: "Docks", worldCustomFields: [] }, "onl
 const rejected = buildGameStateEditorPatch(gameState, [{ sectionId: "quest", value: { not: "an array" } }]);
 assert.ok("error" in rejected);
 assert.equal(rejected.sectionId, "quest", "a slice's validation error names its section");
+assert.deepEqual(
+  rejected.error,
+  { code: "notArray", field: "activeQuests" },
+  "the error is a code the modal localizes",
+);
 
 const agentUpdated = { ...gameState, location: "Lighthouse" } as GameState;
 assert.deepEqual(
@@ -462,5 +470,110 @@ assert.deepEqual(
   ["key"],
   "an unfinished value still leaves the key highlighted while typing",
 );
+
+// ── Fields view: an added entry copies the shape of the entry above it ──
+// Cloning the shape is what keeps an added character, stat or custom field readable by the tracker
+// that reads that section: the editor is never told a schema, only what is already in the draft.
+const pinnedCustomField = { name: "Fel Lockheart's Status", value: "Under observation/Quarantined", icon: "tag" };
+assert.deepEqual(
+  blankStateValueLike(pinnedCustomField),
+  { name: "", value: "", icon: "" },
+  "an added custom field keeps name, value and icon, all empty",
+);
+assert.deepEqual(
+  blankStateArrayItem([pinnedCustomField]),
+  { name: "", value: "", icon: "" },
+  "the entry an add control appends is the last item's shape, cleared",
+);
+assert.deepEqual(
+  blankStateValueLike({ hp: 12, alive: true, tags: ["quick"], nested: { mood: "calm" } }),
+  { hp: 0, alive: false, tags: [], nested: { mood: "" } },
+  "every kind of leaf is cleared rather than copied",
+);
+assert.equal(blankStateValueLike("Chilly"), "", "a text leaf clears to an empty string");
+assert.equal(blankStateValueLike(0), 0, "a number leaf clears to 0");
+assert.equal(blankStateValueLike(false), false, "an on/off leaf clears to off");
+assert.equal(blankStateValueLike(null), "", "a null leaf starts as empty text");
+assert.deepEqual(
+  blankStateArrayItem([]),
+  {},
+  "a list whose key declares no shape starts as an empty object for the add-field row",
+);
+assert.deepEqual(
+  blankStateArrayItem([], "worldCustomFields"),
+  { name: "", value: "", icon: "" },
+  "an empty list of custom fields starts with the shape the game declares, icon included",
+);
+assert.deepEqual(
+  blankStateArrayItem([], "stats"),
+  { name: "", value: 0, max: 0, color: "" },
+  "an empty list of stats carries the colour the game's stats carry",
+);
+assert.deepEqual(blankStateArrayItem([], "anUnknownKey"), {}, "an unknown key still falls back to an empty object");
+assert.deepEqual(
+  blankStateArrayItem([{ ...pinnedCustomField, extra: "shape from the entry" }], "worldCustomFields"),
+  { name: "", value: "", icon: "", extra: "" },
+  "an existing entry is cloned instead of the declared shape, so the list keeps its own keys",
+);
+assert.deepEqual(blankStateValueLike({}), {}, "an empty object stays empty");
+assert.deepEqual(
+  blankStateArrayItem([], "customTrackerFields"),
+  { name: "", value: "" },
+  "a Custom Tracker Fields entry added to an empty section starts with a name and a value",
+);
+assert.deepEqual(
+  blankStateArrayItem([{ name: "Rope", qty: 3, description: "", location: "" }], "inventory", "inventory-tracker"),
+  { name: "", qty: 1, description: "", location: "" },
+  "a cleared Inventory Tracker row keeps a quantity of 1, because the tracker reads qty as at least one",
+);
+assert.equal(
+  (blankStateArrayItem([], "currencies") as { qty?: number }).qty,
+  1,
+  "a currency row added to an empty list starts at 1 too",
+);
+assert.deepEqual(
+  shapeStateEntry({ name: "Rope", qty: 2 }, "inventory", "inventory-tracker"),
+  { name: "Rope", qty: 2, description: null, location: null },
+  "an Inventory Tracker row shows the fields its section declares, not only the stored ones",
+);
+
+// ── The same list name, two contracts ──
+// "inventory" is PlayerStats.inventory in Persona Stats (rows count `quantity`) and an Inventory Tracker
+// row list in the Inventory Tracker (rows carry `qty`). The section decides which shape a row gets.
+assert.deepEqual(
+  blankStateArrayItem([], "inventory"),
+  { name: "", description: "", quantity: 1, location: "" },
+  "a persona inventory item starts with the quantity its contract counts",
+);
+assert.deepEqual(
+  blankStateArrayItem([], "inventory", "inventory-tracker"),
+  { name: "", qty: 1, description: "", location: "" },
+  "an Inventory Tracker row in the same position starts with qty instead",
+);
+
+// ── A half-filled entry still shows the rows it is missing ──
+// The tracker wrote { name, value, icon }; a stored entry with only a name shows the rest as "no value",
+// so the user can complete it without opening the JSON. Nothing reaches the draft until one is edited.
+assert.deepEqual(
+  shapeStateEntry({ name: "Guard" }, "worldCustomFields"),
+  { name: "Guard", value: null, icon: null },
+  "a custom field without value and icon shows both rows as no value",
+);
+assert.deepEqual(
+  shapeStateEntry({ name: "Guard", value: "on duty" }, "worldCustomFields"),
+  { name: "Guard", value: "on duty", icon: null },
+  "a stored value wins over the declared shape",
+);
+assert.deepEqual(
+  shapeStateEntry({ name: "Guard", colour: "red" }, "worldCustomFields"),
+  { name: "Guard", colour: "red", value: null, icon: null },
+  "keys the entry has and the shape doesn't are kept",
+);
+assert.deepEqual(
+  shapeStateEntry({ name: "Guard" }, "anUnknownKey"),
+  { name: "Guard" },
+  "a list whose key declares no shape is shown exactly as stored",
+);
+assert.equal(shapeStateEntry("plain", "worldCustomFields"), "plain", "a non-record entry is left alone");
 
 console.log("state-editor regression passed");

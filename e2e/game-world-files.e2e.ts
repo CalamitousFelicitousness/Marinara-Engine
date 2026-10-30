@@ -12,6 +12,7 @@ import {
   worldKitFile,
 } from "@marinara-engine/shared";
 import { openChatTool } from "./chat-settings-tools.js";
+import { downloadExport } from "./export-save.js";
 import { openGame } from "./game-ruleset-fight-fixture.js";
 import { seedUIState } from "./ui-state-fixture.js";
 import { prepareViteFixtureDependencies } from "./vite-fixture-dependencies.js";
@@ -115,8 +116,9 @@ async function mountWizard(page: Page, testInfo: TestInfo): Promise<Locator> {
   return wizard;
 }
 
+// On iPhone an export offers a Save file toast instead of a download (#7115); downloadExport taps it.
 const download = async (page: Page, click: () => Promise<void>) => {
-  const [saved] = await Promise.all([page.waitForEvent("download"), click()]);
+  const saved = await downloadExport(page, click);
   return { name: saved.suggestedFilename(), file: JSON.parse(await readFile((await saved.path())!, "utf8")) };
 };
 
@@ -170,7 +172,18 @@ test("a world file comes into a new game's setup with its kit and hand edits, an
   );
 
   // Another seed: the hand edits were made for this one, so they are left out.
-  await wizard.getByLabel("World seed", { exact: true }).fill("4243");
+  const seed = wizard.getByLabel("World seed", { exact: true });
+  // Save file restores focus while its toast exits; let that finish before editing the seed.
+  await expect(
+    page.locator("[data-sonner-toast]").filter({
+      has: page.getByRole("button", { name: "Save file", exact: true, includeHidden: true }),
+    }),
+  ).toHaveCount(0);
+  await seed.scrollIntoViewIfNeeded();
+  await seed.click();
+  await expect(seed).toBeFocused();
+  await seed.fill("4243");
+  await expect(seed).toHaveValue("4243");
   await expect(wizard.getByText("so they are left out now", { exact: false })).toBeVisible();
   await expect(wizard.getByText("so it is left out now", { exact: false })).toBeVisible();
   const reseeded = await download(page, () =>

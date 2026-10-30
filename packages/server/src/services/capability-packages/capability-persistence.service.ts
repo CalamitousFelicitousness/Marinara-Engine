@@ -1,4 +1,7 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import {
+  type CapabilityCharacterStatusResult,
+  type CapabilityCharacterStatusUpdate,
   type CapabilityChatActivityUpdate,
   type CapabilityChatMetadataUpdate,
   type CapabilityChatRecord,
@@ -31,7 +34,7 @@ import {
   messageSwipes,
   spatialContextSnapshots,
 } from "../../db/schema/index.js";
-import { withChatMetadataPatchQueue } from "../storage/chats.storage.js";
+import { createChatsStorage, withChatMetadataPatchQueue } from "../storage/chats.storage.js";
 import { createCharactersStorage } from "../storage/characters.storage.js";
 import { withNewGlobalGalleryCapabilityReferences } from "../image/global-gallery-capability-references.js";
 import { resolveChatUserIdentity } from "../chat-user-identity.js";
@@ -41,6 +44,8 @@ import {
   roleplayAgentsSeeWhispers,
   roleplayAgentText,
 } from "../generation/roleplay-commands.js";
+import { handleConversationScheduleCommand } from "../generation/conversation-schedule-command-runtime.js";
+import type { ScheduleUpdateCommand } from "../conversation/character-commands.js";
 import { resolveCharacterNameMap } from "../../routes/generate/generate-route-utils.js";
 import { conversationPromptHistoryContent } from "../../routes/generate/conversation-prompt-formatting.js";
 
@@ -71,6 +76,35 @@ function parseMetadata(value: unknown): Record<string, unknown> | null {
 
 function readTrimmedString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+const CHARACTER_STATUSES = new Set(["online", "idle", "dnd", "offline"]);
+const MAX_STATUS_ACTIVITY_CHARS = 500;
+const MAX_STATUS_DURATION_CHARS = 32;
+
+/** A package's status update as the host's `[schedule_update]` command, or a thrown reason it is not one. */
+function readCharacterStatusUpdate(update: CapabilityCharacterStatusUpdate): ScheduleUpdateCommand {
+  if (!update || typeof update !== "object" || Array.isArray(update)) {
+    throw new Error("updateCharacterStatus needs an update object.");
+  }
+  const { status, activity, duration } = update as Record<string, unknown>;
+  if (status !== undefined && (typeof status !== "string" || !CHARACTER_STATUSES.has(status))) {
+    throw new Error('updateCharacterStatus status must be "online", "idle", "dnd" or "offline".');
+  }
+  if (activity !== undefined && (typeof activity !== "string" || activity.length > MAX_STATUS_ACTIVITY_CHARS)) {
+    throw new Error(`updateCharacterStatus activity must be text of at most ${MAX_STATUS_ACTIVITY_CHARS} characters.`);
+  }
+  if (duration !== undefined && (typeof duration !== "string" || duration.length > MAX_STATUS_DURATION_CHARS)) {
+    throw new Error(`updateCharacterStatus duration must be text of at most ${MAX_STATUS_DURATION_CHARS} characters.`);
+  }
+  const trimmedActivity = activity?.trim();
+  if (!status && !trimmedActivity) throw new Error("updateCharacterStatus needs a status or an activity.");
+  return {
+    type: "schedule_update",
+    ...(status ? { status: status as ScheduleUpdateCommand["status"] } : {}),
+    ...(trimmedActivity ? { activity: trimmedActivity } : {}),
+    ...(duration?.trim() ? { duration: duration.trim() } : {}),
+  };
 }
 
 const MAX_ROLEPLAY_EVENT_TEXT_CHARS = 1_000;
@@ -618,6 +652,13 @@ function createPersistenceSession(db: DB, assertPermission: PersistencePermissio
   };
 }
 
+/**
+ * The chat locks a package holds in the current async context. The metadata queue behind `withChatLock` is not
+ * reentrant, so a patch made while holding the same chat's lock runs inside it instead of waiting for it forever.
+ * `held` turns false when the lock's operation ends, so work the operation left running queues normally.
+ */
+const heldChatLocks = new AsyncLocalStorage<ReadonlyArray<{ chatId: string; held: boolean }>>();
+
 /** Omitted permissions are reserved for trusted Engine callers; package activation always passes its manifest. */
 export function createCapabilityPersistenceHost(db: DB, permissions?: readonly string[]): CapabilityPersistenceHost {
   const granted = permissions ? new Set(permissions) : null;
@@ -625,14 +666,103 @@ export function createCapabilityPersistenceHost(db: DB, permissions?: readonly s
     if (granted && !granted.has(permission)) throw new Error(`Package persistence requires ${permission} permission.`);
   };
   const session = createPersistenceSession(db, assertPermission);
+  // Built on first use: hosts made without a database (tests, early activation) never touch chat storage.
+  let chatsStorage: ReturnType<typeof createChatsStorage> | undefined;
+  const hostChats = () => (chatsStorage ??= createChatsStorage(db));
   return {
     ...session,
     withChatLock: (chatId, operation) => {
       if (granted && !granted.has("chat-read") && !granted.has("chat-write")) {
         return Promise.reject(new Error("Package chat locks require chat-read or chat-write permission."));
       }
-      return withChatMetadataPatchQueue(chatId, operation);
+      return withChatMetadataPatchQueue(chatId, async () => {
+        const lock = { chatId, held: true };
+        try {
+          return await heldChatLocks.run([...(heldChatLocks.getStore() ?? []), lock], operation);
+        } finally {
+          lock.held = false;
+        }
+      });
     },
     transaction: (operation) => db.transaction((tx) => operation(createPersistenceSession(tx, assertPermission))),
+    async patchChatMetadata(chatId, patch, options) {
+      assertPermission("chat-write");
+      const apply = async () => {
+        const chat = await hostChats().getById(chatId);
+        if (!chat) return;
+        const next = typeof patch === "function" ? await patch(parseMetadata(chat.metadata) ?? {}) : patch;
+        // Like updateChatMetadata, a package patch cannot add a reference to a Global Gallery image that is gone.
+        await withNewGlobalGalleryCapabilityReferences(db, chat.metadata, next, () =>
+          hostChats().patchMetadata(chatId, next, {
+            metadataQueueHeld: true,
+            ...(options?.touchUpdatedAt === false ? { touchUpdatedAt: false } : {}),
+          }),
+        );
+      };
+      const lockHeld = heldChatLocks.getStore()?.some((lock) => lock.held && lock.chatId === chatId) ?? false;
+      await (lockHeld ? apply() : withChatMetadataPatchQueue(chatId, apply));
+    },
+    async appendMessages(chatId, inputs) {
+      assertPermission("chat-write");
+      if (!(await hostChats().getById(chatId))) throw new Error(`Chat ${chatId} was not found.`);
+      const ids = await hostChats().createMessagesBatch(
+        chatId,
+        inputs.map((input) => ({
+          role: input.role,
+          characterId: input.characterId,
+          content: input.content,
+          extra: input.extra,
+          createdAt: input.createdAt,
+        })),
+      );
+      if (ids.length === 0) return [];
+      const rows = await db
+        .select()
+        .from(messages)
+        .where(and(eq(messages.chatId, chatId), inArray(messages.id, ids)));
+      const byId = new Map(rows.map((row) => [row.id, row]));
+      return ids.flatMap((id) => {
+        const row = byId.get(id);
+        return row ? [mapMessage(row)] : [];
+      });
+    },
+    async createChatNote(sourceChatId, targetChatId, content, anchorMessageId) {
+      assertPermission("chat-write");
+      await hostChats().createNote(sourceChatId, targetChatId, content, anchorMessageId);
+    },
+    async createChatInfluence(sourceChatId, targetChatId, content, anchorMessageId) {
+      assertPermission("chat-write");
+      await hostChats().createInfluence(sourceChatId, targetChatId, content, anchorMessageId);
+    },
+    async updateCharacterStatus(chatId, characterId, update) {
+      assertPermission("chat-write");
+      const command = readCharacterStatusUpdate(update);
+      const chat = await hostChats().getById(chatId);
+      if (!chat) throw new Error(`Chat ${chatId} was not found.`);
+      if (chat.mode !== "conversation") throw new Error(`Chat ${chatId} is not a Conversation chat.`);
+      // Like a reply's command, it only reaches a character of this chat.
+      if (!parseStringArray(chat.characterIds).includes(characterId)) {
+        throw new Error(`Character ${characterId} is not in chat ${chatId}.`);
+      }
+      // A shared room keeps its own copy of each routine and never writes the character card.
+      const metadata = parseMetadata(chat.metadata) ?? {};
+      if (metadata.multiplayer || metadata.multiplayerSetup === true) return null;
+      let result: CapabilityCharacterStatusResult | null = null;
+      await handleConversationScheduleCommand({
+        command,
+        characterId,
+        chatId,
+        chats: hostChats(),
+        characters: createCharactersStorage(db),
+        sendUpdated: (data) => {
+          result = {
+            status: data.status as CapabilityCharacterStatusResult["status"],
+            activity: (data.activity as string | null | undefined) ?? null,
+            expiresAt: data.expiresAt as string,
+          };
+        },
+      });
+      return result;
+    },
   };
 }

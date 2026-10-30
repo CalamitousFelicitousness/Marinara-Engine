@@ -122,6 +122,8 @@ import { DIALOGUE_QUOTE_PATTERN_SOURCE, HTML_SAFE_DIALOGUE_QUOTE_PATTERN_SOURCE 
 import { resolveMessageRewriteVersions } from "../../lib/message-rewrite-versions";
 import { convertChatHtmlNewlines } from "../../lib/chat-html-newlines";
 import { scopeChatMessageCss } from "../../lib/chat-message-css";
+import { currentRemoteImagePolicy, handleRemoteImageClick, useRemoteImagePolicy } from "../../lib/remote-image-policy";
+import type { RemoteImagePolicy } from "../../lib/remote-images";
 import {
   HTML_TAG_RE,
   containsChatHtml,
@@ -1689,6 +1691,7 @@ function renderContent(
   nameColorMap?: Map<string, string> | null,
   textShadow?: string,
   ownDialogueColor = false,
+  remoteImages: RemoteImagePolicy = currentRemoteImagePolicy(),
 ): ReactNode {
   // Portable card://self/gallery refs resolve to the speaking character before
   // any rendering, covering both the markdown branch and the embedded-HTML
@@ -1743,7 +1746,8 @@ function renderContent(
     }),
   );
 
-  const clean = sanitizeChatHtml(withImages, { allowStyle: true });
+  // Images from other sites are held in the final pass below, after the dialogue and Markdown steps.
+  const clean = sanitizeChatHtml(withImages, { allowStyle: true, remoteImages: "keep" });
 
   // Apply dialogue bolding inside sanitised HTML with per-speaker color support.
   const withDialogue = (() => {
@@ -1788,13 +1792,14 @@ function renderContent(
 
   // Apply markdown-style bold/italic in HTML path
   const withMarkdown = applyInlineMarkdownHTML(withDialogue);
-  const finalHtml = sanitizeChatHtml(withMarkdown, { allowStyle: true });
-  const scopedCss = scopeChatMessageCss(rawStyleBlocks, `.${htmlScopeClass}`);
+  const finalHtml = sanitizeChatHtml(withMarkdown, { allowStyle: true, remoteImages });
+  const scopedCss = scopeChatMessageCss(rawStyleBlocks, `.${htmlScopeClass}`, { remoteUrls: remoteImages.loadAll });
   const html = scopedCss ? `<style>${scopedCss}</style>${finalHtml}` : finalHtml;
 
   return (
     <div
       className={cn("mari-html-content relative !overflow-hidden !contain-paint", htmlScopeClass)}
+      onClick={handleRemoteImageClick}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );
@@ -1825,6 +1830,7 @@ export function RoleplayMessagePreview({
         quoteFormat: state.quoteFormat,
       })),
     );
+  const remoteImages = useRemoteImagePolicy();
   const resolvedDialogueColor = dialogueColor || defaultDialogueColor || getDefaultChatTextColor(theme);
   const htmlScopeClass = `mari-html-greeting-${previewId.replace(/[^a-zA-Z0-9_-]/g, "") || "preview"}`;
   const isHtmlContent = containsChatHtml(content);
@@ -1851,8 +1857,18 @@ export function RoleplayMessagePreview({
         undefined, // nameColorMap
         undefined, // textShadowStr
         !!dialogueColor,
+        remoteImages,
       ),
-    [boldDialogue, content, dialogueColor, htmlScopeClass, quoteFormat, resolvedDialogueColor, selfCharacterId],
+    [
+      boldDialogue,
+      content,
+      dialogueColor,
+      htmlScopeClass,
+      quoteFormat,
+      remoteImages,
+      resolvedDialogueColor,
+      selfCharacterId,
+    ],
   );
 
   return (
@@ -2003,6 +2019,7 @@ export const ChatMessage = memo(function ChatMessage({
       setTTSLineVolume: s.setTTSLineVolume,
     })),
   );
+  const remoteImages = useRemoteImagePolicy();
   // Build reusable text style objects (memoized to avoid unnecessary DOM updates)
   const textStrokeStyle = useMemo<React.CSSProperties>(
     () =>
@@ -3258,6 +3275,7 @@ export const ChatMessage = memo(function ChatMessage({
         nameColorMap,
         textShadowStr,
         ownDialogueColor,
+        remoteImages,
       );
     let markerPrefix = "\uE000";
     while (text.includes(markerPrefix)) markerPrefix = "\uE000" + markerPrefix;
@@ -3294,6 +3312,7 @@ export const ChatMessage = memo(function ChatMessage({
     nameColorMap,
     textShadowStr,
     ownDialogueColor,
+    remoteImages,
   ]);
   const renderStreamingText = useCallback(
     (streamText: string) =>
@@ -3309,6 +3328,7 @@ export const ChatMessage = memo(function ChatMessage({
         nameColorMap,
         textShadowStr,
         ownDialogueColor,
+        remoteImages,
       ),
     [
       formatDisplayContent,
@@ -3322,6 +3342,7 @@ export const ChatMessage = memo(function ChatMessage({
       nameColorMap,
       textShadowStr,
       ownDialogueColor,
+      remoteImages,
     ],
   );
 
@@ -3355,6 +3376,7 @@ export const ChatMessage = memo(function ChatMessage({
             nameColorMap,
             textShadowStr,
             ownDialogueColor,
+            remoteImages,
           )
         : null,
     [
@@ -3369,6 +3391,7 @@ export const ChatMessage = memo(function ChatMessage({
       nameColorMap,
       textShadowStr,
       ownDialogueColor,
+      remoteImages,
     ],
   );
   const translationDisplayOnly = useMemo(

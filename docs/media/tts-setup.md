@@ -255,6 +255,7 @@ This override is used only during Conversation audio and video calls. The regula
 
 ## Troubleshooting
 
+- The card shows **Missing Audio connection**: the Audio connection chosen as the Source was deleted or can't be used. Choose another Source. See [Use an Audio connection](#use-an-audio-connection).
 - Nothing speaks: confirm the **Enable TTS** switch is on. Then check the right per-mode **Auto-play** toggle, or use the per-message **Speak** button. The **Speak** button and auto-play options only appear after TTS is enabled.
 - No voices in the dropdown: save the connection with a valid API key, then click **Refresh**. The official PocketTTS server uses Marinara's built-in list because it has no voice-list endpoint. For a compatible PocketTTS wrapper, verify that `<Base URL>/v1/voices` responds.
 - ElevenLabs will not speak: make sure you selected a real voice, not the "Select an ElevenLabs voice" placeholder. Also check that the **Model** is a speech model, not a voice-design model whose ID contains `ttv`.
@@ -268,6 +269,7 @@ This override is used only during Conversation audio and video calls. The regula
 ## Related guides
 
 - [Conversation Audio and Video Calls](../conversation/calls.md)
+- [Lip sync with text-to-speech](../agents/avatars.md#lip-sync-with-text-to-speech) for 2D and 3D avatars
 - [Roleplay Mode: Getting Started](../roleplay/getting-started.md)
 - [Game Mode: Getting Started](../game/getting-started.md)
 - [Supported AI Providers](../connections/providers-reference.md)

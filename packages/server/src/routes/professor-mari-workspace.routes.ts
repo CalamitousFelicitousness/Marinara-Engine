@@ -43,6 +43,7 @@ export const professorMariPromptSchema = z.object({
   connectionId: z.string().optional().nullable(),
   debugMode: z.boolean().optional().default(false),
   existingUserMessageId: z.string().min(1).optional(),
+  seasonalPackId: z.string().max(40).optional(),
   context: z
     .object({
       source: z.enum([
@@ -370,6 +371,7 @@ export async function professorMariWorkspaceRoutes(app: FastifyInstance) {
     if (!privileged(req, reply)) return;
     const input = runtimeSchema.parse(req.body);
     await createAppSettingsStorage(app.db).set(MARI_RUNTIME_SETTINGS_KEY, input.runtime);
+    getProfessorMariWorkspaceService(app).resetRuntimeFailures();
     return { ok: true, runtime: input.runtime };
   });
 
@@ -461,6 +463,7 @@ export async function professorMariWorkspaceRoutes(app: FastifyInstance) {
         attachments: body.attachments,
         existingUserMessageId: body.existingUserMessageId,
         context: body.context,
+        seasonalPackId: body.seasonalPackId,
         onEvent: send,
       });
       send({ type: "done", data: { ok: true } });

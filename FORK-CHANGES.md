@@ -117,10 +117,9 @@ start now asks the lease holder to shut down:
   `PORT`, waits for the PID to exit, and exits 75 so the supervisor starts the server again.
 
 The holder's PID is trusted only when the lease records this machine's ID, which
-`readStableMachineId` reads on Windows by running `reg.exe` once at module load. A cold first
-`reg.exe` start can outlast the 1 s `execFileSync` timeout upstream gives it, leaving `hostId` null;
-the lease then can neither name the holder nor reclaim a crashed writer's lease by PID. The Windows
-lookup now allows 5 s.
+`readStableMachineId` reads on Windows by running `reg.exe` once at module load. Without it the
+lease can neither name the holder nor reclaim a crashed writer's lease by PID. Upstream's lookup
+(2 s, one retry on timeout, #7801) covers the cold first `reg.exe` start.
 
 Unsupervised starts (`node dist/index.js`, `start-local.bat`, the dev watcher) keep the lease error,
 as does a holder on another port, host binding, or self-signed TLS. `docs/TROUBLESHOOTING.md`
@@ -600,12 +599,11 @@ Assistant. Upstream files patched: `chat.ts`, `ChatRoleplayPanels.tsx`, `en.json
 pins role normalization and what Apply does to each role.
 
 Popped out of Chat Settings, the panel fills its window: the note box takes whatever height the
-window gains, and below its four starting rows the window scrolls instead. `Drawer` has a
-`fillWindow` prop, forwarded by `ChatSettingsSection`, that makes a popped-out drawer and its body
-a full-height flex column. Only the Author's Notes section sets it, so other popped-out sections
+window gains, and below its four starting rows the window scrolls instead. This uses upstream's
+`Drawer` `fill` prop (#7788), set only on the Author's Notes section, so other popped-out sections
 keep their look. At narrow widths the depth and role controls wrap as label-and-field pairs.
-Upstream files patched: `Drawer.tsx`, `ChatSettingsSection.tsx`, `ChatSettingsDrawer.tsx`,
-`ChatRoleplayPanels.tsx`, and `e2e/author-notes.e2e.ts` (a fifth test, which resizes the window).
+Upstream files patched: `ChatRoleplayPanels.tsx` and `e2e/author-notes.e2e.ts` (a fifth test,
+which resizes the window).
 
 ### Peek Prompt shows where each sampling parameter came from
 
@@ -2547,6 +2545,15 @@ settings, so a voice saved there would show as saved and never be spoken. `PUT
 when no audio connection exists. The picker reads `useEffectiveTTSConfig`, lists that connection's
 voices, and previews through it. Proven by `tts/tts-voice-assignment-connection.regression.ts`;
 upstream's `tts-voice-assignment-route` still covers the fallback.
+
+Upstream's answer to the same problem (#7848, `978e5c3fc`) lets the card pick an Audio connection as
+its Source and keeps voices per connection ID in the settings blob. The fork does not take it: the
+card stays a playback card, and speech picks its engine through the audio connection defaults.
+`connectionId` and `connectionProfiles` stay in `ttsConfigSchema` so upstream code that reads them
+compiles; the fork never sets them, so every reader takes its no-connection path. Upstream's
+`tts-audio-connection-source` lane is retired, and the Source test in `e2e/tts-pcm-settings.e2e.ts`
+is skipped through `e2e/fork-excluded-tests.ts`. Upstream's avatar voice sync (`subscribeBlobReady`,
+the autoplay `announceVoice` events) is kept around the fork's synthesis path.
 
 Deferred: a per-chat audio override, matching the per-chat model connection. The plumbing is in
 place, since `useEffectiveTTSConfig` takes an optional connection id and speak requests carry one end

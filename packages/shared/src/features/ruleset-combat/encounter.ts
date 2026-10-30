@@ -108,6 +108,7 @@ import {
 } from "./dice.js";
 import {
   rulesetCellBlocked,
+  rulesetCellSolidFor,
   rulesetCellDistance,
   rulesetFills,
   rulesetFootprint,
@@ -8068,8 +8069,10 @@ export function rulesetFitCell(
   at: { x: number; y: number },
   span: number,
   taken: ReadonlySet<string>,
+  /** Who stands there, for whom water may be ground to stand on (a swimmer, a flier). */
+  mover?: RulesetCombatant,
 ): { x: number; y: number } | null {
-  const fits = (x: number, y: number) => fitsAt(grid, { x, y }, span, taken);
+  const fits = (x: number, y: number) => fitsAt(grid, { x, y }, span, taken, mover);
   for (let ring = 0; ring <= Math.max(grid.width, grid.height); ring++) {
     for (let y = at.y - ring; y <= at.y + ring; y++) {
       for (let x = at.x - ring; x <= at.x + ring; x++) {
@@ -8081,14 +8084,22 @@ export function rulesetFitCell(
   return null;
 }
 
-function fitsAt(grid: TacticalGrid, at: { x: number; y: number }, span: number, taken: ReadonlySet<string>): boolean {
+function fitsAt(
+  grid: TacticalGrid,
+  at: { x: number; y: number },
+  span: number,
+  taken: ReadonlySet<string>,
+  mover?: RulesetCombatant,
+): boolean {
   return (
     at.x >= 0 &&
     at.y >= 0 &&
     at.x + span <= grid.width &&
     at.y + span <= grid.height &&
     rulesetFootprintAt(at, span).every(
-      (cell) => !taken.has(`${cell.x},${cell.y}`) && !rulesetCellBlocked(grid, cell.x, cell.y),
+      (cell) =>
+        !taken.has(`${cell.x},${cell.y}`) &&
+        !(mover ? rulesetCellSolidFor(grid, cell.x, cell.y, mover) : rulesetCellBlocked(grid, cell.x, cell.y)),
     )
   );
 }
@@ -8775,7 +8786,9 @@ function placeRulesetCombatants(
     const span = spans.get(entry)!;
     if (span > 1) {
       entry.combatant.span = span;
-      entry.at = rulesetFitCell(grid, entry.at, span, taken) ?? entry.at;
+      // A large swimmer asked to begin in water may (laptop 2026-10-30: Large crocodiles set in the
+      // lake were moved back onto the shore).
+      entry.at = rulesetFitCell(grid, entry.at, span, taken, entry.combatant) ?? entry.at;
       for (const cell of rulesetFootprintAt(entry.at, span)) big.add(`${cell.x},${cell.y}`);
     } else if (big.has(`${entry.at.x},${entry.at.y}`)) {
       entry.at = rulesetFitCell(grid, entry.at, 1, taken) ?? entry.at;

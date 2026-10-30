@@ -1806,6 +1806,19 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
           span: rulesetSpanOf(one),
         })),
     );
+    // What the water start read, for each opponent that swims (laptop 2026-10-30: asked for, to see
+    // why a large one stayed ashore).
+    for (const one of encounter.combatants)
+      if (one.side !== "party" && one.speeds?.swim)
+        logger.info(
+          "[game/combat:ruleset] Water start: %s walks %s, swims %s, %s wide, from %s to %s",
+          one.name,
+          one.block?.speed ?? 0,
+          one.speeds.swim,
+          rulesetSpanOf(one),
+          JSON.stringify(laid.placements[one.id]),
+          JSON.stringify(placements[one.id]),
+        );
     if (JSON.stringify(placements) !== JSON.stringify(laid.placements))
       encounter = encounterOn((laid = { ...laid, placements }));
     // A Game Master who placed the whole party placed nobody in particular (laptop party A: everyone

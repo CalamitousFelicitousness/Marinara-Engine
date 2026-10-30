@@ -132,6 +132,21 @@ const view = (ruleset: Record<string, unknown>, extra: Record<string, unknown> =
           aim: [{ x: 2, y: 1, targetIds: ["hound"] }],
         }),
         option({ id: "dodge", kind: "standard", label: "Dodge", targets: { side: "self", count: 1 } }),
+        option({ id: "dash", kind: "standard", label: "dash", targets: { side: "self", count: 0 } }),
+        option({
+          id: "ready:sword@acts",
+          kind: "standard",
+          label: "ready",
+          targets: { side: "self", count: 0 },
+          ready: { optionId: "sword", label: "Longsword", on: "acts" },
+        }),
+        option({
+          id: "ready:move:walk@comes",
+          kind: "standard",
+          label: "ready",
+          targets: { side: "self", count: 0 },
+          ready: { optionId: "move:walk", label: "walk", on: "comes" },
+        }),
         option({ id: "misty", kind: "ability", label: "Misty Step", teleport: { cells: [{ x: 3, y: 0 }] } }),
         option({ id: "end", kind: "end-turn", label: "End turn", targets: { side: "self", count: 0 } }),
       ],
@@ -195,7 +210,7 @@ try {
     const byId = new Map(fight.options.map((one) => [one.id, one]));
     assert.deepEqual(
       [...byId.keys()],
-      ["sword", "volley", "walk", "burst", "dodge", "end"],
+      ["sword", "volley", "walk", "burst", "dodge", "dash", "ready:sword@acts", "ready:move:walk@comes", "end"],
       "nobody in reach and a teleport's landing stay on the host's screen",
     );
     assert.equal(byId.get("sword")!.pick, "targets");
@@ -210,6 +225,11 @@ try {
     assert.deepEqual(byId.get("burst")!.cells, [{ x: 2, y: 1 }]);
     assert.equal(byId.get("dodge")!.pick, "none", "one aimed at the actor themselves needs no pick");
     assert.equal(byId.get("end")!.pick, "none");
+    assert.deepEqual(
+      ["dodge", "dash", "ready:sword@acts", "ready:move:walk@comes"].map((id) => byId.get(id)!.label),
+      ["Dodge", "Dash", "Ready Longsword: when an enemy acts", "Ready Move: when an enemy comes in reach"],
+      'each Ready names what it readies and for when, never ten bare "ready" buttons',
+    );
     assert.equal(fight.waitingOn, null);
     assert.deepEqual(fight.log, ["Round 2", "Corwin's turn", "Cinder Hound uses Bite on Corwin: 16 against 14, hit"]);
 

@@ -4807,6 +4807,7 @@
   "multiplayer.guest.host": "Host",
   "multiplayer.guest.interrupted": "Round interrupted. Waiting for the host.",
   "multiplayer.guest.leave": "Leave",
+  "multiplayer.guest.leaveConfirm": "Leave this shared chat?",
   "multiplayer.guest.lobby": "Waiting for the host to start the session.",
   "multiplayer.guest.messagePlaceholder": "Write a message",
   "multiplayer.guest.modes.conversation": "Conversation",

@@ -1,5 +1,6 @@
 import {
   MULTIPLAYER_LIMITS,
+  RULESET_MOVE_OPTION,
   multiplayerFightSchema,
   type DirectedCombatView,
   type DirectedRulesetOption,
@@ -16,12 +17,25 @@ const onBoard = (cell: Cell) =>
   Number.isInteger(cell.x) && Number.isInteger(cell.y) && cell.x >= 0 && cell.y >= 0 && cell.x < 256 && cell.y < 256;
 const shortName = (value: string) => value.trim().slice(0, 80) || "?";
 
+/** An option's name on a guest's buttons. A ready entry's own label is the bare word "ready", so it
+ *  names what is readied and for when (laptop room playtest 2026-10-30: ten buttons all read
+ *  "ready"); the standard actions' ids-as-labels ("dash") read as words. */
+function optionText(option: DirectedRulesetOption): string {
+  if (option.ready) {
+    const name = option.ready.optionId === RULESET_MOVE_OPTION ? "Move" : option.ready.label;
+    return `Ready ${name}: when an enemy ${option.ready.on === "comes" ? "comes in reach" : "acts"}`;
+  }
+  if (option.kind === "standard" && /^[a-z]/u.test(option.label))
+    return option.label.charAt(0).toUpperCase() + option.label.slice(1);
+  return option.label;
+}
+
 /** How a guest takes one option, or null for one this view cannot offer (a teleport's landing, a wall
  *  laid in a line, a kind of zone to name): those stay on the host's own screen. */
 function optionPick(option: DirectedRulesetOption): MultiplayerFight["options"][number] | null {
   if (option.teleport || option.movesTarget || option.alterNeeded || option.kindsOf?.length || option.walls?.length)
     return null;
-  const label = option.label.trim().slice(0, 120) || option.id.slice(0, 120);
+  const label = optionText(option).trim().slice(0, 120) || option.id.slice(0, 120);
   const base = { id: option.id, label, count: 0, targetIds: [] as string[], cells: [] as Cell[], moves: false };
   if (option.kind === "move") {
     const cells = (option.cells ?? []).filter(onBoard).slice(0, 400).map(cellOf);

@@ -7117,6 +7117,7 @@
   "ui.characters.convoprofilefields.undoTheChangesToThisAboutMe": "Undo the changes to this about me",
   "ui.characters.convoprofilefields.weeklySchedule": "Weekly schedule",
   "ui.characters.dialoguetab.add": "+ Add",
+  "ui.characters.dialoguetab.addAlternateGreeting": "Add Alternate Greeting",
   "ui.characters.dialoguetab.alternateGreetings": "Alternate Greetings (",
   "ui.characters.dialoguetab.alternateGreetingValue1": "Alternate Greeting #{{value1}}",
   "ui.characters.dialoguetab.alternativeFirstMessagesForVarietyWhenStartingANew": "Alternative first messages for variety. When starting a new chat, you can pick which greeting to use.",

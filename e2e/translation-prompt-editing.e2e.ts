@@ -12,6 +12,7 @@ test("Translation prompt drafts keep the caret, clear normally, and save to thei
   const chatIds: string[] = [];
   const writes: { id: string; body: Record<string, unknown> }[] = [];
   const paidRequests: string[] = [];
+  let releaseEarlierSave: (() => void) | undefined;
   const readMetadata = async (id: string) => {
     const chat = await (await request.get(`/api/chats/${id}`)).json();
     return typeof chat.metadata === "string" ? JSON.parse(chat.metadata) : chat.metadata;
@@ -97,6 +98,8 @@ test("Translation prompt drafts keep the caret, clear normally, and save to thei
     ];
     for (const { field, key, replacement } of fields) {
       const original = await field.inputValue();
+      const tokenEstimate = field.locator("..").locator("p");
+      const originalEstimate = await tokenEstimate.innerText();
       await field.focus();
       await field.evaluate((element) => (element as HTMLTextAreaElement).setSelectionRange(6, 6));
       await field.pressSequentially("XY");
@@ -104,9 +107,14 @@ test("Translation prompt drafts keep the caret, clear normally, and save to thei
       expect(await field.evaluate((element) => (element as HTMLTextAreaElement).selectionStart)).toBe(8);
       await field.fill("");
       await expect(field).toHaveValue("");
+      await expect(tokenEstimate).toHaveText("~0 tokens");
       await expect(field).toBeFocused();
       await field.pressSequentially(replacement);
       await expect(field).toHaveValue(replacement);
+      await field.fill(`${replacement} ${"Additional context for translation. ".repeat(30)}`);
+      await expect(tokenEstimate).not.toHaveText(originalEstimate);
+      await expect(field).toBeFocused();
+      await field.fill(replacement);
       expect(writes.filter((write) => Object.hasOwn(write.body, key))).toHaveLength(0);
       await section.getByRole("combobox").first().focus();
       await expect.poll(async () => (await readMetadata(first.id))[key]).toBe(replacement);
@@ -114,6 +122,35 @@ test("Translation prompt drafts keep the caret, clear normally, and save to thei
     }
     await prompts.nth(1).scrollIntoViewIfNeeded();
     await page.screenshot({ path: info.outputPath("translation-prompts-edited.png") });
+
+    let earlierSaveHeld = false;
+    const earlierSaveGate = new Promise<void>((resolve) => (releaseEarlierSave = resolve));
+    await page.route(`**/api/chats/${first.id}/metadata`, async (route) => {
+      if (route.request().method() === "PATCH" && Object.hasOwn(route.request().postDataJSON(), "autoTranslate")) {
+        earlierSaveHeld = true;
+        await earlierSaveGate;
+      }
+      await route.fallback();
+    });
+    await section.getByText("Auto-Translate Responses", { exact: true }).click();
+    await expect(section.getByRole("checkbox", { name: /^Auto-Translate Responses/ })).toBeChecked();
+    await expect.poll(() => earlierSaveHeld).toBe(true);
+    const pendingPrompt = "Keep this prompt while its earlier save is held.";
+    await prompts.nth(0).fill(pendingPrompt);
+    await section.getByRole("combobox").first().focus();
+    await expect(prompts.nth(0)).toHaveValue(pendingPrompt);
+    await prompts.nth(0).focus();
+    await section.getByRole("combobox").first().focus();
+    await expect(prompts.nth(0)).toHaveValue(pendingPrompt);
+    const latestPendingPrompt = "The second queued prompt must remain current too.";
+    await prompts.nth(0).fill(latestPendingPrompt);
+    await section.getByRole("combobox").first().focus();
+    await expect(prompts.nth(0)).toHaveValue(latestPendingPrompt);
+    await prompts.nth(0).focus();
+    await section.getByRole("combobox").first().focus();
+    releaseEarlierSave!();
+    await expect.poll(async () => (await readMetadata(first.id)).translationInputPrompt).toBe(latestPendingPrompt);
+    await expect(prompts.nth(0)).toHaveValue(latestPendingPrompt);
 
     // Changing the active chat without a blur exercises the existing unmount flush and keyed ownership.
     await prompts.nth(0).fill("First chat has an unblurred draft.");
@@ -168,6 +205,7 @@ test("Translation prompt drafts keep the caret, clear normally, and save to thei
     await expect(prompts.nth(0)).toHaveValue(DEFAULT_TRANSLATION_SYSTEM_PROMPT);
     expect(paidRequests).toEqual([]);
   } finally {
+    releaseEarlierSave?.();
     await page.close();
     for (const id of chatIds) await request.delete(`/api/chats/${id}?force=true`).catch(() => undefined);
   }

@@ -16,7 +16,7 @@ import { trackChatMetadataSave } from "../../../lib/chat-metadata-save-barrier";
 
 const PROMPT_KEYS = ["translationInputPrompt", "translationOutputPrompt"] as const;
 type PromptKey = (typeof PROMPT_KEYS)[number];
-type PromptCommit = { value: string | null; completion: Promise<unknown>; failed: boolean };
+type PromptCommit = { value: string | null; completion: Promise<unknown>; pending: boolean; failed: boolean };
 type PromptCommitState = { chatId: string; fields: Partial<Record<PromptKey, PromptCommit>> };
 
 interface TranslationSectionProps {
@@ -33,20 +33,27 @@ export function TranslationSection({ chatId, metadata, textConnections, onMetada
   // Queue the whole prompt mutation below; nesting its API queue would deadlock.
   const updatePromptMeta = useUpdateChatMetadata();
   const promptCommits = useRef<PromptCommitState | null>(null);
+  const [, setCommitRevision] = useState(0);
   const [savingAction, setSavingAction] = useState<"save" | "forget" | null>(null);
   const queuePromptCommit = (ownerId: string, key: PromptKey, value: string | null) => {
     // Register before onMutate can yield; keep each field's failure until it is retried or edited.
     const completion = trackChatMetadataSave(ownerId, () =>
       updatePromptMeta.mutateAsync({ id: ownerId, [key]: value }),
     );
-    const commit = { value, completion, failed: false };
+    const commit = { value, completion, pending: true, failed: false };
     const owner: PromptCommitState =
       promptCommits.current?.chatId === ownerId ? promptCommits.current : { chatId: ownerId, fields: {} };
     owner.fields[key] = commit;
     promptCommits.current = owner;
-    void completion.catch(() => {
-      commit.failed = true;
-    });
+    setCommitRevision((revision) => revision + 1);
+    void completion
+      .catch(() => {
+        commit.failed = true;
+      })
+      .finally(() => {
+        commit.pending = false;
+        setCommitRevision((revision) => revision + 1);
+      });
     return commit;
   };
   const saveTranslatorDefaults = async (sourceChatId: string | null) => {
@@ -80,7 +87,7 @@ export function TranslationSection({ chatId, metadata, textConnections, onMetada
 
   const readDirectionalPrompt = (key: PromptKey) => {
     const commit = promptCommits.current?.chatId === chatId ? promptCommits.current.fields[key] : undefined;
-    if (commit?.failed) return commit.value ?? "";
+    if (commit?.pending || commit?.failed) return commit.value ?? "";
     const value = metadata[key];
     if (value === null) return "";
     const stored = typeof value === "string" ? value : legacyPrompt;
@@ -333,6 +340,7 @@ function TranslationPromptField({
   onRestore: () => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
+  const [liveDraft, setLiveDraft] = useState<string | null>(null);
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between gap-2">
@@ -360,11 +368,17 @@ function TranslationPromptField({
       <DraftTextarea
         value={customPrompt || DEFAULT_TRANSLATION_SYSTEM_PROMPT}
         onCommit={onChange}
+        onFocus={(event) => setLiveDraft(event.currentTarget.value)}
+        onInput={(event) => setLiveDraft(event.currentTarget.value)}
+        onBlur={() => setLiveDraft(null)}
         rows={5}
         className="min-h-28 w-full resize-y rounded-lg bg-[var(--secondary)] px-3 py-2 font-mono text-xs leading-relaxed outline-none ring-1 ring-transparent transition-shadow focus:ring-[var(--primary)]/40"
       />
       <p className="mt-0.5 text-right text-[0.625rem] text-[var(--muted-foreground)]">
-        {formatEstimatedTokens(estimateTextTokens(customPrompt || DEFAULT_TRANSLATION_SYSTEM_PROMPT), localizeUi)}
+        {formatEstimatedTokens(
+          estimateTextTokens(liveDraft ?? (customPrompt || DEFAULT_TRANSLATION_SYSTEM_PROMPT)),
+          localizeUi,
+        )}
       </p>
     </div>
   );

@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  EXPERIENCE_FILE_CONTENT_TYPE,
   isInstalledCapabilityReady,
   replaceBuiltInAgentDefinitions,
   type CapabilityCatalog,
@@ -10,6 +11,7 @@ import {
   type BuiltInAgentManifest,
   type InstalledCapabilityPackage,
   type InstalledRuleset,
+  type StampedCapabilityCatalog,
   type RulesetCatalogPayload,
 } from "@marinara-engine/shared";
 import { api, ApiError } from "../lib/api-client";
@@ -125,7 +127,7 @@ export function useRemoveRuleset() {
 export function useCapabilityCatalog(enabled = true) {
   return useQuery({
     queryKey: capabilityPackageKeys.catalog(),
-    queryFn: () => api.get<CapabilityCatalog>("/capability-packages/catalog"),
+    queryFn: () => api.get<StampedCapabilityCatalog>("/capability-packages/catalog"),
     enabled,
     staleTime: 5 * 60_000,
     retry: 1,
@@ -196,8 +198,53 @@ export function selectGameExperiencePackages(
     (pkg) =>
       isInstalledCapabilityReady(pkg) &&
       pkg.manifest.contributions?.slots?.includes("game-surface") &&
-      Boolean(pkg.manifest.entrypoints.client?.trim()),
+      // A data-only Experience (1.373) has no client: Game Mode's own view plays it.
+      (pkg.manifest.kind.includes("experience") || Boolean(pkg.manifest.entrypoints.client?.trim())),
   );
+}
+
+/** The chat's package integrations the user turned on (Calls, which keeps its header button, aside). */
+export function selectEnabledConversationPackages(
+  installed: InstalledCapabilityPackage[],
+  chatMeta: Record<string, any>,
+): InstalledCapabilityPackage[] {
+  if (chatMeta.enableAgents !== true) return [];
+  const activeAgentIds: string[] = Array.isArray(chatMeta.activeAgentIds) ? chatMeta.activeAgentIds : [];
+  return installed.filter((item) => {
+    if (item.status !== "active" || !item.manifest.entrypoints.client) return false;
+    if (item.manifest.kind.includes("conversation-calls")) return false;
+    const contributedAgentIds = item.manifest.contributions?.agentDetail?.agentIds ?? [];
+    return activeAgentIds.includes(item.id) || contributedAgentIds.some((id: string) => activeAgentIds.includes(id));
+  });
+}
+
+/** Turn games, whose surface (board) a Conversation chat mounts whether or not the game's agent is on. */
+export function selectConversationTurnGamePackages(
+  installed: InstalledCapabilityPackage[],
+): InstalledCapabilityPackage[] {
+  return installed.filter(
+    (item) => item.status === "active" && item.manifest.kind.includes("turn-game") && item.manifest.entrypoints.client,
+  );
+}
+
+/**
+ * Packages mounted in a Conversation chat's `conversation-surface` slot. Turn games declare that slot too, but their
+ * surface is already mounted by selectConversationTurnGamePackages, so they are left out here: with the game's agent
+ * on, the board would otherwise render twice.
+ */
+export function selectConversationSurfacePackages(
+  installed: InstalledCapabilityPackage[],
+  chatMeta: Record<string, any>,
+): InstalledCapabilityPackage[] {
+  return selectEnabledConversationPackages(installed, chatMeta).filter(
+    (item) =>
+      item.manifest.contributions?.slots?.includes("conversation-surface") && !item.manifest.kind.includes("turn-game"),
+  );
+}
+
+/** Whether a game-surface package draws a view of its own; a data-only Experience (1.373) never does. */
+export function capabilityPackageDrawsOwnSurface(pkg: InstalledCapabilityPackage | null | undefined): boolean {
+  return Boolean(pkg?.manifest.entrypoints.client?.trim());
 }
 
 /** A restart-required update keeps exposing the manifest paired with the runtime
@@ -578,6 +625,25 @@ export function useInstallCapabilityPackage() {
           expectedArtifactSha256,
         },
       );
+    },
+    onSettled: invalidate,
+  });
+}
+
+/** Imports an Experience file (1.373) the user reviewed. The file goes up as it is, streamed by the
+ *  browser from disk, and the server checks every byte of it against its manifest. */
+export function useImportExperienceFile() {
+  const invalidate = useInvalidateCapabilityState();
+  return useMutation({
+    mutationFn: async (file: Blob) => {
+      const response = await api.raw("/capability-packages/experience-file", {
+        method: "POST",
+        headers: { "Content-Type": EXPERIENCE_FILE_CONTENT_TYPE },
+        body: file,
+      });
+      const body = (await response.json().catch(() => ({}))) as InstalledCapabilityPackage & { error?: string };
+      if (!response.ok) throw new ApiError(response.status, body.error || response.statusText, body);
+      return body;
     },
     onSettled: invalidate,
   });

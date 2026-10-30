@@ -100,6 +100,8 @@ export interface ProfessorMariAskContext {
   field?: string;
   /** Stable editor field identifier; `field` remains the human-readable compatibility label. */
   fieldId?: string;
+  /** Current focused-field text, including unsaved edits and an optional selection. */
+  fieldDraft?: { value: string; selection?: string };
   error?: { message: string; code?: string };
   action?: string;
   commandCenterResultId?: string;
@@ -689,6 +691,11 @@ export interface MariWorkspaceSkillSummary {
   updatedAt: string;
   size: number;
   filePath: string;
+  /**
+   * `builtin` skills ship with the app and are always on and read-only; `user`
+   * skills live in the user's own skills store and can be edited or deleted.
+   */
+  origin: "builtin" | "user";
 }
 
 export interface MariWorkspaceSkillDetail extends MariWorkspaceSkillSummary {
@@ -829,6 +836,8 @@ export interface MariDbCommandResult {
   };
   journalPath?: string | null;
   error?: string;
+  /** #7999: arguments used differently than sent (a lowered limit), when no app_data call collected them. */
+  notes?: string[];
 }
 
 export interface MariDbPendingApproval {
@@ -980,6 +989,8 @@ export interface MariWorkspaceStatus {
   runtimeSelected: MariRuntime;
   /** The runtime the next run actually uses for this connection; "classic" when "pi" cannot run on it. */
   runtimeActive: MariRuntime;
+  /** Consecutive failed Pi runs in this server session; cancellations do not count. */
+  piConsecutiveFailures?: number;
   /** Plain-words reason when runtimeSelected is not runtimeActive. */
   runtimeNote?: string | null;
   /** #5740: latest-round understood-request record (diagnostic only). */

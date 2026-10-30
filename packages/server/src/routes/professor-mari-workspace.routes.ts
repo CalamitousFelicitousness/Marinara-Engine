@@ -7,6 +7,7 @@ import {
   MARI_PERMISSIONS_MODE_SETTINGS_KEY,
   MARI_RUNTIMES,
   MARI_RUNTIME_SETTINGS_KEY,
+  MARI_SKILL_GATE_SETTINGS_KEY,
   withMariReceiptOutcome,
 } from "@marinara-engine/shared";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -16,6 +17,7 @@ import { isSseReplyWritable, sendSseEvent, startSseKeepalive, startSseReply } fr
 import {
   readStoredMariPermissionsMode,
   readStoredMariRuntime,
+  readStoredMariSkillGate,
 } from "../services/professor-mari/workspace-agent.service.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import { createChatsStorage } from "../services/storage/chats.storage.js";
@@ -23,6 +25,8 @@ import { getProfessorMariWorkspaceService } from "../services/professor-mari/wor
 import { getProfessorMariWorkspaceSkillsService } from "../services/professor-mari/workspace-skills.service.js";
 import { getMariDbService } from "../services/mari-db/mari-db.service.js";
 import { renderMariEditPrompt } from "../services/professor-mari/workspace-edit-render.js";
+import { listCanonicalDocumentation } from "../services/professor-mari/documentation-tools.js";
+import { getMonorepoRoot } from "../config/runtime-config.js";
 import { logger } from "../lib/logger.js";
 import { personalServerExtensionRuntime } from "../services/extensions/personal-server-extension-runtime.js";
 import {
@@ -93,6 +97,7 @@ export const professorMariPromptSchema = z.object({
         .optional(),
       field: z.string().min(1).max(200).optional(),
       fieldId: z.string().min(1).max(200).optional(),
+      fieldDraft: z.object({ value: z.string().max(20_000), selection: z.string().max(4_000).optional() }).optional(),
       error: z.object({ message: z.string().min(1).max(2_000), code: z.string().max(200).optional() }).optional(),
       action: z.string().max(500).optional(),
       commandCenterResultId: z.string().min(1).max(256).optional(),
@@ -128,6 +133,34 @@ export const professorMariPromptSchema = z.object({
         filename: z.string().optional(),
       }),
     )
+    .optional()
+    .default([]),
+  // `@` links from the composer: resolved once, beside this message (the ids are re-read server-side).
+  references: z
+    .array(
+      z.object({
+        kind: z.enum([
+          "character",
+          "persona",
+          "lorebook",
+          "lorebookEntry",
+          "preset",
+          "skill",
+          "memory",
+          "chat",
+          "doc",
+          "agent",
+        ]),
+        id: z.string().min(1).max(200),
+        // A long record name or doc heading is cut, not a reason to refuse the whole message.
+        label: z
+          .string()
+          .min(1)
+          .transform((label) => label.slice(0, 200)),
+        parentId: z.string().max(200).optional(),
+      }),
+    )
+    .max(8)
     .optional()
     .default([]),
 });
@@ -223,6 +256,7 @@ const permissionsModeSchema = z.object({
 
 // Professor Mari's runtime ("classic" or "pi"): the same validated-route pattern, global only.
 const runtimeSchema = z.object({ runtime: z.enum(MARI_RUNTIMES) });
+const skillGateSchema = z.object({ enabled: z.boolean() });
 
 /**
  * What the user reads when Keep or Restore fails (#6842), instead of a bare "Internal Server
@@ -304,6 +338,12 @@ export async function professorMariWorkspaceRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
+  // The canonical docs the composer's `@` picker offers (the same set `docs_read` can open).
+  app.get("/docs", async (req, reply) => {
+    if (!privileged(req, reply)) return;
+    return listCanonicalDocumentation(getMonorepoRoot());
+  });
+
   app.get("/skills", async (req, reply) => {
     if (!privileged(req, reply)) return;
     return getProfessorMariWorkspaceSkillsService().list();
@@ -319,6 +359,11 @@ export async function professorMariWorkspaceRoutes(app: FastifyInstance) {
 
   app.put<{ Params: { id: string } }>("/skills/:id", async (req, reply) => {
     if (!privileged(req, reply)) return;
+    // Shipped procedure: the app's own copy is the only source of truth, so neither
+    // editing nor toggling one is a server operation. Copy it into a user skill to change it.
+    if (await getProfessorMariWorkspaceSkillsService().isReadOnly(req.params.id)) {
+      return reply.code(403).send({ error: "Built-in skills are read-only. Copy it into a new skill to change it." });
+    }
     const input = skillUpdateSchema.parse(req.body);
     const skill = await getProfessorMariWorkspaceSkillsService().update(req.params.id, input);
     await getProfessorMariWorkspaceService(app).reset();
@@ -327,6 +372,9 @@ export async function professorMariWorkspaceRoutes(app: FastifyInstance) {
 
   app.delete<{ Params: { id: string } }>("/skills/:id", async (req, reply) => {
     if (!privileged(req, reply)) return;
+    if (await getProfessorMariWorkspaceSkillsService().isReadOnly(req.params.id)) {
+      return reply.code(403).send({ error: "Built-in skills are read-only." });
+    }
     await getProfessorMariWorkspaceSkillsService().delete(req.params.id);
     await getProfessorMariWorkspaceService(app).reset();
     return { ok: true };
@@ -371,7 +419,20 @@ export async function professorMariWorkspaceRoutes(app: FastifyInstance) {
     if (!privileged(req, reply)) return;
     const input = runtimeSchema.parse(req.body);
     await createAppSettingsStorage(app.db).set(MARI_RUNTIME_SETTINGS_KEY, input.runtime);
+    getProfessorMariWorkspaceService(app).resetRuntimeFailures();
     return { ok: true, runtime: input.runtime };
+  });
+
+  app.get("/skill-gate", async (req, reply) => {
+    if (!privileged(req, reply)) return;
+    return { enabled: await readStoredMariSkillGate(createAppSettingsStorage(app.db)) };
+  });
+
+  app.put("/skill-gate", async (req, reply) => {
+    if (!privileged(req, reply)) return;
+    const input = skillGateSchema.parse(req.body);
+    await createAppSettingsStorage(app.db).set(MARI_SKILL_GATE_SETTINGS_KEY, input.enabled ? "true" : "false");
+    return { ok: true, enabled: input.enabled };
   });
 
   app.get("/instructions", async (req, reply) => {
@@ -460,6 +521,7 @@ export async function professorMariWorkspaceRoutes(app: FastifyInstance) {
         connectionId: body.connectionId ?? null,
         debugMode: body.debugMode,
         attachments: body.attachments,
+        references: body.references,
         existingUserMessageId: body.existingUserMessageId,
         context: body.context,
         seasonalPackId: body.seasonalPackId,

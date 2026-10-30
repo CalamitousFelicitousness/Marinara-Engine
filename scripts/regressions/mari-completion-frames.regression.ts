@@ -11,9 +11,17 @@ process.env.FILE_STORAGE_DIR = storageDir;
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
 try {
   const db = await getDB();
+  // This fixture exercises the Classic JSON-frame protocol explicitly.
+  const { createAppSettingsStorage } =
+    await import("../../packages/server/src/services/storage/app-settings.storage.js");
+  await createAppSettingsStorage(db).set("mari-runtime", "classic");
   const { ProfessorMariWorkspaceService, professorMariWorkspaceResponseFormat } =
     await import("../../packages/server/src/services/professor-mari/workspace-agent.service.js");
   const { MariDbService } = await import("../../packages/server/src/services/mari-db/mari-db.service.js");
+  // These frames test claims and rounds, not the handbook gate (dry-run-enforcement pins that).
+  const { setSkillGateEnabled } =
+    await import("../../packages/server/src/services/professor-mari/workspace-commands.js");
+  setSkillGateEnabled(false);
   const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
   const mariDb = new MariDbService(db);
   const created = await mariDb.executeAction({

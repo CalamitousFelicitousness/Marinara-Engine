@@ -138,6 +138,7 @@ const PROVIDER_COLORS: Record<string, { from: string; to: string; ring: string; 
   image_generation: CONNECTION_ICON_COLORS,
   video_generation: CONNECTION_ICON_COLORS,
   audio: CONNECTION_ICON_COLORS,
+  audio_generation: CONNECTION_ICON_COLORS,
   decision: CONNECTION_ICON_COLORS,
 };
 const DEFAULT_COLOR = CONNECTION_ICON_COLORS;
@@ -145,7 +146,7 @@ const DEFAULT_COLOR = CONNECTION_ICON_COLORS;
 function getConnectionFallbackIcon(provider: string) {
   if (provider === "image_generation") return <ImageIcon size="1rem" />;
   if (provider === "video_generation") return <Film size="1rem" />;
-  if (provider === "audio") return <Music size="1rem" />;
+  if (provider === "audio" || provider === "audio_generation") return <Music size="1rem" />;
   return <Link size="1rem" />;
 }
 
@@ -768,6 +769,9 @@ type ConnectionRowData = {
   imageEndpointId?: string | null;
   videoGenerationSource?: string | null;
   videoService?: string | null;
+  audioSource?: string | null;
+  audioGenerationSource?: string | null;
+  audioSoundEffectsModel?: string | null;
   defaultParameters?: string | null;
   promptPresetId?: string | null;
   maxContext?: number;
@@ -780,9 +784,10 @@ type ConnectionRowData = {
   updatedAt?: string;
 };
 
-function connectionMatchesSearch(conn: ConnectionRowData, query: string) {
+function connectionMatchesSearch(conn: ConnectionRowData, query: string, categoryLabel?: string) {
   if (!query) return true;
   const haystack = [
+    categoryLabel,
     conn.name,
     conn.provider,
     conn.model,
@@ -791,6 +796,9 @@ function connectionMatchesSearch(conn: ConnectionRowData, query: string) {
     conn.imageGenerationSource,
     conn.videoService,
     conn.videoGenerationSource,
+    conn.audioSource,
+    conn.audioGenerationSource,
+    conn.audioSoundEffectsModel,
     conn.openrouterProvider,
     conn.embeddingModel,
   ]
@@ -1057,6 +1065,10 @@ function ConnectionDefaultsSection({ connectionsList }: { connectionsList: Conne
     () => connectionsList.filter((connection) => connection.provider === "audio"),
     [connectionsList],
   );
+  const generativeAudioConnections = useMemo(
+    () => connectionsList.filter((connection) => connection.provider === "audio_generation"),
+    [connectionsList],
+  );
   const { data: agentConfigs, isLoading: agentConfigsLoading, isError: agentConfigsError } = useAgentConfigs();
   const {
     data: capabilityAgents,
@@ -1219,13 +1231,22 @@ function ConnectionDefaultsSection({ connectionsList }: { connectionsList: Conne
             fallbackModelLabel="Video generation"
           />
           <ConnectionDefaultPair
-            title={localizeUi("ui.panels.connectiondefaultssection.audio")}
+            title={localizeUi("connections.audioGeneration.category")}
+            icon={<Music size="0.875rem" />}
+            connections={generativeAudioConnections}
+            primaryField="defaultForAgents"
+            fallbackField="fallbackForAgents"
+            primaryEmptyLabel={localizeUi("connections.audioGeneration.noDefault")}
+            fallbackModelLabel={localizeUi("connections.audioGeneration.category")}
+          />
+          <ConnectionDefaultPair
+            title={localizeUi("connections.tts.category")}
             icon={<Music size="0.875rem" />}
             connections={audioConnections}
             primaryField="defaultForAgents"
             fallbackField="fallbackForAgents"
-            primaryEmptyLabel={localizeUi("ui.panels.connectiondefaultssection.noDefaultAudioConnection")}
-            fallbackModelLabel={localizeUi("ui.panels.connectiondefaultssection.audioGeneration")}
+            primaryEmptyLabel={localizeUi("connections.tts.noDefault")}
+            fallbackModelLabel={localizeUi("connections.tts.category")}
           />
           <EmbeddingDefaultControl connections={languageConnections} />
           <DecisionDefaultControl />
@@ -1374,7 +1395,12 @@ function ConnectionRow({
           {conn.name}
         </div>
         <div className="truncate text-[0.6875rem] leading-4 text-[var(--muted-foreground)]">
-          {conn.provider} • {conn.model || "No model set"}
+          {conn.provider === "audio_generation"
+            ? localizeUi("connections.audioGeneration.category")
+            : conn.provider === "audio"
+              ? localizeUi("connections.tts.category")
+              : conn.provider}{" "}
+          • {conn.model || "No model set"}
         </div>
       </div>
       <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 flex shrink-0 items-center gap-0.5 rounded-lg bg-[var(--sidebar)] px-1 py-0.5 opacity-0 shadow-sm ring-1 ring-foreground/10 transition-opacity group-hover:opacity-100 [@media(pointer:fine)]:group-focus-within:opacity-100 max-md:opacity-100 [@media(pointer:coarse)]:opacity-100 group-hover:[&_button]:pointer-events-auto [@media(pointer:fine)]:group-focus-within:[&_button]:pointer-events-auto max-md:[&_button]:pointer-events-auto [@media(pointer:coarse)]:[&_button]:pointer-events-auto">
@@ -1387,7 +1413,7 @@ function ConnectionRow({
             ...(isLanguageGenerationConnection(conn) ? {} : { unsupported: "connection-kind" as const }),
           }}
         />
-        {conn.provider !== "audio" && conn.provider !== "decision" && (
+        {conn.provider !== "audio" && conn.provider !== "audio_generation" && conn.provider !== "decision" && (
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -1656,8 +1682,18 @@ export function ConnectionsPanel() {
   const connectionsList = useMemo(() => (connections as ConnectionRowData[] | undefined) ?? [], [connections]);
   const filteredConnections = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return connectionsList.filter((connection) => connectionMatchesSearch(connection, query));
-  }, [connectionsList, search]);
+    return connectionsList.filter((connection) =>
+      connectionMatchesSearch(
+        connection,
+        query,
+        connection.provider === "audio_generation"
+          ? localizeUi("connections.audioGeneration.category")
+          : connection.provider === "audio"
+            ? localizeUi("connections.tts.category")
+            : undefined,
+      ),
+    );
+  }, [connectionsList, search, localizeUi]);
   const sortedConnections = useMemo(() => sortConnections(filteredConnections, sort), [filteredConnections, sort]);
   const sortedConnectionsForReorder = useMemo(() => sortConnections(connectionsList, sort), [connectionsList, sort]);
   const searchActive = search.trim().length > 0;

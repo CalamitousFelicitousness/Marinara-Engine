@@ -11,7 +11,7 @@ The start scripts (`start.sh`, `start.bat`, and `start-termux.sh`) already bind 
 Follow these steps:
 
 1. Keep Marinara running on the host computer.
-2. On the host computer, set up access control: Basic Auth (a username and password) or an IP allowlist (a list of trusted device addresses). [Remote Access](REMOTE_ACCESS.md) walks through each option, including a bypass for fully trusted private networks.
+2. Set a login (a username and password): in **Settings → Advanced → Access** in a browser that is already signed in on any device (to change or remove the login, you need the current password), or on the other device with the one-time setup code from the server log (in Docker: `docker logs <container> 2>&1 | grep "setup code"`). [Remote Access](REMOTE_ACCESS.md#option-1-login-recommended) walks through it.
 3. Find the host computer's local IP address. On Windows, run this command and read the **IPv4 Address**:
 
 ```
@@ -32,9 +32,9 @@ http://192.168.1.42:7860
 
 Replace `192.168.1.42` with your own host IP address.
 
-5. Sign in if the browser asks for the Basic Auth username and password. If you see an **Access blocked** page instead, finish step 2 on the host first.
+5. Sign in with your username and password. If you see an **Access blocked** page instead, no login is set yet: type the setup code from the server log and a new username and password there. To add more devices without typing the password, use **Add a device** in **Settings → Advanced → Access**.
 
-On ordinary desktop installs, the same computer (`127.0.0.1`) does not need a password. APK-managed Android installs add a private localhost login so another Android app cannot impersonate Marinara, but the Android wrapper creates and uses that credential automatically. Other devices are blocked until you set up access control (Basic Auth or an IP allowlist). Each option is explained in [Remote Access](REMOTE_ACCESS.md).
+On ordinary desktop installs, the same computer (`127.0.0.1`) does not need a password. A reverse proxy on the same computer, including nginx with its default setup, counts as a remote visitor and needs the login. APK-managed Android installs add a private localhost login so another Android app cannot impersonate Marinara, but the Android wrapper creates and uses that credential automatically. Other devices are blocked until you set a login. Each option is explained in [Remote Access](REMOTE_ACCESS.md).
 
 If the two devices are not on the same network, a tool like Tailscale can help. Tailscale gives each device a stable private address. You can then connect from anywhere without exposing Marinara to the public internet. If you cannot connect, see [Troubleshooting](TROUBLESHOOTING.md).
 
@@ -128,11 +128,11 @@ For the full feature, see [Lorebooks](lorebooks/overview.md).
 
 ## What is an agent?
 
-An **agent** is an optional AI helper that runs during a chat to do a focused job. Examples include tracking the current scene, watching writing quality, adding maps or calls, or running a Conversation table game. Fresh installations have no optional agents. Open the **Agents** panel, click **Download Agents**, read an item's details, and install it. Then enable compatible agents per chat in **Chat Settings**. When an installed official package has a compatible update, Marinara asks before downloading it and lists what each update changed when the package publishes release notes. A dot marks a version the publisher flagged as a change you will notice. Choosing **No** keeps the current version and leaves **Update** available in Download Agents for later. If the host is offline or verification fails, the installed version keeps working. The catalog also handles complete package removal. See [Agents](agents/agents-overview.md) and the public [Marinara-Agents repository](https://github.com/Pasta-Devs/Marinara-Agents).
+An **agent** is an optional AI helper that runs during a chat to do a focused job. Examples include tracking the current scene, watching writing quality, adding maps or calls, or running a Conversation table game. Fresh installations have no optional agents. Open the **Agents** panel, click **Agent Organizer**, read an item's details, and install it. Then enable compatible agents per chat in **Chat Settings**. When an installed official package has a compatible update, Marinara asks before downloading it and lists what each update changed when the package publishes release notes. A dot marks a version the publisher flagged as a change you will notice. Choosing **Not now** keeps the current version and leaves **Update** available in Agent Organizer for later. If the host is offline or verification fails, the installed version keeps working. The catalog also handles complete package removal. See [Agents](agents/agents-overview.md) and the public [Marinara-Agents repository](https://github.com/Pasta-Devs/Marinara-Agents).
 
 ## How do I set up Noodle?
 
-Noodle is Marinara's local, fictional social network for your characters. First open **Agents** → **Download Agents** and install **Noodle**, then restart Marinara when prompted. Open **Home** → **Noodle**, enter its **Settings**, invite characters or character folders, choose a generation connection under **Refresh**, then select **Refresh now** to generate the first activity. You can also set automatic refresh times, image generation, random users, and carryover into your chats.
+Noodle is Marinara's local, fictional social network for your characters. First open **Agents** → **Agent Organizer** and install **Noodle**, then restart Marinara when prompted. Open **Home** → **Noodle**, enter its **Settings**, invite characters or character folders, choose a generation connection under **Refresh**, then select **Refresh now** to generate the first activity. You can also set automatic refresh times, image generation, random users, and carryover into your chats.
 
 See [Noodle: The In-App Social Timeline](noodle/overview.md) and [Noodle Settings and Chat Carryover](noodle/settings.md) for the full guides.
 
@@ -190,7 +190,7 @@ Note: on an ordinary remote address, Professor Mari's data-changing actions need
 
 The downloadable **Storyboard** Agent turns completed story text into an ordered sequence of keyframe images and can animate each keyframe into a short clip. In **Game Mode**, it storyboards one finished GM narration turn and displays the frames in a floating viewer or as the Game background. In **Roleplay**, it combines newly completed exchanges into an inline episode.
 
-To use it in Game Mode, install **Storyboard** from **Agents > Download Agents**. Open the Game, go to **Chat Settings > Agents**, turn on **Enable Agents** and **Enable Storyboards**, and set an image connection in the Game or the global Storyboard setup. Finish a GM narration turn, then open **Chat Settings > Gallery** and click **Create storyboard**. Use **View storyboard** to reopen its viewer.
+To use it in Game Mode, install **Storyboard** from **Agents > Agent Organizer**. Open the Game, go to **Chat Settings > Agents**, turn on **Enable Agents** and **Enable Storyboards**, and set an image connection in the Game or the global Storyboard setup. Finish a GM narration turn, then open **Chat Settings > Gallery** and click **Create storyboard**. Use **View storyboard** to reopen its viewer.
 
 For automatic Game Storyboards, turn on **Automatic Storyboard Illustrations**. Also turn on **Automatic Storyboard Animations** and select a Video Generation connection when you want clips. The new-game wizard's **Storyboard Optimized** presentation only shapes GM narration; it does not install or activate the Agent. For Game and Roleplay setup, prompts, viewers, migration behavior, and troubleshooting, see the [Storyboard Agent Guide](game/storyboard.md).
 
@@ -198,7 +198,7 @@ For automatic Game Storyboards, turn on **Automatic Storyboard Illustrations**. 
 
 Yes, in **Conversation** mode. Audio and video calls are a Conversation-only feature. To hear a character speak, first set up **Text to Speech** under the **Connections** panel.
 
-If you want to talk back with your microphone and the browser's own speech recognition is unreliable, first install **Calls** from **Agents > Download Agents**. Then open the **Connections** panel, expand the **Local Model** card, find **Local Speech Model**, pick **Whisper Tiny (Multilingual)** or **Whisper Base (Multilingual)**, and click **Download Whisper**. Uninstalling Calls also removes its Whisper downloads to reclaim disk space. For the full call setup, see [Calls](conversation/calls.md).
+If you want to talk back with your microphone and the browser's own speech recognition is unreliable, first install **Calls** from **Agents > Agent Organizer**. Then open the **Connections** panel, expand the **Local Model** card, find **Local Speech Model**, pick **Whisper Tiny (Multilingual)** or **Whisper Base (Multilingual)**, and click **Download Whisper**. Uninstalling Calls also removes its Whisper downloads to reclaim disk space. For the full call setup, see [Calls](conversation/calls.md).
 
 ## Can Marinara generate images?
 

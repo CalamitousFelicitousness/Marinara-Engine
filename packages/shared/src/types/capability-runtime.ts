@@ -1,6 +1,14 @@
 import type { CapabilityAchievementHost } from "./achievement.js";
 import type { CapabilityIntegrationHost } from "./generation-integration.js";
-import type { ChatMode, MessageRole } from "./chat.js";
+import type {
+  ChatMode,
+  ChatSummaryEntry,
+  ConversationPresenceStatus,
+  DaySummaryEntry,
+  MessageRole,
+  WeekSummaryEntry,
+} from "./chat.js";
+import type { SessionSummary } from "./game.js";
 import type { SpatialContextSnapshot, SpatialSnapshotSource } from "./spatial-context.js";
 
 export type CapabilityRuntimeLogArgument = unknown;
@@ -19,7 +27,8 @@ export interface CapabilityRuntimeLogger {
 export interface CapabilityServiceLookupHost {
   /**
    * Another package's service registered with api.registerService. null while absent, during a shared-room
-   * generation, or for an `agent-runtime:` or `mari-actions:` key (only the Engine reads those).
+   * generation, for an `agent-runtime:` or `mari-actions:` key, or for a service registered with `hostOnly`
+   * (only the Engine reads those).
    */
   get<T = unknown>(key: string): T | null;
 }
@@ -41,6 +50,23 @@ export interface CapabilityAppendMessageInput {
   content: string;
   extra?: Record<string, unknown>;
   createdAt?: string | null;
+}
+
+/** A `[schedule_update]` for one character, with the fields the command carries. Needs a status or an activity. */
+export interface CapabilityCharacterStatusUpdate {
+  status?: ConversationPresenceStatus;
+  /** What the character is doing now, at most 500 characters. */
+  activity?: string;
+  /** How long it lasts, as the command writes it ("2h", "30m", "1h30m"): 60 minutes when absent or unreadable, at most
+   *  a week. */
+  duration?: string;
+}
+
+/** The status the character card carries after the update, until `expiresAt`. */
+export interface CapabilityCharacterStatusResult {
+  status: ConversationPresenceStatus;
+  activity: string | null;
+  expiresAt: string;
 }
 
 export interface CapabilityChatRecord {
@@ -359,6 +385,18 @@ export interface CapabilityGameStateRecord {
   presentCharacterIds: string[];
 }
 
+/** Capability API 1.387: a chat's stored summaries, as the Engine reads them from the chat. Read-only copies. */
+export interface CapabilityChatSummaries {
+  /** Conversation day summaries by day ("DD.MM.YYYY"). */
+  day: Record<string, DaySummaryEntry>;
+  /** Conversation week summaries by Monday ("DD.MM.YYYY"). */
+  week: Record<string, WeekSummaryEntry>;
+  /** Rolling summary entries in the chat's order, disabled ones included; a legacy summary reads as one entry. */
+  rolling: ChatSummaryEntry[];
+  /** Game: the summary of each previous session. */
+  gameSessions: SessionSummary[];
+}
+
 export type CapabilityRoleplayEventAudience = "public" | "user-only" | { characterIds: string[] };
 
 export interface CapabilityRoleplayEventInput {
@@ -384,6 +422,12 @@ export interface CapabilityPersistenceSession {
   listMessages(chatId: string): Promise<CapabilityMessageRecord[]>;
   /** Read-only. Optional so packages feature-detect and degrade on older Engines. */
   getGameState?(chatId: string): Promise<CapabilityGameStateRecord | null>;
+  /**
+   * Capability API 1.387. Read-only: the chat's day, week, rolling and Game session summaries, all empty for a chat
+   * without them or one that is not found. Requires `chat-read`, like `listMessages`. Optional so packages
+   * feature-detect and degrade on older Engines.
+   */
+  listChatSummaries?(chatId: string): Promise<CapabilityChatSummaries>;
   appendRoleplayEvent?(input: CapabilityRoleplayEventInput): Promise<CapabilityRoleplayEventRecord | null>;
   listExistingLorebookEntryIds(entryIds: string[]): Promise<string[]>;
   createMessageWithSwipe(input: CapabilityCreateMessageWithSwipeInput): Promise<CapabilityMessageRecord>;
@@ -411,6 +455,13 @@ export interface CapabilityPersistenceHost extends CapabilityPersistenceSession 
   ): Promise<void>;
   /** Capability API 1.341. Adds messages, each with its first swipe, as the Engine's batch write does. Requires `chat-write`. */
   appendMessages?(chatId: string, messages: CapabilityAppendMessageInput[]): Promise<CapabilityMessageRecord[]>;
+  /**
+   * Capability API 1.389. Hides or shows messages of one chat from the AI, as the Engine's summary does. Requires
+   * `chat-write`. Resolves the ids whose flag this call actually changed, so the package can record what it owns.
+   * Ids not in the chat are ignored. A message whose visibility the user set by hand (`extra.visibilityManual`) is
+   * never changed and is not returned.
+   */
+  setMessagesHiddenFromAI?(chatId: string, messageIds: string[], hidden: boolean): Promise<string[]>;
   /** Capability API 1.341. A durable note from a conversation to its connected roleplay. Requires `chat-write`. */
   createChatNote?(sourceChatId: string, targetChatId: string, content: string, anchorMessageId?: string): Promise<void>;
   /** Capability API 1.341. A one-time influence from a conversation to its connected roleplay. Requires `chat-write`. */
@@ -420,6 +471,18 @@ export interface CapabilityPersistenceHost extends CapabilityPersistenceSession 
     content: string,
     anchorMessageId?: string,
   ): Promise<void>;
+  /**
+   * Applies a `[schedule_update]` for a character of a Conversation chat as the Engine does after a reply: a temporary
+   * status on the character card, so presence shows it in every chat. Resolves the card's new status, or null when
+   * nothing changed: a status the user set by hand stays in charge, and a shared room keeps its own routines. Rejects
+   * bad input, a chat that is not a Conversation chat and a character that is not in it. Requires chat-write. Added
+   * to capability API 1.341 after it was first reported, so feature-detect it.
+   */
+  updateCharacterStatus?(
+    chatId: string,
+    characterId: string,
+    update: CapabilityCharacterStatusUpdate,
+  ): Promise<CapabilityCharacterStatusResult | null>;
 }
 
 export interface CapabilityEmbeddingHost {
@@ -482,6 +545,15 @@ export interface CapabilityRuntimeHost {
   /** Resolve the package's current embedding configuration. Requires capability API 1.15. */
   resolveEmbeddings(): Promise<CapabilityEmbeddingHost>;
   getAgentConfig(): Promise<{ connectionId: string | null; settings: Record<string, unknown> } | null>;
+  /**
+   * Capability API 1.380. Resolve this package's per-chat reference lorebook through
+   * the Engine's normal triggers. Requires `agent-runtime` and `chat-read`.
+   * Other agents' attachments and the main reply are unaffected.
+   */
+  resolveAgentLorebookEntries?(options: {
+    chatId: string;
+    signal?: AbortSignal;
+  }): Promise<Array<{ id: string; name?: string; content: string }>>;
   isDebugAgentsEnabled(): boolean;
   json: CapabilityJsonHost;
   languageModels: CapabilityLanguageModelHost;

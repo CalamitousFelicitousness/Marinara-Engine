@@ -7,6 +7,7 @@ import {
   MariSuggestionChip,
   MariGuidedPlanStep,
   Chat,
+  MariComposerReference,
 } from "@marinara-engine/shared";
 import { useQueryClient } from "@tanstack/react-query";
 import { RefObject, Dispatch, SetStateAction, useCallback } from "react";
@@ -15,6 +16,7 @@ import { api, isPassiveStreamDisconnect } from "../../../lib/api-client";
 import { awaitMariPermissionsModeWrites } from "../../../lib/mari-permissions-write-chain";
 import { describeProfessorMariError } from "../../../lib/professor-mari-errors";
 import { RafThrottle, rafThrottle } from "../../../lib/raf-throttle";
+import { mariWorkingFieldFromTool } from "../../../lib/mari-editor-fields";
 import { useChatStore } from "../../../stores/chat.store";
 import { shownMariAppearancePack, useUIStore } from "../../../stores/ui.store";
 import {
@@ -106,12 +108,13 @@ export function useMariWorkspaceRun({
   const failRun = useCallback(
     (
       error: unknown,
-      retry: Pick<ProfessorMariRecovery, "text" | "attachments" | "context" | "localMessageId">,
+      retry: Pick<ProfessorMariRecovery, "text" | "attachments" | "context" | "localMessageId" | "references">,
       // The chat this send created or used: the captured `chatId` is still null on a first send.
       runChatId: string | null = chatId,
     ) => {
       if (isProfessorMariAbortError(error)) return;
       console.error("[Professor Mari] Run failed", error);
+      void refreshWorkspaceStatus().catch(() => undefined);
       setRecovery({ ...retry, kind: classifyProfessorMariFailure(error), detail: describeProfessorMariError(error) });
       // F15: the server already saved this failure on the message; without a reload the local copy
       // still lacks mariRunError, so an OLDER failure in the same session loses its quiet line until
@@ -119,7 +122,7 @@ export function useMariWorkspaceRun({
       // Returns the reload so the caller can tell whether the server saved the message at all.
       return runChatId ? loadMessages(runChatId, { restoreFocus: false }).catch(() => undefined) : undefined;
     },
-    [chatId, loadMessages, setRecovery],
+    [chatId, loadMessages, refreshWorkspaceStatus, setRecovery],
   );
 
   const sendWorkspaceMessage = useCallback(
@@ -129,6 +132,7 @@ export function useMariWorkspaceRun({
       attachments: ProfessorMariAttachment[] = [],
       existingUserMessageId?: string,
       context: ProfessorMariAskContext | null = handoffContext,
+      references: readonly MariComposerReference[] = [],
     ) => {
       // A mode change immediately before send must not race its PUTs: the run
       // resolves the mode server-side, so the WHOLE shared write chain - the
@@ -157,6 +161,8 @@ export function useMariWorkspaceRun({
       useChatStore.getState().setMariPhase(chat.id, "thinking");
       let received = false;
       let sawDone = false;
+      // The tool call whose field glows; only its own end clears the glow.
+      let workingToolId: string | null = null;
       // Her provisional words for the round she is writing reach the store at most once a frame.
       let draft = "";
       const draftThrottle = rafThrottle<string>((value) => useChatStore.getState().setMariDraft(chat.id, value));
@@ -191,6 +197,7 @@ export function useMariWorkspaceRun({
             debugMode: useUIStore.getState().debugMode,
             attachments,
             context: context ?? undefined,
+            references: references.length > 0 ? references : undefined,
             existingUserMessageId,
             // Flavors her voice only while the dated pack is the one on screen.
             seasonalPackId: shownPack.season ? shownPack.id : undefined,
@@ -243,6 +250,11 @@ export function useMariWorkspaceRun({
             };
             setWorkspaceTimeline((current) => upsertToolTimeline(current, toolCall));
             useChatStore.getState().setMariPhase(chat.id, "updating");
+            const workingField = mariWorkingFieldFromTool(name, data?.input);
+            if (workingField) {
+              workingToolId = toolCall.id;
+              useUIStore.getState().setMariWorkingField(workingField);
+            }
           } else if (event.type === "tool_update") {
             const data = asRecord(event.data);
             const name = typeof data?.name === "string" ? data.name : "tool";
@@ -271,6 +283,10 @@ export function useMariWorkspaceRun({
               updatedAt: Date.now(),
             };
             setWorkspaceTimeline((current) => upsertToolTimeline(current, toolCall));
+            if (toolCall.id === workingToolId) {
+              workingToolId = null;
+              useUIStore.getState().setMariWorkingField(null);
+            }
           } else if (event.type === "suggestions") {
             const chips = Array.isArray(event.data) ? (event.data as MariSuggestionChip[]) : [];
             if (
@@ -333,6 +349,7 @@ export function useMariWorkspaceRun({
         clearDraft();
         workspaceAbortRef.current = null;
         setWorkspaceActive(false);
+        if (useUIStore.getState().mariWorkingField) useUIStore.getState().setMariWorkingField(null);
         setWorkspaceRunClock((clock) => clock && { ...clock, endedAt: Date.now() });
         useChatStore.getState().setAbortController(chat.id, null);
         useChatStore.getState().setMariPhase(chat.id, "idle");

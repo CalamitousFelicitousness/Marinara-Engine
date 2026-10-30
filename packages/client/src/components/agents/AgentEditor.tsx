@@ -18,8 +18,11 @@ import {
   useCreateAgent,
   type AgentConfigRow,
 } from "../../hooks/use-agents";
+import { useCapabilityAgentRegistry, useCapabilityCatalog } from "../../hooks/use-capability-packages";
 import { useConnections } from "../../hooks/use-connections";
 import { useOpenGameAssetsFolder } from "../../hooks/use-game-assets";
+import { AgentArtwork } from "./AgentArtwork";
+import { StoreBanner } from "./organizer/OrganizerParts";
 import {
   isCustomToolSelectable,
   useCustomToolCapabilities,
@@ -110,6 +113,8 @@ import {
   getAgentContextSources,
   normalizeAgentPromptTemplateOptions,
   normalizeStoryboardAgentSettings,
+  normalizeIllustratorRunInterval,
+  MAX_ILLUSTRATOR_RUN_INTERVAL,
   parseAgentSettingsRecord,
   homeAgentWidgetsSchema,
   type HomeAgentWidgetDefinition,
@@ -747,6 +752,15 @@ export function AgentEditor() {
   // Custom agent = DB entry with no matching built-in
   const isCustomAgent = !builtIn && !!dbConfig;
   const isNewCustomAgent = agentDetailId === "__new__";
+  // Downloaded agents show their store logo and banner, like their Organizer page.
+  const { data: capabilityAgents } = useCapabilityAgentRegistry();
+  const capabilityCatalog = useCapabilityCatalog();
+  const storeEntry = useMemo(() => {
+    const type = dbConfig?.type ?? builtIn?.id ?? agentDetailId;
+    const packageId = capabilityAgents?.find((agent) => agent.id === type)?.packageId;
+    return packageId ? capabilityCatalog.data?.packages.find((entry) => entry.manifest.id === packageId) : undefined;
+  }, [agentDetailId, builtIn, capabilityAgents, capabilityCatalog.data, dbConfig]);
+  const hasBanner = Boolean(storeEntry?.store?.bannerSmallUrl ?? storeEntry?.store?.bannerUrl);
   const customRunIntervalMeta =
     isCustomAgent || isNewCustomAgent
       ? getAgentRunIntervalMeta(isNewCustomAgent ? "__new__" : (dbConfig?.type ?? agentDetailId ?? ""), false)
@@ -761,6 +775,7 @@ export function AgentEditor() {
   const [localContextSize, setLocalContextSize] = useState<number | "">("");
   const [localMaxTokens, setLocalMaxTokens] = useState<number | "">("");
   const [localRunInterval, setLocalRunInterval] = useState<number | "">("");
+  const [localVideoRunInterval, setLocalVideoRunInterval] = useState<number | "">("");
   const [localEchoMessageDelaySeconds, setLocalEchoMessageDelaySeconds] = useState(
     DEFAULT_ECHO_CHAMBER_MESSAGE_DELAY_SECONDS,
   );
@@ -893,6 +908,10 @@ export function AgentEditor() {
   useEffect(() => () => setActiveEditorField(null), [agentDetailId, setActiveEditorField]);
   const reportField = (id: string, label: string) => () => setActiveEditorField({ id, label });
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
+  const [headerCompact, setHeaderCompact] = useState(false);
+  const compact = hasBanner && headerCompact;
+  const headerRef = useRef<HTMLDivElement>(null);
+  const [showCustomAgentNotice, setShowCustomAgentNotice] = useState(true);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
 
@@ -922,6 +941,9 @@ export function AgentEditor() {
       );
       setLocalRunInterval(
         (settings.runInterval as number | undefined) ?? (defaultSettings.runInterval as number) ?? "",
+      );
+      setLocalVideoRunInterval(
+        normalizeIllustratorRunInterval(settings.videoRunInterval ?? defaultSettings.videoRunInterval) ?? "",
       );
       setLocalEchoMessageDelaySeconds(normalizeEchoChamberMessageDelaySeconds(settings.messageDelaySeconds));
       setLocalActivationKeywordsText(
@@ -1048,6 +1070,7 @@ export function AgentEditor() {
       setLocalContextSize("");
       setLocalMaxTokens((defaultSettings.maxTokens as number) ?? "");
       setLocalRunInterval((defaultSettings.runInterval as number) ?? "");
+      setLocalVideoRunInterval(normalizeIllustratorRunInterval(defaultSettings.videoRunInterval) ?? "");
       setLocalEchoMessageDelaySeconds(DEFAULT_ECHO_CHAMBER_MESSAGE_DELAY_SECONDS);
       setLocalActivationKeywordsText("");
       setLocalActivationQuestion("");
@@ -1106,6 +1129,7 @@ export function AgentEditor() {
       setLocalPrompt("");
     } else {
       // Brand new custom agent — start empty
+      setShowCustomAgentNotice(true);
       setLocalName("New Agent");
       setLocalHomeWidgets([]);
       setLocalDescription("");
@@ -1118,6 +1142,7 @@ export function AgentEditor() {
       setLocalContextSize("");
       setLocalMaxTokens(DEFAULT_AGENT_MAX_TOKENS);
       setLocalRunInterval(customRunIntervalMeta?.defaultValue ?? "");
+      setLocalVideoRunInterval("");
       setLocalEchoMessageDelaySeconds(DEFAULT_ECHO_CHAMBER_MESSAGE_DELAY_SECONDS);
       setLocalActivationKeywordsText("");
       setLocalActivationQuestion("");
@@ -1500,6 +1525,7 @@ export function AgentEditor() {
         ...(!isDirectorAgent && !isStoryboardAgent && localRunInterval !== ""
           ? { runInterval: Number(localRunInterval) }
           : {}),
+        ...(isIllustratorAgent && localVideoRunInterval !== "" ? { videoRunInterval: localVideoRunInterval } : {}),
         ...(isEchoChamberAgent ? { messageDelaySeconds: localEchoMessageDelaySeconds } : {}),
         ...(localInjectAsSection ? { injectAsSection: true } : {}),
         ...(isMusicAgent
@@ -1622,6 +1648,8 @@ export function AgentEditor() {
     localContextSize,
     localMaxTokens,
     localRunInterval,
+    localVideoRunInterval,
+    isIllustratorAgent,
     localEchoMessageDelaySeconds,
     localActivationQuestion,
     localActivationThreshold,
@@ -1749,6 +1777,7 @@ export function AgentEditor() {
       ...(!isDirectorAgent && !isStoryboardAgent && localRunInterval !== ""
         ? { runInterval: Number(localRunInterval) }
         : {}),
+      ...(isIllustratorAgent && localVideoRunInterval !== "" ? { videoRunInterval: localVideoRunInterval } : {}),
       ...(isEchoChamberAgent ? { messageDelaySeconds: localEchoMessageDelaySeconds } : {}),
       ...(localInjectAsSection ? { injectAsSection: true } : {}),
       ...(exportingMusicAgent
@@ -2082,17 +2111,49 @@ export function AgentEditor() {
   return (
     <div className="mari-editor-shell mari-editor-legacy-bridge flex flex-1 flex-col overflow-hidden">
       {/* ── Header ── */}
-      <div className="mari-editor-header">
+      {/* Downloaded agents: the store banner is the header, with Back and actions on top and logo and name below. */}
+      <div
+        ref={headerRef}
+        className={cn(
+          "mari-editor-header",
+          hasBanner &&
+            "relative isolate aspect-[16/7] h-auto! max-h-[260px] content-between! border-b-0! bg-transparent! p-4! transition-[max-height] duration-300 motion-reduce:transition-none sm:aspect-[16/5]",
+          compact && "max-h-[4.5rem] flex-nowrap! py-3!",
+        )}
+      >
+        {hasBanner && storeEntry && (
+          <>
+            <StoreBanner
+              entry={storeEntry}
+              sizes="100vw"
+              className="absolute inset-0 -z-10 h-full w-full rounded-none! shadow-none!"
+            />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 h-2/3 bg-gradient-to-t from-[var(--marinara-editor-bg,var(--background))] to-transparent" />
+          </>
+        )}
         <button
           type="button"
           onClick={handleClose}
           aria-label={localizeUi("ui.agents.agenteditor.backToAgents")}
-          className="mari-editor-action inline-flex"
+          className={cn("mari-editor-action inline-flex", hasBanner && !compact && "order-1")}
         >
           <ArrowLeft size="1.125rem" />
         </button>
-        <div className="mari-editor-icon-tile">
-          <Sparkles size="1.125rem" className="max-md:!h-[0.875rem] max-md:!w-[0.875rem]" />
+        <div
+          className={cn(
+            "mari-editor-icon-tile",
+            storeEntry?.store?.iconUrl && (compact ? "h-9! w-9! rounded-xl!" : "h-14! w-14! rounded-2xl!"),
+            hasBanner && !compact && "order-3",
+            hasBanner && "bg-[var(--marinara-editor-bg,var(--background))]!",
+          )}
+        >
+          {storeEntry?.store?.iconUrl ? (
+            <span className="flex h-[70%] w-[70%]">
+              <AgentArtwork imageUrl={storeEntry.store.iconUrl} alt="" iconSize="1.125rem" />
+            </span>
+          ) : (
+            <Sparkles size="1.125rem" className="max-md:!h-[0.875rem] max-md:!w-[0.875rem]" />
+          )}
         </div>
         <input
           value={localName}
@@ -2101,10 +2162,20 @@ export function AgentEditor() {
             markDirty();
           }}
           onFocus={reportField("name", localizeUi("ui.agents.agenteditor.nameField"))}
-          className="mari-editor-title-input min-w-0 flex-1 placeholder:text-[var(--marinara-editor-muted)]"
+          className={cn(
+            "mari-editor-title-input min-w-0 flex-1 placeholder:text-[var(--marinara-editor-muted)]",
+            hasBanner && !compact && "order-3",
+            hasBanner && "[text-shadow:0_1px_6px_rgb(0_0_0/0.6)]",
+          )}
           placeholder={localizeUi("ui.agents.agenteditor.agentName")}
         />
-        <div className="mari-editor-actions flex max-md:w-full max-md:justify-end max-md:border-t max-md:border-[var(--marinara-editor-divider)] max-md:pt-2">
+        <div
+          className={cn(
+            "mari-editor-actions flex max-md:w-full max-md:justify-end max-md:border-t max-md:border-[var(--marinara-editor-divider)] max-md:pt-2",
+            hasBanner && !compact && "order-2",
+            hasBanner && "ml-auto max-md:w-auto! max-md:border-t-0! max-md:pt-0!",
+          )}
+        >
           {saveError && (
             <span className="mari-editor-status mr-2 text-red-400">
               <AlertCircle size="0.6875rem" /> {localizeUi("ui.agents.agenteditor.saveFailed")}
@@ -2147,6 +2218,8 @@ export function AgentEditor() {
             </button>
           )}
         </div>
+        {/* Breaks the banner header into a top row (Back, actions) and a bottom row (logo, name). */}
+        {hasBanner && !compact && <span className="order-2 basis-full" />}
       </div>
 
       {/* Unsaved warning */}
@@ -2170,7 +2243,7 @@ export function AgentEditor() {
               onClick={async () => {
                 if (await handleSave()) closeAgentDetail();
               }}
-              className="rounded-lg bg-amber-500/20 px-3 py-1 hover:bg-amber-500/30"
+              className="rounded-lg bg-[var(--marinara-app-accent-static)]/20 px-3 py-1 text-[var(--marinara-app-accent-static)] hover:bg-[var(--marinara-app-accent-static)]/30"
             >
               {localizeUi("ui.agents.agenteditor.saveClose")}
             </button>
@@ -2183,7 +2256,11 @@ export function AgentEditor() {
         <div className="flex items-center gap-2 bg-red-500/10 px-4 py-2 text-xs text-red-400">
           <AlertCircle size="0.8125rem" />
           <span className="flex-1">{saveError}</span>
-          <button onClick={() => setSaveError(null)} className="rounded-lg px-2 py-0.5 hover:bg-red-500/20">
+          <button
+            onClick={() => setSaveError(null)}
+            aria-label={localizeUi("editor.save.dismissError")}
+            className="rounded-lg px-2 py-0.5 text-[var(--marinara-app-accent-static)] hover:bg-[var(--marinara-app-accent-static)]/20"
+          >
             <X size="0.75rem" />
           </button>
         </div>
@@ -2206,8 +2283,35 @@ export function AgentEditor() {
       )}
 
       {/* ── Body ── */}
-      <div className="mari-editor-content min-w-0 max-w-full overflow-x-hidden max-md:p-4">
+      <div
+        className="mari-editor-content min-w-0 max-w-full overflow-x-hidden max-md:p-4"
+        onScroll={(e) => {
+          // Two thresholds so the header height change cannot toggle it back at once.
+          const el = e.currentTarget;
+          // Collapse only if the body still overflows past the expand threshold once the header shrinks to 72px.
+          const shrink = Math.max(0, (headerRef.current?.offsetHeight ?? 72) - 72);
+          if (el.scrollTop > 48 && el.scrollHeight - el.clientHeight - shrink > 8) setHeaderCompact(true);
+          else if (el.scrollTop < 4) setHeaderCompact(false);
+        }}
+      >
         <div className="mari-editor-content-inner mari-editor-content-inner--wide w-full min-w-0 max-w-full space-y-6">
+          {isNewCustomAgent && showCustomAgentNotice && (
+            <div
+              role="note"
+              className="flex items-start gap-2 rounded-xl bg-[var(--marinara-app-accent-static)]/10 p-3 text-xs leading-relaxed text-[color-mix(in_oklab,var(--marinara-app-accent-static)_65%,var(--foreground))] ring-1 ring-[var(--marinara-app-accent-static)]/30"
+            >
+              <Info size="1rem" className="mt-0.5 shrink-0" aria-hidden="true" />
+              <p className="min-w-0 flex-1">{localizeUi("ui.agents.agenteditor.customAgentLimitations")}</p>
+              <button
+                type="button"
+                onClick={() => setShowCustomAgentNotice(false)}
+                className="mari-editor-action shrink-0"
+                aria-label={localizeUi("ui.agents.agenteditor.dismissCustomAgentInformation")}
+              >
+                <X size="0.875rem" aria-hidden="true" />
+              </button>
+            </div>
+          )}
           {/* ── Description ── */}
           <FieldGroup
             label={localizeUi("chat.settings.inlineEditor.fields.description")}
@@ -3424,7 +3528,7 @@ export function AgentEditor() {
           {/* ── Run Interval (Illustrator) ── */}
           {isIllustratorAgent && (
             <FieldGroup
-              label={localizeUi("ui.agents.agenteditor.runInterval")}
+              label={localizeUi("ui.agents.agenteditor.imageRunInterval")}
               icon={<Clock size="0.875rem" className="text-[var(--primary)]" />}
               help={localizeUi(
                 "ui.agents.agenteditor.howManyAssistantMessagesBetweenAllowedIllustratorImageGenerations",
@@ -3436,6 +3540,7 @@ export function AgentEditor() {
                   min={0}
                   max={100}
                   value={localRunInterval}
+                  aria-label={localizeUi("ui.agents.agenteditor.imageRunInterval")}
                   onChange={(e) => {
                     const v = e.target.value;
                     setLocalRunInterval(v === "" ? "" : Math.max(0, Math.min(100, parseInt(v) || 0)));
@@ -3457,6 +3562,34 @@ export function AgentEditor() {
               <p className="mt-1 text-[0.625rem] text-[var(--muted-foreground)]">
                 {localizeUi("agents.illustrator.manualOnlyIntervalHelp")}
               </p>
+            </FieldGroup>
+          )}
+          {isIllustratorAgent && (
+            <FieldGroup
+              label={localizeUi("ui.agents.agenteditor.videoRunInterval")}
+              icon={<Clock size="0.875rem" className="text-[var(--primary)]" />}
+              help={localizeUi("agents.illustrator.videoRunIntervalHelp")}
+            >
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  min={0}
+                  max={MAX_ILLUSTRATOR_RUN_INTERVAL}
+                  value={localVideoRunInterval}
+                  aria-label={localizeUi("ui.agents.agenteditor.videoRunInterval")}
+                  onChange={(e) => {
+                    setLocalVideoRunInterval(
+                      e.target.value === "" ? "" : (normalizeIllustratorRunInterval(e.target.value) ?? ""),
+                    );
+                    markDirty();
+                  }}
+                  placeholder="5"
+                  className="w-28 rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm tabular-nums ring-1 ring-[var(--border)] placeholder:text-[var(--muted-foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
+                />
+                <span className="text-[0.6875rem] text-[var(--muted-foreground)]">
+                  {localizeUi("ui.agents.agenteditor.messages")}
+                </span>
+              </div>
             </FieldGroup>
           )}
 
@@ -3608,7 +3741,7 @@ export function AgentEditor() {
                         );
                         await qc.invalidateQueries({ queryKey: agentKeys.all });
                       }}
-                      className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/50 transition-colors hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/20"
+                      className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/50 transition-colors hover:bg-[var(--marinara-app-accent-static)]/10 hover:text-[var(--marinara-app-accent-static)] hover:border-[var(--marinara-app-accent-static)]/20"
                     >
                       {localizeUi("ui.agents.agenteditor.disconnect")}
                     </button>
@@ -3939,7 +4072,7 @@ export function AgentEditor() {
                           });
                           setYoutubeConfigured(false);
                         }}
-                        className="text-xs text-white/50 hover:text-red-400"
+                        className="text-xs text-white/50 hover:text-[var(--marinara-app-accent-static)]"
                       >
                         {localizeUi("settings.notifications.customSound.actions.remove")}
                       </button>

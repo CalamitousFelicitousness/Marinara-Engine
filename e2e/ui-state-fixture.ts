@@ -101,3 +101,12 @@ export async function seedUIState(
     },
   );
 }
+
+/**
+ * Keep this page off the UI settings saved on the shared e2e server. Every test in a shard talks to one
+ * server, so settings an earlier test synced (onboarding, Mari packs, accent) would otherwise override
+ * what this test seeded. The app finds nothing saved, and its own write-back goes nowhere.
+ */
+export async function isolateSyncedUISettings(page: Page | BrowserContext) {
+  await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
+}

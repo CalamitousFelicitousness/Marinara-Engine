@@ -8,8 +8,10 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import {
   AVATAR_2D_AGENT_ID,
+  AVATAR_3D_AGENT_ID,
   AVATAR_AGENT_IDS,
   AVATAR_KINDS,
   type AvatarAgentId,
@@ -35,6 +37,7 @@ const KIND_LABEL_KEYS: Record<AvatarKind, { name: string; help: string }> = {
   pngtuber: { name: "avatars.setup.kind.pngtuber", help: "avatars.setup.kind.pngtuberHelp" },
   "mesh-avatar": { name: "avatars.setup.kind.meshAvatar", help: "avatars.setup.kind.meshAvatarHelp" },
   vrm: { name: "avatars.setup.kind.vrm", help: "avatars.setup.kind.vrmHelp" },
+  mmd: { name: "avatars.setup.kind.mmd", help: "avatars.setup.kind.mmdHelp" },
 };
 
 const FEATURE_KEYS: ReadonlyArray<readonly [keyof AvatarFeatureFlags, string, string]> = [
@@ -97,7 +100,24 @@ export function AvatarAgentSetup({ agentId }: AvatarAgentSetupProps) {
   }, [owners, selectedOwner]);
 
   return (
-    <div className="space-y-4" data-avatar-setup={agentId}>
+    <div
+      className="space-y-4"
+      data-avatar-setup={agentId}
+      onDragOver={(event) => {
+        // File names may be hidden until drop; allow a file to reach the project hint below.
+        if (agentId === AVATAR_3D_AGENT_ID && event.dataTransfer.types.includes("Files")) event.preventDefault();
+      }}
+      onDrop={(event) => {
+        if (
+          agentId !== AVATAR_3D_AGENT_ID ||
+          !Array.from(event.dataTransfer.files).some((file) => /\.vroid$/iu.test(file.name))
+        )
+          return;
+        event.preventDefault();
+        event.stopPropagation();
+        toast.error(t("avatars.vrm.vroidProject"));
+      }}
+    >
       <AvatarModelStatus />
       <label className="block space-y-1.5">
         <span className="text-xs font-semibold text-[var(--foreground)]">{t("avatars.setup.owner.label")}</span>
@@ -155,7 +175,7 @@ function OwnerAvatarSetup({
   const [chosenKind, setChosenKind] = useState<AvatarKind | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // On the 2D page, expression sprites are a PNGTuber avatar until one is saved, as they are in chats.
+  // Expression sprites preview a PNGTuber setup; showing it in chats requires saving it first.
   const spriteList = spritesQuery.data;
   const fromSprites = useMemo(
     () => (kinds.includes("pngtuber") && spriteList ? buildPngtuberLayersFromSprites(spriteList) : null),
@@ -163,9 +183,9 @@ function OwnerAvatarSetup({
   );
   const avatar = useMemo(() => withSpriteAvatar(owner, config, fromSprites), [config, fromSprites, owner]);
   // The kind chats show when every avatar agent is on.
-  const shownKind = avatar
+  const shownKind = config
     ? pickAvatarKind(
-        { activeKind: avatar.activeKind, kinds: AVATAR_KINDS.filter((kind) => avatar.kinds[kind]) },
+        { activeKind: config.activeKind, kinds: AVATAR_KINDS.filter((kind) => config.kinds[kind]) },
         AVATAR_AGENT_IDS,
       )
     : null;
@@ -195,7 +215,9 @@ function OwnerAvatarSetup({
   }
 
   const busy = update.isPending;
+  const enabledInChats = !!config?.enabled && kinds.some((kind) => config.kinds[kind]);
   const focusedData = avatar?.kinds[focusedKind];
+  const hasSetup = kinds.some((kind) => config?.kinds[kind]) || !!focusedData;
   const KindPanel = AVATAR_KIND_SETUP_PANELS[focusedKind];
   const GenerationPanel = AVATAR_GENERATION_PANEL;
   const onChanged = () => setError(null);
@@ -203,17 +225,22 @@ function OwnerAvatarSetup({
   return (
     <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_13rem]">
       <div className="min-w-0 space-y-4">
-        {avatar ? (
-          <SettingsSwitch
-            label={t("avatars.setup.enabled.label")}
-            description={t("avatars.setup.enabled.description")}
-            checked={avatar.enabled}
-            disabled={busy}
-            onChange={(enabled) => void save({ enabled })}
-            labelPosition="start"
-            className={cn("w-full justify-between p-3", CARD_CLASS)}
-          />
-        ) : null}
+        <SettingsSwitch
+          label={t("avatars.setup.enabled.label")}
+          description={t("avatars.setup.enabled.description")}
+          checked={enabledInChats}
+          disabled={busy || !hasSetup}
+          onChange={(enabled) =>
+            void save({
+              enabled,
+              ...(enabled && !config?.kinds[focusedKind] && focusedData
+                ? { kinds: { [focusedKind]: focusedData }, activeKind: focusedKind }
+                : {}),
+            })
+          }
+          labelPosition="start"
+          className={cn("w-full justify-between p-3", CARD_CLASS)}
+        />
 
         <fieldset className="space-y-2">
           <legend className="mb-1.5 text-xs font-semibold text-[var(--foreground)]">
@@ -246,9 +273,9 @@ function OwnerAvatarSetup({
                 </span>
               </span>
               <span className="shrink-0 rounded-full bg-[var(--secondary)] px-2 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] ring-1 ring-[var(--border)]">
-                {shownKind === kind
+                {enabledInChats && shownKind === kind
                   ? t("avatars.setup.kind.shown")
-                  : avatar?.kinds[kind]
+                  : config?.kinds[kind]
                     ? t("avatars.setup.kind.setUp")
                     : t("avatars.setup.kind.notSetUp")}
               </span>

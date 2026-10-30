@@ -24,7 +24,7 @@ import {
 import { cn } from "../../../lib/utils";
 import { toast } from "sonner";
 import { useTTSConfig, useUpdateTTSConfig, useTTSModels, useTTSVoices } from "../../../hooks/use-tts";
-import { useCharacters } from "../../../hooks/use-characters";
+import { useCharacters, usePersonas } from "../../../hooks/use-characters";
 import { useConnections } from "../../../hooks/use-connections";
 import { ttsService } from "../../../lib/tts-service";
 import {
@@ -33,7 +33,7 @@ import {
   type CachedTTSAudioExportEntry,
 } from "../../../lib/tts-audio-cache";
 import { parseCharacterDisplayData } from "../../../lib/character-display";
-import { filterAudioGenerationConnections } from "../../../lib/connection-filters";
+import { filterTTSConnections } from "../../../lib/connection-filters";
 import type {
   TTSConfig,
   TTSConnectionProfile,
@@ -48,6 +48,7 @@ import type {
 } from "@marinara-engine/shared";
 import {
   ELEVENLABS_TTS_LANGUAGE_OPTIONS,
+  elevenLabsModelSupportsSpeed,
   TTS_API_KEY_MASK,
   TTS_DIALOGUE_PAUSE_DEFAULT_SECONDS,
   TTS_DIALOGUE_PAUSE_MAX_SECONDS,
@@ -184,7 +185,7 @@ type TTSAudioConnectionOption = {
 
 /** Audio connections the card can speak with, as the server resolves them (adapter, address, model). */
 function readTTSAudioConnectionOptions(connections: unknown[] | undefined): TTSAudioConnectionOption[] {
-  return filterAudioGenerationConnections((connections ?? []) as Array<Record<string, unknown>>)
+  return filterTTSConnections((connections ?? []) as Array<Record<string, unknown>>)
     .filter((connection) => typeof connection.id === "string" && typeof connection.name === "string")
     .map((connection) => {
       const audioSource = connection.audioSource;
@@ -206,6 +207,7 @@ function readTTSAudioConnectionOptions(connections: unknown[] | undefined): TTSA
 }
 
 const ELEVENLABS_TTS_MODELS = [
+  "eleven_v4",
   "eleven_v3",
   "eleven_multilingual_v2",
   "eleven_flash_v2_5",
@@ -894,10 +896,10 @@ function CharacterSelect({
         disabled: assignedCharacterIds.has(option.id) && option.id !== value,
       }))}
       disabled={options.length === 0}
-      placeholder={localizeUi("ui.panels.ttsconfigcard.selectCharacter")}
-      ariaLabel={localizeUi("ui.panels.ttsconfigcard.selectCharacter")}
-      searchPlaceholder={localizeUi("ui.panels.ttsconfigcard.searchCharacters")}
-      emptyText={localizeUi("ui.panels.ttsconfigcard.noMatchingCharacters")}
+      placeholder={localizeUi("tts.assignments.selectSpeaker")}
+      ariaLabel={localizeUi("tts.assignments.selectSpeaker")}
+      searchPlaceholder={localizeUi("tts.assignments.searchSpeakers")}
+      emptyText={localizeUi("tts.assignments.noMatchingSpeakers")}
       optionKind="character"
       testId="tts-character-options"
       compact
@@ -1016,6 +1018,7 @@ export function TTSConfigCard() {
   const { data: savedConfig, isLoading } = useTTSConfig();
   const updateConfig = useUpdateTTSConfig();
   const { data: characters } = useCharacters();
+  const { data: personas } = usePersonas();
   const { data: connections } = useConnections();
 
   // Local draft state
@@ -1526,7 +1529,7 @@ export function TTSConfigCard() {
     [elevenLabsMatchedFemaleVoiceOptions, voiceOptions],
   );
   const characterOptions = useMemo<CharacterOption[]>(() => {
-    return ((characters ?? []) as Array<{ id?: string; data?: unknown; comment?: string | null }>)
+    const characterCards = ((characters ?? []) as Array<{ id?: string; data?: unknown; comment?: string | null }>)
       .map((character) => {
         if (!character.id) return null;
         const info = parseCharacterDisplayData({ data: character.data, comment: character.comment });
@@ -1536,9 +1539,18 @@ export function TTSConfigCard() {
           label: info.comment ? `${info.name} — ${info.comment}` : info.name,
         };
       })
-      .filter((option): option is CharacterOption => Boolean(option))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [characters]);
+      .filter((option): option is CharacterOption => Boolean(option));
+    const personaCards = (personas ?? [])
+      .filter((persona) => Boolean(persona.id))
+      .map((persona) => ({
+        id: persona.id,
+        name: persona.name,
+        label: localizeUi("tts.assignments.personaOption", {
+          name: persona.comment ? `${persona.name} (${persona.comment})` : persona.name,
+        }),
+      }));
+    return [...characterCards, ...personaCards].sort((a, b) => a.name.localeCompare(b.name));
+  }, [characters, personas, localizeUi]);
   const languageConnectionOptions = useMemo(
     () => (connections ?? []).filter(isTTSLanguageConnectionOption).sort((a, b) => a.name.localeCompare(b.name)),
     [connections],
@@ -1551,7 +1563,8 @@ export function TTSConfigCard() {
     () => new Set(voiceAssignments.map((assignment) => assignment.characterId).filter(Boolean)),
     [voiceAssignments],
   );
-  const allCharactersAssigned = characterOptions.length > 0 && assignedCharacterIds.size >= characterOptions.length;
+  const allCharactersAssigned =
+    characterOptions.length > 0 && characterOptions.every((option) => assignedCharacterIds.has(option.id));
   const customVoiceCount = voiceAssignments.filter((assignment) => assignment.characterId && assignment.voice).length;
   const selectedSource = TTS_SOURCE_DEFAULTS[source];
   const selectedVoiceLabel =
@@ -1566,8 +1579,10 @@ export function TTSConfigCard() {
     ELEVENLABS_TTS_LANGUAGE_OPTIONS[0];
   const speedMin = source === "elevenlabs" || source === "xai" ? 0.7 : 0.25;
   const speedMax = source === "elevenlabs" ? 1.2 : source === "xai" ? 1.5 : 4.0;
-  const speedHelp =
-    source === "elevenlabs"
+  const speedUnavailable = source === "elevenlabs" && !elevenLabsModelSupportsSpeed(model);
+  const speedHelp = speedUnavailable
+    ? localizeUi("ui.panels.ttsconfigcard.elevenlabsModelHasNoSpeed")
+    : source === "elevenlabs"
       ? "Playback speed. ElevenLabs supports 0.7×–1.2×; wider saved values are clamped when spoken."
       : source === "xai"
         ? "Playback speed. xAI Voice supports 0.7×–1.5×; wider saved values are clamped when spoken."
@@ -1678,6 +1693,7 @@ export function TTSConfigCard() {
 
   return (
     <div
+      data-component="TTSConfigCard"
       className={cn(
         "rounded-xl border border-sky-400/20 bg-gradient-to-br from-sky-400/5 to-blue-500/5 p-3 transition-all",
         expanded && "border-sky-400/30",
@@ -1846,7 +1862,7 @@ export function TTSConfigCard() {
                 label={localizeUi("ui.panels.ttsconfigcard.model")}
                 help={
                   source === "elevenlabs"
-                    ? localizeUi("ui.panels.ttsconfigcard.elevenlabsModelIdToUseUseElevenV3For")
+                    ? localizeUi("ui.panels.ttsconfigcard.elevenlabsModelIdHelp")
                     : source === "pockettts"
                       ? localizeUi("ui.panels.ttsconfigcard.pocketttsSelectsItsLanguageModelWhenYouStartThe")
                       : source === "xai"
@@ -1897,6 +1913,7 @@ export function TTSConfigCard() {
                       </p>
                     )}
                     <p className="text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
+                      {localizeUi("ui.panels.ttsconfigcard.elevenV4SpeechUses")}{" "}
                       {localizeUi("ui.panels.ttsconfigcard.elevenV3SpeechUses")}{" "}
                       <code className="font-mono">{"eleven_v3"}</code>
                       {localizeUi("ui.panels.ttsconfigcard.idsContaining")} <code className="font-mono">{"ttv"}</code>{" "}
@@ -2277,6 +2294,7 @@ export function TTSConfigCard() {
               max={speedMax}
               step={0.05}
               value={speedSliderValue}
+              disabled={speedUnavailable}
               onChange={(e) => {
                 setSpeed(parseFloat(e.target.value));
                 mark({ speed: parseFloat(e.target.value) });
@@ -2351,30 +2369,9 @@ export function TTSConfigCard() {
             </FieldRow>
           )}
 
-          {source === "elevenlabs" && !connectionId && (
-            <div className="space-y-1">
-              <span className="text-xs font-medium">{localizeUi("ui.panels.ttsconfigcard.gameAudioGeneration")}</span>
-              <p className="text-[0.625rem] text-[var(--muted-foreground)]">
-                {localizeUi("ui.panels.ttsconfigcard.gameAudioGenerationHelp")}
-              </p>
-              <ToggleRow
-                label={localizeUi("ui.panels.ttsconfigcard.generateGameSoundEffects")}
-                checked={elevenLabsGameSoundEffects}
-                onChange={(value) => {
-                  setElevenLabsGameSoundEffects(value);
-                  mark({ elevenLabsGameSoundEffects: value });
-                }}
-              />
-              <ToggleRow
-                label={localizeUi("ui.panels.ttsconfigcard.generateGameMusic")}
-                checked={elevenLabsGameMusic}
-                onChange={(value) => {
-                  setElevenLabsGameMusic(value);
-                  mark({ elevenLabsGameMusic: value });
-                }}
-              />
-            </div>
-          )}
+          <p className="text-xs leading-relaxed text-[var(--muted-foreground)]">
+            {localizeUi("connections.audioGeneration.speechSettingsHelp")}
+          </p>
 
           {/* Auto-play */}
           <div className="space-y-1">

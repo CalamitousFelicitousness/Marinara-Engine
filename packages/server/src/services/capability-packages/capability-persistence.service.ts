@@ -1,8 +1,11 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
+  type CapabilityCharacterStatusResult,
+  type CapabilityCharacterStatusUpdate,
   type CapabilityChatActivityUpdate,
   type CapabilityChatMetadataUpdate,
   type CapabilityChatRecord,
+  type CapabilityChatSummaries,
   type CapabilityCreateMessageWithSwipeInput,
   type CapabilityGameStateRecord,
   type CapabilityRoleplayEventInput,
@@ -13,8 +16,10 @@ import {
   type CapabilityPersistenceHost,
   type CapabilityPersistenceSession,
   type CapabilitySpatialSnapshotStore,
+  type SessionSummary,
   type SpatialContextSnapshot,
   type SpatialSnapshotSource,
+  normalizeChatSummaryEntries,
 } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
 import { logger } from "../../lib/logger.js";
@@ -42,6 +47,8 @@ import {
   roleplayAgentsSeeWhispers,
   roleplayAgentText,
 } from "../generation/roleplay-commands.js";
+import { handleConversationScheduleCommand } from "../generation/conversation-schedule-command-runtime.js";
+import type { ScheduleUpdateCommand } from "../conversation/character-commands.js";
 import { resolveCharacterNameMap } from "../../routes/generate/generate-route-utils.js";
 import { conversationPromptHistoryContent } from "../../routes/generate/conversation-prompt-formatting.js";
 
@@ -72,6 +79,35 @@ function parseMetadata(value: unknown): Record<string, unknown> | null {
 
 function readTrimmedString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+const CHARACTER_STATUSES = new Set(["online", "idle", "dnd", "offline"]);
+const MAX_STATUS_ACTIVITY_CHARS = 500;
+const MAX_STATUS_DURATION_CHARS = 32;
+
+/** A package's status update as the host's `[schedule_update]` command, or a thrown reason it is not one. */
+function readCharacterStatusUpdate(update: CapabilityCharacterStatusUpdate): ScheduleUpdateCommand {
+  if (!update || typeof update !== "object" || Array.isArray(update)) {
+    throw new Error("updateCharacterStatus needs an update object.");
+  }
+  const { status, activity, duration } = update as Record<string, unknown>;
+  if (status !== undefined && (typeof status !== "string" || !CHARACTER_STATUSES.has(status))) {
+    throw new Error('updateCharacterStatus status must be "online", "idle", "dnd" or "offline".');
+  }
+  if (activity !== undefined && (typeof activity !== "string" || activity.length > MAX_STATUS_ACTIVITY_CHARS)) {
+    throw new Error(`updateCharacterStatus activity must be text of at most ${MAX_STATUS_ACTIVITY_CHARS} characters.`);
+  }
+  if (duration !== undefined && (typeof duration !== "string" || duration.length > MAX_STATUS_DURATION_CHARS)) {
+    throw new Error(`updateCharacterStatus duration must be text of at most ${MAX_STATUS_DURATION_CHARS} characters.`);
+  }
+  const trimmedActivity = activity?.trim();
+  if (!status && !trimmedActivity) throw new Error("updateCharacterStatus needs a status or an activity.");
+  return {
+    type: "schedule_update",
+    ...(status ? { status: status as ScheduleUpdateCommand["status"] } : {}),
+    ...(trimmedActivity ? { activity: trimmedActivity } : {}),
+    ...(duration?.trim() ? { duration: duration.trim() } : {}),
+  };
 }
 
 const MAX_ROLEPLAY_EVENT_TEXT_CHARS = 1_000;
@@ -158,6 +194,63 @@ async function agentWhisperNames(db: DB, chatId: string): Promise<ReadonlyMap<st
     ...(await resolveCharacterNameMap(parseStringArray(chat.characterIds), (id) => characters.getById(id))),
     [identity?.id ?? "user", identity?.name ?? "User"],
   ]);
+}
+
+function readSummaryEntries(value: unknown): CapabilityChatSummaries["day"] {
+  const entries: CapabilityChatSummaries["day"] = {};
+  for (const [key, raw] of Object.entries(parseMetadata(value) ?? {})) {
+    const entry = parseMetadata(raw);
+    if (typeof entry?.summary === "string") {
+      entries[key] = { summary: entry.summary, keyDetails: parseStringArray(entry.keyDetails) };
+    }
+  }
+  return entries;
+}
+
+/**
+ * One stored Game session as a complete SessionSummary. Older entries lack fields or keep `revelations`, so each
+ * field is read on its own (as the Game routes do); a missing number is the entry's position plus one.
+ */
+function readGameSession(session: Record<string, unknown>, index: number, chatUpdatedAt?: string): SessionSummary {
+  const text = (value: unknown) => (typeof value === "string" ? value : "");
+  const stats = parseMetadata(session.statsSnapshot);
+  return {
+    sessionNumber: typeof session.sessionNumber === "number" ? session.sessionNumber : index + 1,
+    summary: text(session.summary),
+    resumePoint: text(session.resumePoint),
+    partyDynamics: text(session.partyDynamics),
+    partyState: text(session.partyState),
+    keyDiscoveries: [
+      ...new Set([...parseStringArray(session.keyDiscoveries), ...parseStringArray(session.revelations)]),
+    ],
+    characterMoments: parseStringArray(session.characterMoments),
+    littleDetails: parseStringArray(session.littleDetails),
+    statsSnapshot: stats ? structuredClone(stats) : {},
+    npcUpdates: parseStringArray(session.npcUpdates),
+    ...(typeof session.nextSessionRequest === "string" ? { nextSessionRequest: session.nextSessionRequest } : {}),
+    timestamp: typeof session.timestamp === "string" ? session.timestamp : (chatUpdatedAt ?? ""),
+  };
+}
+
+/**
+ * The summaries a chat keeps in its metadata; whatever is missing or malformed reads as empty.
+ * Undated entries take the chat's own update time, so repeated reads return the same values.
+ */
+function mapChatSummaries(value: unknown, chatUpdatedAt?: string): CapabilityChatSummaries {
+  const metadata = parseMetadata(value) ?? {};
+  const sessions = Array.isArray(metadata.gamePreviousSessionSummaries) ? metadata.gamePreviousSessionSummaries : [];
+  return {
+    day: readSummaryEntries(metadata.daySummaries),
+    week: readSummaryEntries(metadata.weekSummaries),
+    rolling: normalizeChatSummaryEntries(metadata.summaryEntries, {
+      legacySummary: typeof metadata.summary === "string" ? metadata.summary : null,
+      now: chatUpdatedAt,
+    }),
+    gameSessions: sessions.flatMap((entry, index) => {
+      const session = parseMetadata(entry);
+      return typeof session?.summary === "string" ? [readGameSession(session, index, chatUpdatedAt)] : [];
+    }),
+  };
 }
 
 function parsePresentCharacterIds(value: unknown): string[] {
@@ -465,6 +558,15 @@ function createPersistenceSession(db: DB, assertPermission: PersistencePermissio
       });
       return rows.map((row) => mapMessage(row, names));
     },
+    async listChatSummaries(chatId) {
+      assertPermission("chat-read");
+      const rows = await db
+        .select({ metadata: chats.metadata, updatedAt: chats.updatedAt })
+        .from(chats)
+        .where(eq(chats.id, chatId))
+        .limit(1);
+      return mapChatSummaries(rows[0]?.metadata, rows[0]?.updatedAt);
+    },
     async getGameState(chatId) {
       assertPermission("chat-read");
       const rows = await db
@@ -693,6 +795,24 @@ export function createCapabilityPersistenceHost(db: DB, permissions?: readonly s
         return row ? [mapMessage(row)] : [];
       });
     },
+    async setMessagesHiddenFromAI(chatId, messageIds, hidden) {
+      assertPermission("chat-write");
+      if (!(await hostChats().getById(chatId))) throw new Error(`Chat ${chatId} was not found.`);
+      // An automatic writer leaves a message the user hid or showed by hand alone, like Advanced Memory (#7192).
+      // ponytail: read outside the patch queues, so a hand-set choice made during this call can be overwritten; a
+      // skip-manual option inside bulkSetHiddenFromAI's transaction closes it.
+      const manual = new Set(
+        (await hostChats().listMessages(chatId))
+          .filter((message) => parseExtra(message.extra).visibilityManual === true)
+          .map((message) => message.id),
+      );
+      // No extra fields: a package never marks a message's visibility as the user's choice.
+      return hostChats().bulkSetHiddenFromAI(
+        chatId,
+        messageIds.filter((id) => !manual.has(id)),
+        hidden,
+      );
+    },
     async createChatNote(sourceChatId, targetChatId, content, anchorMessageId) {
       assertPermission("chat-write");
       await hostChats().createNote(sourceChatId, targetChatId, content, anchorMessageId);
@@ -700,6 +820,36 @@ export function createCapabilityPersistenceHost(db: DB, permissions?: readonly s
     async createChatInfluence(sourceChatId, targetChatId, content, anchorMessageId) {
       assertPermission("chat-write");
       await hostChats().createInfluence(sourceChatId, targetChatId, content, anchorMessageId);
+    },
+    async updateCharacterStatus(chatId, characterId, update) {
+      assertPermission("chat-write");
+      const command = readCharacterStatusUpdate(update);
+      const chat = await hostChats().getById(chatId);
+      if (!chat) throw new Error(`Chat ${chatId} was not found.`);
+      if (chat.mode !== "conversation") throw new Error(`Chat ${chatId} is not a Conversation chat.`);
+      // Like a reply's command, it only reaches a character of this chat.
+      if (!parseStringArray(chat.characterIds).includes(characterId)) {
+        throw new Error(`Character ${characterId} is not in chat ${chatId}.`);
+      }
+      // A shared room keeps its own copy of each routine and never writes the character card.
+      const metadata = parseMetadata(chat.metadata) ?? {};
+      if (metadata.multiplayer || metadata.multiplayerSetup === true) return null;
+      let result: CapabilityCharacterStatusResult | null = null;
+      await handleConversationScheduleCommand({
+        command,
+        characterId,
+        chatId,
+        chats: hostChats(),
+        characters: createCharactersStorage(db),
+        sendUpdated: (data) => {
+          result = {
+            status: data.status as CapabilityCharacterStatusResult["status"],
+            activity: (data.activity as string | null | undefined) ?? null,
+            expiresAt: data.expiresAt as string,
+          };
+        },
+      });
+      return result;
     },
   };
 }

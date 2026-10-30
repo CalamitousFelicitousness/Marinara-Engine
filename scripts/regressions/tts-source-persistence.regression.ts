@@ -5,7 +5,13 @@ import { dirname, join, resolve } from "node:path";
 import { gzipSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
-import { setCharacterVoiceAssignment, TTS_API_KEY_MASK, ttsConfigSchema } from "../../packages/shared/src/types/tts.js";
+import {
+  elevenLabsModelSupportsSpeed,
+  normalizeElevenLabsTtsModelId,
+  setCharacterVoiceAssignment,
+  TTS_API_KEY_MASK,
+  ttsConfigSchema,
+} from "../../packages/shared/src/types/tts.js";
 import {
   buildTTSVoiceRequests,
   cleanTTSInputText,
@@ -14,9 +20,12 @@ import {
   findTTSCharacterIdBySpeakerName,
   getCharacterNameVoice,
   getCharacterVoiceAssignment,
+  getTTSPersonaVoice,
+  resolveTTSMessagePersona,
   resolveTTSVoiceForSpeaker,
 } from "../../packages/client/src/lib/tts-dialogue.ts";
 import { buildExtractedRoleplayTTSVoiceRequests } from "../../packages/client/src/lib/tts-roleplay-speaker-extractor.ts";
+import { isTTSUserMessageReady } from "../../packages/client/src/lib/tts-autoplay.ts";
 import { normalizeTTSPlaybackDelayMs, ttsService } from "../../packages/client/src/lib/tts-service.ts";
 import {
   buildOfficialPocketTtsForm,
@@ -381,6 +390,7 @@ const originalAudioDescriptor = Object.getOwnPropertyDescriptor(globalThis, "Aud
 let activeTTSRequests = 0;
 let peakActiveTTSRequests = 0;
 const startedTTSChunks: number[] = [];
+const observedSequenceRequests: Array<Record<string, unknown>> = [];
 
 class RegressionAudio {
   volume = 1;
@@ -405,7 +415,9 @@ class RegressionAudio {
 
 try {
   Object.defineProperty(globalThis, "Audio", { configurable: true, value: RegressionAudio });
-  globalThis.fetch = async () => {
+  globalThis.fetch = async (input, init) => {
+    assert.equal(input, "/api/tts/speak");
+    observedSequenceRequests.push(JSON.parse(String(init?.body)));
     activeTTSRequests += 1;
     peakActiveTTSRequests = Math.max(peakActiveTTSRequests, activeTTSRequests);
     const exceedsProviderConcurrency = activeTTSRequests > 1;
@@ -421,15 +433,31 @@ try {
   };
 
   await ttsService.speakSequence(
-    [{ text: "First narration." }, { text: "Second narration." }, { text: "Third narration." }],
+    [
+      { text: "First narration.", voice: "first-voice" },
+      { text: "Second narration.", voice: "second-voice" },
+      { text: "Third narration.", voice: "third-voice" },
+    ],
     "tts-concurrency-regression",
     {
       throwOnError: true,
+      audioConnectionId: "selected-tts-connection",
       onChunkStart: (_request, index) => startedTTSChunks.push(index),
     },
   );
   assert.equal(peakActiveTTSRequests, 1, "Non-progressive TTS pre-generation must respect serial providers");
   assert.deepEqual(startedTTSChunks, [0, 1, 2], "A provider limit must not silently remove narration chunks");
+  assert.deepEqual(
+    observedSequenceRequests.map(({ voice, audioConnectionId }) => ({ voice, audioConnectionId })),
+    [
+      { voice: "first-voice", audioConnectionId: "selected-tts-connection" },
+      { voice: "second-voice", audioConnectionId: "selected-tts-connection" },
+      { voice: "third-voice", audioConnectionId: "selected-tts-connection" },
+    ],
+    "each actual chunk uses the selected speech connection and its own assigned voice",
+  );
+  assert.equal(ttsService.getState(), "idle");
+  assert.equal(ttsService.getPlayback(), null);
 
   let failedProgressiveFetches = 0;
   globalThis.fetch = async () => {
@@ -471,21 +499,26 @@ try {
     staleFetchStarted = resolve;
   });
   globalThis.fetch = async (_input, init) => {
+    const request = JSON.parse(String(init?.body));
+    assert.equal(request.audioConnectionId, "", "an explicit legacy-settings sentinel is forwarded unchanged");
+    assert.equal(request.voice, "cancel-voice");
     staleFetchStarted();
     return await new Promise<Response>((_resolve, reject) => {
       init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
     });
   };
   const staleSequence = ttsService.speakSequence(
-    [{ text: "Cancelled narration.", cacheKey: "tts-abort-cleanup-regression" }],
+    [{ text: "Cancelled narration.", voice: "cancel-voice", cacheKey: "tts-abort-cleanup-regression" }],
     "tts-abort-cleanup",
-    { signal: callerSignal },
+    { signal: callerSignal, audioConnectionId: "" },
   );
   await staleFetchReady;
   ttsService.stop();
   await staleSequence;
   assert.equal(callerAbortListenersAdded, 1, "TTS should attach one caller abort listener per sequence");
   assert.equal(callerAbortListenersRemoved, 1, "A superseded TTS sequence must detach its caller abort listener");
+  assert.equal(ttsService.getState(), "idle", "cancelling the chosen connection returns speech to idle");
+  assert.equal(ttsService.getPlayback(), null);
 } finally {
   ttsService.stop();
   globalThis.fetch = originalFetch;
@@ -866,6 +899,231 @@ for (const file of ["ChatArea.tsx", "ChatMessage.tsx"]) {
     `${file} must find the speaking card like the other chat playback path`,
   );
 }
+
+// Engine result rows are not new player speech, while other modes keep their existing message behavior.
+const readyUserMessage = { id: "tts-new-user", role: "user", content: "I will begin." };
+for (const content of [
+  "[combat_result]\nOUTCOME: VICTORY\n[/combat_result]",
+  "I use my Potion.\n\n[item_used]\nMari heals 4 HP.\n[/item_used]",
+  "[COMBAT_RESULT]\r\nOUTCOME: VICTORY\r\n[/combat_result]",
+  "[item_used]Potion consumed.[/item_used] After [combat_result]Won.[/combat_result]",
+]) {
+  assert.equal(isTTSUserMessageReady({ ...readyUserMessage, content }, "game"), false);
+  for (const mode of [undefined, "conversation", "roleplay"]) {
+    assert.equal(
+      isTTSUserMessageReady({ ...readyUserMessage, content }, mode),
+      true,
+      "the Game-only result filter must not change the default notifier or other modes",
+    );
+  }
+}
+for (const content of [
+  "I will begin.",
+  "I use my Potion.",
+  "I mentioned [combat_result] in my explanation.",
+  "The literal [item_used] marker is documented here.",
+  "[combat_result]unfinished",
+  "[/item_used]",
+  "[item_used]mismatched[/combat_result]",
+]) {
+  assert.equal(
+    isTTSUserMessageReady({ ...readyUserMessage, content }, "game"),
+    true,
+    "normal input, item-use fallback and incomplete or literal marker text remain eligible",
+  );
+}
+for (const mode of [undefined, "conversation", "roleplay", "game"]) {
+  for (const extra of [{ hiddenFromUser: true }, JSON.stringify({ hiddenFromUser: true })]) {
+    assert.equal(isTTSUserMessageReady({ ...readyUserMessage, extra }, mode), false);
+  }
+  assert.equal(isTTSUserMessageReady({ ...readyUserMessage, content: " \n\t" }, mode), false);
+  for (const role of ["assistant", "narrator", "system"]) {
+    assert.equal(isTTSUserMessageReady({ ...readyUserMessage, role }, mode), false);
+  }
+}
+
+// A persona shares the saved voice-row format, but never borrows another identity's voice by name.
+const oldPersona = { id: "persona-old-id", name: "Mari" };
+const currentPersona = { id: "persona-current-id", name: "Current Mari" };
+const personaVoiceConfig = ttsConfigSchema.parse({
+  source: "openai",
+  voice: "global-voice",
+  voiceMode: "per-character",
+  voiceAssignments: [
+    { characterId: "dottore-id", characterName: "Dottore", voice: "dottore-voice" },
+    { characterId: "mari-character-id", characterName: "Mari", voice: "same-name-character-voice" },
+    { characterId: oldPersona.id, characterName: oldPersona.name, voice: "old-persona-voice" },
+    { characterId: currentPersona.id, characterName: currentPersona.name, voice: "current-persona-voice" },
+  ],
+  narratorVoiceEnabled: true,
+  narratorVoice: "narrator-voice",
+  npcDefaultVoicesEnabled: true,
+  npcDefaultMaleVoices: ["npc-voice"],
+  npcDefaultFemaleVoices: ["npc-voice"],
+});
+for (const extra of [
+  { personaSnapshot: { personaId: oldPersona.id, name: oldPersona.name } },
+  JSON.stringify({ personaSnapshot: { personaId: oldPersona.id, name: oldPersona.name, source: "persona" } }),
+  { personaSnapshot: { personaId: oldPersona.id, name: oldPersona.name, source: "character" } },
+]) {
+  const identity = resolveTTSMessagePersona({ role: "user", extra }, currentPersona);
+  assert.deepEqual(
+    identity,
+    oldPersona,
+    "manual replay keeps the message's snapshotted identity after switching personas",
+  );
+  assert.equal(getTTSPersonaVoice(personaVoiceConfig, identity), "old-persona-voice");
+}
+assert.deepEqual(resolveTTSMessagePersona({ role: "user" }, currentPersona), currentPersona);
+assert.equal(
+  resolveTTSMessagePersona({ role: "user" }),
+  null,
+  "a legacy message without a known persona stays unknown",
+);
+assert.deepEqual(
+  resolveTTSMessagePersona({ role: "user", extra: "{invalid" }, currentPersona),
+  currentPersona,
+  "invalid legacy extra follows the existing empty-extra fallback policy",
+);
+for (const extra of [{ personaSnapshot: null }, { personaSnapshot: { personaId: "", name: "Mari" } }]) {
+  assert.equal(
+    resolveTTSMessagePersona({ role: "user", extra }, currentPersona),
+    null,
+    "a malformed saved snapshot must not silently reassign an old message to the current persona",
+  );
+}
+assert.equal(getTTSPersonaVoice(personaVoiceConfig, { ...oldPersona, name: "Renamed Mari" }), "old-persona-voice");
+for (const persona of [undefined, null, { name: "Mari" }, { id: "unassigned-persona-id", name: "Mari" }]) {
+  assert.equal(
+    getTTSPersonaVoice(personaVoiceConfig, persona),
+    "",
+    "an unknown or unassigned persona cannot borrow a same-name character, global, or NPC voice",
+  );
+}
+assert.equal(getTTSPersonaVoice({ ...personaVoiceConfig, voiceMode: "single" }, oldPersona), "");
+assert.equal(getTTSPersonaVoice({ ...personaVoiceConfig, voiceAssignments: [] }, oldPersona), "");
+assert.equal(
+  resolveTTSVoiceForSpeaker(personaVoiceConfig, "Mari", "mari-character-id"),
+  "same-name-character-voice",
+  "persona rows preserve a character's explicit ID assignment",
+);
+assert.equal(resolveTTSVoiceForSpeaker(personaVoiceConfig, "Narrator"), "narrator-voice");
+assert.equal(
+  findTTSCharacterIdBySpeakerName("Mari", [["mari-character-id", { name: "Mari" }]], oldPersona),
+  null,
+  "a persona and character with the same name cannot select each other's voice arbitrarily",
+);
+const personaCast = [["dottore-id", { name: "Dottore" }]] as const;
+for (const speaker of ["Mari", "mArI", "You", "Player"]) {
+  assert.equal(findTTSCharacterIdBySpeakerName(speaker, personaCast, oldPersona), oldPersona.id);
+}
+assert.equal(findTTSCharacterIdBySpeakerName("Dottore", personaCast, oldPersona), "dottore-id");
+assert.equal(findTTSCharacterIdBySpeakerName("Unknown", personaCast, oldPersona), null);
+const personaDialogue = [
+  { kind: "dialogue" as const, speaker: "Mari", text: "I will begin." },
+  { kind: "dialogue" as const, speaker: "Dottore", text: "Proceed." },
+  { kind: "narration" as const, text: "Silence returns." },
+];
+const taggedPersonaDialogue =
+  '<speaker="Mari">I will begin.</speaker><speaker="Dottore">Proceed.</speaker>Silence returns.';
+const personaRequests = (
+  voiceConfig: typeof personaVoiceConfig,
+  persona = oldPersona,
+  cast: ReadonlyArray<readonly [string, { name: string }]> = personaCast,
+  includePersona = true,
+) => {
+  const context = includePersona ? persona : undefined;
+  const resolveSpeaker = (speaker?: string | null) => findTTSCharacterIdBySpeakerName(speaker, cast, context);
+  return [
+    buildTTSVoiceRequests(taggedPersonaDialogue, voiceConfig, "Dottore", "dottore-id", resolveSpeaker, context),
+    buildExtractedRoleplayTTSVoiceRequests(
+      personaDialogue,
+      voiceConfig,
+      "Dottore",
+      "dottore-id",
+      resolveSpeaker,
+      context,
+    ),
+  ];
+};
+for (const requests of personaRequests(personaVoiceConfig)) {
+  assert.deepEqual(
+    requests.map(({ speaker, characterId, voice }) => ({ speaker, characterId, voice })),
+    [
+      { speaker: "Mari", characterId: oldPersona.id, voice: "old-persona-voice" },
+      { speaker: "Dottore", characterId: "dottore-id", voice: "dottore-voice" },
+      { speaker: "Narrator", characterId: undefined, voice: "narrator-voice" },
+    ],
+    "both actual builders route generated persona, character and narrator lines independently",
+  );
+}
+for (const [voiceConfig, persona] of [
+  [personaVoiceConfig, { ...oldPersona, id: "unassigned-persona-id" }],
+  [{ ...personaVoiceConfig, voiceMode: "single" as const }, oldPersona],
+  [
+    {
+      ...personaVoiceConfig,
+      source: "elevenlabs" as const,
+      voiceMode: "single" as const,
+      npcDefaultMaleVoices: [],
+      npcDefaultFemaleVoices: [],
+    },
+    oldPersona,
+  ],
+] as const) {
+  const legacy = personaRequests(voiceConfig, persona, personaCast, false);
+  for (const [index, requests] of personaRequests(voiceConfig, persona).entries()) {
+    const spoken = (lines: typeof requests) => lines.map(({ text, speaker, voice }) => ({ text, speaker, voice }));
+    assert.deepEqual(
+      spoken(requests),
+      spoken(legacy[index]!),
+      "unassigned personas retain existing speech and fallback voices",
+    );
+  }
+}
+for (const requests of personaRequests(personaVoiceConfig, oldPersona, [
+  ...personaCast,
+  ["mari-character-id", { name: "Mari" }],
+])) {
+  assert.deepEqual(
+    requests.map(({ speaker }) => speaker),
+    ["Mari", "Dottore", "Narrator"],
+    "ambiguous persona tags do not remove previously spoken dialogue",
+  );
+  assert.notEqual(requests[0]?.voice, "old-persona-voice", "an ambiguous name cannot select the new persona's voice");
+}
+assert.equal(
+  buildTTSVoiceRequests(
+    "A legacy user message.",
+    { ...personaVoiceConfig, voiceMode: "single" },
+    oldPersona.name,
+    oldPersona.id,
+    undefined,
+    oldPersona,
+  )[0]?.voice,
+  "global-voice",
+  "manual user playback keeps the existing global voice without an active persona assignment",
+);
+assert.equal(
+  buildTTSVoiceRequests(
+    "An explicitly identified character speaks.",
+    personaVoiceConfig,
+    "Mari",
+    "mari-character-id",
+    () => null,
+    oldPersona,
+  )[0]?.voice,
+  "same-name-character-voice",
+  "an explicit character owner still keeps its voice when its name matches the persona",
+);
+assert.equal(
+  buildTTSVoiceRequests("My own message.", personaVoiceConfig, "Narrator", oldPersona.id, undefined, {
+    ...oldPersona,
+    name: "Narrator",
+  })[0]?.voice,
+  "old-persona-voice",
+  "an explicitly identified persona named Narrator is not reassigned to the narrator voice",
+);
 assert.equal(buildElevenLabsTextInput('"Skill issue."', "chuckle"), '[chuckle] "Skill issue."');
 assert.equal(buildElevenLabsTextInput('[chuckle] "Skill issue."', "chuckle"), '[chuckle] "Skill issue."');
 
@@ -932,5 +1190,16 @@ assert.equal(restoredOpenAi.model, "custom-speech-model");
 assert.equal(restoredOpenAi.voice, "nova");
 assert.equal(restoredOpenAi.speed, 1.25);
 assert.equal(restoredOpenAi.sourceProfiles.elevenlabs?.apiKey, "encrypted:eleven-secret");
+
+// Eleven v3 and both Eleven v4 models have no speed setting; the older models keep it.
+for (const model of ["eleven_v3", "tts_v3", "ElevenLabs_V3", "eleven_v4", "eleven_v4_turbo", " Eleven_V4 "])
+  assert.equal(elevenLabsModelSupportsSpeed(model), false, model);
+for (const model of ["eleven_multilingual_v2", "eleven_flash_v2_5", "eleven_turbo_v2_5"])
+  assert.equal(elevenLabsModelSupportsSpeed(model), true, model);
+// Ids that name Object.prototype members are not aliases.
+for (const model of ["constructor", "toString", "__proto__"]) {
+  assert.equal(normalizeElevenLabsTtsModelId(model), model);
+  assert.equal(elevenLabsModelSupportsSpeed(model), true, model);
+}
 
 console.info("TTS source persistence regression checks passed.");

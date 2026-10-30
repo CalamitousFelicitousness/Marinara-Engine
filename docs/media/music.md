@@ -4,7 +4,7 @@ This guide explains how to play background music in Marinara Engine using the **
 
 ## What Music DJ is
 
-**Music DJ** is an optional downloadable agent. An agent is a helper that runs automatically in the background of a chat. Open **Agents**, select **Download Agents**, and install **Music DJ** before configuring it. After each reply, Music DJ can read the mood of the scene and play matching background music.
+**Music DJ** is an optional downloadable agent. An agent is a helper that runs automatically in the background of a chat. Open **Agents**, select **Agent Organizer**, and install **Music DJ** before configuring it. After each reply, Music DJ can read the mood of the scene and play matching background music.
 
 **Music DJ** can play music from three sources:
 
@@ -100,13 +100,13 @@ Open the **Music DJ** editor and find the **Custom Music Library** field. It has
 
 Roleplay and Game chat setup show the same selected source. If you chose a folder on the server device, the chat's Music DJ settings show that saved path and a **Choose Folder** button instead of asking for a Game Assets path.
 
-Playing from a folder outside Game Assets needs local access on the server. If you use Marinara from another device without a password or admin secret, this one feature can be blocked. See [Remote Access: Basic Auth and IP Allowlist](../REMOTE_ACCESS.md).
+Playing from a folder outside Game Assets needs local access on the server. If you use Marinara from another device without a password or admin secret, this one feature can be blocked. See [Remote Access: Login and IP Allowlist](../REMOTE_ACCESS.md).
 
 ## Using the music player
 
 The **Music Player** appears as a small pill in the top bar on desktop, or a draggable floating widget on mobile. You can hide or show it with a setting.
 
-Open **Settings**, go to the **General** tab, and find the **App Behavior** section. Toggle **Music Player** on or off. The help text reads "Shows the compact Music Player. Switch between Spotify, YouTube, and Custom from the player itself or the Music DJ agent settings." This toggle is always available and is on by default. If it is enabled without Music DJ installed, the desktop or mobile player surface instead reads **Download Music DJ Agent to configure** and provides a **Download Agents** button.
+Open **Settings**, go to the **General** tab, and find the **App Behavior** section. Toggle **Music Player** on or off. The help text reads "Shows the compact Music Player. Switch between Spotify, YouTube, and Custom from the player itself or the Music DJ agent settings." This toggle is always available and is on by default. If it is enabled without Music DJ installed, the desktop or mobile player surface instead reads **Download Music DJ Agent to configure** and provides an **Agent Organizer** button.
 
 On a fresh profile the visible source starts as **YouTube**. You can change the source three ways:
 
@@ -170,7 +170,7 @@ If Spotify is not connected or lacks playback permission, a Spotify song command
 - Spotify plays nothing. Playback control needs Spotify Premium and an active Spotify device. Open the desktop app on a device, or click **Enable Marinara player** on desktop.
 - The Spotify login window fails on another machine. Use the "Browser couldn't reach the callback?" paste box, or set `SPOTIFY_REDIRECT_URI` on the server.
 - YouTube search fails. Confirm the **YouTube Data API v3** is enabled for your project and the key is not restricted by HTTP referrer. If you hit the daily quota, try again the next day or use another key.
-- Custom music will not play from a device folder over remote access. That folder needs local access on the server. See [Remote Access: Basic Auth and IP Allowlist](../REMOTE_ACCESS.md).
+- Custom music will not play from a device folder over remote access. That folder needs local access on the server. See [Remote Access: Login and IP Allowlist](../REMOTE_ACCESS.md).
 - A character's song command does nothing in Conversation mode. Connect Spotify or save a YouTube key, and make sure the **Commands** and **Music** toggles are on.
 
 ## Related guides

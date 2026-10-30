@@ -10,6 +10,7 @@ import {
   useCallback,
   useId,
   useMemo,
+  useEffectEvent,
   type ChangeEvent,
   type ReactNode,
   type Ref,
@@ -21,7 +22,6 @@ import {
   useCharacter,
   useAllCharacterCatalog,
   useUpdateCharacter,
-  useGenerateCharacterSummary,
   useGenerateCharacterConvoProfile,
   useUploadAvatar,
   useRemoveAvatar,
@@ -62,16 +62,25 @@ import {
   type SpriteInfo,
 } from "../../hooks/use-characters";
 import { ConvoProfileFields } from "./ConvoProfileFields";
+import { CardFieldAlternatives } from "./CardFieldAlternatives";
+import { CardFieldWand } from "./CardFieldWand";
+import { CharacterGreetingWand } from "./CharacterGreetingWand";
+import { useCardFieldGeneration } from "../../hooks/use-card-field-generation";
 import { ONBOARDING_FIELD_COPY } from "./onboarding-field-copy";
 import { CharacterScheduleEditorModal } from "../chat/CharacterScheduleEditorModal";
 import { useUIStore } from "../../stores/ui.store";
+import { withCssPaintAlpha } from "../../lib/css-colors";
 import { lorebookKeys, useLorebook, useUpdateLorebook } from "../../hooks/use-lorebooks";
 import { useConnections } from "../../hooks/use-connections";
 import { useInstalledCapabilityPackages } from "../../hooks/use-capability-packages";
 import { RulesetSheetsSection } from "../rulesets/RulesetSheetsSection";
+import { CharacterCombatIconSection } from "./GameModeIconSection";
 import { showConfirmDialog, showPromptDialog } from "../../lib/app-dialogs";
 import { formatCardVersionTimestamp, getCardVersionTitle } from "../../lib/card-version-history";
 import { dataImageUrlToFile } from "../../lib/data-image-file";
+import { rebaseForm } from "../../lib/form-rebase";
+import { characterFieldValue, withCharacterFieldValue } from "../../lib/mari-editor-fields";
+import { MariFieldReview, MariFieldReviewProvider, useMariFieldReview } from "./MariFieldReview";
 import { mergeEmbeddedCharacterCardFields } from "../../lib/character-import";
 import { parsePngCharacterCard } from "../../lib/png-parser";
 import { SpriteGenerationModal } from "../ui/SpriteGenerationModal";
@@ -141,6 +150,7 @@ import {
   getCardVariableChipNames,
   normalizeAvatarCrop,
   readBakedGreetingImages,
+  hasBakedGreetingImages,
   restoreBakedGreetingImages,
   splitCharacterDescription,
   type DescriptionSplitResult,
@@ -163,6 +173,7 @@ import { SpriteWandCleanupEditor } from "../ui/SpriteWandCleanupEditor";
 import { ExportFormatDialog, type ExportFormatChoice } from "../ui/ExportFormatDialog";
 import { EditorTabNavigation } from "../ui/EditorTabNavigation";
 import { useEditorSections } from "../../hooks/use-editor-sections";
+import { useMariCompanionEditor, useMariEditorFields } from "../../hooks/use-mari-editor-fields";
 import { useEditorLeaveSave } from "../../hooks/use-editor-leave-save";
 import { LazyEditorSection } from "../ui/LazyEditorSection";
 import { leaveWithoutSaving } from "../../lib/editor-leave";
@@ -187,6 +198,10 @@ import {
   withUniqueOnboardingIds,
   validateOnboarding,
   type CharacterCardVersion,
+  normalizeCardFieldAlternatives,
+  unassignCardFieldAlternatives,
+  type CardFieldKey,
+  type CardFieldDraft,
   type CharacterData,
   type CharacterOnboarding,
   type CharacterOnboardingVariable,
@@ -400,7 +415,7 @@ export function CharacterEditor() {
   const { t: localizeUi } = useUiTranslation();
   const characterId = useUIStore((s) => s.characterDetailId);
   const closeDetail = useUIStore((s) => s.closeCharacterDetail);
-  const { data: rawCharacter, isLoading } = useCharacter(characterId);
+  const { data: rawCharacter, isLoading, refetch: refetchCharacter } = useCharacter(characterId);
   const updateCharacter = useUpdateCharacter();
   const uploadAvatar = useUploadAvatar();
   const removeAvatar = useRemoveAvatar();
@@ -422,12 +437,22 @@ export function CharacterEditor() {
     () => storedOnboarding !== undefined && !characterOnboardingSchema.safeParse(storedOnboarding).success,
     [storedOnboarding],
   );
-  const { contentRef, scrollToSection } = useEditorSections(
+  const { contentRef, scrollToSection, scrollToElement } = useEditorSections(
     characterId,
     !!formData,
     (useUIStore.getState().characterDetailInitialTab as TabId | null) ?? "metadata",
     setActiveTab,
   );
+  // Report the focused field to the omnibar so "make this warmer" knows the target; show Prof. Mari's fields.
+  // The content (and its scroll root) only renders when this holds; see the loading return below.
+  const editorReady = !isLoading && !!formData;
+  const { workingOffscreen, revealWorkingField } = useMariEditorFields(
+    contentRef,
+    characterId,
+    editorReady,
+    scrollToElement,
+  );
+  useMariCompanionEditor(contentRef, editorReady);
   const [characterComment, setCharacterComment] = useState("");
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -437,18 +462,6 @@ export function CharacterEditor() {
   const dirtyRef = useRef(false);
   const editRevisionRef = useRef(0);
   const setEditorDirty = useUIStore((s) => s.setEditorDirty);
-  // Report the focused field to the omnibar so "make this warmer" knows the target.
-  const setActiveEditorField = useUIStore((s) => s.setActiveEditorField);
-  useEffect(() => {
-    const field =
-      activeTab === "card"
-        ? { id: "description", label: "Description" }
-        : activeTab === "convo"
-          ? { id: "first_mes", label: "Greeting" }
-          : null;
-    setActiveEditorField(field);
-    return () => setActiveEditorField(null);
-  }, [activeTab, setActiveEditorField]);
   const lorebookEmbedInFlightRef = useRef(false);
   const [lorebookEmbedding, setLorebookEmbedding] = useState(false);
   const setDirtyState = useCallback((nextDirty: boolean) => {
@@ -493,23 +506,57 @@ export function CharacterEditor() {
     }
   }, [characterId]);
 
+  // The card as the form last loaded or saved it: the merge base for refetches.
+  const loadedDataRef = useRef<CharacterData | null>(null);
+  // A refetch while the form has unsaved edits (an approved Professor Mari
+  // change, an avatar upload) is merged in, so Save cannot write old values back.
+  const rebaseUnsavedEdits = useEffectEvent((server: CharacterData) => {
+    const base = loadedDataRef.current;
+    loadedDataRef.current = server;
+    if (!base || !formData) return;
+    const { merged, conflicts } = rebaseForm(base, formData, server);
+    setFormData(merged);
+    if (conflicts.length === 0) return;
+    const id = characterId;
+    toast.warning(localizeUi("ui.characters.charactereditor.changedElsewhereKeptYourEdits"), {
+      id: `character-rebase-${id}`,
+      duration: 12_000,
+      action: {
+        label: localizeUi("ui.characters.charactereditor.useTheNewVersion"),
+        onClick: () => {
+          // The toast can outlive a switch to another character.
+          if (useUIStore.getState().characterDetailId !== id) return;
+          updateFormData((prev) => rebaseForm(base, server, prev).merged);
+        },
+      },
+    });
+  });
+
   // Parse the character when it first loads, or when switching characters.
-  // Avoid overwriting unsaved local edits when a refetch follows avatar upload.
   useEffect(() => {
     if (!rawCharacter) return;
     const char = rawCharacter as ParsedCharacter;
     const isSwitchingCharacter = loadedCharacterIdRef.current !== char.id;
-    if (!isSwitchingCharacter && dirtyRef.current) return;
+    if (!isSwitchingCharacter && dirtyRef.current) {
+      try {
+        rebaseUnsavedEdits((typeof char.data === "string" ? JSON.parse(char.data) : char.data) as CharacterData);
+      } catch {
+        // Unreadable refetch: keep the unsaved form as it is.
+      }
+      return;
+    }
 
     loadedCharacterIdRef.current = char.id;
 
     try {
       const parsed = typeof char.data === "string" ? JSON.parse(char.data) : char.data;
+      loadedDataRef.current = parsed as CharacterData;
       setFormData(parsed as CharacterData);
       setCharacterComment(char.comment ?? "");
       setAvatarPreview(char.avatarPath);
       setDirtyState(false);
     } catch {
+      loadedDataRef.current = null;
       setFormData(null);
       setCharacterComment("");
       setAvatarPreview(null);
@@ -623,6 +670,66 @@ export function CharacterEditor() {
     },
     [markDirty, setExtensionValue],
   );
+
+  // Slice 5: Prof. Mari's in-field review. Keep in a field first saves the user's unsaved text, so
+  // her change lands on a saved card and Undo restores that saved text. Fields the user took over
+  // with Edit get the user's text back after her change lands, unsaved, for the user's own Save.
+  const formDataRef = useRef(formData);
+  formDataRef.current = formData;
+  const takenOverRef = useRef<{ characterId: string; values: Record<string, string> } | null>(null);
+  useEffect(() => {
+    takenOverRef.current = null;
+  }, [characterId]);
+  const mariReview = useMariFieldReview({
+    characterId,
+    current: (fieldId) => characterFieldValue(formData, fieldId),
+    touched: (fieldId) =>
+      dirty && characterFieldValue(formData, fieldId) !== characterFieldValue(loadedDataRef.current, fieldId),
+    edit: (fieldId, text) => updateFormData((prev) => withCharacterFieldValue(prev, fieldId, text)),
+    beforeKeep: async (takenOver) => {
+      takenOverRef.current = characterId
+        ? {
+            characterId,
+            values: Object.fromEntries(
+              takenOver.map((fieldId) => [fieldId, characterFieldValue(formDataRef.current, fieldId)]),
+            ),
+          }
+        : null;
+      if (!dirtyRef.current) return "clean";
+      if (await handleSave()) return "saved";
+      takenOverRef.current = null;
+      return "failed";
+    },
+    keepDropped: () => {
+      takenOverRef.current = null;
+    },
+  });
+  const handledKeptRef = useRef(mariReview.review?.mode === "kept" ? mariReview.review.key : null);
+  const restoreTakenOver = useEffectEvent(async () => {
+    const taken = takenOverRef.current;
+    takenOverRef.current = null;
+    const mine = taken?.characterId === characterId ? taken.values : {};
+    if (!characterId || Object.keys(mine).length === 0) return;
+    const fresh = (await refetchCharacter()).data as ParsedCharacter | undefined;
+    if (!fresh || fresh.id !== characterId) return;
+    let server: CharacterData;
+    try {
+      server = (typeof fresh.data === "string" ? JSON.parse(fresh.data) : fresh.data) as CharacterData;
+    } catch {
+      return;
+    }
+    let merged = rebaseForm(loadedDataRef.current ?? server, formDataRef.current ?? server, server).merged;
+    for (const [fieldId, text] of Object.entries(mine)) merged = withCharacterFieldValue(merged, fieldId, text);
+    loadedDataRef.current = server;
+    toast.dismiss(`character-rebase-${characterId}`);
+    updateFormData(() => merged);
+  });
+  useEffect(() => {
+    const review = mariReview.review;
+    if (review?.mode !== "kept" || handledKeptRef.current === review.key) return;
+    handledKeptRef.current = review.key;
+    if (review.fields.some((field) => field.characterId === characterId)) void restoreTakenOver();
+  }, [mariReview.review, characterId]);
 
   // Moves labelled text out of the description into the other card fields. The dialog summarises the
   // split first; nothing is saved until the user saves the card.
@@ -1001,6 +1108,9 @@ export function CharacterEditor() {
         personaVersion: formData.character_version ?? "1.0",
         versioningEnabled: formData.extensions.versioningEnabled !== false,
         creatorNotes: formData.creator_notes ?? "",
+        summary: formData.summary ?? "",
+        mes_example: formData.mes_example ?? "",
+        cardFieldAlternatives: unassignCardFieldAlternatives(formData.extensions.cardFieldAlternatives),
         description: formData.description ?? "",
         personality: formData.personality ?? "",
         scenario: formData.scenario ?? "",
@@ -1113,6 +1223,9 @@ export function CharacterEditor() {
     saveDisabled && "cursor-not-allowed opacity-50",
   );
 
+  const favoriteLabel = formData.extensions.fav
+    ? localizeUi("ui.characters.charactereditor.removeFromFavorites")
+    : localizeUi("ui.characters.charactereditor.addToFavorites");
   const headerActions = (
     <>
       <button
@@ -1142,11 +1255,8 @@ export function CharacterEditor() {
         data-character-favorite-toggle
         data-favorite={formData.extensions.fav ? "true" : "false"}
         className="mari-editor-action mari-editor-action--favorite inline-flex"
-        title={
-          formData.extensions.fav
-            ? localizeUi("ui.characters.charactereditor.removeFromFavorites")
-            : localizeUi("ui.characters.charactereditor.addToFavorites")
-        }
+        title={favoriteLabel}
+        aria-label={favoriteLabel}
       >
         {formData.extensions.fav ? <Star size="1rem" fill="currentColor" /> : <StarOff size="1rem" />}
       </button>
@@ -1156,6 +1266,7 @@ export function CharacterEditor() {
         onClick={() => setExportDialogOpen(true)}
         className={headerActionButtonClass}
         title={localizeUi("ui.characters.charactereditor.exportCharacter")}
+        aria-label={localizeUi("ui.characters.charactereditor.exportCharacter")}
       >
         <svg width="1rem" height="1rem" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path
@@ -1175,6 +1286,7 @@ export function CharacterEditor() {
         disabled={createPersona.isPending || uploadPersonaAvatar.isPending}
         className="mari-editor-action inline-flex disabled:cursor-not-allowed disabled:opacity-50"
         title={localizeUi("ui.characters.charactereditor.importCharacterAsPersona")}
+        aria-label={localizeUi("ui.characters.charactereditor.importCharacterAsPersona")}
       >
         {createPersona.isPending || uploadPersonaAvatar.isPending ? (
           <Loader2 size="1rem" className="animate-spin" />
@@ -1195,6 +1307,7 @@ export function CharacterEditor() {
         }}
         className="mari-editor-action inline-flex"
         title={localizeUi("ui.characters.charactereditor.duplicateCharacter")}
+        aria-label={localizeUi("ui.characters.charactereditor.duplicateCharacter")}
       >
         <Copy size="1rem" />
       </button>
@@ -1204,6 +1317,7 @@ export function CharacterEditor() {
         onClick={handleDelete}
         className="mari-editor-action inline-flex"
         title={localizeUi("ui.characters.charactereditor.deleteCharacter")}
+        aria-label={localizeUi("ui.characters.charactereditor.deleteCharacter")}
       >
         <Trash2 size="1rem" />
       </button>
@@ -1211,307 +1325,338 @@ export function CharacterEditor() {
   );
 
   return (
-    <div className="mari-editor-shell mari-editor-legacy-bridge flex flex-1 flex-col overflow-hidden">
-      <ExportFormatDialog
-        open={exportDialogOpen}
-        title={localizeUi("ui.characters.charactereditor.exportCharacter_cdcda78")}
-        description={localizeUi(
-          "ui.characters.charactereditor.nativeKeepsMarinaraMetadataSpritesGalleryImagesAndAttached",
-        )}
-        compatibleDescription="Exports direct Chara Card V2 JSON without the Marinara wrapper."
-        showPngOption
-        onClose={() => setExportDialogOpen(false)}
-        onSelect={(format: ExportFormatChoice) => {
-          if (!characterId) return;
-          setExportDialogOpen(false);
-          if (format === "compatible-png") {
-            void api.download(`/characters/${characterId}/export-png`, "character.png");
-          } else {
-            void api.download(`/characters/${characterId}/export?format=${format}`);
+    <MariFieldReviewProvider value={mariReview.value}>
+      <div className="mari-editor-shell mari-editor-legacy-bridge flex flex-1 flex-col overflow-hidden">
+        <ExportFormatDialog
+          open={exportDialogOpen}
+          title={localizeUi("ui.characters.charactereditor.exportCharacter_cdcda78")}
+          description={localizeUi(
+            "ui.characters.charactereditor.nativeKeepsMarinaraMetadataSpritesGalleryImagesAndAttached",
+          )}
+          compatibleDescription="Exports direct Chara Card V2 JSON without the Marinara wrapper."
+          showPngOption
+          onClose={() => setExportDialogOpen(false)}
+          onSelect={(format: ExportFormatChoice) => {
+            if (!characterId) return;
+            setExportDialogOpen(false);
+            if (format === "compatible-png") {
+              void api.download(`/characters/${characterId}/export-png`, "character.png");
+            } else {
+              void api.download(`/characters/${characterId}/export?format=${format}`);
+            }
+          }}
+        />
+        <DescriptionSplitDialog
+          open={descriptionSplitOpen}
+          result={descriptionSplit}
+          hasUnsavedChanges={dirty}
+          onAskMari={characterId ? askMariToSplitDescription : undefined}
+          onApply={applyDescriptionSplitResult}
+          onSplitAnyway={() => handleSplitDescription(true)}
+          onClose={() => setDescriptionSplitOpen(false)}
+        />
+        <AvatarGenerationModal
+          open={avatarGeneratorOpen}
+          title={localizeUi("ui.characters.charactereditor.generateCharacterAvatar")}
+          entityName={formData.name}
+          defaultAppearance={imageAppearanceGeneratorSeed(
+            formData.extensions,
+            (formData.extensions.appearance as string | undefined) || formData.description || formData.personality,
+          )}
+          defaultAvatarUrl={avatarPreview}
+          onClose={() => setAvatarGeneratorOpen(false)}
+          onUseAvatar={handleGeneratedAvatar}
+        />
+        <AvatarGenerationModal
+          open={characterSheetGeneratorOpen}
+          mode="character-sheet"
+          title={localizeUi("ui.characters.charactersheet.createTitle")}
+          entityName={formData.name || localizeUi("ui.characters.charactersheet.characterFallback")}
+          defaultAppearance={imageAppearanceGeneratorSeed(
+            formData.extensions,
+            (formData.extensions.appearance as string | undefined) || formData.description || formData.personality,
+          )}
+          defaultAvatarUrl={avatarPreview}
+          neutralFullBodyReferenceUrl={
+            characterSheetSprites?.find((sprite) => sprite.expression === "full_neutral")?.url
           }
-        }}
-      />
-      <DescriptionSplitDialog
-        open={descriptionSplitOpen}
-        result={descriptionSplit}
-        hasUnsavedChanges={dirty}
-        onAskMari={characterId ? askMariToSplitDescription : undefined}
-        onApply={applyDescriptionSplitResult}
-        onSplitAnyway={() => handleSplitDescription(true)}
-        onClose={() => setDescriptionSplitOpen(false)}
-      />
-      <AvatarGenerationModal
-        open={avatarGeneratorOpen}
-        title={localizeUi("ui.characters.charactereditor.generateCharacterAvatar")}
-        entityName={formData.name}
-        defaultAppearance={imageAppearanceGeneratorSeed(
-          formData.extensions,
-          (formData.extensions.appearance as string | undefined) || formData.description || formData.personality,
-        )}
-        defaultAvatarUrl={avatarPreview}
-        onClose={() => setAvatarGeneratorOpen(false)}
-        onUseAvatar={handleGeneratedAvatar}
-      />
-      <AvatarGenerationModal
-        open={characterSheetGeneratorOpen}
-        mode="character-sheet"
-        title={localizeUi("ui.characters.charactersheet.createTitle")}
-        entityName={formData.name || localizeUi("ui.characters.charactersheet.characterFallback")}
-        defaultAppearance={imageAppearanceGeneratorSeed(
-          formData.extensions,
-          (formData.extensions.appearance as string | undefined) || formData.description || formData.personality,
-        )}
-        defaultAvatarUrl={avatarPreview}
-        neutralFullBodyReferenceUrl={characterSheetSprites?.find((sprite) => sprite.expression === "full_neutral")?.url}
-        onClose={() => setCharacterSheetGeneratorOpen(false)}
-        onUseAvatar={handleGeneratedCharacterSheet}
-      />
+          onClose={() => setCharacterSheetGeneratorOpen(false)}
+          onUseAvatar={handleGeneratedCharacterSheet}
+        />
 
-      {/* ── Header ── */}
-      <div className="mari-editor-header mari-editor-header--with-nav">
-        <div className="mari-editor-header-main mari-editor-header-main--identity">
-          <button
-            type="button"
-            onClick={handleClose}
-            className="mari-editor-action inline-flex"
-            title={localizeUi("ui.noodle.noodlerframe.back")}
-          >
-            <ArrowLeft size="1.125rem" />
-          </button>
-
-          {/* Avatar */}
-          <div
-            className={cn(
-              "mari-editor-avatar-tile group relative",
-              !avatarPreview && "mari-avatar-placeholder mari-avatar-placeholder--character",
-            )}
-          >
+        {/* ── Header ── */}
+        {/* --dense: eleven sections and seven actions make this the most crowded editor header. */}
+        <div className="mari-editor-header mari-editor-header--with-nav mari-editor-header--dense">
+          <div className="mari-editor-header-main mari-editor-header-main--identity">
             <button
               type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="absolute inset-0 overflow-hidden rounded-[inherit]"
-              aria-label={localizeUi("editor.avatar.upload")}
+              onClick={handleClose}
+              className="mari-editor-action inline-flex"
+              title={localizeUi("ui.noodle.noodlerframe.back")}
+              aria-label={localizeUi("ui.noodle.noodlerframe.back")}
             >
-              {avatarPreview ? (
-                <img
-                  src={avatarPreview}
-                  alt={formData.name}
-                  className="pointer-events-none h-full w-full object-cover"
-                  style={getAvatarCropStyle(normalizeAvatarCrop(formData.extensions.avatarCrop))}
-                />
-              ) : (
-                <span className="flex h-full w-full items-center justify-center">
-                  <User size="1.375rem" className="text-white" />
-                </span>
-              )}
+              <ArrowLeft size="1.125rem" />
             </button>
-            <EditorAvatarTileActions
-              generationAvailable={imageGenerationAvailable}
-              onGenerate={() => setAvatarGeneratorOpen(true)}
-            />
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              className="sr-only"
-              tabIndex={-1}
-              onChange={handleAvatarUpload}
-            />
-          </div>
 
-          <div className="min-w-0 flex-1">
-            <div className="mari-editor-title-line">
-              <input
-                value={formData.name}
-                onChange={(e) => updateField("name", e.target.value)}
-                onBlur={() => {
-                  const trimmedName = formData.name.trim();
-                  if (trimmedName !== formData.name) updateField("name", trimmedName);
-                }}
-                className="mari-editor-title-input"
-                placeholder={localizeUi("ui.characters.charactereditor.characterName")}
-                size={Math.max(1, Math.min(formData.name.length || 14, 80))}
-              />
-              <p
-                className="mari-editor-meta mari-editor-byline"
-                title={localizeUi("ui.characters.charactereditor.value1VValue2", {
-                  value1: formData.creator
-                    ? localizeUi("ui.characters.charactereditor.byValue1", { value1: formData.creator })
-                    : localizeUi("ui.characters.charactereditor.noCreator"),
-                  value2: formData.character_version || "1.0",
-                })}
+            {/* Avatar */}
+            <div
+              className={cn(
+                "mari-editor-avatar-tile group relative",
+                !avatarPreview && "mari-avatar-placeholder mari-avatar-placeholder--character",
+              )}
+            >
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute inset-0 overflow-hidden rounded-[inherit]"
+                aria-label={localizeUi("editor.avatar.upload")}
               >
-                <span className="mari-editor-byline-creator">
-                  {formData.creator
-                    ? localizeUi("ui.characters.charactereditor.byValue1", { value1: formData.creator })
-                    : localizeUi("ui.characters.charactereditor.noCreator")}
-                </span>
-                <span aria-hidden="true">·</span>
-                <span className="mari-editor-byline-version">
-                  {localizeUi("ui.characters.charactereditor.v")}
-                  {formData.character_version || "1.0"}
-                </span>
-              </p>
-            </div>
-            <div className="mari-editor-secondary-line">
+                {avatarPreview ? (
+                  <img
+                    src={avatarPreview}
+                    alt={formData.name}
+                    className="pointer-events-none h-full w-full object-cover"
+                    style={getAvatarCropStyle(normalizeAvatarCrop(formData.extensions.avatarCrop))}
+                  />
+                ) : (
+                  <span className="flex h-full w-full items-center justify-center">
+                    <User size="1.375rem" className="text-white" />
+                  </span>
+                )}
+              </button>
+              <EditorAvatarTileActions
+                generationAvailable={imageGenerationAvailable}
+                onGenerate={() => setAvatarGeneratorOpen(true)}
+              />
               <input
-                value={characterComment}
-                onChange={(e) => updateCharacterComment(e.target.value)}
-                className="mari-editor-subtitle-input"
-                placeholder={localizeUi("ui.characters.charactereditor.titleCommentEGModernAuVersion")}
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                tabIndex={-1}
+                onChange={handleAvatarUpload}
               />
             </div>
-          </div>
-        </div>
 
-        <EditorTabNavigation tabs={TABS} activeId={activeTab} onChange={scrollToSection} />
-
-        <div className="mari-editor-actions flex">
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saveDisabled}
-            className={saveButtonClass}
-            aria-label={saveLabel}
-            title={saveLabel}
-          >
-            <Save size="0.9375rem" />
-            <span className="mari-editor-save-label">{saveLabel}</span>
-          </button>
-          {headerActions}
-        </div>
-      </div>
-
-      {/* ── Body ── */}
-      <div className="mari-editor-body">
-        {/* Tab Content */}
-        <div ref={contentRef} className="mari-editor-content @max-5xl:p-4">
-          <div className="mari-editor-content-inner">
-            {characterId && mariChipField && (
-              <div className="mb-3 flex justify-end">
-                <MariContextChip
-                  entryPoint="character-editor"
-                  surface="character-editor"
-                  resource={{ kind: "character", id: characterId, label: formData.name }}
-                  field={mariChipField.field}
-                  value={mariChipField.value}
-                  subject={formData.name}
+            <div className="min-w-0 flex-1">
+              <div className="mari-editor-title-line">
+                <input
+                  value={formData.name}
+                  onChange={(e) => updateField("name", e.target.value)}
+                  onBlur={() => {
+                    const trimmedName = formData.name.trim();
+                    if (trimmedName !== formData.name) updateField("name", trimmedName);
+                  }}
+                  className="mari-editor-title-input"
+                  data-mari-field="name"
+                  title={formData.name || undefined}
+                  aria-label={localizeUi("ui.characters.charactereditor.characterName")}
+                  placeholder={localizeUi("ui.characters.charactereditor.characterName")}
+                  size={Math.max(1, Math.min(formData.name.length || 14, 80))}
+                />
+                <p
+                  className="mari-editor-meta mari-editor-byline"
+                  title={localizeUi("ui.characters.charactereditor.value1VValue2", {
+                    value1: formData.creator
+                      ? localizeUi("ui.characters.charactereditor.byValue1", { value1: formData.creator })
+                      : localizeUi("ui.characters.charactereditor.noCreator"),
+                    value2: formData.character_version || "1.0",
+                  })}
+                >
+                  <span className="mari-editor-byline-creator">
+                    {formData.creator
+                      ? localizeUi("ui.characters.charactereditor.byValue1", { value1: formData.creator })
+                      : localizeUi("ui.characters.charactereditor.noCreator")}
+                  </span>
+                  <span aria-hidden="true">·</span>
+                  <span className="mari-editor-byline-version">
+                    {localizeUi("ui.characters.charactereditor.v")}
+                    {formData.character_version || "1.0"}
+                  </span>
+                </p>
+              </div>
+              <div className="mari-editor-secondary-line">
+                <input
+                  value={characterComment}
+                  onChange={(e) => updateCharacterComment(e.target.value)}
+                  className="mari-editor-subtitle-input"
+                  placeholder={localizeUi("ui.characters.charactereditor.titleCommentEGModernAuVersion")}
                 />
               </div>
-            )}
-            <section data-editor-section="metadata">
-              <MetadataTab
-                characterId={characterId}
-                formData={formData}
-                characterComment={characterComment}
-                updateCharacterComment={updateCharacterComment}
-                updateField={updateField}
-                updateExtension={updateExtension}
-                newTag={newTag}
-                setNewTag={setNewTag}
-                addTag={addTag}
-                removeTag={removeTag}
-                removeAllTags={removeAllTags}
-                avatarPreview={avatarPreview}
-                onSelectAvatar={() => fileInputRef.current?.click()}
-                onGenerateAvatar={() => setAvatarGeneratorOpen(true)}
-                imageGenerationAvailable={imageGenerationAvailable}
-                avatarUploading={avatarUploading}
-                onRemoveAvatar={handleAvatarRemove}
-                removingAvatar={removeAvatar.isPending}
-                hasUnsavedChanges={dirty}
-                onSplitDescription={() => handleSplitDescription()}
-              />
-            </section>
-            <section data-editor-section="card">
-              <CharacterCardTab
-                formData={formData}
-                updateField={updateField}
-                updateExtension={updateExtension}
-                updateExtensionVerbatim={updateExtensionVerbatim}
-                updateFormData={updateFormData}
-              />
-            </section>
-            <section data-editor-section="onboarding">
-              <OnboardingTab formData={formData} updateExtension={updateExtension} />
-            </section>
-            <section data-editor-section="convo">
-              <ConvoTab
-                formData={formData}
-                updateExtension={updateExtension}
-                kind="character"
-                characterId={characterId ?? undefined}
-              />
-            </section>
-            <LazyEditorSection key={`lorebook:${characterId}`} id="lorebook">
-              <LorebookTab
-                characterId={characterId}
-                formData={formData}
-                embedding={lorebookEmbedding}
-                isEmbeddingInFlight={isLorebookEmbeddingInFlight}
-                onEmbedded={handleLorebookEmbedded}
-                onEmbeddingChange={setLorebookEmbedInFlight}
-                onUnembed={handleLorebookUnembedded}
-              />
-            </LazyEditorSection>
-            <LazyEditorSection key={`sprites:${characterId}`} id="sprites">
-              {characterId && (
-                <SpritesTab
+            </div>
+          </div>
+
+          <EditorTabNavigation tabs={TABS} activeId={activeTab} onChange={scrollToSection} />
+
+          <div className="mari-editor-actions flex">
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saveDisabled}
+              className={saveButtonClass}
+              aria-label={saveLabel}
+              title={saveLabel}
+            >
+              <Save size="0.9375rem" />
+              <span className="mari-editor-save-label">{saveLabel}</span>
+            </button>
+            {headerActions}
+          </div>
+        </div>
+
+        {/* ── Body ── */}
+        <div className="mari-editor-body relative">
+          {workingOffscreen && (
+            <button
+              type="button"
+              className="mari-topbar-status mari-field-chip"
+              data-state="working"
+              data-edge={workingOffscreen}
+              onClick={revealWorkingField}
+            >
+              {workingOffscreen === "above" ? (
+                <ArrowUp size="0.75rem" aria-hidden="true" />
+              ) : (
+                <ArrowDown size="0.75rem" aria-hidden="true" />
+              )}
+              {localizeUi("ui.characters.charactereditor.mariIsHere")}
+            </button>
+          )}
+          {/* Tab Content */}
+          <div ref={contentRef} className="mari-editor-content @max-5xl:p-4">
+            <div className="mari-editor-content-inner">
+              {characterId && mariChipField && (
+                <div className="mb-3 flex justify-end">
+                  <MariContextChip
+                    entryPoint="character-editor"
+                    surface="character-editor"
+                    resource={{ kind: "character", id: characterId, label: formData.name }}
+                    field={mariChipField.field}
+                    value={mariChipField.value}
+                    subject={formData.name}
+                  />
+                </div>
+              )}
+              <section data-editor-section="metadata">
+                <MetadataTab
                   characterId={characterId}
-                  characterName={formData.name}
-                  defaultAppearance={imageAppearanceGeneratorSeed(
-                    formData.extensions,
-                    (formData.extensions.appearance as string) ?? formData.description,
-                  )}
-                  defaultAvatarUrl={avatarPreview}
-                  characterSheetImageId={
-                    typeof formData.extensions.characterSheetImageId === "string"
-                      ? formData.extensions.characterSheetImageId
-                      : null
-                  }
-                  useCharacterSheetAsReference={formData.extensions.useCharacterSheetAsReference === true}
+                  formData={formData}
+                  characterComment={characterComment}
+                  updateCharacterComment={updateCharacterComment}
+                  updateField={updateField}
                   updateExtension={updateExtension}
-                  onCreateCharacterSheet={() => setCharacterSheetGeneratorOpen(true)}
+                  newTag={newTag}
+                  setNewTag={setNewTag}
+                  addTag={addTag}
+                  removeTag={removeTag}
+                  removeAllTags={removeAllTags}
+                  avatarPreview={avatarPreview}
+                  onSelectAvatar={() => fileInputRef.current?.click()}
+                  onGenerateAvatar={() => setAvatarGeneratorOpen(true)}
+                  imageGenerationAvailable={imageGenerationAvailable}
+                  avatarUploading={avatarUploading}
+                  onRemoveAvatar={handleAvatarRemove}
+                  removingAvatar={removeAvatar.isPending}
+                  hasUnsavedChanges={dirty}
+                  onSplitDescription={() => handleSplitDescription()}
                 />
-              )}
-            </LazyEditorSection>
-            <LazyEditorSection key={`gallery:${characterId}`} id="gallery">
-              {characterId && (
-                <CharacterGalleryTab
-                  characterId={characterId}
-                  characterName={formData.name}
-                  onCreateCharacterSheet={() => setCharacterSheetGeneratorOpen(true)}
+              </section>
+              <section data-editor-section="card">
+                <CharacterCardTab
+                  formData={formData}
+                  updateField={updateField}
+                  updateExtension={updateExtension}
+                  updateExtensionVerbatim={updateExtensionVerbatim}
+                  updateFormData={updateFormData}
                 />
-              )}
-            </LazyEditorSection>
-            <section data-editor-section="colors">
-              <ColorsTab formData={formData} updateExtension={updateExtension} avatarUrl={avatarPreview} />
-            </section>
-            <LazyEditorSection key={`voice:${characterId}`} id="voice">
-              {characterId && (
-                <VoiceTab
-                  characterId={characterId}
-                  characterName={persistedCharacterName ?? formData.name}
+              </section>
+              <section data-editor-section="onboarding">
+                <OnboardingTab formData={formData} updateExtension={updateExtension} />
+              </section>
+              <section data-editor-section="convo">
+                <ConvoTab
                   formData={formData}
                   updateExtension={updateExtension}
+                  kind="character"
+                  characterId={characterId ?? undefined}
                 />
-              )}
-            </LazyEditorSection>
-            <section data-editor-section="stats">
-              <StatsTab formData={formData} updateExtension={updateExtension} onDraftChange={markDirty} />
-            </section>
-            <section data-editor-section="advanced">
-              <AdvancedTab
-                formData={formData}
-                updateField={updateField}
-                updateExtension={updateExtension}
-                characterId={characterId}
-              />
-            </section>
+              </section>
+              <LazyEditorSection key={`lorebook:${characterId}`} id="lorebook">
+                <LorebookTab
+                  characterId={characterId}
+                  formData={formData}
+                  embedding={lorebookEmbedding}
+                  isEmbeddingInFlight={isLorebookEmbeddingInFlight}
+                  onEmbedded={handleLorebookEmbedded}
+                  onEmbeddingChange={setLorebookEmbedInFlight}
+                  onUnembed={handleLorebookUnembedded}
+                />
+              </LazyEditorSection>
+              <LazyEditorSection key={`sprites:${characterId}`} id="sprites">
+                {characterId && (
+                  <SpritesTab
+                    characterId={characterId}
+                    characterName={formData.name}
+                    defaultAppearance={imageAppearanceGeneratorSeed(
+                      formData.extensions,
+                      (formData.extensions.appearance as string) ?? formData.description,
+                    )}
+                    defaultAvatarUrl={avatarPreview}
+                    characterSheetImageId={
+                      typeof formData.extensions.characterSheetImageId === "string"
+                        ? formData.extensions.characterSheetImageId
+                        : null
+                    }
+                    useCharacterSheetAsReference={formData.extensions.useCharacterSheetAsReference === true}
+                    updateExtension={updateExtension}
+                    onCreateCharacterSheet={() => setCharacterSheetGeneratorOpen(true)}
+                  />
+                )}
+              </LazyEditorSection>
+              <LazyEditorSection key={`gallery:${characterId}`} id="gallery">
+                {characterId && (
+                  <CharacterGalleryTab
+                    characterId={characterId}
+                    characterName={formData.name}
+                    onCreateCharacterSheet={() => setCharacterSheetGeneratorOpen(true)}
+                  />
+                )}
+              </LazyEditorSection>
+              <section data-editor-section="colors">
+                <ColorsTab formData={formData} updateExtension={updateExtension} avatarUrl={avatarPreview} />
+              </section>
+              <LazyEditorSection key={`voice:${characterId}`} id="voice">
+                {characterId && (
+                  <VoiceTab
+                    characterId={characterId}
+                    characterName={persistedCharacterName ?? formData.name}
+                    formData={formData}
+                    updateExtension={updateExtension}
+                  />
+                )}
+              </LazyEditorSection>
+              <section data-editor-section="stats">
+                <StatsTab
+                  formData={formData}
+                  updateExtension={updateExtension}
+                  onDraftChange={markDirty}
+                  characterId={characterId}
+                  avatarUrl={avatarPreview}
+                />
+              </section>
+              <section data-editor-section="advanced">
+                <AdvancedTab
+                  formData={formData}
+                  updateField={updateField}
+                  updateExtension={updateExtension}
+                  characterId={characterId}
+                />
+              </section>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </MariFieldReviewProvider>
   );
 }
 
@@ -1559,6 +1704,41 @@ function CharacterCardTab({
   updateFormData: (update: (data: CharacterData) => CharacterData) => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
+  const characterId = useUIStore((state) => state.characterDetailId);
+  const card = {
+    name: formData.name,
+    summary: formData.summary ?? "",
+    description: formData.description,
+    personality: formData.personality,
+    backstory: String(formData.extensions.backstory ?? ""),
+    appearance: String(formData.extensions.appearance ?? ""),
+    scenario: formData.scenario,
+    mes_example: formData.mes_example,
+  };
+  const generation = useCardFieldGeneration("character", characterId, card, (field, text) => {
+    if (field === "backstory" || field === "appearance") updateExtension(field, text);
+    else updateField(field, text);
+  });
+  const wandFor = (field: CardFieldKey) => (
+    <CardFieldWand
+      label={generation.labels[field]}
+      onGenerate={() => void generation.generate(field)}
+      disabled={!characterId || generation.isPending}
+      loading={generation.pendingField === field}
+    />
+  );
+  const alternativesFor = (field: CardFieldKey) => (
+    <CardFieldAlternatives
+      kind="character"
+      entityId={characterId}
+      field={field}
+      label={generation.labels[field]}
+      card={card}
+      alternatives={normalizeCardFieldAlternatives(formData.extensions.cardFieldAlternatives)}
+      onChange={(alternatives) => updateExtension("cardFieldAlternatives", alternatives)}
+    />
+  );
+  const seedHint = localizeUi("ui.cardFields.seedPlaceholder");
   // Read from this tab's own draft: the onboarding block is edited on a sibling
   // tab, and `safeParse` (not `parse`) is what keeps a malformed or null block
   // from throwing during render — the Onboarding tab reads it the same way, so
@@ -1638,13 +1818,24 @@ function CharacterCardTab({
       <EditorSectionJumps items={CHARACTER_CARD_SECTIONS} />
       <div className="space-y-10">
         <EditorSectionAnchor id="character-card-summary">
-          <CharacterSummaryField formData={formData} updateField={updateField} />
+          <CharacterSummaryField
+            formData={formData}
+            updateField={updateField}
+            actions={wandFor("summary")}
+            footer={alternativesFor("summary")}
+          />
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-description">
           <CharacterDescriptionTab
             formData={formData}
             updateField={updateField}
-            descriptionFooter={chipsFor("description")}
+            actions={wandFor("description")}
+            descriptionFooter={
+              <>
+                {chipsFor("description")}
+                {alternativesFor("description")}
+              </>
+            }
             descriptionRef={(element) => {
               fieldRefs.current.description = element;
             }}
@@ -1653,40 +1844,60 @@ function CharacterCardTab({
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-personality">
           <TextareaTab
+            mariField="personality"
+            actions={wandFor("personality")}
             title={localizeUi("chat.settings.inlineEditor.fields.personality")}
             subtitle={localizeUi("ui.characters.charactercardtab.aConciseSummaryOfTheCharacterSPersonalityTraits")}
             helpText={CHARACTER_PERSONALITY_HELP}
             value={formData.personality}
             onChange={(v) => updateField("personality", v)}
-            placeholder={localizeUi(
-              "ui.characters.charactercardtab.energeticCuriousAndFiercelyLoyalSpeaksInShortBursts",
-            )}
+            placeholder={
+              localizeUi("ui.characters.charactercardtab.energeticCuriousAndFiercelyLoyalSpeaksInShortBursts") +
+              " " +
+              seedHint
+            }
             rows={8}
             textareaRef={(element) => {
               fieldRefs.current.personality = element;
             }}
             onFocus={() => setActiveField("personality")}
-            footer={chipsFor("personality")}
+            footer={
+              <>
+                {chipsFor("personality")}
+                {alternativesFor("personality")}
+              </>
+            }
           />
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-backstory">
           <TextareaTab
+            mariField="extensions.backstory"
+            actions={wandFor("backstory")}
             title={localizeUi("chat.settings.inlineEditor.fields.backstory")}
             subtitle={localizeUi("ui.characters.charactercardtab.theCharacterSHistoryOriginStoryAndFormativeLife")}
             helpText={CHARACTER_BACKSTORY_HELP}
             value={(formData.extensions.backstory as string) ?? ""}
             onChange={(v) => updateExtension("backstory", v)}
-            placeholder={localizeUi("ui.characters.charactercardtab.bornInASmallVillageOnTheOutskirtsOf")}
+            placeholder={
+              localizeUi("ui.characters.charactercardtab.bornInASmallVillageOnTheOutskirtsOf") + " " + seedHint
+            }
             rows={12}
             textareaRef={(element) => {
               fieldRefs.current.backstory = element;
             }}
             onFocus={() => setActiveField("backstory")}
-            footer={chipsFor("backstory")}
+            footer={
+              <>
+                {chipsFor("backstory")}
+                {alternativesFor("backstory")}
+              </>
+            }
           />
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-appearance">
           <TextareaTab
+            mariField="extensions.appearance"
+            actions={wandFor("appearance")}
             title={localizeUi("chat.settings.inlineEditor.fields.appearance")}
             subtitle={localizeUi(
               "ui.characters.charactercardtab.detailedPhysicalDescriptionHeightBuildHairEyesClothingDistinguishing",
@@ -1694,13 +1905,22 @@ function CharacterCardTab({
             helpText={CHARACTER_APPEARANCE_HELP}
             value={(formData.extensions.appearance as string) ?? ""}
             onChange={(v) => updateExtension("appearance", v)}
-            placeholder={localizeUi("ui.characters.charactercardtab.tallAndWillowyWithSilverStreakedDarkHairWears")}
+            placeholder={
+              localizeUi("ui.characters.charactercardtab.tallAndWillowyWithSilverStreakedDarkHairWears") +
+              " " +
+              seedHint
+            }
             rows={8}
             textareaRef={(element) => {
               fieldRefs.current.appearance = element;
             }}
             onFocus={() => setActiveField("appearance")}
-            footer={chipsFor("appearance")}
+            footer={
+              <>
+                {chipsFor("appearance")}
+                {alternativesFor("appearance")}
+              </>
+            }
           />
           <div className="mt-3">
             <SettingsSwitch
@@ -1731,6 +1951,8 @@ function CharacterCardTab({
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-scenario">
           <TextareaTab
+            mariField="scenario"
+            actions={wandFor("scenario")}
             title={localizeUi("chat.settings.inlineEditor.fields.scenario")}
             subtitle={localizeUi(
               "ui.characters.charactercardtab.theDefaultSettingOrSituationWhereInteractionsTakePlace",
@@ -1738,17 +1960,31 @@ function CharacterCardTab({
             helpText={CHARACTER_SCENARIO_HELP}
             value={formData.scenario}
             onChange={(v) => updateField("scenario", v)}
-            placeholder={localizeUi("ui.characters.charactercardtab.aBustlingPortCityDuringATradeFestivalThe")}
+            placeholder={
+              localizeUi("ui.characters.charactercardtab.aBustlingPortCityDuringATradeFestivalThe") + " " + seedHint
+            }
             rows={8}
             textareaRef={(element) => {
               fieldRefs.current.scenario = element;
             }}
             onFocus={() => setActiveField("scenario")}
-            footer={chipsFor("scenario")}
+            footer={
+              <>
+                {chipsFor("scenario")}
+                {alternativesFor("scenario")}
+              </>
+            }
           />
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-dialogue">
-          <DialogueTab formData={formData} updateField={updateField} updateFormData={updateFormData} />
+          <DialogueTab
+            formData={formData}
+            updateField={updateField}
+            updateFormData={updateFormData}
+            card={card}
+            exampleActions={wandFor("mes_example")}
+            exampleFooter={alternativesFor("mes_example")}
+          />
         </EditorSectionAnchor>
       </div>
     </div>
@@ -1949,7 +2185,7 @@ function OnboardingTab({
   };
 
   return (
-    <div>
+    <div data-mari-field="extensions.onboarding">
       <SectionHeader
         title={localizeUi("editor.tabs.onboarding")}
         subtitle={localizeUi("ui.characters.onboarding.subtitle")}
@@ -2250,75 +2486,42 @@ function OnboardingTab({
 function CharacterSummaryField({
   formData,
   updateField,
+  actions,
+  footer,
 }: {
   formData: CharacterData;
   updateField: <K extends keyof CharacterData>(key: K, value: CharacterData[K]) => void;
+  actions: ReactNode;
+  footer?: ReactNode;
 }) {
   const { t: localizeUi } = useUiTranslation();
-  const characterId = useUIStore((s) => s.characterDetailId);
-  const generateSummary = useGenerateCharacterSummary();
-  const liveSummaryRef = useRef(formData.summary ?? "");
-  liveSummaryRef.current = formData.summary ?? "";
-  const handleGenerate = async () => {
-    if (!characterId) return;
-    const requestedCharacterId = characterId;
-    const summaryAtRequest = liveSummaryRef.current;
-    try {
-      const result = await generateSummary.mutateAsync({
-        id: requestedCharacterId,
-        draft: {
-          name: formData.name,
-          description: formData.description,
-          personality: formData.personality,
-          scenario: formData.scenario,
-          backstory: formData.extensions?.backstory,
-        },
-      });
-      if (useUIStore.getState().characterDetailId !== requestedCharacterId) return;
-      if (liveSummaryRef.current !== summaryAtRequest) return;
-      updateField("summary", result.summary);
-      toast.success(localizeUi("ui.characters.summary.generated"));
-    } catch (error) {
-      if (useUIStore.getState().characterDetailId !== requestedCharacterId) return;
-      toast.error(error instanceof Error ? error.message : localizeUi("ui.characters.summary.failed"));
-    }
-  };
-
+  const characterId = useUIStore((state) => state.characterDetailId);
   return (
-    <div className="mari-editor-panel space-y-3 p-3">
+    <div className="mari-editor-panel space-y-3 p-3" data-mari-field="summary">
       <div className="flex items-start justify-between gap-3">
         <SectionHeader
           title={localizeUi("ui.characters.summary.label")}
           subtitle={localizeUi("ui.characters.summary.help")}
         />
-        <button
-          type="button"
-          onClick={() => void handleGenerate()}
-          disabled={!characterId || generateSummary.isPending}
-          className="mari-editor-action inline-flex min-h-9 shrink-0 items-center gap-1.5 px-2.5 text-xs disabled:cursor-not-allowed disabled:opacity-50"
-          title={localizeUi("ui.characters.summary.generate")}
-        >
-          {generateSummary.isPending ? <Loader2 size="0.8rem" className="animate-spin" /> : <Wand2 size="0.8rem" />}
-          {generateSummary.isPending
-            ? localizeUi("ui.characters.summary.generating")
-            : localizeUi("ui.characters.summary.generate")}
-        </button>
+        {actions}
       </div>
-      <MacroTextarea
-        value={formData.summary ?? ""}
-        onChange={(value) => updateField("summary", value.slice(0, 500))}
-        maxLength={500}
-        rows={4}
-        title={localizeUi("ui.characters.summary.label")}
-        ariaLabel={localizeUi("ui.characters.summary.label")}
-        placeholder={localizeUi("ui.characters.summary.placeholder")}
-        showMarkdownPreview
-        selfCharacterId={characterId}
-        className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-3 text-sm leading-relaxed outline-none placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
-      />
-      <p className="text-right text-[0.625rem] text-[var(--muted-foreground)]">
-        {String(formData.summary ?? "").length}/500
-      </p>
+      <MariFieldReview field="summary">
+        <MacroTextarea
+          value={formData.summary ?? ""}
+          onChange={(value) => updateField("summary", value)}
+          rows={4}
+          title={localizeUi("ui.characters.summary.label")}
+          ariaLabel={localizeUi("ui.characters.summary.label")}
+          placeholder={
+            localizeUi("ui.characters.summary.placeholder") + " " + localizeUi("ui.cardFields.seedPlaceholder")
+          }
+          showMarkdownPreview
+          showTokenCount
+          selfCharacterId={characterId}
+          className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-3 text-sm leading-relaxed outline-none placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
+        />
+      </MariFieldReview>
+      {footer}
     </div>
   );
 }
@@ -2327,6 +2530,7 @@ function CharacterDescriptionTab({
   formData,
   updateField,
   descriptionFooter,
+  actions,
   descriptionRef,
   onDescriptionFocus,
 }: {
@@ -2334,31 +2538,42 @@ function CharacterDescriptionTab({
   updateField: <K extends keyof CharacterData>(key: K, value: CharacterData[K]) => void;
   /** Card-variable chips for this field, empty when the card declares none. */
   descriptionFooter?: ReactNode;
+  actions?: ReactNode;
   descriptionRef?: Ref<HTMLTextAreaElement>;
   onDescriptionFocus?: () => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const selfCharacterId = useUIStore((s) => s.characterDetailId);
   return (
-    <div className="mari-editor-panel space-y-3 p-3">
-      <SectionHeader
-        title={localizeUi("chat.settings.inlineEditor.fields.description")}
-        subtitle={localizeUi("ui.characters.characterdescriptiontab.theCharacterSGeneralDescriptionThisIsSentIn")}
-        helpText={CHARACTER_DESCRIPTION_HELP}
-      />
-      <MacroTextarea
-        textareaRef={descriptionRef}
-        onFocus={onDescriptionFocus}
-        showTokenCount
-        value={formData.description}
-        onChange={(value) => updateField("description", value)}
-        placeholder={localizeUi("ui.characters.characterdescriptiontab.describeWhoThisCharacterIsTheirRoleAndTheir")}
-        rows={12}
-        title={localizeUi("chat.settings.inlineEditor.fields.description")}
-        showMarkdownPreview
-        selfCharacterId={selfCharacterId}
-        className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-4 text-sm leading-relaxed outline-none transition-colors placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
-      />
+    <div className="mari-editor-panel space-y-3 p-3" data-mari-field="description">
+      <div className="flex items-start justify-between gap-3">
+        <SectionHeader
+          title={localizeUi("chat.settings.inlineEditor.fields.description")}
+          subtitle={localizeUi("ui.characters.characterdescriptiontab.theCharacterSGeneralDescriptionThisIsSentIn")}
+          helpText={CHARACTER_DESCRIPTION_HELP}
+        />
+        {actions}
+      </div>
+      <MariFieldReview field="description">
+        <MacroTextarea
+          ariaLabel={localizeUi("chat.settings.inlineEditor.fields.description")}
+          textareaRef={descriptionRef}
+          onFocus={onDescriptionFocus}
+          showTokenCount
+          value={formData.description}
+          onChange={(value) => updateField("description", value)}
+          placeholder={
+            localizeUi("ui.characters.characterdescriptiontab.describeWhoThisCharacterIsTheirRoleAndTheir") +
+            " " +
+            localizeUi("ui.cardFields.seedPlaceholder")
+          }
+          rows={12}
+          title={localizeUi("chat.settings.inlineEditor.fields.description")}
+          showMarkdownPreview
+          selfCharacterId={selfCharacterId}
+          className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-4 text-sm leading-relaxed outline-none transition-colors placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
+        />
+      </MariFieldReview>
       {descriptionFooter}
     </div>
   );
@@ -2375,6 +2590,8 @@ function TextareaTab({
   textareaRef,
   onFocus,
   footer,
+  actions,
+  mariField,
 }: {
   title: string;
   subtitle: string;
@@ -2387,24 +2604,33 @@ function TextareaTab({
   onFocus?: () => void;
   /** Shown under the textarea, inside the panel. */
   footer?: ReactNode;
+  actions?: ReactNode;
+  /** The field id Prof. Mari knows this field by (see lib/mari-editor-fields). */
+  mariField?: string;
 }) {
   const selfCharacterId = useUIStore((s) => s.characterDetailId);
   return (
-    <div className="mari-editor-panel space-y-3 p-3">
-      <SectionHeader title={title} subtitle={subtitle} helpText={helpText} />
-      <MacroTextarea
-        textareaRef={textareaRef}
-        onFocus={onFocus}
-        showTokenCount
-        value={value}
-        onChange={onChange}
-        placeholder={placeholder}
-        rows={rows}
-        title={title}
-        showMarkdownPreview
-        selfCharacterId={selfCharacterId}
-        className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-4 text-sm leading-relaxed outline-none transition-colors placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
-      />
+    <div className="mari-editor-panel space-y-3 p-3" data-mari-field={mariField}>
+      <div className="flex items-start justify-between gap-3">
+        <SectionHeader title={title} subtitle={subtitle} helpText={helpText} />
+        {actions}
+      </div>
+      <MariFieldReview field={mariField ?? ""}>
+        <MacroTextarea
+          ariaLabel={title}
+          textareaRef={textareaRef}
+          onFocus={onFocus}
+          showTokenCount
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          rows={rows}
+          title={title}
+          showMarkdownPreview
+          selfCharacterId={selfCharacterId}
+          className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-4 text-sm leading-relaxed outline-none transition-colors placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
+        />
+      </MariFieldReview>
       {footer}
     </div>
   );
@@ -2673,7 +2899,7 @@ function MetadataTab({
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <label className="space-y-1.5 sm:col-span-2">
+        <label className="space-y-1.5 sm:col-span-2" data-mari-field="name">
           <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
             {localizeUi("ui.characters.metadatatab.name")}{" "}
             <HelpTooltip text={localizeUi("ui.characters.metadatatab.theCharacterSDisplayNameThisIsWhatAppears")} />
@@ -2700,7 +2926,7 @@ function MetadataTab({
             placeholder={localizeUi("ui.characters.metadatatab.modernAuVersion")}
           />
         </label>
-        <label className="space-y-1.5">
+        <label className="space-y-1.5" data-mari-field="creator">
           <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
             {localizeUi("ui.characters.metadatatab.creator")}{" "}
             <HelpTooltip text={localizeUi("ui.characters.metadatatab.thePersonWhoMadeThisCharacterUsefulForGiving")} />
@@ -2712,7 +2938,7 @@ function MetadataTab({
             placeholder={localizeUi("ui.characters.metadatatab.yourName")}
           />
         </label>
-        <div className="space-y-1.5">
+        <div className="space-y-1.5" data-mari-field="character_version">
           <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
             <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
               {localizeUi("ui.characters.metadatatab.version")}{" "}
@@ -2779,7 +3005,7 @@ function MetadataTab({
       </div>
 
       {/* Tags */}
-      <div className="space-y-2">
+      <div className="space-y-2" data-mari-field="tags">
         <div className="flex items-center justify-between gap-2">
           <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
             {localizeUi("ui.characters.metadatatab.tags")}{" "}
@@ -2791,7 +3017,7 @@ function MetadataTab({
             <button
               type="button"
               onClick={removeAllTags}
-              className="mari-chrome-accent-surface mari-accent-animated rounded-lg border px-2.5 py-1 text-[0.6875rem] font-medium transition-colors"
+              className="mari-editor-action mari-editor-action--compact px-2.5 py-1 text-[0.6875rem]"
             >
               {localizeUi("ui.characters.metadatatab.removeAll")}
             </button>
@@ -2922,21 +3148,23 @@ function MetadataTab({
       </div>
 
       {/* Creator Notes */}
-      <div className="block space-y-1.5">
+      <div className="block space-y-1.5" data-mari-field="creator_notes">
         <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
           {localizeUi("ui.characters.metadatatab.creatorNotes")}{" "}
           <HelpTooltip text={localizeUi("ui.characters.metadatatab.privateNotesAboutThisCharacterTipsForUseKnown")} />
         </span>
-        <MacroTextarea
-          value={formData.creator_notes}
-          onChange={(value) => updateField("creator_notes", value)}
-          rows={4}
-          title={localizeUi("ui.characters.metadatatab.creatorNotes")}
-          showMarkdownPreview
-          selfCharacterId={characterId}
-          className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-3 text-sm outline-none placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
-          placeholder={localizeUi("ui.characters.metadatatab.notesAboutThisCharacterIntendedUseTipsForBest")}
-        />
+        <MariFieldReview field="creator_notes">
+          <MacroTextarea
+            value={formData.creator_notes}
+            onChange={(value) => updateField("creator_notes", value)}
+            rows={4}
+            title={localizeUi("ui.characters.metadatatab.creatorNotes")}
+            showMarkdownPreview
+            selfCharacterId={characterId}
+            className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-3 text-sm outline-none placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
+            placeholder={localizeUi("ui.characters.metadatatab.notesAboutThisCharacterIntendedUseTipsForBest")}
+          />
+        </MariFieldReview>
       </div>
     </div>
   );
@@ -3211,7 +3439,7 @@ function CharacterVersionHistoryPanel({
                     type="button"
                     onClick={() => handleDeleteVersion(version)}
                     disabled={versionMutationPending}
-                    className="mari-editor-action mari-editor-action--compact mari-editor-action--danger inline-flex h-7 w-7 rounded-lg p-0"
+                    className="mari-editor-action mari-editor-action--compact mari-editor-action--accent inline-flex h-7 w-7 rounded-lg p-0"
                     title={localizeUi("ui.characters.characterversionhistorypanel.deleteThisSavedVersion")}
                   >
                     {deleteVersion.isPending && deleteVersion.variables?.versionId === version.id ? (
@@ -3332,8 +3560,14 @@ function DialogueTab({
   formData,
   updateField,
   updateFormData,
+  card,
+  exampleActions,
+  exampleFooter,
 }: {
   formData: CharacterData;
+  card: CardFieldDraft;
+  exampleActions?: ReactNode;
+  exampleFooter?: ReactNode;
   updateField: <K extends keyof CharacterData>(key: K, value: CharacterData[K]) => void;
   updateFormData: (update: (data: CharacterData) => CharacterData) => void;
 }) {
@@ -3342,14 +3576,17 @@ function DialogueTab({
   const greetingKeysRef = useRef<string[]>([]);
   const bakeImages = useBakeCharacterGalleryImages(selfCharacterId ?? "");
   const greetingImageUrls = findGreetingImageUrls(formData);
-  const hasBakedImages = readBakedGreetingImages(formData.extensions).length > 0;
+  const hasBakedImages = hasBakedGreetingImages(formData);
 
   // Only on this explicit click: download the greetings' web images into the
   // gallery, then point the greetings at the saved copies (#7221).
   const saveGreetingImages = async () => {
     const characterId = selfCharacterId;
     if (!characterId || greetingImageUrls.length === 0 || bakeImages.isPending) return;
-    const results = await bakeImages.mutateAsync(greetingImageUrls);
+    const results = await bakeImages.mutateAsync({
+      urls: greetingImageUrls,
+      bakedImages: readBakedGreetingImages(formData.extensions),
+    });
     if (useUIStore.getState().characterDetailId !== characterId) return;
     const saved = results.flatMap((result) => (result.file ? [{ file: result.file, url: result.url }] : []));
     const failed = results.filter((result) => !result.file);
@@ -3466,29 +3703,45 @@ function DialogueTab({
       )}
 
       {/* First Message */}
-      <div className="block space-y-1.5">
-        <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
-          {localizeUi("ui.characters.dialoguetab.firstMessage")}{" "}
-          <HelpTooltip text={localizeUi("ui.characters.dialoguetab.theCharacterSOpeningMessageWhenANewChat")} />
-        </span>
+      <div className="block space-y-1.5" data-mari-field="first_mes">
+        <div className="flex items-center justify-between gap-3">
+          <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
+            {localizeUi("ui.characters.dialoguetab.firstMessage")}{" "}
+            <HelpTooltip text={localizeUi("ui.characters.dialoguetab.theCharacterSOpeningMessageWhenANewChat")} />
+          </span>
+          <CharacterGreetingWand
+            entityId={selfCharacterId}
+            card={card}
+            value={formData.first_mes}
+            onApply={(text) => updateField("first_mes", text)}
+            label={localizeUi("ui.characters.dialoguetab.firstMessage")}
+          />
+        </div>
         <p className="text-[0.625rem] text-[var(--muted-foreground)]/70">
           {localizeUi("ui.characters.dialoguetab.greetingsRoleplayOnly")}
         </p>
-        <MacroTextarea
-          showTokenCount
-          value={formData.first_mes}
-          onChange={(value) => updateField("first_mes", value)}
-          rows={6}
-          title={localizeUi("ui.characters.dialoguetab.firstMessage")}
-          showMarkdownPreview
-          selfCharacterId={selfCharacterId}
-          className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-4 text-sm leading-relaxed outline-none placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
-          placeholder={localizeUi("ui.characters.dialoguetab.whatIsTheCharacterSFirstMessageWhenA")}
-        />
+        <MariFieldReview field="first_mes">
+          <MacroTextarea
+            ariaLabel={localizeUi("ui.characters.dialoguetab.firstMessage")}
+            showTokenCount
+            value={formData.first_mes}
+            onChange={(value) => updateField("first_mes", value)}
+            rows={6}
+            title={localizeUi("ui.characters.dialoguetab.firstMessage")}
+            showMarkdownPreview
+            selfCharacterId={selfCharacterId}
+            className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-4 text-sm leading-relaxed outline-none placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
+            placeholder={
+              localizeUi("ui.characters.dialoguetab.whatIsTheCharacterSFirstMessageWhenA") +
+              " " +
+              localizeUi("ui.cardFields.seedPlaceholder")
+            }
+          />
+        </MariFieldReview>
       </div>
 
       {/* Alternate Greetings */}
-      <div className="space-y-3">
+      <div className="space-y-3" data-mari-field="alternate_greetings">
         <div className="flex items-center justify-between">
           <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
             {localizeUi("ui.characters.dialoguetab.alternateGreetings")}
@@ -3500,7 +3753,7 @@ function DialogueTab({
           <button
             type="button"
             onClick={addGreeting}
-            className="mari-editor-action mari-editor-action--accent mari-editor-action--compact inline-flex rounded-lg px-3 py-1 text-xs"
+            className="mari-editor-action mari-editor-action--compact inline-flex rounded-lg px-3 py-1 text-xs"
           >
             {localizeUi("ui.characters.dialoguetab.add")}
           </button>
@@ -3519,6 +3772,13 @@ function DialogueTab({
                 {i + 1}
               </span>
               <div className="flex shrink-0 items-center gap-1">
+                <CharacterGreetingWand
+                  entityId={selfCharacterId}
+                  card={card}
+                  value={g}
+                  onApply={(text) => updateGreeting(i, text)}
+                  label={localizeUi("ui.characters.dialoguetab.alternateGreetingValue1", { value1: i + 1 })}
+                />
                 <button
                   type="button"
                   onClick={() => moveGreeting(i, -1)}
@@ -3544,7 +3804,7 @@ function DialogueTab({
                 <button
                   type="button"
                   onClick={() => removeGreeting(i)}
-                  className={cn(greetingActionButtonClassName, "mari-editor-action--danger")}
+                  className={cn(greetingActionButtonClassName, "mari-editor-action--accent")}
                   aria-label={localizeUi("ui.characters.dialoguetab.removeAlternateGreetingValue1", { value1: i + 1 })}
                   title={localizeUi("ui.characters.dialoguetab.removeGreeting")}
                 >
@@ -3553,6 +3813,7 @@ function DialogueTab({
               </div>
             </div>
             <MacroTextarea
+              ariaLabel={localizeUi("ui.characters.dialoguetab.alternateGreetingValue1", { value1: i + 1 })}
               value={g}
               onChange={(value) => updateGreeting(i, value)}
               rows={3}
@@ -3560,34 +3821,49 @@ function DialogueTab({
               showMarkdownPreview
               selfCharacterId={selfCharacterId}
               className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-3 text-sm outline-none placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40"
-              placeholder={localizeUi("ui.characters.dialoguetab.greetingValue1", { value1: i + 1 })}
+              placeholder={
+                localizeUi("ui.characters.dialoguetab.greetingValue1", { value1: i + 1 }) +
+                " " +
+                localizeUi("ui.cardFields.seedPlaceholder")
+              }
             />
           </div>
         ))}
       </div>
 
       {/* Example Messages */}
-      <div className="block space-y-1.5">
-        <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
-          {localizeUi("chat.settings.inlineEditor.fields.exampleDialogue")}{" "}
-          <HelpTooltip
-            text={localizeUi("ui.characters.dialoguetab.sampleConversationsShowingHowTheCharacterTalksHelpsThe")}
-          />
-        </span>
+      <div className="block space-y-1.5" data-mari-field="mes_example">
+        <div className="flex items-start justify-between gap-3">
+          <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
+            {localizeUi("chat.settings.inlineEditor.fields.exampleDialogue")}{" "}
+            <HelpTooltip
+              text={localizeUi("ui.characters.dialoguetab.sampleConversationsShowingHowTheCharacterTalksHelpsThe")}
+            />
+          </span>
+          {exampleActions}
+        </div>
         <p className="text-[0.625rem] text-[var(--muted-foreground)]/70">
           {localizeUi("ui.characters.dialoguetab.useStartToSeparateExchangesUseUserAndChar")}
         </p>
-        <MacroTextarea
-          showTokenCount
-          value={formData.mes_example}
-          onChange={(value) => updateField("mes_example", value)}
-          rows={10}
-          title={localizeUi("chat.settings.inlineEditor.fields.exampleDialogue")}
-          showMarkdownPreview
-          selfCharacterId={selfCharacterId}
-          className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-4 mari-prompt-font text-xs leading-relaxed outline-none placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
-          placeholder={localizeUi("ui.characters.dialoguetab.startUserHelloCharWavesExcitedlyHeyThere")}
-        />
+        <MariFieldReview field="mes_example">
+          <MacroTextarea
+            ariaLabel={localizeUi("chat.settings.inlineEditor.fields.exampleDialogue")}
+            showTokenCount
+            value={formData.mes_example}
+            onChange={(value) => updateField("mes_example", value)}
+            rows={10}
+            title={localizeUi("chat.settings.inlineEditor.fields.exampleDialogue")}
+            showMarkdownPreview
+            selfCharacterId={selfCharacterId}
+            className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-4 mari-prompt-font text-xs leading-relaxed outline-none placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
+            placeholder={
+              localizeUi("ui.characters.dialoguetab.startUserHelloCharWavesExcitedlyHeyThere") +
+              " " +
+              localizeUi("ui.cardFields.seedPlaceholder")
+            }
+          />
+        </MariFieldReview>
+        {exampleFooter}
       </div>
     </div>
   );
@@ -3615,48 +3891,55 @@ function AdvancedTab({
         helpText={CHARACTER_ADVANCED_HELP}
       />
 
-      <div className="block space-y-1.5">
+      <div className="block space-y-1.5" data-mari-field="system_prompt">
         <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
           {localizeUi("ui.characters.advancedtab.systemPrompt")}{" "}
           <HelpTooltip
             text={localizeUi("ui.characters.advancedtab.characterSpecificInstructionsInsertedByThePromptPresetS")}
           />
         </span>
-        <MacroTextarea
-          showTokenCount
-          value={formData.system_prompt}
-          onChange={(value) => updateField("system_prompt", value)}
-          rows={6}
-          title={localizeUi("ui.characters.advancedtab.systemPrompt")}
-          showMarkdownPreview
-          selfCharacterId={characterId}
-          className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-4 text-sm outline-none placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
-          placeholder={localizeUi(
-            "ui.characters.advancedtab.characterSpecificInstructionsInsertedThroughCharsysinfoOrTheCharacter",
-          )}
-        />
+        <MariFieldReview field="system_prompt">
+          <MacroTextarea
+            showTokenCount
+            value={formData.system_prompt}
+            onChange={(value) => updateField("system_prompt", value)}
+            rows={6}
+            title={localizeUi("ui.characters.advancedtab.systemPrompt")}
+            showMarkdownPreview
+            selfCharacterId={characterId}
+            className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-4 text-sm outline-none placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
+            placeholder={localizeUi(
+              "ui.characters.advancedtab.characterSpecificInstructionsInsertedThroughCharsysinfoOrTheCharacter",
+            )}
+          />
+        </MariFieldReview>
       </div>
 
-      <div className="block space-y-1.5">
+      <div className="block space-y-1.5" data-mari-field="post_history_instructions">
         <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
           {localizeUi("ui.characters.advancedtab.postHistoryInstructions")}{" "}
           <HelpTooltip text={localizeUi("ui.characters.advancedtab.textInsertedAfterTheChatHistoryRightBeforeThe")} />
         </span>
-        <MacroTextarea
-          showTokenCount
-          value={formData.post_history_instructions}
-          onChange={(value) => updateField("post_history_instructions", value)}
-          rows={4}
-          title={localizeUi("ui.characters.advancedtab.postHistoryInstructions")}
-          showMarkdownPreview
-          selfCharacterId={characterId}
-          className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-4 text-sm outline-none placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
-          placeholder={localizeUi("ui.characters.advancedtab.textInsertedAfterTheChatHistoryButBeforeGeneration")}
-        />
+        <MariFieldReview field="post_history_instructions">
+          <MacroTextarea
+            showTokenCount
+            value={formData.post_history_instructions}
+            onChange={(value) => updateField("post_history_instructions", value)}
+            rows={4}
+            title={localizeUi("ui.characters.advancedtab.postHistoryInstructions")}
+            showMarkdownPreview
+            selfCharacterId={characterId}
+            className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-4 text-sm outline-none placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
+            placeholder={localizeUi("ui.characters.advancedtab.textInsertedAfterTheChatHistoryButBeforeGeneration")}
+          />
+        </MariFieldReview>
       </div>
 
       {/* Depth Prompt */}
-      <div className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
+      <div
+        className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--card)] p-4"
+        data-mari-field="extensions.depth_prompt"
+      >
         <span className="inline-flex items-center gap-1 text-xs font-semibold">
           {localizeUi("ui.characters.advancedtab.depthPrompt")}{" "}
           <HelpTooltip text={localizeUi("ui.characters.advancedtab.injectsTextAtASpecificPositionInTheChat")} />
@@ -3940,7 +4223,7 @@ function CharacterSheetSection({
             <button
               type="button"
               onClick={clearSelection}
-              className="mari-editor-action inline-flex w-full justify-center text-red-500"
+              className="mari-editor-action inline-flex w-full justify-center text-[var(--marinara-app-accent-static)]"
             >
               <X size="0.875rem" />
               {localizeUi("ui.characters.charactersheet.remove")}
@@ -6174,10 +6457,14 @@ function StatsTab({
   formData,
   updateExtension,
   onDraftChange,
+  characterId,
+  avatarUrl,
 }: {
   formData: CharacterData;
   updateExtension: (key: string, value: unknown) => void;
   onDraftChange: () => void;
+  characterId: string | null;
+  avatarUrl: string | null;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const stats: RPGStatsConfig = (formData.extensions.rpgStats as RPGStatsConfig) ?? DEFAULT_RPG_STATS;
@@ -6467,6 +6754,14 @@ function StatsTab({
         )}
       </div>
 
+      <CharacterCombatIconSection
+        characterId={characterId}
+        name={formData.name}
+        avatarUrl={avatarUrl}
+        value={formData.extensions.combatIcon}
+        onChange={(choice) => updateExtension("combatIcon", choice ?? null)}
+      />
+
       <RulesetSheetsSection
         sheets={formData.extensions.rulesetSheets as Record<string, unknown> | undefined}
         onChange={(sheets) => updateExtension("rulesetSheets", sheets)}
@@ -6487,6 +6782,7 @@ function ColorsTab({
   avatarUrl: string | null;
 }) {
   const { t: localizeUi } = useUiTranslation();
+  const chatFontOpacity = useUIStore((state) => state.chatFontOpacity);
   const nameColor = (formData.extensions.nameColor as string) ?? "";
   const dialogueColor = (formData.extensions.dialogueColor as string) ?? "";
   const boxColor = (formData.extensions.boxColor as string) ?? "";
@@ -6575,7 +6871,12 @@ function ColorsTab({
             </span>
             <div
               className="rounded-2xl rounded-tl-sm px-4 py-3 text-[0.8125rem] leading-[1.8] backdrop-blur-md ring-1 ring-white/8"
-              style={boxColor ? { backgroundColor: boxColor } : { backgroundColor: "rgba(255,255,255,0.08)" }}
+              data-roleplay-color-preview
+              style={
+                boxColor
+                  ? { backgroundColor: withCssPaintAlpha(boxColor, String(chatFontOpacity / 100)) }
+                  : { backgroundColor: "rgba(255,255,255,0.08)" }
+              }
             >
               <span className="text-white/90">
                 {localizeUi("ui.characters.colorstab.theyJumpDownLandingBehindYouAndStraightenUp")}{" "}
@@ -6610,7 +6911,7 @@ function ColorsTab({
         value={boxColor}
         onChange={(v) => updateExtension("boxColor", v)}
         label={localizeUi("ui.characters.colorstab.messageBoxColor")}
-        helpText={`Background color for this character's chat message bubbles. Use a semi-transparent color for best results (e.g. rgba). ${localizeUi("ui.characters.colorstab.roleplayOnly")}`}
+        helpText={localizeUi("ui.colors.messageBoxHelp")}
       />
       {/* Name Aliases */}
       <NameAliasesSection

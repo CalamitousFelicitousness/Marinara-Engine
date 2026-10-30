@@ -5,6 +5,7 @@
 // schemas. File paths are checked with isAvatarFilePath here, which keeps every stored reference
 // inside the owner's own avatar folder.
 import { z } from "zod";
+import { partialInput } from "../utils/zod-input.js";
 import {
   AVATAR_CLASSIFIER_TIERS,
   AVATAR_CLASSIFY_LIMITS,
@@ -13,6 +14,7 @@ import {
   AVATAR_EXPRESSION_SLOTS,
   AVATAR_EXTRA_FEELINGS,
   AVATAR_KINDS,
+  AVATAR_MMD_METADATA_LIMITS,
   AVATAR_OWNER_ID_PATTERN,
   AVATAR_OWNER_TYPES,
   AVATAR_PNGTUBER_VARIANTS,
@@ -164,6 +166,27 @@ export const avatarKindDataSchema = z
     pngtuber: pngtuberAvatarDataSchema.optional(),
     "mesh-avatar": meshAvatarDataSchema.optional(),
     vrm: vrmAvatarDataSchema.optional(),
+    mmd: z
+      .object({
+        file: avatarFilePathSchema.refine((path) => path.startsWith("mmd/"), "An MMD model lives in mmd/."),
+        texturePaths: z
+          .record(
+            z.string().min(1).max(AVATAR_MMD_METADATA_LIMITS.textureReferenceChars),
+            avatarFilePathSchema.refine((path) => path.startsWith("mmd/"), "An MMD texture lives in mmd/."),
+          )
+          .refine(
+            (paths) => Object.keys(paths).length <= AVATAR_MMD_METADATA_LIMITS.textures,
+            "This MMD model has too many textures.",
+          ),
+        expressionMap: avatarExpressionMapSchema,
+        expressionNames: z.array(z.string().min(1).max(128)).max(AVATAR_MMD_METADATA_LIMITS.expressionNames).optional(),
+        idleAnimation: avatarFilePathSchema
+          .refine((path) => path.startsWith("mmd/"), "An MMD motion lives in mmd/.")
+          .nullable()
+          .optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -196,7 +219,7 @@ export const avatarConfigUpdateSchema = z
   .object({
     enabled: z.boolean().optional(),
     activeKind: z.enum(AVATAR_KINDS).nullable().optional(),
-    features: avatarFeatureFlagsSchema.partial().optional(),
+    features: partialInput(avatarFeatureFlagsSchema).optional(),
     kinds: avatarKindDataSchema.optional(),
   })
   .strict() satisfies z.ZodType<AvatarConfigUpdate>;

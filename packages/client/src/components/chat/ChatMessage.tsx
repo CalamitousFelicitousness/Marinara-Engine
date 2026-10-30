@@ -12,6 +12,8 @@ import {
   type AvatarCrop,
 } from "@marinara-engine/shared";
 import { applyInlineMarkdown, renderMarkdownBlocks, applyInlineMarkdownHTML } from "../../lib/markdown";
+import { SystemMessage } from "./SystemMessage";
+import { protectMarkdownCode } from "../../lib/markdown-code";
 import { MessageReplyPreview, ReplyToMessageButton } from "./MessageReplyPreview";
 import {
   RoleplayCommandResults,
@@ -39,6 +41,7 @@ import { ChatImagePreview } from "./ChatImagePreview";
 import { ChatVideoAttachment, isAttachmentHiddenByImageText, isVideoAttachment } from "./ChatVideoAttachment";
 import { recordClientRuntimeEvent } from "../../lib/client-runtime-diagnostics";
 import { isDiceRollResult, readRoleplayDiceRolls } from "../../lib/dice-roll-result";
+import { normalizeRollOutcomeToneMode } from "../dice/dice-tone";
 import { DiceMessageContent, diceRollReplacesMessageContent } from "./ConversationMessageShared";
 import {
   User,
@@ -102,6 +105,8 @@ import { useTTSConfig } from "../../hooks/use-tts";
 import {
   buildTTSVoiceRequests,
   findTTSCharacterIdBySpeakerName,
+  getTTSPersonaVoice,
+  resolveTTSMessagePersona,
   withTTSVoiceRequestCacheKeys,
 } from "../../lib/tts-dialogue";
 import { DIALOGUE_QUOTE_PATTERN_SOURCE, HTML_SAFE_DIALOGUE_QUOTE_PATTERN_SOURCE } from "../../lib/dialogue-quotes";
@@ -1015,6 +1020,8 @@ interface ChatMessageProps {
   isGrouped?: boolean;
   personaInfo?: PersonaInfo;
   groupChatMode?: string;
+  /** This chat's Card Theming switch; undefined falls back to the retired global setting. */
+  colorInlineNames?: boolean;
   chatCharacterIds?: string[];
   /** Active character IDs used for merged Narrator avatar presentation. */
   mergedGroupCharacterIds?: string[];
@@ -1682,7 +1689,8 @@ function renderContent(
   // chat-wide index lets merged group replies fall back to whichever chat
   // character owns the file when the speaker does not.
   const selfResolved = resolveSelfCardAssets(text, selfCharacterId, galleryIndex);
-  const normalized = decodeEncodedSpeakerTags(decodeEncodedChatHtmlTags(formatTextQuotes(selfResolved, quoteFormat)));
+  const code = protectMarkdownCode(selfResolved);
+  const normalized = decodeEncodedSpeakerTags(decodeEncodedChatHtmlTags(formatTextQuotes(code.text, quoteFormat)));
 
   // Strip speaker tags before HTML detection (they aren't real HTML)
   const withoutSpeakerTags = normalized.replace(/<\/?speaker(?:="[^"]*")?>/g, "");
@@ -1694,7 +1702,7 @@ function renderContent(
   // Name coloring runs AFTER on the React tree so injected spans don't
   // interfere with paragraph splitting or trigger the HTML path.
   if (!isHtmlPath) {
-    const markdownResult = renderMarkdownBlocks(normalized, (seg, _kp) =>
+    const markdownResult = renderMarkdownBlocks(code.restoreSource(normalized), (seg, _kp) =>
       renderWithSpeakerTags(seg, dialogueColor, speakerColorMap, boldDialogue, ownDialogueColor),
     );
     if (nameColorMap && nameColorMap.size > 0) {
@@ -1775,7 +1783,7 @@ function renderContent(
 
   // Apply markdown-style bold/italic in HTML path
   const withMarkdown = applyInlineMarkdownHTML(withDialogue);
-  const finalHtml = sanitizeChatHtml(withMarkdown, { allowStyle: true, remoteImages });
+  const finalHtml = sanitizeChatHtml(code.restoreHtml(withMarkdown), { allowStyle: true, remoteImages });
   const scopedCss = scopeChatMessageCss(rawStyleBlocks, `.${htmlScopeClass}`, { remoteUrls: remoteImages.loadAll });
   const html = scopedCss ? `<style>${scopedCss}</style>${finalHtml}` : finalHtml;
 
@@ -1924,6 +1932,7 @@ export const ChatMessage = memo(function ChatMessage({
   isGrouped,
   personaInfo,
   groupChatMode,
+  colorInlineNames: chatColorInlineNames,
   chatCharacterIds,
   mergedGroupCharacterIds,
   expressionAvatarResolver,
@@ -1966,7 +1975,7 @@ export const ChatMessage = memo(function ChatMessage({
     showTokenUsage,
     showMessageNumbers,
     boldDialogue,
-    colorInlineNames,
+    legacyColorInlineNames,
     disableInlineNameGradients,
     editMessageOnDoubleClick,
     quoteFormat,
@@ -1991,7 +2000,7 @@ export const ChatMessage = memo(function ChatMessage({
       showTokenUsage: s.showTokenUsage,
       showMessageNumbers: s.showMessageNumbers,
       boldDialogue: s.boldDialogue ?? true,
-      colorInlineNames: s.colorInlineNames,
+      legacyColorInlineNames: s.colorInlineNames,
       disableInlineNameGradients: s.disableInlineNameGradients,
       editMessageOnDoubleClick: s.editMessageOnDoubleClick,
       quoteFormat: s.quoteFormat,
@@ -1999,6 +2008,7 @@ export const ChatMessage = memo(function ChatMessage({
       setTTSLineVolume: s.setTTSLineVolume,
     })),
   );
+  const colorInlineNames = chatColorInlineNames ?? legacyColorInlineNames;
   const remoteImages = useRemoteImagePolicy();
   // Build reusable text style objects (memoized to avoid unnecessary DOM updates)
   const textStrokeStyle = useMemo<React.CSSProperties>(
@@ -2126,16 +2136,21 @@ export const ChatMessage = memo(function ChatMessage({
   // TTS
   const { data: ttsConfig } = useTTSConfig();
   const ttsEnabled = ttsConfig?.enabled ?? false;
-  const ttsSpeakerName =
-    message.role === "narrator"
+  const ttsPersona = useMemo(() => resolveTTSMessagePersona(message, personaInfo), [message, personaInfo]);
+  const mappedUserPersona = message.role === "user" && ttsConfig && getTTSPersonaVoice(ttsConfig, ttsPersona);
+  const ttsFallbackId =
+    message.role === "user" ? (mappedUserPersona ? ttsPersona?.id : undefined) : message.characterId;
+  const ttsSpeakerName = mappedUserPersona
+    ? ttsPersona?.name
+    : message.role === "narrator"
       ? "Narrator"
       : message.characterId
         ? characterMap?.get(message.characterId)?.name
         : undefined;
   // Same lookup as autoplay in ChatArea, so replaying a message uses the voice it autoplayed with.
   const resolveTTSCharacterId = useCallback(
-    (speaker?: string | null) => (characterMap ? findTTSCharacterIdBySpeakerName(speaker, characterMap) : null),
-    [characterMap],
+    (speaker?: string | null) => findTTSCharacterIdBySpeakerName(speaker, characterMap ?? [], ttsPersona),
+    [characterMap, ttsPersona],
   );
   const ttsVoiceRequests = useMemo(() => {
     if (!ttsConfig) return [];
@@ -2143,8 +2158,9 @@ export const ChatMessage = memo(function ChatMessage({
       message.content,
       ttsConfig,
       ttsSpeakerName,
-      message.characterId,
+      ttsFallbackId,
       resolveTTSCharacterId,
+      message.role === "user" && !mappedUserPersona ? undefined : ttsPersona,
     );
     return withTTSVoiceRequestCacheKeys(
       visualNovel || followSpeechParagraphs
@@ -2154,12 +2170,15 @@ export const ChatMessage = memo(function ChatMessage({
       message.id,
     );
   }, [
-    message.characterId,
     message.content,
     message.id,
     resolveTTSCharacterId,
     ttsConfig,
     ttsSpeakerName,
+    ttsFallbackId,
+    ttsPersona,
+    mappedUserPersona,
+    message.role,
     visualNovel,
     followSpeechParagraphs,
   ]);
@@ -2633,6 +2652,10 @@ export const ChatMessage = memo(function ChatMessage({
   // we don't JSON-parse the whole chat metadata on every store tick during streaming.
   const activeChatMetadata = useChatStore((s) => s.activeChat?.metadata);
   const presetVariables = useMessagePresetVariables(`${message.id}:${message.activeSwipeIndex ?? 0}`);
+  const rollToneMode = useMemo(
+    () => normalizeRollOutcomeToneMode(parseChatMetadata(activeChatMetadata).roleplayRollOutcomeTone),
+    [activeChatMetadata],
+  );
   const scopedRegexMode = useMemo(() => parseChatMetadata(activeChatMetadata).scopedRegexMode, [activeChatMetadata]);
   // Roleplay can show a private note to one character; it stays private only when each character replies alone.
   const noteSharing = useMemo<MessageNoteSharing | undefined>(() => {
@@ -2709,9 +2732,7 @@ export const ChatMessage = memo(function ChatMessage({
   const personaScenario = msgPersona ? msgPersona.scenario : personaInfo?.scenario;
   const macroCharacters = useMemo(() => {
     if (scopedCharacterMap?.size) {
-      const candidates = Array.from(scopedCharacterMap.values()).filter(
-        (candidate): candidate is NonNullable<typeof candidate> => !!candidate,
-      );
+      const candidates = Array.from(scopedCharacterMap, ([id, character]) => ({ ...character, id }));
       if (candidates.length > 0) return candidates;
     }
     return charName ? [{ name: charName }] : [];
@@ -2732,6 +2753,7 @@ export const ChatMessage = memo(function ChatMessage({
         },
         primaryCharacter: primaryCharInfo ?? { name: charName },
         characters: macroCharacters,
+        inactiveCharacterIds: isRoleplay ? parseChatMetadata(activeChatMetadata).inactiveCharacterIds : undefined,
       };
       // #3164: seed display randomness by message identity, not content — a
       // content-based seed re-rolls every {{random}}/{{roll}} on each streamed
@@ -2750,6 +2772,8 @@ export const ChatMessage = memo(function ChatMessage({
       return resolveDisplayMacros(text);
     },
     [
+      activeChatMetadata,
+      isRoleplay,
       applyToAIOutput,
       scopedRegexMode,
       presetVariables,
@@ -2832,7 +2856,14 @@ export const ChatMessage = memo(function ChatMessage({
   const ownDialogueColor = !isMergedGroup && !!msgColors?.dialogueColor;
   const boxBgColor = msgColors?.boxColor;
   const msgNameColor = msgColors?.nameColor;
-  const roleplayBubbleBg = boxBgColor ? boxBgColor : isUser ? userBubbleBg : assistantBubbleBg;
+  const roleplayBubbleBg =
+    chatFontOpacity <= 0
+      ? "transparent"
+      : boxBgColor
+        ? `rgb(from ${boxBgColor} r g b / ${chatFontOpacity / 100})`
+        : isUser
+          ? userBubbleBg
+          : assistantBubbleBg;
   const nameColorMap = useMemo(() => {
     if (!colorInlineNames || !scopedCharacterMap) return null;
     const map = new Map<string, string>();
@@ -3178,9 +3209,11 @@ export const ChatMessage = memo(function ChatMessage({
           key={`roll-${message.id}-${message.activeSwipeIndex}-${command.index}`}
           result={command.result}
           createdAt={message.createdAt}
+          toneMode={rollToneMode}
         />
       ),
     [
+      rollToneMode,
       message.chatId,
       message.id,
       message.activeSwipeIndex,
@@ -3751,37 +3784,36 @@ export const ChatMessage = memo(function ChatMessage({
   // ─── System messages (shared across modes) ───
   if (isSystem) {
     return (
-      <div
-        ref={msgRef}
-        className={cn(
-          "mari-system-message group flex justify-center py-2",
-          multiSelectMode && isSelected && cn("rounded-lg", MESSAGE_SELECTION_SURFACE_CLASS),
-        )}
+      <SystemMessage
+        message={message}
+        messageRef={msgRef}
+        editing={editing}
+        copied={copied}
+        showActions={showActions}
+        multiSelectMode={multiSelectMode}
+        isSelected={isSelected}
+        hiddenFromAI={isHiddenFromAI}
+        fontSize={chatFontSize}
         onClick={handleMobileTap}
+        onCopy={handleCopy}
+        onEdit={onEdit ? startEditing : undefined}
+        onBranch={onBranch ? () => onBranch(message.id) : undefined}
+        onToggleHiddenFromAI={onToggleHiddenFromAI ? () => onToggleHiddenFromAI(message.id, isHiddenFromAI) : undefined}
+        onDelete={onDelete ? () => onDelete(message.id) : undefined}
       >
-        <div className="relative">
-          {!multiSelectMode && onDelete && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete(message.id);
-              }}
-              aria-label={localizeUi("chat.delete.dialog.title")}
-              className={cn(
-                "absolute -right-1 -top-1 rounded-md p-1 text-white/20 opacity-0 transition-all hover:bg-foreground/10 hover:text-foreground/70 group-hover:opacity-100",
-                showActions && "opacity-100",
-              )}
-              title={localizeUi("lorebook.editor.batch.delete")}
-            >
-              <Trash2 size="0.75rem" />
-            </button>
-          )}
-          <div className="mari-system-message-content rounded-full bg-[var(--secondary)] px-4 py-1.5 text-[0.6875rem] text-[var(--muted-foreground)]">
-            {message.content}
-          </div>
-        </div>
-      </div>
+        {editing ? (
+          <EditTextarea
+            initialContent={message.content}
+            fontSize={chatFontSize}
+            quoteFormat={quoteFormat}
+            saving={editSavePending}
+            onSave={handleSaveEdit}
+            onCancel={handleCancelEdit}
+          />
+        ) : (
+          <RoleplayMessagePreview content={displayContent} />
+        )}
+      </SystemMessage>
     );
   }
 
@@ -4100,6 +4132,7 @@ export const ChatMessage = memo(function ChatMessage({
                   // an inline `background` so card CSS can override the bubble
                   // (inline styles beat every selector). Applied by `.mari-rp-bubble`.
                   "--mari-rp-bubble-bg": roleplayBubbleBg,
+                  "--mari-rp-bubble-opacity": chatFontOpacity / 100,
                 } as React.CSSProperties
               }
             >

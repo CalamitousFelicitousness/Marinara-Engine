@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { stripTypeScriptTypes } from "node:module";
 import { setImmediate as nextTurn } from "node:timers/promises";
 import { runInNewContext } from "node:vm";
+import { GENERATIVE_AUDIO_DEFAULTS } from "../../packages/shared/src/types/connection.js";
 import {
   ROLEPLAY_COMMAND_KEYS,
   isRoleplayCommandEnabled,
@@ -87,6 +88,14 @@ await assert.rejects(
 const soundSource = readFileSync(new URL("../../packages/server/src/routes/tts.routes.ts", import.meta.url), "utf8");
 const soundEntry = soundSource.match(/^export async function generateRoleplaySoundEffect\([\s\S]*?^}/m)?.[0];
 assert.ok(soundEntry);
+const generationSource = readFileSync(
+  new URL("../../packages/server/src/services/audio/generative-audio.service.ts", import.meta.url),
+  "utf8",
+);
+const soundIdentity = generationSource.match(/^function cacheIdentity\([\s\S]*?^}/m)?.[0];
+assert.ok(soundIdentity);
+const sharedSoundEntry = generationSource.match(/^export async function generateAudioAsset\([\s\S]*?^}/m)?.[0];
+assert.ok(sharedSoundEntry);
 type AudioResult = { tag: string; path: string; cached: boolean };
 let finishAudio!: (value: AudioResult) => void;
 let failAudio!: (error: Error) => void;
@@ -99,18 +108,26 @@ let upstreamAudio = deferredAudio();
 const sharedAudio = new Map<string, Promise<AudioResult>>();
 const audioRequests: unknown[][] = [];
 const sound = runInNewContext(
-  stripTypeScriptTypes(soundEntry.replace(/^export /, "")) + "\ngenerateRoleplaySoundEffect",
+  stripTypeScriptTypes(
+    `${soundIdentity}\n${sharedSoundEntry.replace(/^export /, "")}\n${soundEntry.replace(/^export /, "")}`,
+  ) + "\ngenerateRoleplaySoundEffect",
   {
     addAbortListener,
     Promise,
     Symbol,
-    createAppSettingsStorage: () => ({}),
-    createConnectionsStorage: () => ({}),
-    resolveAudioConfig: async () => ({ source: "elevenlabs", elevenLabsGameSoundEffects: true, apiKey: "fixture-key" }),
-    normalizeGameAudioPrompt: (prompt: string) => prompt.trim(),
+    GENERATIVE_AUDIO_DEFAULTS,
+    resolveGenerativeAudioConfig: async () => ({
+      source: "elevenlabs",
+      ...GENERATIVE_AUDIO_DEFAULTS.elevenlabs,
+      model: "music_v1",
+      legacyId: "fixture",
+      soundEffects: true,
+      apiKey: "fixture-key",
+    }),
     logDebugOverride: () => {},
-    gameAudioGenerationLocks: sharedAudio,
-    generateElevenLabsGameAudio: (...args: unknown[]) => {
+    isDebugAgentsEnabled: () => false,
+    locks: sharedAudio,
+    compose: (...args: unknown[]) => {
       audioRequests.push(args);
       return upstreamAudio;
     },
@@ -122,7 +139,9 @@ const firstWait = sound(null as never, "Shared cue", null, false, firstSound.sig
 const secondWait = sound(null as never, "Shared cue", null, false, secondSound.signal);
 await nextTurn();
 assert.equal(audioRequests.length, 1, "identical cues share a single generation");
-assert.equal(audioRequests[0]?.length, 3, "the shared provider work must not receive a caller's signal");
+assert.equal(audioRequests[0]?.length, 4);
+assert.deepEqual(audioRequests[0]?.slice(1), ["sfx", "Shared cue", undefined]);
+assert(!audioRequests[0]?.includes(firstSound.signal), "shared provider work never receives the caller's signal");
 const gameWait = sharedAudio.get("sfx\0shared cue");
 assert.ok(gameWait, "Game audio joins the same pending generation");
 const cancelledWait = assert.rejects(firstWait, { name: "AbortError" });
@@ -808,7 +827,18 @@ const executeRoll = async (args: Record<string, unknown>) => {
   assert.ok(result);
   return { ...result, payload: JSON.parse(result.result) };
 };
+// Every plain die now comes from the shared secure roller (crypto.getRandomValues, #8489), so a
+// pinned Math.random() no longer pins the dice. Pin the secure draw as well; the return undoes it.
+const pinSecureDraws = (draw: number) => {
+  Object.defineProperty(globalThis.crypto, "getRandomValues", {
+    value: <T extends ArrayBufferView>(array: T) => ((array as unknown as Uint32Array).fill(draw), array),
+    configurable: true,
+    writable: true,
+  });
+  return () => Reflect.deleteProperty(globalThis.crypto, "getRandomValues");
+};
 const random = Math.random;
+const unpinSecureDraws = pinSecureDraws(0);
 try {
   Math.random = () => 0;
   for (const [modifier, dc, total, success] of [
@@ -867,6 +897,7 @@ try {
   }
 } finally {
   Math.random = random;
+  unpinSecureDraws();
 }
 // #7481: with Advanced Memory, a new Roleplay reply is saved as one message per scene or POV break.
 assert.deepEqual(

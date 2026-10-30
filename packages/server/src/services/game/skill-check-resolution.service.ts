@@ -827,7 +827,28 @@ export function rulesetCheckTargetFor(
     key ? ruleset.builds.get(key) : undefined,
   );
   const named = purpose?.trim().toLowerCase();
-  return target && named ? { ...target, purpose: named } : target;
+  const found = target ?? rulesetToolCheckTarget(ruleset, skill, key, withAbility);
+  return found && named ? { ...found, purpose: named } : found;
+}
+
+/** A tool, kit or set the sheet does not name, rolled with no `with=`: the roller's best ability
+ *  (laptop room playtest 2026-10-30: three leatherworking checks named Dexterity in the action, never
+ *  in the tag, and rolled +0). The Game Master's `with=` still decides when it writes one. */
+function rulesetToolCheckTarget(
+  ruleset: SkillCheckRulesetContext,
+  skill: string,
+  key: string | null,
+  withAbility?: string,
+): RulesetCheckTarget | null {
+  if (withAbility || !/\b(?:tools?|kit|supplies|set|utensils|instruments?)\b/i.test(skill)) return null;
+  const sheet = key ? ruleset.sheets.get(key) : undefined;
+  if (!sheet) return null;
+  let best: { id: string; value: number } | null = null;
+  for (const ability of ruleset.definition.sheet.abilities) {
+    const value = rulesetCheckModifier(sheet, { type: "ability", id: ability.id, label: ability.label });
+    if (!best || value > best.value) best = { id: ability.id, value };
+  }
+  return best ? { type: "ability", id: best.id, label: skill.trim().slice(0, 100) } : null;
 }
 
 /** The sheet modifier a ruleset game applies for `who` (or the player) on the named check. Under

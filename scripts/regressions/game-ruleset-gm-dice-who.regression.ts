@@ -178,6 +178,17 @@ try {
     assert.equal(rulesetCheckModifierFor(context.ruleset!, "Stealth", "Pip"), 0);
     assert.equal(rulesetCheckModifierFor(context.ruleset!, "Athletics", "the"), 0);
     assert.equal(rulesetCheckModifierFor(context.ruleset!, "Stealth", "Pip Wren"), 2);
+    // A tool the sheet does not name, with no with=, rolls with the roller's best ability (laptop room
+    // playtest 2026-10-30: leatherworking rolled +0); a with= still decides, a stranger has nothing.
+    const abilityOf = (label: string) => rulesetCheckModifierFor(context.ruleset!, label, "Tam");
+    const best = Math.max(...context.ruleset!.definition.sheet.abilities.map((ability) => abilityOf(ability.label)));
+    assert.equal(rulesetCheckModifierFor(context.ruleset!, "Leatherworker's tools", "Tam"), best);
+    assert.equal(
+      rulesetCheckModifierFor(context.ruleset!, "Leatherworker's tools", "Tam", "Wisdom"),
+      abilityOf("Wisdom"),
+    );
+    assert.equal(rulesetCheckModifierFor(context.ruleset!, "Leatherworker's tools", "Pip"), 0);
+    assert.equal(rulesetCheckModifierFor(context.ruleset!, "Basket weaving", "Tam"), 0, "only a tool, kit or set");
   }
 
   // ── A check that names nobody, where no card is the player's ──

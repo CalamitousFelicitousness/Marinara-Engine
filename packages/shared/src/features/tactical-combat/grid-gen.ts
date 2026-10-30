@@ -105,7 +105,13 @@ export function validateTacticalBattlefieldBrief(value: unknown): TacticalBattle
   if (value === undefined) return { ok: true };
   if (!value || typeof value !== "object" || Array.isArray(value))
     return { ok: false, error: "Invalid battlefield brief." };
-  const source = value as { size?: unknown; features?: unknown; exposure?: unknown; outline?: unknown };
+  const source = value as {
+    size?: unknown;
+    features?: unknown;
+    exposure?: unknown;
+    outline?: unknown;
+    scatter?: unknown;
+  };
   if (
     source.exposure !== undefined &&
     (typeof source.exposure !== "string" || !["exposed", "sheltered", "unknown"].includes(source.exposure))
@@ -119,6 +125,19 @@ export function validateTacticalBattlefieldBrief(value: unknown): TacticalBattle
     (typeof source.outline !== "string" || !TACTICAL_BOARD_OUTLINES.includes(source.outline as TacticalBoardOutline))
   ) {
     return { ok: false, error: "Unknown battlefield outline." };
+  }
+  const scatter = source.scatter as { terrain?: unknown; share?: unknown } | undefined;
+  if (
+    scatter !== undefined &&
+    (!scatter ||
+      typeof scatter !== "object" ||
+      typeof scatter.terrain !== "string" ||
+      scatter.terrain === "plains" ||
+      !hasOwnKey(TERRAIN_DATA, scatter.terrain) ||
+      typeof scatter.share !== "number" ||
+      !(scatter.share >= 0.05 && scatter.share <= 0.6))
+  ) {
+    return { ok: false, error: "Scattered terrain needs a terrain other than plains and a share from 0.05 to 0.6." };
   }
   if (source.features !== undefined && !Array.isArray(source.features)) {
     return { ok: false, error: "Battlefield features must be a list." };
@@ -165,6 +184,14 @@ export function validateTacticalBattlefieldBrief(value: unknown): TacticalBattle
       ...(source.size ? { size: source.size as TacticalBattlefieldSize } : {}),
       ...(source.outline ? { outline: source.outline as TacticalBoardOutline } : {}),
       ...(features.length ? { features } : {}),
+      ...(scatter
+        ? {
+            scatter: {
+              terrain: scatter.terrain as Exclude<TacticalTerrain, "plains">,
+              share: scatter.share as number,
+            },
+          }
+        : {}),
     },
   };
 }
@@ -177,9 +204,15 @@ export function validateTacticalBattlefieldBrief(value: unknown): TacticalBattle
  */
 export function salvageTacticalBattlefieldBrief(value: unknown): TacticalBattlefieldBrief | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const source = value as { size?: unknown; features?: unknown; exposure?: unknown; outline?: unknown };
+  const source = value as {
+    size?: unknown;
+    features?: unknown;
+    exposure?: unknown;
+    outline?: unknown;
+    scatter?: unknown;
+  };
   const kept: Record<string, unknown> = {};
-  for (const key of ["size", "outline", "exposure"] as const) {
+  for (const key of ["size", "outline", "exposure", "scatter"] as const) {
     if (source[key] !== undefined && validateTacticalBattlefieldBrief({ [key]: source[key] }).ok)
       kept[key] = source[key];
   }
@@ -596,6 +629,21 @@ export function generateTacticalBattlefield(
     }
   }
 
+  // Scattered over the open ground the features left, never in a deployment strip; a route the
+  // scatter closes is carved open again below.
+  if (brief?.scatter) {
+    for (let y = 0; y < grid.height; y++)
+      for (let x = 0; x < grid.width; x++)
+        if (
+          grid.tiles[y]![x] === "plains" &&
+          !grid.outside?.[y]?.[x] &&
+          !inSpawnZone(grid, x, y) &&
+          !protectedTiles.has(tileKey(x, y)) &&
+          rng() < brief.scatter.share
+        )
+          set(grid, x, y, brief.scatter.terrain);
+  }
+
   const { party: partyAnchor, enemy: enemyAnchor } = spawnAnchors(grid);
   if (
     !reachable(grid, partyAnchor, enemyAnchor) &&
@@ -613,7 +661,7 @@ export function generateTacticalBattlefield(
       generatorVersion: TACTICAL_BATTLEFIELD_GENERATOR_VERSION,
       size,
       ...(inside ? { outline } : {}),
-      ...(brief && (brief.size || brief.features?.length || brief.outline) ? { brief } : {}),
+      ...(brief && (brief.size || brief.features?.length || brief.outline || brief.scatter) ? { brief } : {}),
     },
   };
 }

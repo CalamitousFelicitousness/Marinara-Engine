@@ -150,11 +150,13 @@ export function rulesetItemOn(actor: RulesetCombatant, item: number): boolean {
   return actor.on?.[item] ?? actor.sheet?.items?.[item]?.on === true;
 }
 
-/** How many of the items with this tag the fighter still carries. */
-export function rulesetAmmoLeft(actor: RulesetCombatant, tag: string): number {
+/** How many of the items with this tag the fighter still carries; with `plainOnly`, of those that are
+ *  not magic ammunition with clauses of their own. */
+export function rulesetAmmoLeft(actor: RulesetCombatant, tag: string, plainOnly = false): number {
   let left = 0;
   (actor.sheet?.items ?? []).forEach((held, index) => {
-    if (held.item.tags?.includes(tag)) left += Math.max(0, held.quantity - (actor.itemsUsed?.[index] ?? 0));
+    if (held.item.tags?.includes(tag) && !(plainOnly && held.item.ammoRider))
+      left += Math.max(0, held.quantity - (actor.itemsUsed?.[index] ?? 0));
   });
   return left;
 }
@@ -349,13 +351,18 @@ export function spendRulesetShots(
   }
   if (!action.ammo) return null;
   draw(actor, action.ammo.tag, per, action.ammo.recover, action.ammoFrom, rulesetAmmoFirst(actor, action));
-  // What is left of the stack it was shot out of, where one was picked, as its label names it.
+  // What is left of the stack it was shot out of, where one was picked, as its label names it. A
+  // plain shot counts the plain ammunition only (laptop playtest 2026-10-30: "7 left" with 4 plain
+  // arrows and 3 Arrows +1), and a magic stack once it shot one of those, the plain ones being out.
+  const shotFrom = actor.lastShot !== undefined ? actor.sheet?.items?.[actor.lastShot] : undefined;
   return {
     ...said,
     left:
       action.ammoFrom !== undefined
         ? rulesetStackLeft(actor, action.ammoFrom)
-        : rulesetAmmoLeft(actor, action.ammo.tag),
+        : shotFrom?.item.ammoRider
+          ? rulesetStackLeft(actor, actor.lastShot!)
+          : rulesetAmmoLeft(actor, action.ammo.tag, true),
   };
 }
 

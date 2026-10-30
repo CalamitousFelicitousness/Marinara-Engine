@@ -184,7 +184,13 @@ try {
     );
     const plain = shoot(fight([foe("wyrm", "dragon", 200)]), "wyrm");
     assert.equal(dealt(plain.events, "wyrm"), 6, "a plain arrow first: 1d8 + 2, nothing more");
-    assert.equal(rulesetCombatant(plain.state, "archer")!.itemsUsed?.["1"], 1);
+    const archer = rulesetCombatant(plain.state, "archer")!;
+    assert.equal(archer.itemsUsed?.["1"], 1);
+    assert.equal(
+      eventsOf(plain.events, "shot")[0]?.left,
+      archer.sheet!.items![1]!.quantity - 1,
+      "a plain shot counts the plain arrows left, not the slaying ones (laptop playtest 2026-10-30)",
+    );
   }
 
   // ── At another kind, nothing more and not spent ──

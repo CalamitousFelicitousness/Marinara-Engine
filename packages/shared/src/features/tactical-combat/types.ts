@@ -53,6 +53,9 @@ export interface TacticalBattlefieldBrief {
   /** The outline it is cut to (2026-10-24); its place's when none is named. */
   outline?: TacticalBoardOutline;
   features?: TacticalBattlefieldFeature[];
+  /** A share of the open ground (0.05 to 0.6) turned into one terrain, scattered over the board
+   *  (laptop playtest 2026-10-30: a brief of "every other cell deep water" came out mostly plains). */
+  scatter?: { terrain: Exclude<TacticalTerrain, "plains">; share: number };
 }
 
 /** Saved provenance for a grid: generated from a brief, or painted by hand for a world's place (worldgen

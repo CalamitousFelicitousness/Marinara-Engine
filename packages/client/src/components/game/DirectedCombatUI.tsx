@@ -270,7 +270,13 @@ export function DirectedCombatUI(props: Props) {
                   </div>
                 )}
                 {s.outcome && (
-                  <RulesetFightEnd view={board} outcome={s.outcome} loot={s.summary?.loot} onFinish={finish} />
+                  <RulesetFightEnd
+                    view={board}
+                    outcome={s.outcome}
+                    ended={s.summary}
+                    loot={s.summary?.loot}
+                    onFinish={finish}
+                  />
                 )}
               </>
             }

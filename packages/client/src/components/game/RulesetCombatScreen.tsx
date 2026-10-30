@@ -855,11 +855,14 @@ const OUTCOME_LINE = {
 export function RulesetFightEnd({
   view,
   outcome,
+  ended,
   loot,
   onFinish,
 }: {
   view: DirectedRulesetView;
   outcome: keyof typeof OUTCOME_LINE;
+  /** How a defeat came: given up alive to honourable foes, or broken off with both sides standing. */
+  ended?: { yielded?: true; stalled?: true };
   loot?: Array<{ name: string; quantity?: number }>;
   onFinish: () => void;
 }) {
@@ -875,7 +878,15 @@ export function RulesetFightEnd({
       )}
     >
       <div>
-        <h3 className="text-base font-bold">{t(OUTCOME_LINE[outcome])}</h3>
+        <h3 className="text-base font-bold">
+          {t(
+            ended?.yielded
+              ? "game.combat.ruleset.event.outcomeYielded"
+              : ended?.stalled
+                ? "game.combat.ruleset.event.outcomeStalled"
+                : OUTCOME_LINE[outcome],
+          )}
+        </h3>
         <p className="text-xs text-[var(--muted-foreground)]">
           {t("game.combat.ruleset.screen.endRounds", { count: view.round })}
           {total > 0 && <> · {t("game.combat.ruleset.screen.endFoes", { beaten, total })}</>}

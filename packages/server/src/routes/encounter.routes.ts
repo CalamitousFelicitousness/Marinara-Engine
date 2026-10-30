@@ -940,7 +940,8 @@ export function buildInitPrompt(
   inst += `      "exposure": "exposed|sheltered|unknown"`;
   if (tactical) {
     inst += `,\n      "size": "small|medium|large|huge|vast|colossal",\n      "outline": "box|round|cavern|valley|broken",\n`;
-    inst += `      "features": [{"terrain":"plains|forest|mountain|ruin|water|wall","placement":"center|north|south|east|west","shape":"patch|barrier"}]`;
+    inst += `      "features": [{"terrain":"plains|forest|mountain|ruin|water|wall","placement":"center|north|south|east|west","shape":"patch|barrier"}],\n`;
+    inst += `      "scatter": {"terrain":"forest|mountain|ruin|water|wall","share":0.3}`;
   }
   inst += `\n    }\n  },\n`;
   if (items.guess) {
@@ -987,7 +988,7 @@ export function buildInitPrompt(
     inst += `- battlefield.formation: pick the arrangement matching how the scene led into combat — ambushed → ambush, encircled → surrounded, holding/defending a position → defense, sudden chance encounter → skirmish, otherwise line.\n`;
     inst += `- class: pick each combatant's tactical role from how they fight — ranged bow/gun users → archer, spellcasters → mage, dedicated healers → healer, fast skirmishers/assassins → rogue, armored defenders → knight, otherwise fighter.\n`;
     inst += `- movementMode: use fly only when established context says the combatant can sustain battlefield flight, teleport only when established context says they can reliably teleport during combat, otherwise walk. Do not invent movement powers.\n`;
-    inst += `- battlefield.terrainBrief: describe at most four important semantic terrain features supported by the scene. A barrier may use only wall, water, or mountain. Do not repeat the same terrain/placement/shape combination. The server generates and validates exact tiles.\n`;
+    inst += `- battlefield.terrainBrief: describe at most four important semantic terrain features supported by the scene. A barrier may use only wall, water, or mountain. Do not repeat the same terrain/placement/shape combination. The server generates and validates exact tiles. scatter turns a share of the open ground (0.05 to 0.6) into one terrain spread over the board, for a place that is mostly that ground (a flooded field, a dense wood, a rubble-strewn ruin); omit it otherwise.\n`;
     // The setting's own words for the tiles (worldgen W6d), so the model knows what each id stands for here.
     const tileWords = TACTICAL_TERRAINS.filter(
       (terrain) => battlefields && battlefields.tiles[terrain] !== WORLD_DEFAULT_BATTLEFIELDS.tiles[terrain],

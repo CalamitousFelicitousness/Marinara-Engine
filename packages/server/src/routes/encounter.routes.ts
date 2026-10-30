@@ -122,8 +122,26 @@ function configuredHpMax(rpgStats: RPGStatsConfig | undefined): number | null {
   return Number.isFinite(max) && max > 0 ? max : null;
 }
 
+/** JSON text with the raw line breaks and tabs inside its strings escaped, as JSON requires. */
+export function escapeRawStringBreaks(text: string): string {
+  let out = "";
+  let inString = false;
+  let escape = false;
+  for (const ch of text) {
+    if (escape) escape = false;
+    else if (ch === "\\") escape = inString;
+    else if (ch === '"') inString = !inString;
+    else if (inString && (ch === "\n" || ch === "\r" || ch === "\t")) {
+      out += ch === "\n" ? "\\n" : ch === "\r" ? "\\r" : "\\t";
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
 /** Extract reliable JSON from an LLM response that may include markdown fences. */
-function parseJSON(raw: string): unknown {
+export function parseJSON(raw: string): unknown {
   // Strip code fences (```json ... ``` or ``` ... ```)
   let cleaned = raw
     .trim()
@@ -153,7 +171,18 @@ function parseJSON(raw: string): unknown {
     if (ch === "{") depth++;
     else if (ch === "}") {
       depth--;
-      if (depth === 0) return JSON.parse(cleaned.substring(start, i + 1));
+      if (depth === 0) {
+        const text = cleaned.substring(start, i + 1);
+        try {
+          return JSON.parse(text);
+        } catch (error) {
+          // A model that breaks a line inside a string ("Shape Dru" / "id", laptop playtest
+          // 2026-10-30) wrote JSON that is wrong only there: those breaks are read as escaped.
+          const repaired = escapeRawStringBreaks(text);
+          if (repaired === text) throw error;
+          return JSON.parse(repaired);
+        }
+      }
     }
   }
   throw new Error("Unbalanced JSON in AI response");

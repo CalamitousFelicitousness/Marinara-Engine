@@ -455,6 +455,13 @@ export interface CapabilityPersistenceHost extends CapabilityPersistenceSession 
   ): Promise<void>;
   /** Capability API 1.341. Adds messages, each with its first swipe, as the Engine's batch write does. Requires `chat-write`. */
   appendMessages?(chatId: string, messages: CapabilityAppendMessageInput[]): Promise<CapabilityMessageRecord[]>;
+  /**
+   * Capability API 1.389. Hides or shows messages of one chat from the AI, as the Engine's summary does. Requires
+   * `chat-write`. Resolves the ids whose flag this call actually changed, so the package can record what it owns.
+   * Ids not in the chat are ignored. A message whose visibility the user set by hand (`extra.visibilityManual`) is
+   * never changed and is not returned.
+   */
+  setMessagesHiddenFromAI?(chatId: string, messageIds: string[], hidden: boolean): Promise<string[]>;
   /** Capability API 1.341. A durable note from a conversation to its connected roleplay. Requires `chat-write`. */
   createChatNote?(sourceChatId: string, targetChatId: string, content: string, anchorMessageId?: string): Promise<void>;
   /** Capability API 1.341. A one-time influence from a conversation to its connected roleplay. Requires `chat-write`. */

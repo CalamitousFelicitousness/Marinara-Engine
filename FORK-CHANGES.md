@@ -20,6 +20,15 @@ Upstream now resolves `PORT` from `.env` too (`resolveServerPort` in `dev.mjs`, 
 
 Guarded by `pnpm dev-ports:check`, which runs inside `pnpm check`.
 
+### Tailscale visitors of the dev server are not marked as proxied
+
+Upstream's Vite `/api` proxy adds `x-forwarded-for` for every visitor whose socket peer is not
+loopback, so the server counts them as relayed by a local proxy and asks for a login. A tailnet
+device using `pnpm dev` then hit that prompt, although the server trusts the same device when it
+connects directly. `packages/client/vite.config.ts` leaves the header off when both the peer and
+the local socket address are in Tailscale's `100.64.0.0/10`, the test the server's automatic
+Tailscale trust uses. LAN visitors are still marked. Patches an upstream file.
+
 ### Shared message action button carries gesture handlers
 
 `packages/client/src/components/chat/MessageActionButton.tsx` accepts a `triggerProps` prop and
@@ -386,7 +395,7 @@ A connection could not say what it charges. `RemoteModel` carried an id, a name 
 limits, and the listing that supplies them was fetched in the shape that omits prices.
 
 Two providers publish per-model prices and they agree on nothing but the field name. NanoGPT states
-its unit (`unit: "per_million_tokens"`) and prices cache reads per *thousand* tokens in that same
+its unit (`unit: "per_million_tokens"`) and prices cache reads per _thousand_ tokens in that same
 object. OpenRouter carries no unit at all, prices per token as decimal strings, and writes `-1`
 where a router model's backend, and so its cost, is not chosen until the request runs. So
 `services/llm/model-pricing.ts` reads a price only where the unit is known: the row declares one, or
@@ -1276,7 +1285,7 @@ and pack with `content-start` -- mood drops to 27.5px and the long fields keep t
 
 **The details column was capped at the portrait height.** `h-[9rem] max-h-[9rem]` plus
 `overflow-hidden` down the chain, with `items-center` on the tiles, so a long value was sliced at the
-top *and* the bottom rather than merely truncated. The column now has no fixed height, the tiles are
+top _and_ the bottom rather than merely truncated. The column now has no fixed height, the tiles are
 top-aligned, and the card's own grid row keeps it at least as tall as the portrait.
 
 **No clamp on featured values.** The compact card keeps `TRACKER_DETAIL_VALUE_CLAMP_CLASS` because two
@@ -1297,12 +1306,12 @@ as a present character -- work as well as it should.
 
 **Mood, appearance and outfit truncated to one line.** `CompactCharacterField` gated wrapping on a
 `readable` prop wired to `hasDenseContent` (`stats.length > 0 || customFields.length > 0 || addMode`),
-so a detail value only wrapped when the card *also* carried stats or custom fields. That is backwards:
+so a detail value only wrapped when the card _also_ carried stats or custom fields. That is backwards:
 the sparse card is the one with room to spare. Anything longer than a word or two was cut off with no
 way to read it in place, and a fixed `h-3.5` / `h-4` on the value would have clipped a wrap anyway.
 
 Detail values now always wrap, from a min-height rather than a fixed one, with the line budget in one
-shared `TRACKER_DETAIL_VALUE_CLAMP_CLASS`. The budget follows the *card's* container width, not the
+shared `TRACKER_DETAIL_VALUE_CLAMP_CLASS`. The budget follows the _card's_ container width, not the
 panel-width preset -- `FeaturedCharacterFields` still keyed its 2-or-3 line count off
 `TrackerPanelSizeProfile`, which is the width/density coupling the size split removed.
 
@@ -1338,10 +1347,10 @@ persona avatar lookup in the chain. Verified non-vacuous by restoring `truncate`
 
 Measured with the repo's own `mari-perf` diagnostic, six characters present, adding a seventh:
 
-| | Cards that re-rendered | Card renders |
-| --- | --- | --- |
-| Before | 7 of 7 | 8 |
-| After | 1 of 7 | 2 |
+|        | Cards that re-rendered | Card renders |
+| ------ | ---------------------- | ------------ |
+| Before | 7 of 7                 | 8            |
+| After  | 1 of 7                 | 2            |
 
 The six untouched cards were re-rendering their whole subtree -- portrait, stats, custom fields and
 the recursive extras tree -- on a patch that changed none of them. The waste scales with the cast,
@@ -1484,7 +1493,7 @@ install is opened instead. The writer lease refused that here, but only because 
 
 Thought text is sized fluidly against its own container with `cqw`, as six hardcoded `clamp()` values
 in inline styles rather than Tailwind classes, so the token migration did not reach it. It stayed at a
-fixed size at every step of the Text size control, and at XL it rendered *smaller* than the rows
+fixed size at every step of the Text size control, and at XL it rendered _smaller_ than the rows
 around it: 14.9px against 15.9px.
 
 Each clamp is now multiplied by the same two scales the tokens use, which keeps the fluid
@@ -1539,11 +1548,11 @@ Text size is also a row in Settings → Appearance → Roleplay → Tracker Pane
 Placement is a three-way setting, since the question turned out to be where the panel sits rather than
 only what happens when it does not fit:
 
-| Value | Behaviour |
-| --- | --- |
-| `dock` (default) | Beside the chat, reflowing as it narrows; floats only below a 176px gutter. |
-| `float` | Always over the chat column at its own width, whatever the gutter. |
-| `scale` | Always docked, shrinking type to fit. The pre-reflow behaviour, kept as an opt-out, and the only value that lets `--tracker-panel-font-scale` differ from 1. |
+| Value            | Behaviour                                                                                                                                                    |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `dock` (default) | Beside the chat, reflowing as it narrows; floats only below a 176px gutter.                                                                                  |
+| `float`          | Always over the chat column at its own width, whatever the gutter.                                                                                           |
+| `scale`          | Always docked, shrinking type to fit. The pre-reflow behaviour, kept as an opt-out, and the only value that lets `--tracker-panel-font-scale` differ from 1. |
 
 Measured in a browser at a 249px gutter, with the settings-sync fetch blocked so local state was
 authoritative: `dock` renders 249px with no overlap and scale 1.0, `float` renders 340px overlapping
@@ -1963,7 +1972,7 @@ neither `AGENTS.md` nor `CLAUDE.md`, so two of the three silent losses did not a
 Resolutions worth remembering:
 
 - **`package.json#pnpm` carried security patches.** `chore(deps): consolidate compatible updates and
-  security patches (#5848)` bumped `browserslist` (new), `postcss` to 8.5.26, `qs` to 6.16.0, `sharp`
+security patches (#5848)` bumped `browserslist` (new), `postcss` to 8.5.26, `qs` to 6.16.0, `sharp`
   to 0.35.4, and replaced the `fast-uri@3.1.0` pin with the range pair `>=3 <3.1.6` and `>=4 <4.1.3`.
   This fork reads `pnpm-workspace.yaml` instead, so all five merged cleanly and applied nothing.
   Mirrored by hand and confirmed in the regenerated lockfile rather than assumed.
@@ -2024,7 +2033,7 @@ Resolutions worth remembering:
   reasoning prefs and per-mode chat help, the fork for the tracker width/density split. The sync
   lands on 99 so every store migrates. Upstream's `chatHelpSeenModes` seeding was widened from
   `version <= 95` to `<= 98`, because fork stores sit at 96-98 while the `delete
-  persisted.gameTutorialDisabled` below it is unconditional: without widening, those stores lose the
+persisted.gameTutorialDisabled` below it is unconditional: without widening, those stores lose the
   signal without gaining the replacement and re-show help the user had dismissed.
 - **`ChatMessage.tsx`.** The fork's `dark` prop on `ActionBtn` is retired, not reverted. Upstream's
   new `--marinara-chat-message-action-*` tokens are `40% / 70% / 10%` of the chrome text, which is
@@ -2365,8 +2374,7 @@ for ElevenLabs-branded models, which are genuinely id-derived.
 
 The local tables are the offline fallback only, and they are approximations: the
 published lists give `tts-1` nine voices against eleven here, `gpt-4o-mini-tts`
-thirteen against eleven, Kokoro 33 against 30, and `Elevenlabs-Turbo` 22 against
-46. Before this, a model matching no known prefix fell through to OpenAI's list
+thirteen against eleven, Kokoro 33 against 30, and `Elevenlabs-Turbo` 22 against 46. Before this, a model matching no known prefix fell through to OpenAI's list
 labelled "OpenAI built-in", so Gemini, Qwen, MiniMax and Inworld were all offered
 voices their provider rejects. A model the listing does not describe now reports
 none, which is what a hand-typed id should look like.
@@ -2485,7 +2493,7 @@ source text, and passes unedited.
 
 ### A TTS engine is a saved connection, not a settings page
 
-Text to Speech was configured in a card that edited one settings blob, while audio *connections*
+Text to Speech was configured in a card that edited one settings blob, while audio _connections_
 already existed and the server already preferred them. That left two editors for the same effective
 settings and no way to keep more than one engine: the blob held a saved profile per source,
 reachable only by switching a dropdown, so anyone running a cloud voice and a local one had to
@@ -2864,7 +2872,7 @@ tag out in code, which is the guard that would have prevented the original diver
 Details worth keeping:
 
 - **The malformed spelling existed for a reason.** Messages can render as real HTML, so a speaker
-  tag has to be distinguishable from content markup. Matching the tag *name* does that just as well,
+  tag has to be distinguishable from content markup. Matching the tag _name_ does that just as well,
   which is what freed the spelling to become well-formed.
 - **Regexes come from factories, never a shared instance.** A module-level `RegExp` with `g` carries
   `lastIndex` between callers, so one consumer's partial scan moves where the next one starts.

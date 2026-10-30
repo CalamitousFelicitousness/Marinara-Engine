@@ -19,11 +19,12 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-symbol-dice-"));
 const previousDataDir = process.env.DATA_DIR;
 process.env.DATA_DIR = dataDir;
 try {
-  const [{ parseRollDiceToolResult }, { executeToolCalls }, { isDiceRollResult }] = await Promise.all([
-    import("../../packages/server/src/services/game/dice.service.js"),
-    import("../../packages/server/src/services/tools/tool-executor.js"),
-    import("../../packages/client/src/lib/dice-roll-result.js"),
-  ]);
+  const [{ parseRollDiceToolResult }, { executeToolCalls, symbolDiceToolResult }, { isDiceRollResult }] =
+    await Promise.all([
+      import("../../packages/server/src/services/game/dice.service.js"),
+      import("../../packages/server/src/services/tools/tool-executor.js"),
+      import("../../packages/client/src/lib/dice-roll-result.js"),
+    ]);
   const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
   // The guide's own Genesys-style dice and symbols.
   const ember = JSON.parse(read("../../docs/examples/rulesets/ember-roads.json"));
@@ -123,6 +124,13 @@ try {
     assert.equal(isDiceRollResult(broken), false);
   }
   assert.equal(isDiceRollSymbols({}, 2), true, "a plain roll has none of them");
+
+  // ── A modifier or DC the GM passes with symbol dice is reported, not silently dropped ──
+  const modified = symbolDiceToolResult(named, { notation: named.notation, modifier: 2, dc: 12 });
+  assert.equal(modified.total, named.total, "the modifier does not change the net successes");
+  assert.equal(modified.success, named.success);
+  assert.match(String(modified.note), /ignore modifier and dc/);
+  assert.equal("note" in symbolDiceToolResult(named, { notation: named.notation, modifier: 0 }), false);
 
   // ── The roll_dice tool outside a symbol-pool game still refuses named dice ──
   const [outside] = await executeToolCalls([

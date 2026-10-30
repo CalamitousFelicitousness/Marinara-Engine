@@ -2453,6 +2453,8 @@ export function HomeProfessorMariChat({
       setDraft("");
       setAttachments([]);
       setHandoffContext(persistentResourceContext(submittedContext));
+      // Taken before the wait: a late answer belongs to the send this was queued during, not whichever started since.
+      const sendIds = queuedSinceSendRef.current;
       try {
         const { addedId, pending } = await api.post<{ addedId: string; pending: MariPendingMessageSummary[] }>(
           "/professor-mari/workspace/pending",
@@ -2464,7 +2466,7 @@ export function HomeProfessorMariChat({
             context: submittedContext ?? undefined,
           },
         );
-        queuedSinceSendRef.current.push(addedId);
+        sendIds.push(addedId);
         showPendingMessages(chatId, pending);
       } catch (error) {
         returnToComposer();

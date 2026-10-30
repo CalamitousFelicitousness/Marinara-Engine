@@ -220,8 +220,12 @@ try {
 
   // A message put back returns to its typed place, not ahead of older held ones.
   const orderChat = "orderchat";
+  // Order comes from createdAt, in milliseconds, so these need to land in different ones.
+  const nextMillisecond = () => new Promise((resolve) => setTimeout(resolve, 2));
   await store.addPending(orderChat, { text: "older" });
+  await nextMillisecond();
   const putBack = await store.addPending(orderChat, { text: "put back" });
+  await nextMillisecond();
   await store.addPending(orderChat, { text: "newer" });
   assert.equal(text(await store.takePending(orderChat, putBack.id)), "put back");
   await store.restorePending(orderChat, { ...putBack, createdAt: putBack.createdAt });

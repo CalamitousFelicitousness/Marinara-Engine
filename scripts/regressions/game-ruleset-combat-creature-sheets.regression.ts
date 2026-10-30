@@ -2307,7 +2307,13 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
       houndSaid,
       /Cinder Hound had nothing priced out of its points, so it buys its own actions with them\./,
     );
-    assert.match(houndSaid, /Cinder Hound may spend 2 points between turns on Move, /);
+    // What they buy is held to its own tier with its turn, as an invented boss's is (Alyssa 2026-10-30:
+    // a CR 1/2 elemental fought with legendary actions 3/3; balance is strict).
+    assert.match(houndSaid, /Cinder Hound may spend 2 points between turns on Move\./);
+    assert.match(
+      houndSaid,
+      /Cinder Hound: Searing bite went from what its points buy: with its own turn, it would deal more in a round than the 7 of CR 1\./,
+    );
     const hound = who(houndFight.encounter, "hound");
     assert.ok(
       hound.actions.some((one) => one.signature),

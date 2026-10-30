@@ -38,6 +38,7 @@ import {
   currentRulesetActor,
   deterministicRng,
   findRulesetCreature,
+  findRulesetCreatureEntry,
   rulesetSaidCreatureType,
   fillRulesetSheetChoices,
   generateTacticalBattlefield,
@@ -1064,7 +1065,16 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       const found = opponent.creature
         ? findRulesetCreature(input.bestiary, opponent.creature)
         : findRulesetCreature(input.bestiary, opponent.name);
-      if (found) return { tier: found.entry.creature?.tier, kept: true };
+      // A bestiary creature made a boss with points it has no legendary actions of its own for buys
+      // some with them (see below), and those count as an invented boss's do (Alyssa 2026-10-30: a CR
+      // 1/2 elemental with legendary actions 3/3; balance is strict, or the CR system means nothing).
+      if (found) {
+        const bought =
+          opponent.boss && !(found.entry.creature?.actions ?? []).some((action) => action.signature)
+            ? Math.min(6, opponent.points ?? 0)
+            : 0;
+        return { tier: found.entry.creature?.tier, kept: true, ...(bought > 0 ? { times: 1 + bought / 3 } : {}) };
+      }
       const proposedTier = (opponent.proposed as { tier?: unknown } | undefined)?.tier;
       // An invented boss's legendary points are turns its tier does not count (laptop interim
       // 2026-10-26: an invented CR 8 lich with 3 points, "4100, within High 4400", wiped a party in
@@ -1854,6 +1864,18 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     const entry = combatants.find((one) => one.id === opponent.id);
     if (!entry || !("block" in entry) || !entry.block) continue;
     const tierId = (entry.block as { tier?: string }).tier ?? opponent.tier;
+    const tier = combat.threat?.tiers.find((one) => one.id === tierId);
+    const built = tier ? rulesetCombatant(encounter, opponent.id) : undefined;
+    if (!built?.signature?.max) continue;
+    for (const line of holdRulesetLegendary(definition, built, tier!)) adjustments.push(`${built.name}: ${line}`);
+  }
+  // And a bestiary creature's, where the points were the Game Master's and not its own: what they buy
+  // stays inside its own tier with its turn (Alyssa 2026-10-30: a CR 1/2 elemental fought with
+  // legendary actions 3/3).
+  for (const opponent of enemies) {
+    const entry = combatants.find((one) => one.id === opponent.id);
+    if (!entry || !("creature" in entry) || !entry.creature || !entry.adjust?.legendary) continue;
+    const tierId = findRulesetCreatureEntry(input.bestiary ?? {}, entry.creature)?.creature?.tier;
     const tier = combat.threat?.tiers.find((one) => one.id === tierId);
     const built = tier ? rulesetCombatant(encounter, opponent.id) : undefined;
     if (!built?.signature?.max) continue;

@@ -262,6 +262,20 @@ try {
     bossed.adjustments.some((line) => /this party's High budget\b/.test(line)),
     bossed.adjustments.join("; "),
   );
+  // A bestiary creature made a boss with points it has no legendary actions for counts them as an
+  // invented boss does (Alyssa 2026-10-30: balance is strict; a CR 1/2 elemental fought with legendary
+  // actions 3/3): the Cinder Hound (CR 1, 200) with 3 points is twice that, and the fight says so.
+  const plainHound = fight({
+    enemies: [{ id: "hound", name: "Cinder Hound", creature: "Cinder Hound", boss: true }],
+    budget: { difficulty: "normal" },
+  });
+  const boughtHound = fight({
+    enemies: [{ id: "hound", name: "Cinder Hound", creature: "Cinder Hound", boss: true, points: 3 }],
+    budget: { difficulty: "normal" },
+  });
+  const worthOf = (built: typeof plainHound) =>
+    Number(/This fight is worth (\d+)/.exec(built.adjustments.join("; "))?.[1] ?? NaN);
+  assert.equal(worthOf(boughtHound), 2 * worthOf(plainHound), boughtHound.adjustments.join("; "));
   assert.deepEqual(four.bossStep, { id: "high", label: "High" });
 
   // ── The brief ──

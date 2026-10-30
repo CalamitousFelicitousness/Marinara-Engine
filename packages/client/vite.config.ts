@@ -56,12 +56,6 @@ function resolveDevProxyPort() {
 }
 
 const DEV_PROXY_PORT = resolveDevProxyPort();
-
-/** Tailscale's CGNAT block, 100.64.0.0/10, in plain or IPv4-mapped form. */
-function isTailscaleAddress(address: string): boolean {
-  const match = /^(?:::ffff:)?100\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/u.exec(address);
-  return !!match && Number(match[1]) >= 64 && Number(match[1]) <= 127;
-}
 const BUILD_COMMIT_LENGTH = 12;
 
 function normalizeBuildCommit(value: string | undefined) {
@@ -328,14 +322,10 @@ export default defineConfig({
         target: `http://127.0.0.1:${DEV_PROXY_PORT}`,
         changeOrigin: false,
         // LAN visitors choose their own Host, so mark them as proxied; local dev stays unmarked.
-        // A tailnet peer reaching this machine's Tailscale address stays unmarked too, as the server
-        // trusts a direct one; behind this proxy the server only sees loopback.
         configure: (proxy) => {
           proxy.on("proxyReq", (proxyReq, req) => {
             const peer = req.socket.remoteAddress ?? "";
-            if (/^(127\.|::1$|::ffff:127\.)/.test(peer)) return;
-            if (isTailscaleAddress(peer) && isTailscaleAddress(req.socket.localAddress ?? "")) return;
-            proxyReq.setHeader("x-forwarded-for", peer);
+            if (!/^(127\.|::1$|::ffff:127\.)/.test(peer)) proxyReq.setHeader("x-forwarded-for", peer);
           });
         },
       },

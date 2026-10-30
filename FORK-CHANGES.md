@@ -20,15 +20,6 @@ Upstream now resolves `PORT` from `.env` too (`resolveServerPort` in `dev.mjs`, 
 
 Guarded by `pnpm dev-ports:check`, which runs inside `pnpm check`.
 
-### Tailscale visitors of the dev server are not marked as proxied
-
-Upstream's Vite `/api` proxy adds `x-forwarded-for` for every visitor whose socket peer is not
-loopback, so the server counts them as relayed by a local proxy and asks for a login. A tailnet
-device using `pnpm dev` then hit that prompt, although the server trusts the same device when it
-connects directly. `packages/client/vite.config.ts` leaves the header off when both the peer and
-the local socket address are in Tailscale's `100.64.0.0/10`, the test the server's automatic
-Tailscale trust uses. LAN visitors are still marked. Patches an upstream file.
-
 ### Shared message action button carries gesture handlers
 
 `packages/client/src/components/chat/MessageActionButton.tsx` accepts a `triggerProps` prop and

@@ -163,13 +163,13 @@ export async function takeNextPending(chatId: string): Promise<MariPendingMessag
 }
 
 /**
- * A new send begins: what still waits was held back by something earlier, and stays until its own Send. `ids` is
- * what the client saw waiting when you pressed Send, so a message queued while that send starts up is not caught.
- * Without it, everything is held: the safe side, since a held message only needs a click.
+ * A new send begins: what still waits was held back by something earlier, and stays until its own Send. `exceptIds`
+ * is what the client queued after you pressed Send. Everything else is held, even a row the client never saw: the
+ * safe side, since a held message only needs a click.
  */
-export async function holdPending(chatId: string, ids?: readonly string[]): Promise<void> {
+export async function holdPending(chatId: string, exceptIds: readonly string[] = []): Promise<void> {
   const path = pendingFilePath(chatId);
-  const covers = (message: MariPendingMessage) => !ids || ids.includes(message.id);
+  const covers = (message: MariPendingMessage) => !exceptIds.includes(message.id);
   return serialized(chatId, async () => {
     const list = await readList(path);
     if (!list.some((message) => !message.held && covers(message))) return;

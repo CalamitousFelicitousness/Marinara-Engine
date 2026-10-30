@@ -1158,6 +1158,7 @@ export function HomeProfessorMariChat({
 
   // The list the composer shows comes with the status poll; a queue action's answer is just a fresher copy of it.
   const pendingWriteSeqRef = useRef(0);
+  const queuedSinceSendRef = useRef<string[]>([]);
   const showPendingMessages = useCallback((forChatId: string, pendingMessages: MariPendingMessageSummary[]) => {
     pendingWriteSeqRef.current += 1;
     setWorkspaceStatus((current) => current && { ...current, pendingMessages, pendingMessagesChatId: forChatId });
@@ -2453,7 +2454,7 @@ export function HomeProfessorMariChat({
       setAttachments([]);
       setHandoffContext(persistentResourceContext(submittedContext));
       try {
-        const { pending } = await api.post<{ pending: MariPendingMessageSummary[] }>(
+        const { addedId, pending } = await api.post<{ addedId: string; pending: MariPendingMessageSummary[] }>(
           "/professor-mari/workspace/pending",
           {
             chatId,
@@ -2463,6 +2464,7 @@ export function HomeProfessorMariChat({
             context: submittedContext ?? undefined,
           },
         );
+        queuedSinceSendRef.current.push(addedId);
         showPendingMessages(chatId, pending);
       } catch (error) {
         returnToComposer();
@@ -2504,11 +2506,9 @@ export function HomeProfessorMariChat({
     let runningContext = submittedContext;
     let runningAttachments = submittedAttachments;
     let runningReferences = submittedReferences;
-    // Taken now: a message you queue while this send starts up is not one of these, and still goes when she finishes.
-    const heldPendingIds =
-      workspaceStatus?.pendingMessagesChatId === chatId
-        ? workspaceStatus?.pendingMessages?.map((message) => message.id)
-        : undefined;
+    // Counted from now: a message you queue while this send starts up still goes when she finishes. The server holds
+    // the rest, including one this tab never saw, so it needs no copy of the list here.
+    queuedSinceSendRef.current = [];
     // Cleared before the first wait: the box stays open during a send, so a second Enter here would queue this text
     // again, and clearing it later would wipe what you typed since. A retry or a chip sends its own text.
     if (overrideText === undefined) {
@@ -2571,7 +2571,7 @@ export function HomeProfessorMariChat({
         submittedReferences,
         {
           pendingMessageId: overrideRecovery?.pendingMessageId,
-          heldPendingIds,
+          queuedSinceSendIds: queuedSinceSendRef.current,
           // She finished and took the next one on the same reply: her answer comes in, your next message follows.
           onQueueNext: async (next) => {
             queuedMessageId = next.id;

@@ -131,8 +131,8 @@ export function useMariWorkspaceRun({
       queue?: {
         /** Send on a held message: the server takes it (files included) from the queue. */
         pendingMessageId?: string;
-        /** What was waiting when you pressed Send: the server holds those, not one queued since. */
-        heldPendingIds?: string[];
+        /** What you queued after pressing Send: the server holds everything else. */
+        queuedSinceSendIds?: string[];
         onQueueNext?: (next: { id: string; text: string }) => Promise<void>;
       },
     ) => {
@@ -202,7 +202,7 @@ export function useMariWorkspaceRun({
             references: references.length > 0 ? references : undefined,
             existingUserMessageId,
             pendingMessageId: queue?.pendingMessageId,
-            heldPendingIds: queue?.heldPendingIds,
+            queuedSinceSendIds: queue?.queuedSinceSendIds,
             // Flavors her voice only while the dated pack is the one on screen.
             seasonalPackId: shownPack.season ? shownPack.id : undefined,
           },

@@ -65,7 +65,7 @@ export const professorMariPromptSchema = z.object({
   // Send on a held queued message: the server takes it from the queue and uses ITS text, attachments, references
   // and context instead of the ones above.
   pendingMessageId: z.string().min(1).max(100).optional(),
-  heldPendingIds: z.array(z.string().min(1).max(100)).max(100).optional(),
+  queuedSinceSendIds: z.array(z.string().min(1).max(100)).max(100).optional(),
   seasonalPackId: z.string().max(40).optional(),
   context: z
     .object({
@@ -398,8 +398,9 @@ export async function professorMariWorkspaceRoutes(app: FastifyInstance) {
     if (!chat || metadata.internalAssistant !== "professor-mari") {
       return reply.status(404).send({ error: "Professor Mari chat not found" });
     }
+    let added: { id: string };
     try {
-      await addPending(input.chatId, {
+      added = await addPending(input.chatId, {
         text: input.message,
         attachments: input.attachments,
         references: input.references,
@@ -408,7 +409,7 @@ export async function professorMariWorkspaceRoutes(app: FastifyInstance) {
     } catch (err) {
       return sendPendingError(reply, err);
     }
-    return { pending: await listPendingSummaries(input.chatId) };
+    return { addedId: added.id, pending: await listPendingSummaries(input.chatId) };
   });
 
   app.delete<{ Params: { chatId: string; id: string } }>("/pending/:chatId/:id", async (req, reply) => {
@@ -642,7 +643,7 @@ export async function professorMariWorkspaceRoutes(app: FastifyInstance) {
       const stopCountAtStart = stopCount;
       if (isSafePendingChatId(body.chatId)) {
         // Best effort: an unusable file only means the drain below finds nothing it can read either.
-        await holdPending(body.chatId, body.heldPendingIds).catch((err) => {
+        await holdPending(body.chatId, body.queuedSinceSendIds).catch((err) => {
           logger.warn(err, "[professor-mari] Could not hold the queued messages for chat %s", body.chatId);
         });
       }

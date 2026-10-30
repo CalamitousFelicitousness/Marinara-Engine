@@ -209,13 +209,14 @@ try {
   assert.equal(text(await store.takePending(holdChat, heldList[1]!.id)), "old two", "Send takes only that one");
   assert.equal((await store.listPending(holdChat)).length, 1, "Send leaves the others held");
 
-  // Only what the client saw waiting is held: a message queued while the send starts up still drains.
+  // Only a message queued while the send starts up still drains. Everything else is held, even a row the client never saw.
   const startupChat = "startupchat";
-  const seen = await store.addPending(startupChat, { text: "seen" });
-  await store.addPending(startupChat, { text: "queued during startup" });
-  await store.holdPending(startupChat, [seen.id]);
+  await store.addPending(startupChat, { text: "seen" });
+  const duringStartup = await store.addPending(startupChat, { text: "queued during startup" });
+  await store.addPending(startupChat, { text: "from another device" });
+  await store.holdPending(startupChat, [duringStartup.id]);
   assert.equal(text(await store.takeNextPending(startupChat)), "queued during startup");
-  assert.equal(await store.takeNextPending(startupChat), null, "The one it saw stays held");
+  assert.equal(await store.takeNextPending(startupChat), null, "Everything else stays held, seen or not");
 
   // A message put back returns to its typed place, not ahead of older held ones.
   const orderChat = "orderchat";

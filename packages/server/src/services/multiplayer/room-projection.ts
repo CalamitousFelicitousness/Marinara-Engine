@@ -59,6 +59,16 @@ export class MultiplayerSnapshotTooLargeError extends Error {
 }
 
 /** The only shared transcript projection. No metadata, debug fields, assets or provider events cross this boundary. */
+/** A player's message as the room shows it: a fight's result keeps its words to the story and drops
+ *  the recap written for the Game Master, rewards instruction and board counts included (laptop room
+ *  playtest 2026-10-30). */
+export function roomUserText(content: string): string {
+  return content
+    .replace(/\[combat_result\][\s\S]*?(?:\[\/combat_result\]|$)/giu, "")
+    .replace(/\n{3,}/gu, "\n\n")
+    .trim();
+}
+
 export function projectRoomSnapshot(input: {
   room: MultiplayerStoredRoom;
   chat: { name: string; mode: string };
@@ -102,7 +112,7 @@ export function projectRoomSnapshot(input: {
     const name = row.role === "user" && typeof persona.name === "string" ? persona.name : (actor?.name ?? "GM");
     let text =
       row.role === "user"
-        ? row.content.slice(0, MULTIPLAYER_LIMITS.text)
+        ? roomUserText(row.content).slice(0, MULTIPLAYER_LIMITS.text)
         : roomVisibleText(row.content, chat.mode, room, selfId, extra.multiplayerGameAudience);
     if (row.role !== "user") {
       const whispers = getRoleplayWhispers(extra).filter(

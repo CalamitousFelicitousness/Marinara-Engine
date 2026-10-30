@@ -468,6 +468,13 @@ try {
     assert.deepEqual(await send({ type: "ruleset", optionId: end.id, targetIds: [] }), { ok: true });
     guestView = await shown();
     assert.notEqual(guestView.ruleset!.actorId, "corwin", "the guest's turn is played");
+    // A guest who goes away mid-fight (Leave, or gone quiet) has the Engine play their character, and the
+    // fight does not wait on them (laptop room playtest 2026-10-30).
+    absent = new Set([GUEST.id]);
+    hostView = (await app.inject({ url: `/combat/state?chatId=${fresh.chat.id}&anchor=${fresh.anchor.id}` })).json()
+      .session;
+    assert.equal(hostView.party.find((member) => member.id === "corwin")?.controller, "ai");
+    absent = new Set();
   }
 
   console.log("game-ruleset-room-fight-players: ok");

@@ -38,7 +38,8 @@ const { createMultiplayerRoomStore, createRoomParticipant, nextRound } =
   await import("../../packages/server/src/services/multiplayer/room-store.js");
 const { projectMultiplayerFight, MULTIPLAYER_FIGHT_BYTES } =
   await import("../../packages/server/src/services/multiplayer/fight-projection.js");
-const { projectRoomSnapshot } = await import("../../packages/server/src/services/multiplayer/room-projection.js");
+const { projectRoomSnapshot, roomUserText } =
+  await import("../../packages/server/src/services/multiplayer/room-projection.js");
 const { newId } = await import("../../packages/server/src/utils/id-generator.js");
 
 const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
@@ -350,8 +351,13 @@ try {
     const messages = await chats.listMessages(game.id);
     assert.deepEqual(
       messages.map((message) => message.content),
-      [result, "[Passes this round]"],
+      [result],
+      "the guests played in the fight, so nobody passes in the story (laptop room playtest 2026-10-30)",
     );
+    // The room shows the result's words, never the recap written for the Game Master.
+    assert.equal(roomUserText(result), "*The battle is won.*");
+    assert.equal(roomUserText("[combat_result]\nRewards: give gold\n"), "");
+    assert.equal(roomUserText("I swing at it."), "I swing at it.");
     const closed = (await store.read()).room;
     assert.equal(closed.round!.phase, "resolving");
     await assert.rejects(store.fightResult(result), expectCode("busy"), "only a round still collecting takes it");
@@ -443,6 +449,9 @@ try {
     assert.match(service, /void this\.guestState\(\)\.catch\(\(\) => undefined\);\s*return \{ localChatId: chat!\.id/u);
     const index = read("../../packages/server/src/routes/index.ts");
     assert.match(index, /absent: \(chatId: string\) => multiplayer\.fightAbsent\(chatId\)/u);
+    // The host's own Room screen commands the fight as the host; a guest who left is absent.
+    assert.match(service, /isHost \? \{ host: true \} : \{ host: false, participantId \}/u);
+    assert.match(service, /\(s\.status === "approved" \|\| s\.status === "revoked"\) && !connected\.has/u);
   }
 
   console.log("multiplayer-room-fight: ok");

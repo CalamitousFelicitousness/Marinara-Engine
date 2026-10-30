@@ -803,6 +803,17 @@ export async function combatDirectorRoutes(
     const players = roomFightPlayers(meta, party);
     if (players) fight.players = players;
     else delete fight.players;
+    // A player not connected now (left, or gone quiet) has the Engine play their character, as one
+    // absent when the fight began does, until they take it back (laptop room playtest 2026-10-30: a
+    // guest who pressed Leave held the fight on their turn).
+    const absent = options.room?.absent(chatId);
+    for (const [unitId, player] of Object.entries(players ?? {})) {
+      if (player.host || !absent?.has(player.participantId) || fight.controllers[unitId] === "ai") continue;
+      fight.controllers[unitId] = "ai";
+      // The party panel reads the member's own controller.
+      const member = s.party.find((one) => one.id === unitId);
+      if (member) member.controller = "ai";
+    }
   };
   /** The session a client reads. A ruleset fight whose rules are gone comes back finished rather
    *  than resolved by other numbers, and nothing about that is written down: reinstalling the

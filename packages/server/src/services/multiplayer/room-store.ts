@@ -182,6 +182,8 @@ export function createMultiplayerRoomStore(db: DB, chatId: string, roomId: strin
   async function closeRound(
     room: MultiplayerStoredRoom,
     chats: ReturnType<typeof createChatsStorage>,
+    /** A round a fight's result closed: everyone played in the fight, so nobody "passes" in the story. */
+    quietPasses = false,
   ): Promise<RoomClaim | null> {
     const round = room.round;
     if (!round || round.phase !== "collecting" || !round.requiredParticipantIds.every((id) => round.submissions[id]))
@@ -191,7 +193,7 @@ export function createMultiplayerRoomStore(db: DB, chatId: string, roomId: strin
     for (const id of round.requiredParticipantIds) {
       const participant = room.participants.find((p) => p.id === id);
       const submission = round.submissions[id]!;
-      if (participant)
+      if (participant && !(quietPasses && submission.pass))
         await appendUser(
           chats,
           participant,
@@ -341,7 +343,8 @@ export function createMultiplayerRoomStore(db: DB, chatId: string, roomId: strin
         if (!round.requiredParticipantIds.includes(host.id)) round.requiredParticipantIds.push(host.id);
         for (const id of round.requiredParticipantIds)
           round.submissions[id] ??= { operationId: newId(), revision: 0, text: "", pass: true };
-        return closeRound(room, chats);
+        // The guests played their part in the fight itself (laptop room playtest 2026-10-30).
+        return closeRound(room, chats, true);
       });
     },
     async kick(participantId: string) {

@@ -203,7 +203,8 @@ export class MultiplayerService {
     const connected = this.connectedIds(host);
     return new Set(
       [...host.sessions.values()]
-        .filter((s) => s.status === "approved" && !connected.has(s.participant.id))
+        // A player who pressed Leave keeps their seat (revoked session) and is as absent as one gone quiet.
+        .filter((s) => (s.status === "approved" || s.status === "revoked") && !connected.has(s.participant.id))
         .map((s) => s.participant.id),
     );
   }
@@ -746,10 +747,14 @@ export class MultiplayerService {
     if (action.type === "fight-command" && !this.fights) throw new MultiplayerError("unavailable");
     const result = await host.store.action(participantId, action, signal, isActive);
     if (action.type === "fight-command" && !result.duplicate) {
+      // The host's own Room screen commands as the host does on the game screen (laptop room playtest
+      // 2026-10-30: the host's End turn there, and taking over a removed guest's character, did nothing).
+      const { room } = await host.store.read();
+      const isHost = room.participants.some((p) => p.isHost && p.id === participantId);
       const answered = await this.fights!.command(
         host.chatId,
         { ...action.fight, command: action.command },
-        { host: false, participantId },
+        isHost ? { host: true } : { host: false, participantId },
       );
       this.wake(host);
       if (!answered.ok) throw new MultiplayerError(answered.stale ? "stale-action" : "restricted-command");

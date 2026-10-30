@@ -2098,6 +2098,19 @@ assert.ok(!("mariDetailId" in mariSession));
     "Which era do you lean towards?\n\nStill reading.",
     "every round's words join the phase's caption",
   );
+  assert.equal(
+    groupRunPhases(
+      [
+        step("c1", "Reading character"),
+        { id: "s1", type: "text", content: "Mari: First look.", narration: true },
+        step("c2", "Reading character"),
+        { id: "s2", type: "text", content: "Professor Mari: Second look.", narration: true },
+      ],
+      { active: true, describe },
+    ).phases[0]!.caption,
+    "First look.\n\nSecond look.",
+    "a caption drops the speaker prefix, as a text block does",
+  );
 }
 
 // Slice 36 (M5a): a trailing "Why" list folds into one line; anything else stays in the answer.

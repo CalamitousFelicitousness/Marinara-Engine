@@ -106,7 +106,7 @@ export interface RunPhase<Tool> {
 }
 
 function addCaption(phase: { caption?: string }, words: string) {
-  const text = words.trim();
+  const text = stripProfessorMariSpeakerPrefix(words).trim();
   if (text) phase.caption = phase.caption ? `${phase.caption}\n\n${text}` : text;
 }
 

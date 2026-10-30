@@ -3107,6 +3107,12 @@ details[open] > .mari-disclosure .mari-disclosure__chevron {
   font-style: italic;
 }
 
+/* Her words render as markdown, which brings the answer's size and color with it. */
+.mari-phase__caption .mari-message-content {
+  font-size: inherit;
+  color: inherit;
+}
+
 /* The faces of what a look phase read, overlapping on its line. */
 .mari-face-stack {
   display: inline-flex;

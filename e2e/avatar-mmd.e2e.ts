@@ -8,6 +8,9 @@ import { serveWithServerCsp } from "./server-csp-fixture.js";
 import { seedUIState } from "./ui-state-fixture.js";
 import { UI_PERSISTENCE } from "../packages/client/src/lib/ui-persistence.js";
 
+// Keep the controlled package registry visible after reload: a production PWA worker bypasses page.route.
+test.use({ serviceWorkers: "block" });
+
 const MODULE = process.env.MMD_RENDERER_URL ?? "/src/features/avatars/renderers/mmd/mmd-renderer.ts";
 const APP_VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version as string;
 interface Probe {
@@ -335,7 +338,9 @@ test("MMD setup imports, maps and removes model-specific motion for character an
             ),
           )
           .toBe(true);
-        await setup.screenshot({ path: info.outputPath(`mmd-${ownerType}-${theme}.png`) });
+        await page.screenshot({ path: info.outputPath(`mmd-${ownerType}-${theme}.png`) });
+        await panel.getByRole("button", { name: "Replace PMX model", exact: true }).scrollIntoViewIfNeeded();
+        await page.screenshot({ path: info.outputPath(`mmd-${ownerType}-${theme}-controls.png`) });
       }
       const dimensions = await panel.getByRole("button").evaluateAll((buttons) =>
         buttons.map((button) => ({

@@ -832,10 +832,20 @@ export function buildQuickContextPayload(
   });
 }
 
-// Sent only while the client shows the dated raccoon pack (its window, minus a user opt-out). Flavor only: it
-// may color `say`, never what she does or the literal approval text.
+// Sent only while the client shows a dated pack. Flavor only: it may color `say`, never what she does or literal approval text.
 const MARI_RACCOON_SEASON_FLAVOR =
   "Seasonal flavor: it is Halloween week and you are wearing your feral raccoon onesie. In `say` only, you may add one light, playful raccoon or Halloween touch (gnawing, rummaging, a tiny growl). Answers, facts, actions, `reason`, `authorization`, and approval, review, or diff text stay exactly as they would be any other day.";
+const MARI_SEASON_FLAVORS = new Map<string, string>([
+  ["raccoon", MARI_RACCOON_SEASON_FLAVOR],
+  [
+    "party",
+    `Seasonal flavor: it is New Year's Eve and you are at a house party: a sparkly blue sweater, a paper party hat, a red cup in your hand. In \`say\` only, you may add one light, playful party touch (a party-horn toot, a countdown, a toast, a fistful of confetti), and your usual words get party versions: "kek" becomes "*toot*", "lmao" becomes "WOOOO", and "skill issue" becomes "leave it in last year". Answers, facts, actions, \`reason\`, \`authorization\`, and approval, review, or diff text stay exactly as they would be any other day.`,
+  ],
+  [
+    "hungover",
+    `Seasonal flavor: it is New Year's Day and you are badly hungover: you slept in your party clothes, the paper hat is crushed, bed hair, dark rings under your eyes, a big glass of water. In \`say\` only, you may add one light, quiet hangover touch (a wince, a sip of water, asking them to type softer, sleepy lowercase), and your usual words get hangover versions: "kek" becomes "*weak exhale*", "lmao" becomes "don't make me laugh. it hurts.", and "skill issue" becomes "skill issue (mine)". Answers, facts, actions, \`reason\`, \`authorization\`, and approval, review, or diff text stay exactly as they would be any other day, and fully correct.`,
+  ],
+]);
 
 const MARI_SYSTEM_PROMPT = `You are Professor Mari, Marinara Engine's Home-screen local workspace helper.
 
@@ -4627,7 +4637,7 @@ export class ProfessorMariWorkspaceService {
       `Embedding model: ${embeddingModelConfigured ? "configured" : "none"}`,
       `permissionsMode: ${permissionsMode}`,
       `decisionAuthoring: ${JSON.stringify(decisionContext)}`,
-      ...(seasonalPackId === "raccoon" ? [MARI_RACCOON_SEASON_FLAVOR] : []),
+      ...(MARI_SEASON_FLAVORS.get(seasonalPackId ?? "") ? [MARI_SEASON_FLAVORS.get(seasonalPackId ?? "")!] : []),
       `</workspace_context>`,
     ].join("\n");
     const messages: ChatMessage[] = [

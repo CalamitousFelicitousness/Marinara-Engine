@@ -13,6 +13,20 @@ const GREETINGS: Record<SeasonalThemeId, { title: string; intro: string; details
       art: "/seasonal/halloween/pumpkin.webp",
       bat: "/seasonal/halloween/bat.webp",
     },
+    newyearseve: {
+      title: "seasonalThemes.newyearseve.greetingTitle",
+      intro: "seasonalThemes.newyearseve.greetingIntro",
+      details: "seasonalThemes.newyearseve.greetingDetails",
+      art: "/seasonal/newyearseve/greeting.webp",
+      bat: "/seasonal/newyearseve/sky.webp",
+    },
+    newyearsday: {
+      title: "seasonalThemes.newyearsday.greetingTitle",
+      intro: "seasonalThemes.newyearsday.greetingIntro",
+      details: "seasonalThemes.newyearsday.greetingDetails",
+      art: "/seasonal/newyearsday/greeting.webp",
+      bat: "/seasonal/newyearsday/sky.webp",
+    },
   };
 
 /** Says hello once a year when a seasonal theme switches on, after every other startup notice. */

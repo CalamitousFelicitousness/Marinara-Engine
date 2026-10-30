@@ -518,6 +518,7 @@ export class MultiplayerService {
             metadata: chat.metadata,
             state: await createGameStateStorage(this.options.db).getLatest(host.chatId),
             messages,
+            viewerId: participantId,
           })
         : null;
     this.live(host);

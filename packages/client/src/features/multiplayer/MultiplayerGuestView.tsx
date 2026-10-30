@@ -185,6 +185,18 @@ export function MultiplayerGuestView({ state, onAction, labels, onOpenPlayers }:
           <p className="mt-1 text-[var(--destructive)]">{labels.errors["generation-failed"]}</p>
         )}
         {actionFailed && !state.error && <p className="mt-1 text-[var(--destructive)]">{labels.actionFailed}</p>}
+        {/* Your own checks in the latest reply, rolled for you (Alyssa 2026-10-30). */}
+        {isGame &&
+          game?.ownRolls.map((roll, index) => (
+            <p key={index} className="mt-1 font-medium" data-own-roll>
+              {formatLabel(labels.ownRoll, {
+                skill: roll.skill,
+                total: String(roll.total),
+                dc: String(roll.dc),
+                outcome: roll.success ? labels.ownRollSuccess : labels.ownRollFailure,
+              })}
+            </p>
+          ))}
       </div>
 
       {isGame && game && !playersOpen && (
@@ -248,6 +260,20 @@ export function MultiplayerGuestView({ state, onAction, labels, onOpenPlayers }:
                     </ul>
                   </div>
                 ))}
+              </section>
+            )}
+            {game.bag.length > 0 && (
+              <section aria-label={labels.bag} data-own-bag>
+                <h2 className="mb-1 font-semibold">{labels.bag}</h2>
+                <ul className="space-y-1">
+                  {game.bag.map((item, index) => (
+                    <li key={index} className="break-words">
+                      {item.name}
+                      {item.quantity > 1 && <> ×{item.quantity}</>}
+                      {item.equipped && <span className="text-[var(--muted-foreground)]"> · {labels.bagEquipped}</span>}
+                    </li>
+                  ))}
+                </ul>
               </section>
             )}
             {game.choices.length > 0 && (

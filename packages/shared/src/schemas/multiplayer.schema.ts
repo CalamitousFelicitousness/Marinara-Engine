@@ -94,6 +94,33 @@ export const multiplayerGameStateSchema = z
         })
         .strict(),
     ),
+    /** The viewer's own checks in the latest reply (Alyssa 2026-10-30: each player sees their roll). */
+    ownRolls: z
+      .array(
+        z
+          .object({
+            skill: z.string().min(1).max(100),
+            total: z.number().finite().min(-1_000_000).max(1_000_000),
+            dc: z.number().finite().min(-1_000_000).max(1_000_000),
+            success: z.boolean(),
+          })
+          .strict(),
+      )
+      .max(8)
+      .default([]),
+    /** What the viewer's own bag holds (Alyssa 2026-10-30: guests see their bag), by name only. */
+    bag: z
+      .array(
+        z
+          .object({
+            name: z.string().min(1).max(120),
+            quantity: z.number().int().min(1).max(1_000_000),
+            equipped: z.boolean(),
+          })
+          .strict(),
+      )
+      .max(48)
+      .default([]),
   })
   .strict();
 export type MultiplayerGameState = z.infer<typeof multiplayerGameStateSchema>;

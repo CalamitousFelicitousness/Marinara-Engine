@@ -40,4 +40,6 @@ assert.deepEqual(salvageTacticalBattlefieldBrief({ size: "large", scatter: { ter
   size: "large",
 });
 
-console.log(`Battlefield scatter: half the open ground of a large plain is water (${water} cells), the strips stay dry.`);
+console.log(
+  `Battlefield scatter: half the open ground of a large plain is water (${water} cells), the strips stay dry.`,
+);

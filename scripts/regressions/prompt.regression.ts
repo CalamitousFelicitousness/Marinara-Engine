@@ -45,6 +45,7 @@ import {
   resolveGameSetupArtStylePrompt,
   resolveChatPersonaCandidate,
   resolveMacros,
+  seededUnitRandom,
   resolveAgentPromptTemplate,
   resolveDefaultAgentPromptTemplateId,
   testPrimaryKeys,
@@ -3389,6 +3390,27 @@ const cases: RegressionCase[] = [
         assert.equal(value >= 1 && value <= 5, true);
       }
       assert.equal(resolveMacros("{{roll:2d0}}", context), "0");
+      // The roll macro reads the shared NdM grammar: a bare die and a flat modifier roll too.
+      for (let index = 0; index < 25; index += 1) {
+        const bare = Number(resolveMacros("{{roll:d20}}", context));
+        assert.equal(Number.isInteger(bare) && bare >= 1 && bare <= 20, true);
+        const plus = Number(resolveMacros("{{roll:1d8+3}}", context));
+        assert.equal(Number.isInteger(plus) && plus >= 4 && plus <= 11, true);
+        const minus = Number(resolveMacros("{{roll:2d4-1}}", context));
+        assert.equal(Number.isInteger(minus) && minus >= 1 && minus <= 7, true);
+      }
+    },
+  },
+  {
+    name: "a seeded roll macro throws the same faces it did before the shared roller",
+    run() {
+      const context = { user: "Mari", char: "Dottore", characters: ["Dottore"], variables: {} };
+      // Each die is keyed on the macro text and its place, exactly as the macro's own loop keyed it.
+      const face = (index: number) => Math.floor(seededUnitRandom(`message-a:{{roll:3d6}}:${index}`) * 6) + 1;
+      assert.equal(
+        resolveMacros("{{roll:3d6}}", context, { randomSeed: "message-a" }),
+        String(face(0) + face(1) + face(2)),
+      );
     },
   },
   {

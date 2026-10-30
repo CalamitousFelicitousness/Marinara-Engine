@@ -24,6 +24,13 @@ import type { DiceRollResult } from "../types/game.js";
  */
 export const DICE_NOTATION_REGEX = /^(\d+)?d(\d+)([+-]\d+)?$/i;
 
+/**
+ * The same notation as a pattern source with no groups, for a reader that finds
+ * dice inside longer text (the narration badge's `[dice: 2d6+3 = 11]`) rather
+ * than parsing a whole string. Build with the `i` flag.
+ */
+export const DICE_NOTATION_PATTERN = String.raw`\d*d\d+(?:[+-]\d+)?`;
+
 /** Most dice one notation may throw. */
 export const MAX_DICE_COUNT = 100;
 /** Most faces a die may have. */

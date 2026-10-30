@@ -112,6 +112,7 @@ test("Translation prompt drafts keep the caret, clear normally, and save to thei
       await expect.poll(async () => (await readMetadata(first.id))[key]).toBe(replacement);
       expect(writes.filter((write) => Object.hasOwn(write.body, key))).toHaveLength(1);
     }
+    await prompts.nth(1).scrollIntoViewIfNeeded();
     await page.screenshot({ path: info.outputPath("translation-prompts-edited.png") });
 
     // Changing the active chat without a blur exercises the existing unmount flush and keyed ownership.

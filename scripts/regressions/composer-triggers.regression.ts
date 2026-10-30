@@ -180,6 +180,9 @@ for (const marks of markSets) assert.equal(joined(sample, marks), sample);
   assert.deepEqual(pastedFiles(clipboard("", [fileItem])), [shot]);
   assert.deepEqual(pastedFiles(clipboard("  ", [fileItem])), [shot]);
   assert.deepEqual(pastedFiles(clipboard("Cell A1", [fileItem])), []);
+  assert.deepEqual(pastedFiles(clipboard("image.png", [fileItem])), [shot]);
+  assert.deepEqual(pastedFiles(clipboard("/home/me/image.png", [fileItem])), [shot]);
+  assert.deepEqual(pastedFiles(clipboard("see image.png for details", [fileItem])), []);
   assert.deepEqual(pastedFiles(clipboard("hello", [{ kind: "string", getAsFile: () => null }])), []);
   assert.deepEqual(pastedFiles(clipboard("", [{ kind: "file", getAsFile: () => null }])), []);
 }

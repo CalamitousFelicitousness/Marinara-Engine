@@ -49,11 +49,26 @@ import {
 interface SharedRenderer {
   renderer: WebGPURenderer;
   ready: Promise<void>;
+  advanceFrame(): void;
   width: number;
   height: number;
   users: number;
 }
 let shared: SharedRenderer | null = null;
+
+/** ponytail: Three 0.186 starts a private RAF even without a callback. Keep this pinned, guarded adapter
+ * until Three exposes a public on-demand clock; the stage remains the only owner of animation ticks. */
+export function bindMmdStageClock(renderer: unknown): () => void {
+  if (renderer === null || typeof renderer !== "object")
+    throw new Error("This Three.js version cannot use the avatar stage clock.");
+  const clock = renderer as { _animation?: { stop?: () => void }; _nodes?: { nodeFrame?: { update?: () => void } } };
+  const animation = clock._animation;
+  const frame = clock._nodes?.nodeFrame;
+  if (typeof animation?.stop !== "function" || typeof frame?.update !== "function")
+    throw new Error("This Three.js version cannot use the avatar stage clock.");
+  animation.stop();
+  return () => frame.update!();
+}
 
 function acquireRenderer(): SharedRenderer {
   if (!shared) {
@@ -66,7 +81,18 @@ function acquireRenderer(): SharedRenderer {
     });
     renderer.setPixelRatio(1);
     renderer.setClearColor(0, 0);
-    shared = { renderer, ready: renderer.init().then(() => undefined), width: 0, height: 0, users: 0 };
+    const gl: SharedRenderer = {
+      renderer,
+      ready: Promise.resolve(),
+      advanceFrame: () => undefined,
+      width: 0,
+      height: 0,
+      users: 0,
+    };
+    gl.ready = renderer.init().then(() => {
+      gl.advanceFrame = bindMmdStageClock(renderer);
+    });
+    shared = gl;
   }
   shared.users += 1;
   return shared;
@@ -426,6 +452,7 @@ class MmdAvatarRenderer implements AvatarRenderer {
     renderer.setViewport(0, 0, width, height);
     renderer.setScissor(0, 0, width, height);
     renderer.setScissorTest(true);
+    this.gl.advanceFrame();
     renderer.render(this.scene, this.camera);
     const { canvas } = this.context;
     if (canvas.width !== width) canvas.width = width;

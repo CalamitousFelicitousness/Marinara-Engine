@@ -15,7 +15,7 @@ process.env.LOG_LEVEL = "silent";
 const { findAvatarImporter } = await import("../../packages/server/src/services/avatars/formats/registry.js");
 const { mmdImporter, checkedPmx, mmdTextureMime, buildMmdImport } =
   await import("../../packages/server/src/services/avatars/formats/mmd.js");
-const { avatarConfigSchema, createAvatarConfig, characterDataSchema, isAvatarFilePath } =
+const { avatarConfigSchema, createAvatarConfig, characterDataSchema, isAvatarFilePath, AVATAR_MMD_METADATA_LIMITS } =
   await import("../../packages/shared/src/index.js");
 const storage = await import("../../packages/server/src/services/avatars/storage.js");
 const owner = { ownerType: "character", ownerId: "mmd-regression" } as const;
@@ -64,6 +64,64 @@ try {
     kinds: { mmd: imported.data },
   };
   assert(avatarConfigSchema.safeParse(config).success);
+  assert(
+    avatarConfigSchema.safeParse({
+      ...config,
+      kinds: {
+        mmd: {
+          ...imported.data,
+          expressionNames: Array.from(
+            { length: AVATAR_MMD_METADATA_LIMITS.expressionNames },
+            (_, index) => `face-${index}`,
+          ),
+        },
+      },
+    }).success,
+  );
+  for (const data of [
+    {
+      ...imported.data,
+      expressionNames: Array.from(
+        { length: AVATAR_MMD_METADATA_LIMITS.expressionNames + 1 },
+        (_, index) => `face-${index}`,
+      ),
+    },
+    {
+      ...imported.data,
+      texturePaths: Object.fromEntries(
+        Array.from({ length: AVATAR_MMD_METADATA_LIMITS.textures + 1 }, (_, index) => [
+          `face-${index}.png`,
+          `mmd/texture-${index}.png`,
+        ]),
+      ),
+    },
+    {
+      ...imported.data,
+      texturePaths: { ["a".repeat(AVATAR_MMD_METADATA_LIMITS.textureReferenceChars + 1)]: "mmd/texture.png" },
+    },
+  ])
+    assert(
+      !avatarConfigSchema.safeParse({ ...config, kinds: { mmd: data } }).success,
+      "saved MMD setup metadata is bounded",
+    );
+  const manyFaces = mmdPmx({ morphCount: 257, independentMorphs: true, morphNameAt: 256 });
+  const boundedFaces = await buildMmdImport(await mmdImporter.validate(input(manyFaces)), input(manyFaces), null);
+  assert.equal(boundedFaces.data.expressionNames?.length, AVATAR_MMD_METADATA_LIMITS.expressionNames);
+  assert(!boundedFaces.data.expressionNames?.includes("笑い"));
+  assert.equal(
+    boundedFaces.data.expressionMap.happy?.target,
+    "笑い",
+    "a valid auto-bound face outside the offered catalogue is preserved",
+  );
+  assert(
+    boundedFaces.warnings.some((warning) => warning.includes("256")),
+    "the offered catalogue ceiling is disclosed",
+  );
+  assert.deepEqual(
+    boundedFaces.files[0]!.bytes,
+    checkedPmx(manyFaces).bytes,
+    "the native morph model itself is not trimmed",
+  );
   assert(isAvatarFilePath("mmd/model.pmx"));
   assert(!isAvatarFilePath("mmd/nested/model.pmx"));
   assert(
@@ -140,6 +198,79 @@ try {
   assert.match(bundled.data.texturePaths["..\\textures\\肌.png"]!, /^mmd\/texture-[a-f0-9]+\.png$/u);
   assert.equal(bundled.files.length, 2);
   assert.equal(mmdTextureMime(png, "toon.sph"), "image/png", "sphere texture suffix can carry a raster");
+  const largePng = Buffer.from(png);
+  largePng.writeUInt32BE(50_000, 16);
+  largePng.writeUInt32BE(50_000, 20);
+  assert.equal(
+    mmdTextureMime(largePng, "skin.png"),
+    null,
+    "hostile PNG dimensions cannot advertise a 10GB decoded texture",
+  );
+  await refuses(
+    zip([
+      ["model.pmx", mmdPmx({ texture: "skin.png" })],
+      ["skin.png", largePng],
+    ]),
+    "model.zip",
+    /raster/u,
+  );
+  const overLong = "a".repeat(AVATAR_MMD_METADATA_LIMITS.textureReferenceChars + 1) + ".png";
+  const jpegHeader = Buffer.concat([
+    Buffer.from([0xff, 0xd8, 0xff, 0xe1, 0x20, 0x02]),
+    Buffer.alloc(8192),
+    Buffer.from([0xff, 0xc0, 0, 17, 8, 0, 1, 0, 1, 3, 1, 0x11, 0, 2, 0x11, 0, 3, 0x11, 0]),
+  ]);
+  assert.equal(
+    mmdTextureMime(jpegHeader, "skin.jpg"),
+    "image/jpeg",
+    "complete JPEG header dimensions can follow a large metadata block",
+  );
+  assert.equal(
+    mmdTextureMime(jpegHeader.subarray(0, 4096), "skin.jpg", jpegHeader.length),
+    "image/jpeg",
+    "the serving sniff must not reject an imported JPEG merely because dimensions follow its short header",
+  );
+  await refuses(
+    zip([
+      ["model.pmx", mmdPmx({ texture: overLong })],
+      [overLong, png],
+    ]),
+    "model.zip",
+    /path.*long/u,
+  );
+  const names = Array.from({ length: AVATAR_MMD_METADATA_LIMITS.textures }, (_, index) => `skin-${index}.png`);
+  await mmdImporter.validate(
+    input(
+      zip([["model.pmx", mmdPmx({ textures: names })], ...names.map((name): [string, Buffer] => [name, png])]),
+      "model.zip",
+    ),
+  );
+  const tooManyNames = [...names, "overflow.png"];
+  await refuses(
+    zip([
+      ["model.pmx", mmdPmx({ textures: tooManyNames })],
+      ...tooManyNames.map((name): [string, Buffer] => [name, png]),
+    ]),
+    "model.zip",
+    /too many textures/u,
+  );
+  const decodedLimitPng = Buffer.from(png);
+  decodedLimitPng.writeUInt32BE(8192, 16);
+  decodedLimitPng.writeUInt32BE(8192, 20);
+  assert.equal(
+    mmdTextureMime(decodedLimitPng, "a.png"),
+    "image/png",
+    "each hostile-header control is within the individual decoded budget",
+  );
+  await refuses(
+    zip([
+      ["model.pmx", mmdPmx({ textures: ["a.png", "b.png"] })],
+      ["a.png", decodedLimitPng],
+      ["b.png", decodedLimitPng],
+    ]),
+    "model.zip",
+    /pictures.*memory/u,
+  );
   await refuses(mmdPmx({ texture: "skin.png" }), "avatar.pmx", /missing/u);
   for (const texture of [
     "/etc/passwd",

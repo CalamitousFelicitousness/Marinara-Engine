@@ -46,6 +46,9 @@ export function mmdPmx({
   vertexCount = 3,
   sparseMorphs = false,
   toonTexture = false,
+  independentMorphs = false,
+  morphNameAt = 0,
+  textures,
 }: {
   texture?: string;
   morphName?: string;
@@ -58,18 +61,24 @@ export function mmdPmx({
   vertexCount?: number;
   sparseMorphs?: boolean;
   toonTexture?: boolean;
+  independentMorphs?: boolean;
+  morphNameAt?: number;
+  textures?: string[];
 } = {}): Buffer {
   const w = writer(encoding);
   const boneSize = boneCount > 127 ? 2 : 1;
   const morphSize = morphCount > 127 ? 2 : 1;
   const vertexSize = vertexCount > 255 ? 2 : 1;
+  const textureNames = textures ?? (texture ? [texture] : []);
+  const textureSize = textureNames.length > 127 ? 2 : 1;
+  const textureIndex = (index: number) => (textureSize === 1 ? w.i8(index) : w.i16(index));
   const boneIndex = (index: number) => (boneSize === 1 ? w.i8(index) : w.i16(index));
   const morphIndex = (index: number) => (morphSize === 1 ? w.i8(index) : w.i16(index));
   const vertexIndex = (index: number) => (vertexSize === 1 ? w.u8(index) : w.u16(index));
   w.bytes(Buffer.from("PMX "));
   w.floats(version);
   w.u8(8);
-  w.bytes(new Uint8Array([encoding === "utf8" ? 1 : 0, 0, vertexSize, 1, 1, boneSize, morphSize, 1]));
+  w.bytes(new Uint8Array([encoding === "utf8" ? 1 : 0, 0, vertexSize, textureSize, 1, boneSize, morphSize, 1]));
   for (const value of ["Fixture", "Fixture", "Source-authored regression model", ""]) w.text(value);
   w.i32(vertexCount);
   const triangle = [
@@ -86,19 +95,19 @@ export function mmdPmx({
   }
   w.i32(3);
   for (const index of [0, 1, 2]) vertexIndex(index);
-  w.i32(texture ? 1 : 0);
-  if (texture) w.text(texture);
+  w.i32(textureNames.length);
+  for (const name of textureNames) w.text(name);
   w.i32(1);
   w.text("surface");
   w.text("surface");
   w.floats(0.6, 0.3, 0.8, 1, 0, 0, 0, 1, 0.3, 0.2, 0.4);
   w.u8(1); // Double-sided.
   w.floats(0, 0, 0, 1, 0);
-  w.i8(texture ? 0 : -1);
-  w.i8(-1);
+  textureIndex(textureNames.length ? 0 : -1);
+  textureIndex(-1);
   w.u8(0);
   w.u8(toonTexture ? 0 : 1); // An uploaded texture, or shared toon texture0.
-  if (toonTexture) w.i8(0);
+  if (toonTexture) textureIndex(0);
   else w.u8(0);
   w.text("");
   w.i32(3);
@@ -121,20 +130,23 @@ export function mmdPmx({
     }
   }
   w.i32(morphCount);
-  w.text(morphName);
-  w.text("happy");
+  w.text(morphNameAt === 0 ? morphName : "face-0");
+  w.text(morphNameAt === 0 ? "happy" : "");
   w.u8(2);
   w.u8(1); // Vertex morph.
   w.i32(1);
   vertexIndex(2);
   w.floats(0.25, 0, 0);
   for (let morph = 1; morph < morphCount; morph += 1) {
-    w.text(`group-${morph}`);
+    w.text(morphNameAt === morph ? morphName : `group-${morph}`);
     w.text("");
     w.u8(2);
-    w.u8(sparseMorphs ? 1 : 0);
-    w.i32(sparseMorphs ? 0 : 1);
-    if (!sparseMorphs) {
+    w.u8(sparseMorphs || independentMorphs ? 1 : 0);
+    w.i32(sparseMorphs && !independentMorphs ? 0 : 1);
+    if (independentMorphs) {
+      vertexIndex(2);
+      w.floats(0.25, 0, 0);
+    } else if (!sparseMorphs) {
       morphIndex(morph - 1);
       w.floats(1);
     }

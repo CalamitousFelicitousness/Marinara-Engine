@@ -193,7 +193,7 @@
   "avatars.mmd.imported": "MMD model imported.",
   "avatars.mmd.importFailed": "Couldn't import the MMD file.",
   "avatars.mmd.motionAdded": "VMD motion added.",
-  "avatars.mmd.motionHelp": "Optional motion for this model. Bone and unbound morph tracks play with Idle motion on; chat faces keep their mappings. Physics and camera/light tracks are not played.",
+  "avatars.mmd.motionHelp": "Optional movement while Idle motion is on; faces still follow the chat.",
   "avatars.mmd.motionTitle": "VMD motion",
   "avatars.mmd.notMotion": "Choose a .vmd motion file.",
   "avatars.mmd.remove": "Remove MMD model",

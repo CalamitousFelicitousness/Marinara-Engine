@@ -32,9 +32,10 @@ declare global {
   interface Window {
     __mmd?: Probe;
     __mmdCsp?: string[];
+    __mmdRaf?: { pending: Set<number>; executed: number };
   }
 }
-async function prepare(page: Page) {
+async function prepare(page: Page, blank = false) {
   await page.route("**/api/app-settings/ui", (route) =>
     route.fulfill({ json: route.request().method() === "GET" ? { value: null } : { success: true } }),
   );
@@ -47,11 +48,28 @@ async function prepare(page: Page) {
   await page.addInitScript((version) => {
     localStorage.setItem("marinara:whats-new:seen-version", version);
     window.__mmdCsp = [];
+    const raf = { pending: new Set<number>(), executed: 0 };
+    window.__mmdRaf = raf;
+    const request = window.requestAnimationFrame.bind(window);
+    const cancel = window.cancelAnimationFrame.bind(window);
+    window.requestAnimationFrame = (callback) => {
+      const id = request((time) => {
+        raf.pending.delete(id);
+        raf.executed += 1;
+        callback.call(window, time);
+      });
+      raf.pending.add(id);
+      return id;
+    };
+    window.cancelAnimationFrame = (id) => {
+      raf.pending.delete(id);
+      cancel(id);
+    };
     document.addEventListener("securitypolicyviolation", (event) =>
       window.__mmdCsp!.push(`${event.violatedDirective} ${event.blockedURI}`),
     );
   }, APP_VERSION);
-  await serveWithServerCsp(page);
+  await serveWithServerCsp(page, blank ? "<!doctype html><html><body></body></html>" : undefined);
 }
 async function bundle(motion = true) {
   return zipFiles(
@@ -142,9 +160,16 @@ test("PMX imports its bundled texture and Japanese morph, then VMD moves its sav
     const config = await importModel(request, owner, await bundle());
     expect(config.kinds.mmd?.expressionMap.happy?.target).toBe("笑い");
     expect(config.kinds.mmd?.idleAnimation).toBeTruthy();
-    await prepare(page);
+    await prepare(page, true);
     await page.goto("/");
-    await mount(page, owner, config, false);
+    const outsideCatalogue = {
+      ...config,
+      kinds: { ...config.kinds, mmd: { ...config.kinds.mmd!, expressionNames: ["other-face"] } },
+    };
+    await mount(page, owner, outsideCatalogue, false);
+    expect(await page.evaluate(() => window.__mmdRaf!.pending.size), "the modern renderer's own RAF is stopped").toBe(
+      0,
+    );
     const neutral = await draw(page, "neutral");
     expect(neutral.painted, "the PMX actually draws pixels").toBeGreaterThan(1000);
     expect(
@@ -153,10 +178,14 @@ test("PMX imports its bundled texture and Japanese morph, then VMD moves its sav
     ).toBeGreaterThan(40);
     expect(
       (await draw(page, "happy", 20)).changed,
-      "the director moves the imported Japanese smile morph",
+      "a valid configured Japanese face still moves outside the offered catalogue",
     ).toBeGreaterThan(50);
     await page.evaluate(() => window.__mmd!.renderer.setPaused(true));
     expect((await draw(page, "neutral", 20)).changed, "a paused stage draws no frames").toBe(0);
+    expect(
+      await page.evaluate(() => window.__mmdRaf!.pending.size),
+      "pause does not leave a hidden renderer loop",
+    ).toBe(0);
     await page.evaluate(() => window.__mmd!.renderer.setPaused(false));
     expect((await draw(page, "neutral", 20)).changed).toBeGreaterThan(50);
     await page.screenshot({ path: info.outputPath("mmd-textured-model.png") });
@@ -167,8 +196,12 @@ test("PMX imports its bundled texture and Japanese morph, then VMD moves its sav
     await draw(page, "neutral");
     expect((await draw(page, "neutral", 20)).changed, "reduced motion does not advance VMD or idle sway").toBe(0);
     expect((await draw(page, "happy", 20)).changed, "reduced motion retains expressions").toBeGreaterThan(50);
+    expect(await page.evaluate(() => window.__mmdRaf!.pending.size), "reduced motion remains driven by the stage").toBe(
+      0,
+    );
     expect(await page.evaluate(() => window.__mmdCsp)).toEqual([]);
     await page.evaluate(() => window.__mmd!.renderer.dispose());
+    expect(await page.evaluate(() => window.__mmdRaf!.pending.size), "dispose retains no RAF").toBe(0);
     await page.reload();
     const saved = await request.get(`/api/avatar-models/character/${owner.ownerId}`);
     expect(await saved.json()).toEqual(config);
@@ -297,10 +330,7 @@ test("MMD setup imports, maps and removes model-specific motion for character an
   }
 });
 
-test("MMD missing assets and an aborted load release the renderer without stale pixels", async ({
-  page,
-  request,
-}) => {
+test("MMD missing assets and an aborted load release the renderer without stale pixels", async ({ page, request }) => {
   const response = await request.post("/api/characters", { data: { data: { name: "MMD disposal" } } });
   const owner = { ownerType: "character", ownerId: ((await response.json()) as { id: string }).id } as const;
   try {

@@ -4,6 +4,7 @@ import { posix } from "node:path";
 import { Parser } from "mmd-parser";
 import {
   AVATAR_IMPORT_EXTENSIONS,
+  AVATAR_MMD_METADATA_LIMITS,
   AvatarImportError,
   type AvatarExpressionMap,
   type AvatarExtractedFile,
@@ -14,6 +15,7 @@ import {
 } from "@marinara-engine/shared";
 import { openZipArchive, ZipArchiveError } from "../../../lib/zip-reader.js";
 import { validateImageAssetBuffer } from "../../../utils/media-file-security.js";
+import { readImageDimensionsFromBuffer } from "../../../utils/image-metadata.js";
 import { AVATAR_IMPORT_MAX_BYTES, readAvatarConfig, readAvatarFile } from "../storage.js";
 
 export const MMD_MODEL_FILE = "mmd/model.pmx";
@@ -420,7 +422,19 @@ function parseMotion(bytes: Uint8Array) {
 export function mmdTextureMime(bytes: Buffer, filename: string, fileSize = bytes.length): string | null {
   const extension = posix.extname(filename).toLowerCase();
   const standard = validateImageAssetBuffer(bytes, [".sph", ".spa"].includes(extension) ? "texture.png" : filename);
-  if (standard && !standard.isSvg) return standard.mimeType;
+  if (standard && !standard.isSvg) {
+    const size = readImageDimensionsFromBuffer(bytes);
+    // Serving sniffs a short header; JPEG/WebP dimensions can follow large metadata blocks. Imports
+    // always pass complete bytes, so unknown dimensions still fail before anything is stored.
+    if (!size && fileSize > bytes.length) return standard.mimeType;
+    if (
+      !size ||
+      !Number.isSafeInteger(size.width * size.height * 4) ||
+      size.width * size.height * 4 > AVATAR_IMPORT_MAX_BYTES
+    )
+      return null;
+    return standard.mimeType;
+  }
   if ([".bmp", ".sph", ".spa"].includes(extension) && bytes.length >= 54 && bytes.toString("ascii", 0, 2) === "BM") {
     const width = bytes.readInt32LE(18),
       height = Math.abs(bytes.readInt32LE(22));
@@ -503,7 +517,15 @@ function modelImport(bytes: Uint8Array, source: string, entries?: Map<string, Bu
   const aliases = new Map<string, string>();
   const assets = new Map<string, string>();
   let total = parsed.bytes.length;
+  let decodedTextures = 0;
+  const references = new Set<string>();
   for (const texture of parsed.textures) {
+    references.add(texture);
+    if (
+      texture.length > AVATAR_MMD_METADATA_LIMITS.textureReferenceChars ||
+      references.size > AVATAR_MMD_METADATA_LIMITS.textures
+    )
+      refuse("This MMD model has too many textures or a texture path is too long.");
     const name = archivePath(texture, posix.dirname(source));
     const raw = entries?.get(name);
     if (!raw)
@@ -517,6 +539,14 @@ function modelImport(bytes: Uint8Array, source: string, entries?: Map<string, Bu
     aliases.set(alias, name);
     let stored = assets.get(name);
     if (!stored) {
+      const size =
+        readImageDimensionsFromBuffer(raw) ??
+        (mime === "image/bmp"
+          ? { width: raw.readInt32LE(18), height: Math.abs(raw.readInt32LE(22)) }
+          : { width: raw.readUInt16LE(12), height: raw.readUInt16LE(14) });
+      decodedTextures += size.width * size.height * 4;
+      if (!Number.isSafeInteger(decodedTextures) || decodedTextures > AVATAR_IMPORT_MAX_BYTES)
+        refuse("This MMD model's pictures need too much memory to play safely.");
       const extension =
         mime === "image/x-tga"
           ? ".tga"
@@ -647,9 +677,14 @@ export async function buildMmdImport(
     warnings.push("PMX text/version records were normalized for the MMD player; geometry is unchanged.");
   if (Object.keys(detected).length === 0)
     warnings.push("No standard face names matched. You can pick morphs in setup.");
-  const expressionNames = [
+  const allNames = [
     ...new Set(validated.model.morphs.filter((morph) => morph.elementCount > 0).map((morph) => morph.name)),
   ].filter((name) => name.length > 0 && name.length <= 128);
+  const expressionNames = allNames.slice(0, AVATAR_MMD_METADATA_LIMITS.expressionNames);
+  if (allNames.length > expressionNames.length)
+    warnings.push(
+      `Setup lists the first ${AVATAR_MMD_METADATA_LIMITS.expressionNames} named morphs. Other morphs and face bindings stay in the model.`,
+    );
   let idleAnimation: string | null = null;
   if (validated.idle) {
     requireMatchingMotion(validated.idle, validated.model);

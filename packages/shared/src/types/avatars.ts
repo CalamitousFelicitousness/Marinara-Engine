@@ -644,6 +644,13 @@ export interface MmdAvatarData {
   idleAnimation?: AvatarFilePath | null;
 }
 
+/** Setup metadata stays small; the model and its native motion morphs are not trimmed. */
+export const AVATAR_MMD_METADATA_LIMITS = Object.freeze({
+  expressionNames: 256,
+  textures: 256,
+  textureReferenceChars: 512,
+});
+
 export interface AvatarFeatureFlags {
   /** Move the mouth with the reply text, or with the voice when text-to-speech plays. */
   lipSync: boolean;

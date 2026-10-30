@@ -237,6 +237,9 @@ importers:
       '@pixiv/three-vrm-animation':
         specifier: 3.5.5
         version: 3.5.5(three@0.186.1)
+      '@takahirox/three-mmd':
+        specifier: 0.1.2
+        version: 0.1.2(three@0.186.1)
       '@tanstack/react-query':
         specifier: ^5.104.5
         version: 5.104.5(@types/react@19.3.0)(react@19.3.1)
@@ -261,6 +264,9 @@ importers:
       mesh-avatar:
         specifier: 0.2.1
         version: 0.2.1(patch_hash=40f970c96453f82ecc6bd0c4c6164336b1648edae159b318e6e9baebb55ccf42)
+      mmd-parser:
+        specifier: 1.1.4
+        version: 1.1.4
       postcss:
         specifier: 8.5.31
         version: 8.5.31
@@ -397,6 +403,9 @@ importers:
       jsonrepair:
         specifier: ^3.15.0
         version: 3.15.0
+      mmd-parser:
+        specifier: 1.1.4
+        version: 1.1.4
       nanoid:
         specifier: ^6.0.2
         version: 6.0.2
@@ -2305,6 +2314,11 @@ packages:
     peerDependencies:
       vite: ^5.2.0 || ^6 || ^7 || ^8
 
+  '@takahirox/three-mmd@0.1.2':
+    resolution: {integrity: sha512-DEpo6GgPknMy62WN1bQUPTqXtx45Rzyh0YZpd8O94MBBFNb7x5fhfhqXLOv6/8slJnjrj8v4ZLcT3OYI9nd3Tg==}
+    peerDependencies:
+      three: ~0.186.0
+
   '@tanstack/query-core@5.104.5':
     resolution: {integrity: sha512-Q94gI8Opd+CbdVNOdj8ZCyV8WqLYitrDq1t96Xc8WZT6lY0r5iRnJLXYDxMex7EEf2v+mXvn4FcjaBKSxXZQ9A==}
 
@@ -3679,6 +3693,9 @@ packages:
   minipass@7.1.3:
     resolution: {integrity: sha512-tEBHqDnIoM/1rXME1zgka9g6Q2lcoCkxHLuc7ODJ5BxbP5d4c2Z5cGgtXAku59200Cx7diuHTOYfSBD8n6mm8A==}
     engines: {node: '>=16 || 14 >=14.17'}
+
+  mmd-parser@1.1.4:
+    resolution: {integrity: sha512-9RzWvlEYJSsUMH8KJ7eIvxIdaiYLprH7+UkDXoO1NuINRuzz7sVqzH7+Mr2cFTf8YPOiCW+9ncD1CT882CTC1A==}
 
   motion-dom@13.5.1:
     resolution: {integrity: sha512-/7CVCD20Mz1KobktorpdgvowV0V41J7UxqE+qWS3GkSJqrRr5ft+2RloOYtEKv+wvBp3JaSFBclhxt4ja8ovHg==}
@@ -6539,6 +6556,11 @@ snapshots:
       tailwindcss: 4.3.3
       vite: 8.3.5(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.46.2)(tsx@4.23.15)(yaml@2.9.0)
 
+  '@takahirox/three-mmd@0.1.2(three@0.186.1)':
+    dependencies:
+      mmd-parser: 1.1.4
+      three: 0.186.1
+
   '@tanstack/query-core@5.104.5': {}
 
   '@tanstack/react-query@5.104.5(@types/react@19.3.0)(react@19.3.1)':
@@ -7991,6 +8013,8 @@ snapshots:
   minimist@1.2.8: {}
 
   minipass@7.1.3: {}
+
+  mmd-parser@1.1.4: {}
 
   motion-dom@13.5.1:
     dependencies:

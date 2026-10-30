@@ -93,6 +93,7 @@ import { chatKeys, rememberRecentMessageContentEdit } from "../../hooks/use-chat
 import { useShallow } from "zustand/react/shallow";
 import { createMessageMacroResolver } from "../../lib/chat-macros";
 import { readChatVariables } from "../../lib/state-editor/chat-variables-editor-source";
+import { HIGHLIGHT_CLASS, highlightAnswerValues } from "../../lib/onboarding-preview-highlight";
 import { useApplyRegex } from "../../hooks/use-apply-regex";
 import { getDefaultChatTextColor, useUIStore } from "../../stores/ui.store";
 import { useChatStore } from "../../stores/chat.store";
@@ -1797,17 +1798,58 @@ function renderContent(
   );
 }
 
+/**
+ * Mark the runs of already-resolved text that the player's answers filled in.
+ * Walks the rendered React tree like `colorNamesInNodes`, so no markup is put
+ * into the text itself (a `<mark>` string would flip HTML detection).
+ */
+function highlightAnswersInNodes(nodes: ReactNode, values: readonly string[], template: string): ReactNode {
+  const processString = (str: string, nodeIdx: number): ReactNode => {
+    const segments = highlightAnswerValues(str, values, template);
+    if (!segments.some((segment) => segment.yours)) return str;
+    return segments.map((segment, i) =>
+      segment.yours ? (
+        <mark key={`answer-${nodeIdx}-${i}`} className={HIGHLIGHT_CLASS}>
+          {segment.text}
+        </mark>
+      ) : (
+        segment.text
+      ),
+    );
+  };
+
+  const processNode = (node: ReactNode, idx: number): ReactNode => {
+    if (typeof node === "string") return processString(node, idx);
+    if (!node || typeof node !== "object" || !("props" in node)) return node;
+    const element = node as React.ReactElement;
+    const props = element.props as Record<string, unknown>;
+    if (props.children === undefined) return element;
+    const children = Array.isArray(props.children)
+      ? props.children.map((child: ReactNode, i: number) => processNode(child, i))
+      : processNode(props.children as ReactNode, 0);
+    return cloneElement(element, {}, children);
+  };
+
+  return Array.isArray(nodes) ? nodes.map((node, i) => processNode(node, i)) : processNode(nodes, 0);
+}
+
 export function RoleplayMessagePreview({
   content,
   dialogueColor,
   className,
   selfCharacterId,
+  answerValues,
+  answerTemplate = "",
 }: {
   content: string;
   dialogueColor?: string;
   className?: string;
   /** Character the previewed greeting belongs to — resolves card://self refs. */
   selfCharacterId?: string | null;
+  /** The player's answers inside `content`, to mark. Keep the array stable between renders. */
+  answerValues?: readonly string[];
+  /** The raw text `content` was resolved from, so the card author's own words are never marked. */
+  answerTemplate?: string;
 }) {
   const previewId = useId();
   const { chatFontColor, defaultDialogueColor, theme, textStrokeWidth, textStrokeColor, boldDialogue, quoteFormat } =
@@ -1835,33 +1877,38 @@ export function RoleplayMessagePreview({
     }),
     [chatFontColor, textStrokeColor, textStrokeWidth],
   );
-  const renderedContent = useMemo(
-    () =>
-      renderContent(
-        content,
-        resolvedDialogueColor,
-        undefined,
-        boldDialogue,
-        htmlScopeClass,
-        quoteFormat,
-        selfCharacterId,
-        undefined, // galleryIndex
-        undefined, // nameColorMap
-        undefined, // textShadowStr
-        !!dialogueColor,
-        remoteImages,
-      ),
-    [
-      boldDialogue,
+  const renderedContent = useMemo(() => {
+    const rendered = renderContent(
       content,
-      dialogueColor,
+      resolvedDialogueColor,
+      undefined,
+      boldDialogue,
       htmlScopeClass,
       quoteFormat,
-      remoteImages,
-      resolvedDialogueColor,
       selfCharacterId,
-    ],
-  );
+      undefined, // galleryIndex
+      undefined, // nameColorMap
+      undefined, // textShadowStr
+      !!dialogueColor,
+      remoteImages,
+    );
+    // An HTML-path greeting is one sanitized HTML string with no React text nodes, so it shows the resolved
+    // text without highlights.
+    return answerValues && answerValues.length > 0
+      ? highlightAnswersInNodes(rendered, answerValues, answerTemplate)
+      : rendered;
+  }, [
+    answerTemplate,
+    answerValues,
+    boldDialogue,
+    content,
+    dialogueColor,
+    htmlScopeClass,
+    quoteFormat,
+    remoteImages,
+    resolvedDialogueColor,
+    selfCharacterId,
+  ]);
 
   return (
     <div

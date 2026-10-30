@@ -31,7 +31,7 @@ import {
 import { Modal } from "../ui/Modal";
 import { ChoiceOptionsField } from "../presets/ChoiceOptionsField";
 import { useCreatePersona } from "../../hooks/use-characters";
-import { highlightAnswerValues } from "../../lib/onboarding-preview-highlight";
+import { HIGHLIGHT_CLASS, highlightAnswerValues } from "../../lib/onboarding-preview-highlight";
 import { cn } from "../../lib/utils";
 import { ONBOARDING_FIELD_COPY } from "./onboarding-field-copy";
 
@@ -46,9 +46,6 @@ const SECONDARY_BUTTON_CLASS =
   "inline-flex items-center justify-center gap-1.5 rounded-xl bg-[var(--secondary)] px-4 py-2 text-xs font-medium text-[var(--foreground)] ring-1 ring-[var(--border)] transition-colors hover:bg-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50";
 const PREVIEW_FIELD_CLASS =
   "whitespace-pre-wrap break-words rounded-lg bg-[var(--secondary)]/60 p-2.5 text-xs font-sans leading-relaxed text-[var(--foreground)] ring-1 ring-[var(--border)]/60";
-// The player's own words inside a field: a soft accent wash with no padding, so
-// a highlighted run keeps the pre-wrap layout exactly as the persona will save it.
-const HIGHLIGHT_CLASS = "rounded-[3px] bg-[var(--primary)]/20 text-[var(--foreground)] [box-decoration-break:clone]";
 
 /** The answer namespace for the persona's own questions, which belong to no card. */
 const PERSONA_ANSWER_SCOPE = "\u0000persona";

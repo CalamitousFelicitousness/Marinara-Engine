@@ -98,6 +98,8 @@ Both paths also work after setup, from **Chat Settings**:
 - The **Persona** picker in a Roleplay chat lists **Create your persona** for every card in the chat that offers one. Use it when you skipped the wizard or want a new persona later.
 - The onboarding marker next to a character in **Characters** reopens that card's character questions on their own. It opens on the answers the chat already holds, so saving one change leaves the others as they were; saving again also restores an answer you deleted from Chat Variables. Other cards' answers are not touched — except a name two cards share, which is one value, so both cards read the new answer.
 
+Adding a card with character questions to a running Roleplay chat, from **Chat Settings** or by dropping it on the chat, asks its questions first and then offers its greeting, with your answers filled in and marked.
+
 ## Sharing cards with onboarding
 
 Onboarding is stored with the card. **Marinara Native** and **Compatible PNG Card** exports keep it, so a player who imports the card gets the questions too. **Compatible JSON** export leaves it out. A card imported with more than 100 questions keeps the first 100. See [Importing and Exporting Character Cards](import-export.md).

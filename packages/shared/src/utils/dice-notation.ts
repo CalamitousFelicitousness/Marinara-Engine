@@ -156,25 +156,35 @@ export function clampParsedDiceToLimits(parsed: ParsedDiceNotation): ParsedDiceN
  * One die of `sides` faces, 1..sides inclusive.
  *
  * Every roller in the engine has this shape, so a caller decides where its dice
- * come from and the code that reads a roll does not: the plain rolls use
- * `rollDieWithMathRandom`, the server's player-facing rolls use its secure
- * roller, and a ruleset fight passes its seeded stream so it can be replayed.
+ * come from and the code that reads a roll does not: player-facing rolls use
+ * `rollDieSecurely`, and a ruleset fight passes its seeded stream so it can be
+ * replayed.
  */
 export type DieRoller = (sides: number) => number;
 
-/**
- * Unseeded `Math.random()`, exactly as the plain rolls threw before the roller
- * could be passed in.
- */
-export const rollDieWithMathRandom: DieRoller = (sides) => Math.floor(Math.random() * sides) + 1;
+/** Most faces `rollDieSecurely` can draw evenly from one 32-bit value. */
+const SECURE_DIE_RANGE = 0x1_0000_0000;
 
 /**
- * Throw the dice a parsed notation asks for, one `roll(sides)` per die.
+ * Throw one fair die from the platform's cryptographic RNG.
  *
- * Defaults to `rollDieWithMathRandom`, so a caller that passes no roller rolls
- * exactly as it did before.
+ * Web Crypto's `getRandomValues`, so the browser and the server roll the same
+ * way. A draw past the last whole multiple of `sides` is thrown again rather
+ * than wrapped, so no face comes up more often than another.
  */
-export function rollParsedDice(parsed: ParsedDiceNotation, roll: DieRoller = rollDieWithMathRandom): DiceRollResult {
+export const rollDieSecurely: DieRoller = (sides) => {
+  if (!Number.isInteger(sides) || sides < 1 || sides > SECURE_DIE_RANGE) {
+    throw new RangeError(`A die needs at least one whole face, received ${String(sides)}`);
+  }
+  const limit = SECURE_DIE_RANGE - (SECURE_DIE_RANGE % sides);
+  const draw = new Uint32Array(1);
+  do globalThis.crypto.getRandomValues(draw);
+  while (draw[0]! >= limit);
+  return (draw[0]! % sides) + 1;
+};
+
+/** Throw the dice a parsed notation asks for, one `roll(sides)` per die. */
+export function rollParsedDice(parsed: ParsedDiceNotation, roll: DieRoller = rollDieSecurely): DiceRollResult {
   const rolls: number[] = [];
   for (let index = 0; index < parsed.count; index += 1) {
     rolls.push(roll(parsed.sides));

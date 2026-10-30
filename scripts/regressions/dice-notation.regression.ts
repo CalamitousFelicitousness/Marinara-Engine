@@ -4,7 +4,7 @@ import {
   isDiceNotation as sharedIsDiceNotation,
   isWithinDiceLimits,
   parseDiceNotation,
-  rollDieWithMathRandom,
+  rollDieSecurely,
   rollParsedDice,
   MAX_DICE_COUNT,
   MAX_DICE_SIDES,
@@ -646,7 +646,7 @@ for (const testCase of MODIFIER_CASES) {
 
 // The roller is the caller's. A passed roller is thrown once per die, in order,
 // with the notation's faces, and its faces are what the result reports; with no
-// roller the plain Math.random() default still lands every die on a real face.
+// roller the shared secure die lands every die on a real face.
 {
   const parsed = parseDiceNotation("3d6+2")!;
   const asked: number[] = [];
@@ -659,10 +659,16 @@ for (const testCase of MODIFIER_CASES) {
   assert.deepEqual(rolled.rolls, faces, "a passed roller's faces are the roll");
   assert.equal(rolled.total, 13, "the total adds the modifier to the passed roller's faces");
 
-  for (let index = 0; index < 200; index += 1) {
-    const face = rollDieWithMathRandom(20);
-    assert.ok(Number.isInteger(face) && face >= 1 && face <= 20, "the default roller throws a real d20 face");
+  const seen = new Set<number>();
+  for (let index = 0; index < 2000; index += 1) {
+    const face = rollDieSecurely(20);
+    assert.ok(Number.isInteger(face) && face >= 1 && face <= 20, "the secure roller throws a real d20 face");
+    seen.add(face);
   }
+  assert.equal(seen.size, 20, "the secure roller reaches every face of a d20");
+  assert.equal(rollDieSecurely(1), 1, "a one-faced die always shows 1");
+  assert.throws(() => rollDieSecurely(0), RangeError, "a die with no faces is refused");
+  assert.throws(() => rollDieSecurely(2.5), RangeError, "a die with part of a face is refused");
   for (const roll of rollParsedDice(parseDiceNotation("10d4")!).rolls) {
     assert.ok(roll >= 1 && roll <= 4, "rolling without a roller still uses real faces");
   }

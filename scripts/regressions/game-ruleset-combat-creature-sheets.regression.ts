@@ -2072,12 +2072,12 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
           {
             id: "veyl",
             name: "Archmage Veyl",
-            tier: "cr_2",
+            tier: "cr_3",
             boss,
-            points: 3,
+            points: 2,
             proposed: {
-              tier: "cr_2",
-              health: 40,
+              tier: "cr_3",
+              health: 50,
               defense: 13,
               initiativeModifier: 2,
               actions: [
@@ -2118,14 +2118,14 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
       lines,
     );
     assert.match(lines, /Archmage Veyl was given a sheet for Frost Mote, Spark Lash\./);
-    assert.match(lines, /Archmage Veyl may spend 3 points between turns on Cantrip\./);
+    assert.match(lines, /Archmage Veyl may spend 2 points between turns on Cantrip\./);
     assert.ok(
       veyl.actions.some((one) => one.label === "Staff"),
       veyl.actions.map((one) => one.label).join(", "),
     );
     assert.match(lines, /Archmage Veyl: this ruleset has no entry called "Grave Bolt", so it was not given\./);
     assert.equal(veyl.actions.find((one) => one.id.endsWith("legendary_cantrip"))?.signature?.cost, 1);
-    assert.equal(rulesetCombatHealth(classed, classed.combat!, veyl).max, 40, "its own health kept");
+    assert.equal(rulesetCombatHealth(classed, classed.combat!, veyl).max, 50, "its own health kept");
     // Its Spark Lash is cast from the entry, not thrown as the attack written beside it (laptop pass 7
     // 2026-10-26: an Archlich's Cone of Cold rolled to hit).
     assert.ok(
@@ -2145,13 +2145,13 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
       /Archmage Veyl had nothing priced out of its points, so it buys its own actions with them\./,
     );
     // Said as it is left after the hold (laptop re-test 2026-10-26: Disrupt Life was listed, then taken).
-    assert.match(unpricedLines, /Archmage Veyl may spend 3 points between turns on Cantrip, Move\./);
+    assert.match(unpricedLines, /Archmage Veyl may spend 2 points between turns on Cantrip, Move, Staff\./);
     assert.doesNotMatch(unpricedLines, /no legendary actions/);
-    // Its Staff three times between turns on top of its own turn is far past a CR 2's round, so that
-    // goes (laptop 2026-10-26: a CR 3 Archlich's Disrupt Life wiped four rested heroes).
+    // Its Staff twice between turns on top of its own turn is past a CR 3's round, so it is scaled down
+    // (laptop 2026-10-26: a CR 3 Archlich's Disrupt Life wiped four rested heroes).
     assert.match(
       unpricedLines,
-      /Archmage Veyl: Staff went from what its points buy: with its own turn, it would deal more in a round than the 9 of CR 2\./,
+      /Archmage Veyl: Staff, bought with its points, was scaled down so its turn and its points together stay inside the 13 of CR 3\./,
     );
     assert.deepEqual(
       who(unpriced.encounter, "veyl")
@@ -2160,6 +2160,7 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
       [
         ["legendary_cantrip", 1],
         ["legendary_move", 1],
+        ["legendary_staff", 1],
       ],
     );
     // A skill a creature of this ruleset has, priced out of its points, is bought with them and never
@@ -2173,9 +2174,9 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
         {
           id: "veyl",
           name: "Archmage Veyl",
-          tier: "cr_2",
+          tier: "cr_3",
           boss: true,
-          points: 3,
+          points: 2,
           attacks: [
             { name: "Frost Mote", spell: true },
             { name: "Watchful strike", kind: "debuff", legendary: 1 },
@@ -2185,9 +2186,9 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
     }).rulesetFight!;
     const gazeSaid = gazer.adjustments.join("; ");
     assert.doesNotMatch(gazeSaid, /no entry called "Watchful strike"/);
-    // Bought with its points, until the hold takes it; then no line offers it.
-    assert.match(gazeSaid, /Archmage Veyl: Watchful strike went from what its points buy/);
-    assert.doesNotMatch(gazeSaid, /may spend 3 points between turns on [^;]*Watchful strike/);
+    // Bought with its points, and held to its tier's round.
+    assert.match(gazeSaid, /Archmage Veyl may spend 2 points between turns on Watchful strike\./);
+    assert.match(gazeSaid, /Archmage Veyl: Watchful strike, bought with its points, was scaled down/);
     // A spell priced above 1 is still only a Cantrip, never a spell of a slot cast between turns
     // (laptop Archlich fight 2026-10-26: Finger of Death and upcast Fireballs as legendary actions).
     const dearCaster = started({
@@ -2198,9 +2199,9 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
         {
           id: "veyl",
           name: "Archmage Veyl",
-          tier: "cr_2",
+          tier: "cr_3",
           boss: true,
-          points: 3,
+          points: 2,
           attacks: [{ name: "Spark Lash", spell: true, legendary: 2 }],
         },
       ],
@@ -2268,9 +2269,14 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
     });
     const varkas = who(knight.encounter, "varkas");
     const knightSaid = knight.adjustments.join("; ");
+    // Held to the most a creature of CR 3 has (Alyssa 2026-10-30: balance is strict).
     assert.match(
       knightSaid,
-      /Varkas the Wyvern-Knight may spend 3 points between turns on Lance Thrust, Wing Buffet\./,
+      /Varkas the Wyvern-Knight may have at most 2 legendary points at CR 3, what this ruleset's creatures of that tier have, so it was given 2, not 3\./,
+    );
+    assert.match(
+      knightSaid,
+      /Varkas the Wyvern-Knight may spend 2 points between turns on Lance Thrust, Wing Buffet\./,
     );
     assert.match(
       knightSaid,
@@ -2291,34 +2297,34 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
       name: "Big Grakka",
       tier: "cr_3",
       boss: true,
-      points: 3,
+      points: 2,
       attacks: [{ name: "Cleaver" }],
     });
     const grakkaSaid = grakka.adjustments.join("; ");
     assert.match(grakkaSaid, /Big Grakka was built from the numbers of /);
-    assert.match(grakkaSaid, /Big Grakka may spend 3 points between turns on Move, Cleaver\./);
+    assert.match(grakkaSaid, /Big Grakka may spend 2 points between turns on Move, Cleaver\./);
     assert.doesNotMatch(grakkaSaid, /no legendary actions/);
 
     // A bestiary creature marked a boss, with points and no legendary actions of its own, buys its own
     // with them (cloud re-test 2026-10-26: a bestiary ogre marked boss fought with none).
+    const ogreFight = fight({ id: "ogre", name: "Toll Ogre", creature: "Toll Sergeant", boss: true, points: 2 });
+    const ogreSaid = ogreFight.adjustments.join("; ");
+    assert.match(ogreSaid, /Toll Ogre had nothing priced out of its points, so it buys its own actions with them\./);
+    assert.ok(
+      who(ogreFight.encounter, "ogre").actions.some((one) => one.signature),
+      ogreSaid,
+    );
+    // Below the lowest tier any creature of this ruleset has legendary actions at, it has none (Alyssa
+    // 2026-10-30: a CR 1/2 elemental fought with legendary actions 3/3; balance is strict).
     const houndFight = fight({ id: "hound", name: "Cinder Hound", tier: "cr_3", boss: true, points: 2 });
     const houndSaid = houndFight.adjustments.join("; ");
     assert.match(
       houndSaid,
-      /Cinder Hound had nothing priced out of its points, so it buys its own actions with them\./,
+      /Cinder Hound has no legendary actions at CR 1: no creature of this ruleset that low has any\./,
     );
-    // What they buy is held to its own tier with its turn, as an invented boss's is (Alyssa 2026-10-30:
-    // a CR 1/2 elemental fought with legendary actions 3/3; balance is strict).
-    assert.match(houndSaid, /Cinder Hound may spend 2 points between turns on Move\./);
-    assert.match(
-      houndSaid,
-      /Cinder Hound: Searing bite went from what its points buy: with its own turn, it would deal more in a round than the 7 of CR 1\./,
-    );
+    assert.doesNotMatch(houndSaid, /Cinder Hound may spend/);
     const hound = who(houndFight.encounter, "hound");
-    assert.ok(
-      hound.actions.some((one) => one.signature),
-      hound.actions.map((one) => one.label).join(", "),
-    );
+    assert.ok(!hound.actions.some((one) => one.signature), houndSaid);
 
     // A bestiary boss with legendary actions of its own has them said (laptop 2026-10-26).
     const sentinelBoss = fight({ id: "warden", name: "Hollow Sentinel", tier: "cr_3", boss: true, points: 2 });

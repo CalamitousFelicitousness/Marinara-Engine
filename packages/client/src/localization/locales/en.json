@@ -2867,6 +2867,8 @@
   "game.combat.ruleset.note.partySitsOut": "{{name}} does not fight and stays out of the fight.",
   "game.combat.ruleset.note.paymentScaled": "What a bigger payment buys was scaled down to fit the tier.",
   "game.combat.ruleset.note.points": "{{name}} may spend {{points}} points between turns on {{actions}}.",
+  "game.combat.ruleset.note.pointsCapped": "{{name}} may have at most {{points}} legendary points at {{tier}}, what this ruleset's creatures of that tier have, so it was given {{points}}, not {{asked}}.",
+  "game.combat.ruleset.note.pointsNone": "{{name}} has no legendary actions at {{tier}}: no creature of this ruleset that low has any.",
   "game.combat.ruleset.note.pointsUnpriced": "{{name}} was given {{points}} points but nothing priced out of them, so it has no legendary actions.",
   "game.combat.ruleset.note.poolsMade": "Made a {{field}} {{value}}, so its spells have the pools they are paid out of.",
   "game.combat.ruleset.note.poolsSet": "{{field}} was set to {{value}}, so its spells have the pools they are paid out of.",

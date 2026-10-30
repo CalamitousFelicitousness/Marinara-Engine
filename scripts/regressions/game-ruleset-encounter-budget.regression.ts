@@ -263,8 +263,12 @@ try {
     bossed.adjustments.join("; "),
   );
   // A bestiary creature made a boss with points it has no legendary actions for counts them as an
-  // invented boss does (Alyssa 2026-10-30: balance is strict; a CR 1/2 elemental fought with legendary
-  // actions 3/3): the Cinder Hound (CR 1, 200) with 3 points is twice that, and the fight says so.
+  // invented boss does (Alyssa 2026-10-30: balance is strict, or the CR system means nothing), and
+  // below the lowest tier any creature of the ruleset has them at, it has none: the Cinder Hound (CR 1)
+  // with 3 points is worth what it is with none (room playtest 2026-10-30: a CR 1/2 elemental fought
+  // with legendary actions 3/3).
+  const worthOf = (built: { adjustments: string[] }) =>
+    Number(/This fight is worth (\d+)/.exec(built.adjustments.join("; "))?.[1] ?? NaN);
   const plainHound = fight({
     enemies: [{ id: "hound", name: "Cinder Hound", creature: "Cinder Hound", boss: true }],
     budget: { difficulty: "normal" },
@@ -273,9 +277,25 @@ try {
     enemies: [{ id: "hound", name: "Cinder Hound", creature: "Cinder Hound", boss: true, points: 3 }],
     budget: { difficulty: "normal" },
   });
-  const worthOf = (built: typeof plainHound) =>
-    Number(/This fight is worth (\d+)/.exec(built.adjustments.join("; "))?.[1] ?? NaN);
-  assert.equal(worthOf(boughtHound), 2 * worthOf(plainHound), boughtHound.adjustments.join("; "));
+  assert.equal(worthOf(boughtHound), worthOf(plainHound), boughtHound.adjustments.join("; "));
+  assert.ok(
+    boughtHound.adjustments.includes(
+      "Cinder Hound has no legendary actions at CR 1: no creature of this ruleset that low has any.",
+    ),
+    boughtHound.adjustments.join("; "),
+  );
+  // An invented boss is held the same way, before the budget weighs it.
+  const elemental = fight({
+    enemies: [{ id: "shard", name: "Chronite Elemental", tier: "cr_1", boss: true, points: 3 }],
+    budget: { difficulty: "normal" },
+  });
+  assert.ok(
+    elemental.adjustments.includes(
+      "Chronite Elemental has no legendary actions at CR 1: no creature of this ruleset that low has any.",
+    ),
+    elemental.adjustments.join("; "),
+  );
+  assert.equal(worthOf(elemental), 200, elemental.adjustments.join("; "));
   assert.deepEqual(four.bossStep, { id: "high", label: "High" });
 
   // ── The brief ──

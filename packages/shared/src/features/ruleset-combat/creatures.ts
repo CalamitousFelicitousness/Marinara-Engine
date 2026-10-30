@@ -818,6 +818,40 @@ export function rulesetActionAverage(action: { damage?: unknown }): number {
 }
 
 /**
+ * The most legendary points a creature may have at each tier of the ruleset's threat scale: the most
+ * any bestiary creature of that tier or below has, so none below the lowest that has any (room playtest
+ * 2026-10-30: an invented CR 1/2 elemental with legendary actions 3 of 3). Undefined when the scale is
+ * missing or no bestiary creature has any, which says nothing about where they start.
+ */
+export function rulesetTierPointCaps(
+  definition: RulesetDefinition,
+  catalogs: RulesetCatalogEntriesById,
+): Map<string, number> | undefined {
+  const tiers = definition.combat?.threat?.tiers ?? [];
+  if (tiers.length === 0) return undefined;
+  const at = new Map(tiers.map((tier, index) => [tier.id, index]));
+  const most = tiers.map(() => 0);
+  let any = false;
+  for (const entries of Object.values(catalogs)) {
+    for (const entry of entries) {
+      const points = entry.creature?.signaturePoints ?? 0;
+      const index = entry.creature?.tier !== undefined ? at.get(entry.creature.tier) : undefined;
+      if (points <= 0 || index === undefined) continue;
+      most[index] = Math.max(most[index]!, points);
+      any = true;
+    }
+  }
+  if (!any) return undefined;
+  const caps = new Map<string, number>();
+  let running = 0;
+  tiers.forEach((tier, index) => {
+    running = Math.max(running, most[index]!);
+    caps.set(tier.id, running);
+  });
+  return caps;
+}
+
+/**
  * What a boss given points with nothing priced out of them buys with those points (laptop level-4 pass
  * 2026-10-26: a "Lich Morrigast" asked for as the SRD lich, a Pale Master and a Big Grakka each fought
  * with none): the legendary actions of the bestiary creature its name names ("Lich" in "Lich

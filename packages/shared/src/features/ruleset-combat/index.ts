@@ -142,6 +142,7 @@ export {
   rulesetBestiaryReactionNames,
   rulesetBestiaryActionNamed,
   rulesetUnpricedLegendary,
+  rulesetTierPointCaps,
   rulesetActionAverage,
   RULESET_TIER_ATTACK_NAMES_MAX,
   RULESET_CLAMP_HEADROOM,

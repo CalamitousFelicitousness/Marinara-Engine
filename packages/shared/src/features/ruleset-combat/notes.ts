@@ -42,6 +42,9 @@ export const RULESET_FIGHT_NOTES = {
   unpricedBorrowed:
     "{{name}} had nothing priced out of its points, so it has the legendary actions of the {{creature}}.",
   unpricedOwn: "{{name}} had nothing priced out of its points, so it buys its own actions with them.",
+  pointsCapped:
+    "{{name}} may have at most {{points}} legendary points at {{tier}}, what this ruleset's creatures of that tier have, so it was given {{points}}, not {{asked}}.",
+  pointsNone: "{{name}} has no legendary actions at {{tier}}: no creature of this ruleset that low has any.",
   notBuyable: 'this ruleset has nothing called "{{action}}" to buy with its points.',
   unreadable: "The proposed stat block for {{name}} could not be read, so its tier was used.",
   tierUnknown: 'The tier "{{tier}}" is not on this ruleset\'s scale, so {{used}} was used.',

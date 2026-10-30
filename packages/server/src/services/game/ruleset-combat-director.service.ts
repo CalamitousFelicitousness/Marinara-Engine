@@ -169,6 +169,7 @@ import {
   rulesetBestiaryReaction,
   rulesetBestiaryActionNamed,
   rulesetUnpricedLegendary,
+  rulesetTierPointCaps,
   rulesetActionAverage,
   rulesetWindowMoment,
   rulesetZonesShown,
@@ -1059,6 +1060,61 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       untiered.add(opponent.id);
       return { ...opponent, tier: ceiling! };
     });
+  // A boss has no more legendary points than the bestiary gives anything of its tier or below, and
+  // none where it gives nothing that low any (room playtest 2026-10-30: an invented CR 1/2 elemental
+  // with legendary actions 3 of 3; Alyssa: balance is strict, or the CR system means nothing). Read
+  // again after the budget, for a foe it brought down. A bestiary with no legendary creature at all
+  // says nothing about where they start, and holds nothing.
+  const pointsCaps = rulesetTierPointCaps(definition, input.bestiary);
+  const holdBossPoints = (list: typeof enemies) =>
+    list.map((opponent) => {
+      if (!pointsCaps) return opponent;
+      const proposed =
+        opponent.proposed && typeof opponent.proposed === "object"
+          ? (opponent.proposed as { tier?: unknown; signaturePoints?: unknown; actions?: unknown })
+          : undefined;
+      const own = typeof proposed?.signaturePoints === "number" ? proposed.signaturePoints : 0;
+      const asked = Math.max(opponent.points ?? 0, own);
+      if (asked <= 0) return opponent;
+      const found = findRulesetCreature(input.bestiary, opponent.creature ?? opponent.name);
+      // A bestiary creature is built at its own tier, whatever tier was written beside it.
+      const tierId =
+        found?.entry.creature?.tier ??
+        opponent.tier ??
+        (typeof proposed?.tier === "string" ? proposed.tier : undefined);
+      // A bestiary creature's own legendary actions are its stat block's, and stay.
+      if (found && (found.entry.creature?.signaturePoints ?? 0) > 0 && !opponent.boss) return opponent;
+      const cap = tierId ? (pointsCaps.get(tierId) ?? 0) : 0;
+      if (asked <= cap) return opponent;
+      const label = combat.threat?.tiers.find((tier) => tier.id === tierId)?.label ?? tierId ?? "its tier";
+      adjustments.push(
+        cap > 0
+          ? `${opponent.name} may have at most ${cap} legendary points at ${label}, what this ruleset's creatures of that tier have, so it was given ${cap}, not ${asked}.`
+          : `${opponent.name} has no legendary actions at ${label}: no creature of this ruleset that low has any.`,
+      );
+      const held =
+        proposed && own > cap
+          ? {
+              proposed: {
+                ...proposed,
+                signaturePoints: cap,
+                ...(cap === 0 && Array.isArray(proposed.actions)
+                  ? {
+                      actions: (proposed.actions as Array<{ signature?: unknown }>).filter(
+                        (action) => !action || typeof action !== "object" || !action.signature,
+                      ),
+                    }
+                  : {}),
+              },
+            }
+          : {};
+      return {
+        ...opponent,
+        ...held,
+        ...(opponent.points !== undefined ? { points: Math.min(opponent.points, cap) } : {}),
+      };
+    });
+  enemies = holdBossPoints(enemies);
   if (budget && input.budget) {
     const keep = new Set(input.budget.kept ?? []);
     const foes = enemies.map((opponent) => {
@@ -1126,6 +1182,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
         `This fight is worth ${moved.worth.after}, within this party's ${stepLabel} budget of ${allowed}.`,
       );
   }
+  if (budget && input.budget) enemies = holdBossPoints(enemies);
   // A tier's tag beside a name is said without it (cloud re-test 2026-10-26: "Hollow Sentinel [cr_5]").
   const untagged = (text: string) => text.replace(/\s*\[[^\]]*\]\s*/gu, " ").trim() || text;
   for (const opponent of enemies) {

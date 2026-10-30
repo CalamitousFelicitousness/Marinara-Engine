@@ -115,7 +115,7 @@ try {
 
   // ── A boss whose proposed block cannot be read still has something to spend its points on ──
   const boss = fight([
-    { id: "warden", name: "Iron Warden", tier: "cr_2", boss: true, points: 3, proposed: { health: "lots" } },
+    { id: "warden", name: "Iron Warden", tier: "cr_3", boss: true, points: 2, proposed: { health: "lots" } },
   ]);
   const bossSaid = boss.adjustments.join(" | ");
   assert.doesNotMatch(bossSaid, /no legendary actions/);

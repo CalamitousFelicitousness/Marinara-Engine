@@ -488,8 +488,35 @@ function expandLine(line: string, ctx: Ctx): string[] {
   if (closeTag && !closeTag[1]!.includes("<")) pieces.splice(last, 1, closeTag[1]!, closeTag[2]!);
   return pieces
     .flatMap(splitBracketGroups)
+    .flatMap(splitPlist)
     .flatMap((p) => splitWpp(p, ctx))
     .flatMap((p) => splitInlineLabels(p, ctx));
+}
+
+// PList: "[ {{char}}: trait, trait; {{char}}'s body: ...; ]" -> one piece per "Label: ..." section + "]".
+// Only semicolons outside brackets cut, and only when a label follows them. The later pieces keep
+// their leading space, which nests them under the first one (unknown labels follow its field).
+const PLIST_LABEL = new RegExp(String.raw`^\s*(?:${MACRO_OWN}|\p{Lu}[\p{L}'’]*)(?:\s+[\p{L}'’]+){0,3}\s*:\s`, "u");
+function splitPlist(s: string): string[] {
+  const t = s.trim();
+  if (!t.startsWith("[") || !t.endsWith("]") || !PLIST_LABEL.test(t.slice(1))) return [s];
+  const inner = t.slice(0, -1);
+  const pieces: string[] = [];
+  let start = 0;
+  for (let i = 1; i < inner.length; i++) {
+    const c = inner[i];
+    if (c === "(" || c === "[" || c === "{") {
+      const close = matchClose(inner, i);
+      if (close === -1) return [s];
+      i = close;
+    } else if (c === ";" && PLIST_LABEL.test(inner.slice(i + 1))) {
+      pieces.push(inner.slice(start, i + 1));
+      start = i + 1;
+    }
+  }
+  if (!pieces.length) return [s];
+  pieces.push(inner.slice(start));
+  return [...pieces, "]"];
 }
 
 // "Name: Daiyu, The Priestess Hair: Black, long Sex/Gender: Female" -> one piece per known label.
@@ -915,6 +942,9 @@ function assignFields(items: Item[], ctx: Ctx, opts: AssignOptions): LineRecord[
         return;
       case "structural":
         rec.drop = "separator";
+        // A closing "]" / "}" ends the block the anchor came from; "---" only separates paragraphs,
+        // so a labelled paragraph still carries unlabelled text across it.
+        if (/^[\]})]/.test(item.text.trim())) anchor = null;
         return;
       case "start": // a stray <START> with nothing behind it
         rec.field = "mes_example";
@@ -1023,8 +1053,10 @@ function assignFields(items: Item[], ctx: Ctx, opts: AssignOptions): LineRecord[
         const nested = tok.bullet || tok.indent > 0;
         if (tok.res.kind === "title") {
           if (!nested) popHeadings(5); // "[CHARACTER: Autumn Pendleton]" starts a new block
-          rec.field = sectionField() ?? "description";
-          rec.how = "title";
+          // A trait list behind the name ("{{char}}: intelligent, lonely, likes(...)") is sorted like prose.
+          const traits = opts.prose && tok.listy ? classifyProse(tok.value) : null;
+          rec.field = traits ?? sectionField() ?? "description";
+          rec.how = traits ? "prose" : "title";
           anchor = null;
           return;
         }

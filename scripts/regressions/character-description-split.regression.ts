@@ -82,6 +82,18 @@ assert.match(wpp.after.appearance, /appearance \(long auburn hair, green eyes, 1
 assert.match(wpp.after.backstory, /background \(raised by her grandmother in a coastal town\)/);
 assert.equal(squash(joined(wpp.after)).length, squash(wpp.before.description).length, "W++ split is lossless");
 
+// 2b. A one-line PList card ("[ {{char}}: traits; {{char}}'s body: ...; ]") splits per section.
+const plist = splitCharacterDescription({
+  name: "Monika",
+  description:
+    "[ {{char}}: intelligent, confident, introverted, lonely, romantic, likes(literature, piano, {{user}}), dislikes(being trapped, indifference), hobbies(reading, writing); Monika's body: 18 years old, slim build, emerald green eyes, long brown hair (high ponytail with white bow); ]",
+});
+assert.equal(plist.status, "changed");
+assert.match(plist.after.personality, /^\[ \{\{char\}\}: intelligent, confident[\s\S]*hobbies\(reading, writing\);$/);
+assert.match(plist.after.appearance, /^Monika's body: 18 years old[\s\S]*white bow\);$/);
+assert.equal(plist.after.description, "");
+assert.equal(squash(joined(plist.after)).length, squash(plist.before.description).length, "PList split is lossless");
+
 // 3. Interview-style dialogue and <START> blocks become example messages.
 const interview = splitCharacterDescription({
   name: "Mei",

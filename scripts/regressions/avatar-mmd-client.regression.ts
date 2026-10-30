@@ -4,8 +4,10 @@ import { createRequire } from "node:module";
 import { checkedPmx } from "../../packages/server/src/services/avatars/formats/mmd.js";
 import {
   bindMmdStageClock,
+  createAvatarRenderer,
   withoutDirectedMorphs,
 } from "../../packages/client/src/features/avatars/renderers/mmd/mmd-renderer.js";
+import { AVATAR_NEUTRAL_FRAME } from "../../packages/shared/src/index.js";
 import { avatarAgentKinds } from "../../packages/client/src/features/avatars/setup/avatar-setup-logic.js";
 import { pickAvatarKind } from "../../packages/client/src/features/avatars/stage/avatar-stage-logic.js";
 import { ExpressionBindings } from "../../packages/client/src/features/avatars/setup/ModelSetupControls.js";
@@ -123,6 +125,40 @@ assert.equal(
   null,
   "the 3D agent must be enabled",
 );
+
+// Exercise the actual update method and imported mesh; only the GPU draw is absent in this pure control.
+const renderer = createAvatarRenderer();
+const blinkBinding = { target: "笑い", source: "user" as const, confidence: 1 };
+const features = { blink: true, lipSync: true, idleMotion: false };
+Reflect.set(renderer, "mesh", mesh);
+Reflect.set(renderer, "bindings", { blink: blinkBinding });
+Reflect.set(renderer, "features", features);
+renderer.resize(180, 320, 1);
+for (const closure of [0, 1, 0]) {
+  renderer.update({ ...AVATAR_NEUTRAL_FRAME, blink: closure }, 100);
+  assert.equal(mesh.morphTargetInfluences![0], closure, "a supplied full blink reopens instead of latching shut");
+}
+const timer = Reflect.get(renderer, "blink") as { wait: number; phase: number };
+timer.wait = 0;
+timer.phase = -1;
+for (const dt of [0, 60, 100, 100]) renderer.update(AVATAR_NEUTRAL_FRAME, dt);
+assert.equal(mesh.morphTargetInfluences![0], 0, "the automatic blink also returns to open");
+timer.phase = 0.07;
+renderer.update(AVATAR_NEUTRAL_FRAME, 0);
+assert.equal(mesh.morphTargetInfluences![0], 1);
+features.blink = false;
+renderer.update(AVATAR_NEUTRAL_FRAME, 100);
+assert.equal(mesh.morphTargetInfluences![0], 0, "turning blinking off reopens a closed morph");
+Reflect.set(renderer, "bindings", { blink: blinkBinding, happy: blinkBinding });
+const happy = { ...AVATAR_NEUTRAL_FRAME, emotion: "happy" as const, emotionWeight: 0.4 };
+for (let frame = 0; frame < 20; frame += 1) renderer.update({ ...happy, blink: 0 }, 100);
+assert.equal(mesh.morphTargetInfluences![0], 0.4);
+renderer.update({ ...happy, blink: 1 }, 100);
+assert.equal(mesh.morphTargetInfluences![0], 1);
+renderer.update({ ...happy, blink: 0 }, 100);
+assert.equal(mesh.morphTargetInfluences![0], 0.4, "a shared emotion binding keeps its eased weight after reopening");
+Reflect.set(renderer, "mesh", null);
+renderer.dispose();
 mixer.stopAllAction();
 mesh.geometry.dispose();
 mesh.skeleton.dispose();

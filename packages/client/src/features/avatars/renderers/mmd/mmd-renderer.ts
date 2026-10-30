@@ -387,9 +387,9 @@ class MmdAvatarRenderer implements AvatarRenderer {
     }
     const blink = this.bindings.blink?.target;
     const index = blink ? this.mesh.morphTargetDictionary?.[blink] : undefined;
-    if (index !== undefined && this.mesh.morphTargetInfluences) {
+    if (blink && index !== undefined && this.mesh.morphTargetInfluences) {
       const closure = frame.blink ?? stepBlink(this.blink, dt, { enabled: this.features.blink });
-      this.mesh.morphTargetInfluences[index] = Math.max(this.mesh.morphTargetInfluences[index] ?? 0, closure);
+      this.mesh.morphTargetInfluences[index] = Math.max(this.weights.get(blink) ?? 0, closure);
     }
     this.helper?.update(animate ? dt : 0);
     if (!this.hasMotion) {
@@ -458,7 +458,8 @@ class MmdAvatarRenderer implements AvatarRenderer {
     if (canvas.width !== width) canvas.width = width;
     if (canvas.height !== height) canvas.height = height;
     this.context.clearRect(0, 0, width, height);
-    this.context.drawImage(renderer.domElement, 0, this.gl.height - height, width, height, 0, 0, width, height);
+    // The modern backend's viewport starts at the top, even when the shared surface is taller than this avatar.
+    this.context.drawImage(renderer.domElement, 0, 0, width, height, 0, 0, width, height);
   }
 }
 

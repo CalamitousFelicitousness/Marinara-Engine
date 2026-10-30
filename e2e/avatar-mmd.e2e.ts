@@ -84,7 +84,14 @@ async function bundle(motion = true) {
     new Map([
       ["モデル/model.pmx", mmdPmx({ texture: "..\\textures\\顔.png" })],
       ["textures/顔.png", await paintPng(16, 16, solid(245, 40, 20))],
-      ...(motion ? [["motion.vmd", mmdVmd()] as [string, Buffer]] : []),
+      ["__MACOSX/モデル/._model.pmx", Buffer.from("ignored model metadata")],
+      ["__MACOSX/textures/._顔.png", Buffer.from("ignored texture metadata")],
+      ...(motion
+        ? [
+            ["motion.vmd", mmdVmd()] as [string, Buffer],
+            ["__MACOSX/._motion.vmd", Buffer.from("ignored motion metadata")] as [string, Buffer],
+          ]
+        : []),
     ]),
   );
 }
@@ -215,6 +222,129 @@ test("PMX imports its bundled texture and Japanese morph, then VMD moves its sav
     expect(await saved.json()).toEqual(config);
     await mount(page, owner, config, false);
     expect((await draw(page, "neutral")).painted).toBeGreaterThan(1000);
+  } finally {
+    await page.evaluate(() => window.__mmd?.renderer.dispose()).catch(() => undefined);
+    await request.delete(`/api/characters/${owner.ownerId}`);
+  }
+});
+
+test("MMD reopens its blink and keeps smaller shared draws visible after a larger avatar", async ({
+  page,
+  request,
+}) => {
+  const response = await request.post("/api/characters", { data: { data: { name: "MMD blink and shared canvas" } } });
+  expect(response.ok()).toBeTruthy();
+  const owner = { ownerType: "character", ownerId: ((await response.json()) as { id: string }).id } as const;
+  try {
+    const saved = await importModel(request, owner, await bundle(false));
+    const config = {
+      ...saved,
+      kinds: {
+        ...saved.kinds,
+        mmd: {
+          ...saved.kinds.mmd!,
+          expressionMap: { blink: { target: "笑い", source: "user" as const, confidence: 1 } },
+        },
+      },
+    };
+    await prepare(page, { blank: true });
+    await page.goto("/");
+    await mount(page, owner, config, false);
+    const blink = await page.evaluate(() => {
+      const { renderer, canvas } = window.__mmd!;
+      const pixels = () => canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height).data;
+      const frame = { emotion: "neutral", emotionWeight: 0, viseme: null, mouthOpen: 0, state: "idle" };
+      renderer.update({ ...frame, blink: 0 }, 100);
+      const open = pixels();
+      renderer.update({ ...frame, blink: 1 }, 100);
+      const closed = pixels();
+      renderer.update({ ...frame, blink: 0 }, 100);
+      const reopened = pixels();
+      return {
+        changed: closed.reduce((count, value, index) => count + (Math.abs(value - open[index]!) > 16 ? 1 : 0), 0),
+        reopened: reopened.every((value, index) => value === open[index]),
+      };
+    });
+    expect(blink.changed, "the blink target actually changes model pixels").toBeGreaterThan(50);
+    expect(blink.reopened, "the closed target returns to its original open pixels").toBe(true);
+    const shared = await page.evaluate(
+      async ({ module, owner, config }) => {
+        const first = window.__mmd!;
+        const { createAvatarRenderer } = (await import(module)) as { createAvatarRenderer(): Probe["renderer"] };
+        const second = createAvatarRenderer();
+        const canvas = document.createElement("canvas");
+        const frame = { emotion: "neutral", emotionWeight: 0, viseme: null, mouthOpen: 0, state: "idle", blink: 0 };
+        const pixels = (target: HTMLCanvasElement) =>
+          target.getContext("2d")!.getImageData(0, 0, target.width, target.height).data;
+        const painted = (data: Uint8ClampedArray) =>
+          data.filter((value, index) => index % 4 === 3 && value > 200).length;
+        const compare = (reference: Uint8ClampedArray, actual: Uint8ClampedArray) => {
+          const mask = (data: Uint8ClampedArray, index: number) =>
+            data[index + 3]! > 200 && data[index]! > Math.max(data[index + 1]!, data[index + 2]!) + 40;
+          let maskDifferences = 0,
+            colorDifferences = 0;
+          for (let index = 0; index < reference.length; index += 4) {
+            if (mask(reference, index) !== mask(actual, index)) maskDifferences += 1;
+            // Framebuffer resizing can round a few antialias channels; the solid-color mask must remain exact.
+            if ([0, 1, 2, 3].some((channel) => Math.abs(reference[index + channel]! - actual[index + channel]!) > 16))
+              colorDifferences += 1;
+          }
+          return { maskDifferences, colorDifferences };
+        };
+        // The initial shared surface is 320px high: this reference fills its complete height.
+        first.renderer.resize(120, 320, 1);
+        first.renderer.update(frame, 100);
+        const reference = pixels(first.canvas);
+        first.renderer.update(frame, 100);
+        const repeated = pixels(first.canvas);
+        first.renderer.resize(240, 640, 1);
+        first.renderer.update(frame, 100);
+        first.renderer.resize(120, 320, 1);
+        first.renderer.update(frame, 100);
+        const resized = pixels(first.canvas);
+        first.renderer.resize(240, 640, 1);
+        try {
+          await second.mount({
+            owner,
+            config,
+            canvas,
+            resolveImage: () => null,
+            reducedMotion: true,
+            signal: new AbortController().signal,
+          });
+          second.setFraming("full-body");
+          second.resize(120, 320, 1);
+          first.renderer.update(frame, 100);
+          second.update(frame, 100);
+          const peer = pixels(canvas);
+          second.dispose();
+          first.renderer.update(frame, 100);
+          return {
+            reference: painted(reference),
+            repeatedMatches: repeated.every((value, index) => value === reference[index]),
+            resized: compare(reference, resized),
+            peer: compare(reference, peer),
+            retained: painted(pixels(first.canvas)),
+          };
+        } finally {
+          second.dispose();
+        }
+      },
+      { module: MODULE, owner, config },
+    );
+    expect(shared.reference).toBeGreaterThan(1000);
+    expect(shared.repeatedMatches, "the fixed frame is stable before any shared-size change").toBe(true);
+    expect(shared.resized, "shrinking preserves the original mask and colors").toEqual({
+      maskDifferences: 0,
+      colorDifferences: 0,
+    });
+    expect(shared.peer, "a smaller peer preserves the original mask and colors").toEqual({
+      maskDifferences: 0,
+      colorDifferences: 0,
+    });
+    expect(shared.retained, "disposing its peer keeps the large renderer alive").toBeGreaterThan(1000);
+    expect(await page.evaluate(() => window.__mmdRaf!.pending.size)).toBe(0);
+    expect(await page.evaluate(() => window.__mmdCsp)).toEqual([]);
   } finally {
     await page.evaluate(() => window.__mmd?.renderer.dispose()).catch(() => undefined);
     await request.delete(`/api/characters/${owner.ownerId}`);

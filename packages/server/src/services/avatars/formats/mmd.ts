@@ -582,6 +582,7 @@ function readMmd(input: AvatarImportInput): ValidatedMmd {
   try {
     const archive = openZipArchive(bytes);
     const entries = new Map<string, Buffer>();
+    const paths = new Set<string>();
     let total = 0;
     for (const entry of archive.getEntries()) {
       const raw = entry.entryName;
@@ -589,8 +590,9 @@ function readMmd(input: AvatarImportInput): ValidatedMmd {
       const name = archivePath(raw);
       const mode = entry.attr >>> 16;
       if ((mode & 0xf000) === 0xa000) refuse("MMD archives cannot contain symbolic links.");
-      if (entry.isDirectory) continue;
-      if (entries.has(name)) refuse("The MMD archive contains duplicate file paths.");
+      if (paths.has(name)) refuse("The MMD archive contains duplicate file paths.");
+      paths.add(name);
+      if (entry.isDirectory || name.split("/").includes("__MACOSX") || posix.basename(name).startsWith("._")) continue;
       total += entry.size;
       if (total > AVATAR_IMPORT_MAX_BYTES) refuse(TOO_LARGE);
       entries.set(name, entry.read(AVATAR_IMPORT_MAX_BYTES));

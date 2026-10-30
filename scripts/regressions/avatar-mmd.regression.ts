@@ -15,6 +15,7 @@ process.env.LOG_LEVEL = "silent";
 const { findAvatarImporter } = await import("../../packages/server/src/services/avatars/formats/registry.js");
 const { mmdImporter, checkedPmx, mmdTextureMime, buildMmdImport } =
   await import("../../packages/server/src/services/avatars/formats/mmd.js");
+const { openZipArchive } = await import("../../packages/server/src/lib/zip-reader.js");
 const { avatarConfigSchema, createAvatarConfig, characterDataSchema, isAvatarFilePath, AVATAR_MMD_METADATA_LIMITS } =
   await import("../../packages/shared/src/index.js");
 const storage = await import("../../packages/server/src/services/avatars/storage.js");
@@ -31,6 +32,13 @@ const png = Buffer.from(
 );
 const refuses = async (bytes: Uint8Array, filename = "fixture.pmx", message?: RegExp) => {
   await assert.rejects(mmdImporter.validate(input(bytes, filename)), message ?? /MMD|PMX|VMD|texture|archive|model/iu);
+};
+const renameZipEntry = (archive: Buffer, from: string, to: string) => {
+  assert.equal(Buffer.byteLength(from), Buffer.byteLength(to));
+  const renamed = Buffer.from(archive);
+  for (let offset = renamed.indexOf(from); offset !== -1; offset = renamed.indexOf(from, offset + 1))
+    Buffer.from(to).copy(renamed, offset);
+  return renamed;
 };
 
 try {
@@ -197,6 +205,78 @@ try {
   assert.deepEqual(Object.keys(bundled.data.texturePaths), ["..\\textures\\肌.png"]);
   assert.match(bundled.data.texturePaths["..\\textures\\肌.png"]!, /^mmd\/texture-[a-f0-9]+\.png$/u);
   assert.equal(bundled.files.length, 2);
+
+  // Finder resource forks are not extra models, motions or textures; all archive guards still apply.
+  const cleanMacEntries: [string, Buffer][] = [
+    ["model/avatar.pmx", textured],
+    ["textures/肌.png", png],
+    ["motions/idle.vmd", mmdVmd()],
+  ];
+  const metadata = Buffer.alloc(64, 7);
+  const macEntries: [string, Buffer][] = [
+    ...cleanMacEntries,
+    ["__MACOSX/model/._avatar.pmx", metadata],
+    ["__MACOSX/motions/._idle.vmd", metadata],
+    ["model/._avatar.pmx", metadata],
+    ["motions/._idle.vmd", metadata],
+    ["__MACOSX/textures/._肌.png", metadata],
+  ];
+  const extractZip = async (bytes: Buffer) =>
+    mmdImporter.extract(await mmdImporter.validate(input(bytes, "model.zip")), input(bytes, "model.zip"));
+  const cleanMac = await extractZip(zip(cleanMacEntries));
+  assert.deepEqual(await extractZip(zip(macEntries)), cleanMac, "real model, textures and VMD remain identical");
+  await refuses(zip([...macEntries, ["second.pmx", pmx]]), "model.zip", /one PMX/u);
+  await refuses(zip([...macEntries, ["second.vmd", mmdVmd()]]), "model.zip", /at most one VMD/u);
+  await refuses(
+    zip([
+      ["__MACOSX/._avatar.pmx", pmx],
+      ["._idle.vmd", mmdVmd()],
+    ]),
+    "model.zip",
+    /one PMX/u,
+  );
+  const oversizedMetadata = zip(macEntries);
+  const metadataName = "__MACOSX/textures/._肌.png";
+  const metadataCentral = oversizedMetadata.lastIndexOf(Buffer.from(metadataName)) - 46;
+  assert.equal(oversizedMetadata.readUInt32LE(metadataCentral), 0x02014b50);
+  assert.equal(oversizedMetadata.readUInt16LE(metadataCentral + 10), 8);
+  const metadataLocal = oversizedMetadata.readUInt32LE(metadataCentral + 42);
+  oversizedMetadata.writeUInt32LE(storage.AVATAR_IMPORT_MAX_BYTES + 1, metadataCentral + 24);
+  oversizedMetadata.writeUInt32LE(storage.AVATAR_IMPORT_MAX_BYTES + 1, metadataLocal + 22);
+  assert(oversizedMetadata.length < 4096, "the declared-size control never allocates a large resource fork");
+  assert.throws(
+    () => openZipArchive(oversizedMetadata).getEntry(metadataName)!.read(storage.AVATAR_IMPORT_MAX_BYTES),
+    /too large/u,
+  );
+  assert.deepEqual(await extractZip(oversizedMetadata), cleanMac, "metadata payload is neither read nor counted");
+  for (const path of [
+    "/__MACOSX/._avatar.pmx",
+    "C:/__MACOSX/._avatar.pmx",
+    "__MACOSX/../._avatar.pmx",
+    "__MACOSX\\._avatar.pmx",
+    "__MACOSX/._bad\0.pmx",
+  ]) {
+    const safe = "z".repeat(Buffer.byteLength(path));
+    await refuses(
+      renameZipEntry(zip([...cleanMacEntries, [safe, metadata]]), safe, path),
+      "model.zip",
+      /unsafe|local files/u,
+    );
+  }
+  const firstMetadata = "__MACOSX/._a.pmx";
+  for (const duplicateName of [firstMetadata, "__MACOSX/./._a.pmx"]) {
+    const safe = "y".repeat(Buffer.byteLength(duplicateName));
+    await refuses(
+      renameZipEntry(zip([...cleanMacEntries, [firstMetadata, metadata], [safe, metadata]]), safe, duplicateName),
+      "model.zip",
+      /duplicate|more than once/u,
+    );
+  }
+  const linkedMetadata = zip([...cleanMacEntries, [firstMetadata, metadata]]);
+  const linkedMetadataCentral = linkedMetadata.lastIndexOf(Buffer.from(firstMetadata)) - 46;
+  linkedMetadata.writeUInt32LE(0xa1ff0000, linkedMetadataCentral + 38);
+  await refuses(linkedMetadata, "model.zip", /symbolic links/u);
+
   assert.equal(mmdTextureMime(png, "toon.sph"), "image/png", "sphere texture suffix can carry a raster");
   const largePng = Buffer.from(png);
   largePng.writeUInt32BE(50_000, 16);

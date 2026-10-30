@@ -1195,7 +1195,9 @@ export function matchRulesetCheckTarget(
       return { ...trained("skill", { id: rows[0]!.key, label: rows[0]!.label, ability: rows[0]!.ability }), row: true };
   }
   const ability = sheet.abilities.find((entry) => names(entry).includes(base));
-  if (!ability) return null;
+  // Nothing on the sheet by that name, but rolled with an ability: a tool or a kit, "Leatherworker's
+  // tools" with Dexterity, is that ability's check (laptop room playtest 2026-10-30: it rolled +0).
+  if (!ability) return override ? { type: "ability", id: override, label: requested.trim().slice(0, 100) } : null;
   const resolution = definition.resolution;
   const pairs = resolution.kind === "dice-pool" && resolution.pool.abilityPlusAbility === true;
   return {

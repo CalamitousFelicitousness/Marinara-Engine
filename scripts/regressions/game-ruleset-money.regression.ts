@@ -393,6 +393,16 @@ const withoutMarket = (doc: Record<string, any>) => {
     { item: "pennies", action: "acquired", quantity: 12 },
     { item: "pennies", action: "used", quantity: 4 },
   ]);
+  // What a bag adds after its payment was refused is refused too, unless it says where it came from
+  // (laptop room playtest 2026-10-30: tools came into the bag after "cannot-afford").
+  const unpaid = answered(
+    '[inventory: action="pay" amount="9 crowns"] [inventory: action="add" item="Rope"] ' +
+      '[inventory: action="add" item="Torch" source="story"] [inventory: action="add" item="Lamp" who="Bram"]',
+    start,
+  );
+  assert.match(unpaid.content, /item="Rope" count="1" result="refused" reason="unpaid"/, unpaid.content);
+  assert.match(unpaid.content, /item="Torch" count="1" result="ok"/, unpaid.content);
+  assert.match(unpaid.content, /item="Lamp" count="1" who="Bram" result="ok"/, "another bag's add is its own");
   assert.equal(
     answered('[inventory: action="pay" amount="2 florins"]').content,
     '[inventory: action="pay" item="florins" count="2" result="refused" reason="unknown-coin"]',

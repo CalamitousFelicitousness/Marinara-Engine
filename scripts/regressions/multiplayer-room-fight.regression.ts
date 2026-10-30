@@ -487,6 +487,23 @@ try {
       hostSurface,
       /if \(takenIds\.has\(combatant\.id\)\) \{\s+(?:\/\/[^\n]*\s+)?combatant\.id = `generated-party-\$\{index\}-\$\{slugifyCombatantId\(member\.name\)\}`;\s+combatant\.sprite = undefined;/u,
     );
+    // Members named exactly as a unit claim it before name-variant matches, in either party order,
+    // and a later member only sees units nobody holds yet.
+    assert.match(
+      hostSurface,
+      /\.sort\(\(a, b\) => Number\(!isExact\(a\.member\)\) - Number\(!isExact\(b\.member\)\)\)/u,
+    );
+    assert.match(hostSurface, /combatAvatarCandidates\.filter\(\(candidate\) => !takenIds\.has\(candidate\.id\)\)/u);
+    assert.match(hostSurface, /partyCombatants\[index\] = combatant;/u);
+    const { findNamedEntry, hasExactNamedEntry } =
+      await import("../../packages/client/src/lib/game-character-name-match.js");
+    const units = [{ id: "persona:active", name: "Lyra Dawnblade" }];
+    const byName = (unit: { name: string }) => unit.name;
+    assert.equal(hasExactNamedEntry(units, "Lyra Dawnblade", byName), true);
+    assert.equal(hasExactNamedEntry(units, "lyra  dawnblade", byName), true, "case and spacing still match exactly");
+    assert.equal(hasExactNamedEntry(units, "Lyra", byName), false, "a variant is not an exact match");
+    assert.equal(findNamedEntry(units, "Lyra", byName)?.id, "persona:active", "while a variant still finds the unit");
+    assert.equal(hasExactNamedEntry(units, "", byName), false);
     assert.match(snapshotting, /const viewer = forLocalHost \? \{ host: true \} : \{ host: false, participantId \};/u);
     assert.match(
       snapshotting,

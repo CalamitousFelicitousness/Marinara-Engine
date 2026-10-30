@@ -1198,11 +1198,14 @@ export function rulesetItemBook(
     }
   }
   // Other names (1.775) find an item after every item's own name: "Plate" for Plate Armor.
+  const aliasOnly = new Set<string>();
   for (const { read, aliases } of aliased)
     for (const alias of aliases) {
       const key = gameInventoryNameKey(alias);
-      if (!byName.has(key)) byName.set(key, read);
-      else if (byName.get(key)!.item !== read.item) sharedNames.add(key);
+      if (!byName.has(key)) {
+        byName.set(key, read);
+        aliasOnly.add(key);
+      } else if (byName.get(key)!.item !== read.item) sharedNames.add(key);
     }
   // And last, any of those names with its words in another order or counted many ("Heavy Crossbow",
   // "Crossbows, heavy" for Crossbow, heavy: laptop playtest 2026-10-25). A loose name two items share
@@ -1330,6 +1333,9 @@ export function rulesetItemBook(
       if (!/\p{L}/u.test(words[from - 1]!)) return undefined;
       const key = gameInventoryNameKey(words.slice(from).join(" "));
       if (sharedNames.has(key)) return undefined;
+      // Past one word in front, only an item's own name: "Raw deer hide" is no Hide Armor, whose
+      // other name is "Hide" (laptop room playtest 2026-10-30).
+      if (from > 1 && aliasOnly.has(key)) continue;
       const found = byName.get(key);
       if (found) return found;
     }
@@ -1395,7 +1401,10 @@ export function rulesetItemBook(
     const text = rulesetInventedItemText(proposal);
     if (!text.name) return { refused: "unreadable" };
     const key = gameInventoryNameKey(text.name);
-    const own = byName.get(key);
+    // Or by its words in another order or written another way (laptop playtest 2026-10-30: an
+    // invented "Arrow +1" with "+1 attacks" carried added 1 to every attack, the Rapier's too, where
+    // the ruleset's own Arrow (+1) rides only its own shots).
+    const own = byName.get(key) ?? byLoose.get(gameInventoryLooseNameKey(text.name)) ?? undefined;
     if (own) return { item: own.item, notes: [`${own.name} is one of this ruleset's own items, so it is that item.`] };
     if (definition.items?.propose === false) return { refused: "no-invention" };
     // One of that name the game holds is that item: a proposal never changes it. So is one this

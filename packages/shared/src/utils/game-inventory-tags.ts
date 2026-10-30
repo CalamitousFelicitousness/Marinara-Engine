@@ -419,6 +419,10 @@ export function applyGameInventoryTags(
     if (made.size > 0) conjured.set(index, made);
   });
 
+  // The bags a payment was refused for in this reply: what they then add with no `source` was bought
+  // with money they did not have, and is refused too (laptop room playtest 2026-10-30: tools came into
+  // a bag after "cannot-afford").
+  const unpaid = new Set<string>();
   const next = content.replace(createInventoryTagRegex(), (_whole, body: string) => {
     tags += 1;
     const tagIndex = tags - 1;
@@ -489,6 +493,9 @@ export function applyGameInventoryTags(
         if (!who.ok) return serializeInventoryTag(shown, { ok: false, reason: who.reason });
         if (request.action === "add" && conjured.get(tagIndex)?.has(gameInventoryNameStem(item))) {
           return serializeInventoryTag(shown, { ok: false, reason: "no-source" });
+        }
+        if (request.action === "add" && unpaid.has(inventoryBagKey(request.who)) && !requests[tagIndex]?.sourced) {
+          return serializeInventoryTag(shown, { ok: false, reason: "unpaid" });
         }
         if (request.action === "add") {
           // A proposal first makes the item of the ruleset it describes, or finds the one of that name
@@ -590,7 +597,10 @@ export function applyGameInventoryTags(
             named.usual,
           );
           const answered = { ...shown, item: coin.name };
-          if (!paid.ok) return serializeInventoryTag(answered, { ok: false, reason: paid.reason });
+          if (!paid.ok) {
+            unpaid.add(inventoryBagKey(request.who));
+            return serializeInventoryTag(answered, { ok: false, reason: paid.reason });
+          }
           current = paid.stacks;
           // The journal says what was spent and what came back as change.
           journal.push(
@@ -648,7 +658,10 @@ export function applyGameInventoryTags(
             quote.owed,
             quote.family[0] ? rules?.coinNamed?.(quote.family[0].name)?.usual : undefined,
           );
-          if (!paid.ok) return serializeInventoryTag(answered, { ok: false, reason: paid.reason });
+          if (!paid.ok) {
+            unpaid.add(inventoryBagKey(request.who));
+            return serializeInventoryTag(answered, { ok: false, reason: paid.reason });
+          }
           let after = paid.stacks;
           const bought: GameInventoryJournalEntry[] = [];
           let now = 0;

@@ -447,7 +447,10 @@ export async function loadSkillCheckModifierContext(
           ),
           // Nothing said which card is the player's, so the first card is only a stand-in for a check
           // that names nobody (laptop 2026-10-26: Dorra's Stealth was rolled for Pip's sneak).
-          ...(byPosition ? { playerByPosition: true } : {}),
+          // Nor in a shared room, where the chat's persona is the host's and a check that names nobody
+          // may be any player's (laptop room playtest 2026-10-30: the guest's Deception rolled with
+          // the host's Charisma).
+          ...(byPosition || currentRoomGeneration() ? { playerByPosition: true } : {}),
         },
       };
     }

@@ -74,6 +74,26 @@ const book = rulesetItemBook(ember, entriesOf(ember), { actor: "game-master" });
   assert.equal(sharedBook.itemNamed("Patched Coat"), undefined, "a name two items have finds neither");
 }
 
+// ── Past one word in front, only an item's own name (laptop room playtest 2026-10-30: "Raw deer hide"
+// became Hide Armor by its other name "Hide") ──
+{
+  const aliased = definitionOf((doc) => {
+    const catalog = doc.catalogs.find((each: Record<string, any>) => each.holds === "items");
+    catalog.entries.find((each: Record<string, any>) => each.id === "leather-coat").aliases = ["Hide"];
+  });
+  const aliasBook = rulesetItemBook(aliased, entriesOf(aliased), { actor: "game-master" });
+  assert.equal(aliasBook.itemNamed("Tanned Hide")?.item, "outfitter/leather-coat", "one word in front of another name");
+  assert.equal(aliasBook.itemNamed("Raw deer hide"), undefined, "two words in front of another name find nothing");
+  assert.equal(aliasBook.itemNamed("Old oiled leather coat")?.item, "outfitter/leather-coat", "but of its own name");
+}
+
+// ── A name the ruleset has, written another way, is that item, not a new one (laptop playtest
+// 2026-10-30: an invented "Arrow +1" carried +1 on every attack) ──
+{
+  const made = book.invent!({ name: "coat, leather", carried: "+1 attacks" } as never, []);
+  assert.ok("item" in made && made.item === "outfitter/leather-coat", JSON.stringify(made));
+}
+
 // ── Given by such a name, then put on by it ──
 {
   const party = { player: "Ada", members: ["Bram"] };

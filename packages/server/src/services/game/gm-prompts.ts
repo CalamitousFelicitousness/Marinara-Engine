@@ -990,7 +990,9 @@ function renderRulesetKindCheckLine(
   // `with=` needs somewhere to go: a sheet with one ability has no other ability to roll with.
   const withClause =
     ruleset.sheet.abilities.length >= 2
-      ? [`Add with="Ability" to roll a skill or save with another ability than its own.`]
+      ? [
+          `Add with="Ability" to roll a skill or save with another ability than its own. A tool, kit or craft that is no skill on the sheet is rolled with the ability it is used with: skill="Its name" with="Ability".`,
+        ]
       : [];
   const branchClause = oneRequestDice
     ? [
@@ -2195,7 +2197,7 @@ export function buildGmFormatReminder(
       ...(experienceOwnsInventory
         ? []
         : [
-            `- [inventory: action="add|remove|give" item="Item A, Item B" count="3" who="Name" to="Name"] - every real item gain or loss, keep names short and use count/quantity for stacked items. An add is only for what the story puts in their hands in this reply: found, looted, bought, made, or given by someone there; never to hand a character something they need right now that the story never gave them. Everyone in the party carries their own things: who is whose bag an item goes into or comes out of, and leaving it out means the player (a remove without who then takes from the rest of the party once the player has none). A give hands items from who to to. An item listed as "Nickname (Name)" is one item: write either name in item, never both. Never write result, reason or now yourself: the Engine adds them, and a refused one did not happen.`,
+            `- [inventory: action="add|remove|give" item="Item A, Item B" count="3" who="Name" to="Name"] - every real item gain or loss, keep names short and use count/quantity for stacked items. An add is only for what the story puts in their hands in this reply: found, looted, bought, made, or given by someone there (something made or gathered on a check is added in the reply that tells it succeeded, finished); never to hand a character something they need right now that the story never gave them. Everyone in the party carries their own things: who is whose bag an item goes into or comes out of, and leaving it out means the player (a remove without who then takes from the rest of the party once the player has none). A give hands items from who to to. An item listed as "Nickname (Name)" is one item: write either name in item, never both. Never write result, reason or now yourself: the Engine adds them, and a refused one did not happen.`,
             // Things made to last only so long (1.747), counted on the game's clock: Creation's.
             ...(ctx.ruleset
               ? [

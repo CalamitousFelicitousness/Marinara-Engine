@@ -311,7 +311,7 @@ test("MMD setup imports, maps and removes model-specific motion for character an
       await expect(panel.getByText("Your VMD motion", { exact: true })).toBeVisible();
       await panel.getByRole("button", { name: "Remove VMD motion", exact: true }).click();
       await expect(panel.getByRole("button", { name: "Add VMD motion", exact: true })).toBeVisible();
-      for (const theme of ownerType === "character" ? (["light", "dark"] as const) : (["dark"] as const)) {
+      for (const theme of ["light", "dark"] as const) {
         if ((await page.locator("html").getAttribute("data-theme")) !== theme) {
           await page.evaluate(
             ({ name, theme }) => {

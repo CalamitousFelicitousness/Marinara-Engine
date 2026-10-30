@@ -487,6 +487,73 @@ function shardedStorageFixture(version = 3) {
   return dir;
 }
 
+function storageSnapshot(dir, relative = "", files = {}) {
+  for (const entry of readdirSync(join(dir, relative), { withFileTypes: true })) {
+    const name = join(relative, entry.name);
+    if (entry.isDirectory()) {
+      files[name] = null;
+      storageSnapshot(dir, name, files);
+    } else files[name] = readFileSync(join(dir, name), "utf8");
+  }
+  return files;
+}
+
+// Losing both format markers must never turn retained MMD data into a permitted downgrade.
+for (const state of ["missing", "malformed", "invalid-version"]) {
+  const profile = mkdtempSync(join(tmpdir(), "marinara-unshard-unknown-"));
+  const dir = join(profile, "storage");
+  mkdirSync(join(dir, "tables", "messages"), { recursive: true });
+  const shard = join(dir, "tables", "messages", "unknown.json");
+  writeFileSync(shard, JSON.stringify([row("unknown", "chat8", "2026-10-30T00:00:00.000Z", "keep unknown")]));
+  const avatars = join(profile, "avatar-models", "character", "pmx");
+  mkdirSync(avatars, { recursive: true });
+  writeFileSync(
+    join(avatars, "avatar.json"),
+    JSON.stringify({
+      version: 1,
+      owner: { ownerType: "character", ownerId: "pmx" },
+      enabled: true,
+      activeKind: "mmd",
+      features: { lipSync: true, blink: true, idleMotion: true },
+      kinds: { mmd: { file: "mmd/model.pmx", texturePaths: {}, expressionMap: {} } },
+      updatedAt: "2026-10-30T00:00:00.000Z",
+    }),
+  );
+  const manifest = join(dir, "manifest.json");
+  if (state !== "missing") {
+    const content = state === "malformed" ? "{broken" : JSON.stringify({ version: "8" });
+    writeFileSync(manifest, content);
+    writeFileSync(`${manifest}.bak`, content);
+  }
+  const before = storageSnapshot(profile);
+  try {
+    await assert.rejects(
+      unshardLauncherStorage({ env: { FILE_STORAGE_DIR: dir, DATA_DIR: profile }, probeServer: false }),
+      /cannot establish.*Nothing has been changed/iu,
+      `${state} manifests must refuse conversion before any storage mutation`,
+    );
+    assert.deepEqual(storageSnapshot(profile), before, "unknown-format refusal preserves every path and file byte");
+  } finally {
+    rmSync(profile, { recursive: true, force: true });
+  }
+}
+
+// An already-unsharded legacy folder needs no format conversion or new readability claim.
+{
+  const dir = mkdtempSync(join(tmpdir(), "marinara-unshard-legacy-noop-"));
+  mkdirSync(join(dir, "tables"));
+  writeFileSync(join(dir, "tables", "messages.json"), JSON.stringify([row("legacy", "chat2", "2026-08-08", "keep")]));
+  const before = storageSnapshot(dir);
+  try {
+    const result = await unshardLauncherStorage({ env: { FILE_STORAGE_DIR: dir }, probeServer: false });
+    assert.equal(result.unchanged, true);
+    assert.equal(result.manifestRewritten, false, "a no-op must not claim to have established an older format");
+    assert.deepEqual(storageSnapshot(dir), before, "the unknown legacy no-op writes no markers or metadata");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 // The chat-only conversion must not bypass the new avatar-format downgrade guard.
 for (const backupOnly of [false, true]) {
   const dir = shardedStorageFixture(8);

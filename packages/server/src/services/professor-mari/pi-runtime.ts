@@ -661,6 +661,10 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
     }
     const questions = questionsIn(current);
     const asking = questions.length > 0;
+    // Counted here because a call the schema rejects never reaches the tool.
+    if (!asking && current.calls.some((call) => (call.name as string) === "ask") && ++invalidAsks >= 3) {
+      stopRequested = true;
+    }
     // A change beside a question never ran, so it is neither a failed attempt nor something the audit may credit.
     const workspaceCalls = current.calls.filter(
       (call) => !isUiTool(call.name) && !(asking && isMutatingWorkspaceCommand(call)),
@@ -971,7 +975,6 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
         ? "Question card shown. Your turn ends here; the user's answer arrives as their next message."
         : "No valid questions; nothing was shown. Each question needs its text and 2-4 options.";
       isError = !asking;
-      if (!asking && ++invalidAsks >= 3) stopRequested = true;
     } else if (current.deferred) {
       text = "Held: this change waits for the user's Accept and was not applied. Do not repeat it.";
     } else {

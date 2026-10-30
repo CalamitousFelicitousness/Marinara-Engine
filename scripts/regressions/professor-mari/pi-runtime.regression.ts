@@ -1527,7 +1527,11 @@ try {
       assert.equal(wordlessRow?.content, "Which tone?", `${runtime}: a wordless question saves its text`);
       const saved = wordlessRow?.extra.mariQuestions as Array<{ options: Array<{ recommended?: boolean }> }>;
       assert.equal(saved.length, 1, `${runtime}: the card is saved on the row`);
-      assert.equal(saved[0]!.options.filter((option) => option.recommended).length, 1, "a second recommended is dropped");
+      assert.equal(
+        saved[0]!.options.filter((option) => option.recommended).length,
+        1,
+        "a second recommended is dropped",
+      );
       assert.match(
         String(wordlessRow?.extra.mariWorkspaceContinuity),
         /Asked the user on a question card:\nWhich tone\? Options: Dark \(recommended\); Light/u,
@@ -1620,7 +1624,11 @@ try {
       askService,
     );
     await badPi.done;
-    assert.equal(existsSync(join(workspaceDir, "ask-invalid-pi.txt")), false, "pi: nothing runs beside an invalid card");
+    assert.equal(
+      existsSync(join(workspaceDir, "ask-invalid-pi.txt")),
+      false,
+      "pi: nothing runs beside an invalid card",
+    );
     const badClassic = await start(
       "ask invalid beside classic",
       [
@@ -1674,11 +1682,15 @@ try {
     assert.equal((await lastAssistant(noSay.chat.id))?.extra.mariQuestions !== undefined, true);
 
     // pi: a card she keeps getting wrong stops after three tries instead of paying for rounds up to the limit.
-    const stuck = () =>
-      reply("Which one?", [{ id: "ask-stuck", name: "ask", args: { questions: [badQuestion] } }]);
+    const stuck = () => reply("Which one?", [{ id: "ask-stuck", name: "ask", args: { questions: [badQuestion] } }]);
     const stuckRun = await start("ask stuck", [stuck(), stuck(), stuck()], "pi", askService);
     await stuckRun.done;
     assert.equal(requests.length, 3, "three invalid cards end the run");
+    // Same when the schema rejects the call before the tool runs.
+    const rejected = () => reply("Which one?", [{ id: "ask-rejected", name: "ask", args: {} }]);
+    const rejectedRun = await start("ask rejected", [rejected(), rejected(), rejected()], "pi", askService);
+    await rejectedRun.done;
+    assert.equal(requests.length, 3, "three schema-rejected cards end the run");
 
     // pi: an invalid `ask` is an error she can fix, not a silent end of the run.
     mode = "auto";

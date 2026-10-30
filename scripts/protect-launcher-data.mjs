@@ -347,6 +347,20 @@ export async function unshardLauncherStorage({
   const pick = await readLauncherEnv(root, env);
   if (probeServer) await assertNoRunningServer(pick);
   const storageDir = await resolveLauncherStorageDir({ root, env });
+  // Unsharding only converts chat files. Format 8 also protects MMD avatar settings that older
+  // builds cannot read; lowering its manifest would bypass the downgrade guard without converting them.
+  for (const filename of ["manifest.json", "manifest.json.bak"]) {
+    let version;
+    try {
+      version = JSON.parse(await readFile(resolve(storageDir, filename), "utf8"))?.version;
+    } catch {
+      continue;
+    }
+    if (typeof version === "number" && version >= 8)
+      throw new Error(
+        `Storage format ${version} contains data this command cannot convert. Restore a full pre-upgrade backup to use an older build. Nothing has been changed.`,
+      );
+  }
   const tablesDir = resolve(storageDir, "tables");
   const unshardSentinel = resolve(tablesDir, UNSHARD_SENTINEL);
   const resumingCrashedUnshard = await pathExists(unshardSentinel);

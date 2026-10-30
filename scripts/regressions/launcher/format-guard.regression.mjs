@@ -302,7 +302,14 @@ function gitFixtureRepo() {
   git("add", "storage-format.json");
   git("commit", "--quiet", "-m", "sharded build (format 3)");
   const shardedRef = git("rev-parse", "HEAD").trim();
-  return { repo, preShardingRef, shardedRef };
+  const formats = [];
+  for (const storageFormat of [7, 8]) {
+    writeFileSync(join(repo, "storage-format.json"), `${JSON.stringify({ storageFormat })}\n`);
+    git("add", "storage-format.json");
+    git("commit", "--quiet", "-m", `storage format ${storageFormat}`);
+    formats.push(git("rev-parse", "HEAD").trim());
+  }
+  return { repo, preShardingRef, shardedRef, formatSevenRef: formats[0], formatEightRef: formats[1] };
 }
 
 function storageFixture(manifestVersion) {
@@ -322,12 +329,24 @@ function storageFixture(manifestVersion) {
 }
 
 {
-  const { repo, preShardingRef, shardedRef } = gitFixtureRepo();
+  const { repo, preShardingRef, shardedRef, formatSevenRef, formatEightRef } = gitFixtureRepo();
   const formatThreeData = storageFixture(3);
   const formatTwoData = storageFixture(2);
   const freshData = storageFixture(null);
+  const formatEightData = storageFixture(8);
   const envFor = (dir) => ({ FILE_STORAGE_DIR: dir });
   try {
+    assert.deepEqual(
+      await checkTargetStorageFormat({ root: repo, env: envFor(formatEightData), targetRef: formatSevenRef }),
+      { compatible: false, verified: true, onDiskFormat: 8, targetFormat: 7 },
+      "the actual target guard rejects new MMD data on a released format-7 build",
+    );
+    assert.equal(
+      (await checkTargetStorageFormat({ root: repo, env: envFor(formatEightData), targetRef: formatEightRef }))
+        .compatible,
+      true,
+      "format-8 data remains usable on the current format",
+    );
     const blocked = await checkTargetStorageFormat({
       root: repo,
       env: envFor(formatThreeData),
@@ -407,7 +426,8 @@ function storageFixture(manifestVersion) {
       "a listed-but-unreadable storage-format.json is unverified, not misread as absent",
     );
   } finally {
-    for (const dir of [repo, formatThreeData, formatTwoData, freshData]) rmSync(dir, { recursive: true, force: true });
+    for (const dir of [repo, formatThreeData, formatTwoData, freshData, formatEightData])
+      rmSync(dir, { recursive: true, force: true });
   }
 }
 
@@ -450,14 +470,14 @@ function storageFixture(manifestVersion) {
 
 const row = (id, chatId, createdAt, content) => ({ id, chatId, role: "user", content, createdAt });
 
-function shardedStorageFixture() {
+function shardedStorageFixture(version = 3) {
   const dir = mkdtempSync(join(tmpdir(), "marinara-unshard-"));
   mkdirSync(join(dir, "tables", "messages"), { recursive: true });
   mkdirSync(join(dir, "tables", "message_swipes"), { recursive: true });
   writeFileSync(
     join(dir, "manifest.json"),
     JSON.stringify({
-      version: 3,
+      version,
       savedAt: "2026-08-08T00:00:00.000Z",
       backend: "file-native",
       tables: {},
@@ -465,6 +485,53 @@ function shardedStorageFixture() {
     }),
   );
   return dir;
+}
+
+// The chat-only conversion must not bypass the new avatar-format downgrade guard.
+for (const backupOnly of [false, true]) {
+  const dir = shardedStorageFixture(8);
+  const shard = join(dir, "tables", "messages", "untouched.json");
+  const originalRows = JSON.stringify([row("untouched", "chat8", "2026-10-30T00:00:00.000Z", "keep format8")]);
+  writeFileSync(shard, originalRows);
+  const manifest = join(dir, "manifest.json");
+  if (backupOnly) {
+    writeFileSync(`${manifest}.bak`, readFileSync(manifest));
+    rmSync(manifest);
+  }
+  const source = backupOnly ? `${manifest}.bak` : manifest;
+  const before = readFileSync(source, "utf8");
+  const paths = readdirSync(dir);
+  try {
+    await assert.rejects(
+      unshardLauncherStorage({ env: { FILE_STORAGE_DIR: dir }, probeServer: false }),
+      /pre-upgrade backup.*Nothing has been changed/u,
+    );
+    assert.equal(readFileSync(source, "utf8"), before, "a refused conversion keeps the format manifest byte-identical");
+    assert.deepEqual(readdirSync(dir), paths, "a refused conversion creates no new files");
+    assert.equal(readFileSync(shard, "utf8"), originalRows, "refusal leaves actual chat shards untouched");
+    assert.deepEqual(readdirSync(join(dir, "tables", "messages")), ["untouched.json"]);
+    assert(
+      !existsSync(join(dir, "tables", ".unshard-in-progress")),
+      "refusal happens before a conversion sentinel is written",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+{
+  const dir = shardedStorageFixture(7);
+  const shard = join(dir, "tables", "messages", "legacy7.json");
+  writeFileSync(shard, JSON.stringify([row("legacy7", "chat7", "2026-10-30T00:00:00.000Z", "keep format7")]));
+  try {
+    await unshardLauncherStorage({ env: { FILE_STORAGE_DIR: dir }, probeServer: false });
+    assert.equal(
+      JSON.parse(readFileSync(join(dir, "tables", "messages.json"), "utf8"))[0].content,
+      "keep format7",
+      "the pre-existing format-7 conversion still preserves chat rows",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 {

@@ -9,6 +9,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { useMatchMedia } from "../../../hooks/use-match-media";
+import { isMariEditorOpen } from "../../../hooks/use-mari-editor-fields";
 import {
   CHAT_VISUAL_VIEWPORT_CHANGE_EVENT,
   type ChatVisualViewportChangeDetail,
@@ -39,9 +40,9 @@ let sheetReleased = false;
 export function revealWaitingField(): boolean {
   const ui = useUIStore.getState();
   const field = ui.mariFieldReview?.mode === "waiting" ? ui.mariFieldReview.fields[0] : undefined;
-  if (!peekSheet || !field || ui.characterDetailId !== field.characterId) return false;
+  if (!peekSheet || !field || !isMariEditorOpen(field.entityId)) return false;
   peekSheet();
-  ui.revealMariField(field.characterId, field.fieldId);
+  ui.revealMariField(field.entityId, field.fieldId);
   return true;
 }
 

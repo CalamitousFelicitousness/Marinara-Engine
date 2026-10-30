@@ -130,12 +130,13 @@ import {
 import { resolveProfessorMariContextBudget } from "../../lib/professor-mari-context-budget";
 import {
   findMariField,
-  heldCharacterFields,
-  keptCharacterFields,
+  heldEditorFields,
+  isMariEditorKind,
+  keptEditorFields,
   mariFieldDraft,
   mariFieldText,
 } from "../../lib/mari-editor-fields";
-import { fieldLabel } from "../../lib/mari-edit-diff";
+import { mariFieldLabel } from "../../hooks/use-mari-editor-fields";
 import { rafThrottle } from "../../lib/raf-throttle";
 import {
   cachedMariThread,
@@ -2690,7 +2691,8 @@ export function HomeProfessorMariChat({
   const focusEditorField = (field: { id: string; label: string }) => {
     lastEditorFieldIdRef.current = field.id;
     setHandoffContext((current) => withCapturedEditorField(current, editorResource, field));
-    if (editorResource?.kind === "character") useUIStore.getState().revealMariField(editorResource.id, field.id);
+    if (editorResource && isMariEditorKind(editorResource.kind))
+      useUIStore.getState().revealMariField(editorResource.id, field.id);
   };
   const composerReferences = useMariComposerReferences({
     draft,
@@ -2822,7 +2824,7 @@ export function HomeProfessorMariChat({
     decline: (fieldId) => {
       const sent = canSend();
       void handleSubmit(
-        `${MARI_AUTHORIZATION_DECLINE_CHIP.prompt} Propose the change again without the ${fieldLabel(fieldId)} field.`,
+        `${MARI_AUTHORIZATION_DECLINE_CHIP.prompt} Propose the change again without the ${mariFieldLabel(fieldId)} field.`,
       );
       return sent;
     },
@@ -2839,7 +2841,7 @@ export function HomeProfessorMariChat({
     if (!message || message.role !== "assistant") return publish(null);
     const actions = () => fieldReviewActions.current!;
     if (pendingDeferredMutations) {
-      const fields = heldCharacterFields(lastLoadedMessageExtra?.mariHeldCalls);
+      const fields = heldEditorFields(lastLoadedMessageExtra?.mariHeldCalls);
       const total =
         lastLoadedMessageExtra?.mariHeldChanges?.reduce((sum, change) => sum + (change.fields?.length ?? 0), 0) ||
         fields.length;
@@ -2850,14 +2852,14 @@ export function HomeProfessorMariChat({
           fields,
           total,
           others: (lastLoadedMessageExtra?.mariHeldChanges ?? []).filter(
-            (change) => !fields.some((field) => field.characterId === change.id),
+            (change) => !fields.some((field) => field.entityId === change.id),
           ).length,
           keep: () => actions().keep(),
           decline: (fieldId) => actions().decline(fieldId),
         });
       }
     }
-    const kept = keptCharacterFields(latestActionResults, new Set(pendingChangeReviews.map(({ id }) => id)));
+    const kept = keptEditorFields(latestActionResults, pendingChangeReviews);
     if (kept.fields.length === 0) return publish(null);
     publish({
       mode: "kept",

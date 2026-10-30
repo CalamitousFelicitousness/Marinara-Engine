@@ -15,11 +15,7 @@ import { api, isPassiveStreamDisconnect } from "../../../lib/api-client";
 import { awaitMariPermissionsModeWrites } from "../../../lib/mari-permissions-write-chain";
 import { describeProfessorMariError } from "../../../lib/professor-mari-errors";
 import { RafThrottle, rafThrottle } from "../../../lib/raf-throttle";
-import {
-  MARI_REVIEW_FIELD_ORDER,
-  characterPatchFieldId,
-  mariWorkingFieldFromTool,
-} from "../../../lib/mari-editor-fields";
+import { mariPatchFieldId, reviewRank, mariWorkingFieldFromTool } from "../../../lib/mari-editor-fields";
 import { useChatStore } from "../../../stores/chat.store";
 import { shownMariAppearancePack, useUIStore } from "../../../stores/ui.store";
 import {
@@ -228,10 +224,10 @@ export function useMariWorkspaceRun({
             const characterId = typeof delta?.characterId === "string" ? delta.characterId : "";
             const fieldId =
               characterId && typeof delta?.field === "string" && typeof delta.text === "string"
-                ? characterPatchFieldId(delta.field)
+                ? mariPatchFieldId("character", delta.field)
                 : null;
             if (!delta) clearFieldStream();
-            else if (fieldId && (MARI_REVIEW_FIELD_ORDER as readonly string[]).includes(fieldId)) {
+            else if (fieldId && reviewRank("character", fieldId) >= 0) {
               const fields = fieldStream[characterId] ?? {};
               const before = delta.restart ? "" : (fields[fieldId] ?? "");
               fieldStream = { ...fieldStream, [characterId]: { ...fields, [fieldId]: before + String(delta.text) } };

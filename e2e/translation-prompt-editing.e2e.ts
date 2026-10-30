@@ -136,7 +136,7 @@ test("Translation prompt drafts keep the caret, clear normally, and save to thei
     await expect(incoming).toHaveValue("日本語の翻訳 {{targetLanguage}} 🧪");
     await incoming.dispatchEvent("compositionend", { data: "日本語の翻訳" });
     expect(writes.filter((write) => write.id === second.id)).toHaveLength(0);
-    await drawer.getByRole("button", { name: "Close Chat Settings", exact: true }).click();
+    await drawer.getByRole("button", { name: /^Close chat settings$/i }).click();
     await expect(drawer).toHaveCount(0);
     await expect
       .poll(async () => (await readMetadata(second.id)).translationOutputPrompt)

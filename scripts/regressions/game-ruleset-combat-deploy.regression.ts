@@ -272,6 +272,32 @@ try {
     assert.equal(new Set(keys).size, keys.length, "nobody onto anybody else");
     const dry = { width: 12, height: 6, tiles: Array.from({ length: 6 }, () => Array(12).fill("plains")) } as never;
     assert.deepEqual(rulesetWaterStarts(dry, placements, swimmers), placements, "no water, no change");
+    // A Large one takes a square of water wide enough for all of it (laptop 2026-10-30: Large crocodiles
+    // stayed on the shore), clear of the others in it.
+    const big = rulesetWaterStarts(grid, { ...placements, croc: { x: 10, y: 3 } }, [
+      ...swimmers.filter((one) => one.id !== "croc"),
+      { id: "croc", side: "enemy", walk: 20, swim: 30, span: 2 },
+    ]);
+    for (const [dx, dy] of [
+      [0, 0],
+      [1, 0],
+      [0, 1],
+      [1, 1],
+    ] as const)
+      assert.equal(
+        tiles[big.croc!.y + dy]![big.croc!.x + dx],
+        "water",
+        `all of it in water: ${JSON.stringify(big.croc)}`,
+      );
+    assert.ok(
+      !(
+        big.shark!.x >= big.croc!.x &&
+        big.shark!.x <= big.croc!.x + 1 &&
+        big.shark!.y >= big.croc!.y &&
+        big.shark!.y <= big.croc!.y + 1
+      ),
+      "not over the shark",
+    );
   }
 
   {

@@ -1796,13 +1796,14 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       laid.grid,
       rulesetStartPlacements(laid.grid, laid.placements, stands, places, nudged),
       encounter.combatants
-        .filter((one) => !one.object && !one.sheet)
+        .filter((one) => !one.object)
         .map((one) => ({
           id: one.id,
           side: one.side,
           walk: one.block?.speed ?? 0,
           swim: one.speeds?.swim,
           fly: one.speeds?.fly,
+          span: rulesetSpanOf(one),
         })),
     );
     if (JSON.stringify(placements) !== JSON.stringify(laid.placements))

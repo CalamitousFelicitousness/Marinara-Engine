@@ -92,26 +92,36 @@ function nearestOpen(target: Cell, open: Set<string>, held: Set<string>): Cell |
 export function rulesetWaterStarts(
   grid: TacticalGrid,
   placements: Record<string, Cell>,
-  swimmers: readonly { id: string; side: string; walk: number; swim?: number; fly?: number }[],
+  swimmers: readonly { id: string; side: string; walk: number; swim?: number; fly?: number; span?: number }[],
 ): Record<string, Cell> {
-  const water: Cell[] = [];
-  grid.tiles.forEach((row, y) =>
-    row.forEach((tile, x) => tile === "water" && !grid.outside?.[y]?.[x] && water.push({ x, y })),
-  );
-  if (water.length === 0) return placements;
+  const wet = (x: number, y: number) => grid.tiles[y]?.[x] === "water" && !grid.outside?.[y]?.[x];
+  if (!grid.tiles.some((row, y) => row.some((_, x) => wet(x, y)))) return placements;
   const next = { ...placements };
+  const spanOf = (id: string) => Math.max(1, Math.min(6, swimmers.find((one) => one.id === id)?.span ?? 1));
+  // Every cell somebody stands on, a large one's whole square (laptop 2026-10-30: Large crocodiles
+  // were left on the shore).
+  const footprint = (at: Cell, span: number) =>
+    Array.from({ length: span * span }, (_, i) => ({ x: at.x + (i % span), y: at.y + Math.floor(i / span) }));
   const key = (cell: Cell) => `${cell.x},${cell.y}`;
-  const taken = new Set(Object.values(next).map(key));
+  const taken = new Set(Object.entries(next).flatMap(([id, at]) => footprint(at, spanOf(id)).map(key)));
   for (const one of swimmers) {
     if (one.side === "party" || !one.swim || one.fly || one.walk > one.swim) continue;
     const at = next[one.id];
-    if (!at || grid.tiles[at.y]?.[at.x] === "water") continue;
-    const free = water.filter((cell) => !taken.has(key(cell)));
-    if (free.length === 0) break;
-    const far = (cell: Cell) => (cell.x - at.x) ** 2 + (cell.y - at.y) ** 2;
-    const best = free.reduce((a, b) => (far(b) < far(a) ? b : a));
-    taken.delete(key(at));
-    taken.add(key(best));
+    const span = spanOf(one.id);
+    if (!at || footprint(at, span).every((cell) => wet(cell.x, cell.y))) continue;
+    const own = new Set(footprint(at, span).map(key));
+    let best: Cell | undefined;
+    let bestFar = Infinity;
+    for (let y = 0; y + span <= grid.height; y++)
+      for (let x = 0; x + span <= grid.width; x++) {
+        const cells = footprint({ x, y }, span);
+        if (!cells.every((cell) => wet(cell.x, cell.y) && (!taken.has(key(cell)) || own.has(key(cell))))) continue;
+        const far = (x - at.x) ** 2 + (y - at.y) ** 2;
+        if (far < bestFar) [best, bestFar] = [{ x, y }, far];
+      }
+    if (!best) continue;
+    for (const cell of own) taken.delete(cell);
+    for (const cell of footprint(best, span)) taken.add(key(cell));
     next[one.id] = best;
   }
   return next;

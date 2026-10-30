@@ -81,6 +81,9 @@ import {
   loadSkillCheckModifierContext,
   resolveSkillCheckWithContext,
   rulesetCheckRollerRefused,
+  rulesetGroupCheckRollers,
+  resolveRulesetGroupCheck,
+  serializeRulesetGroupCheck,
   rulesetRefusesUntrained,
   takeIssuedD20s,
   type SkillCheckModifierContext,
@@ -361,6 +364,8 @@ export async function resolveGameTurnBranches(
   const edits: GameBranchEdit[] = [];
   for (const plan of plans) {
     let result: SkillCheckResult | null = null;
+    // Which half happened: one roller's success, or the whole party's in a group check.
+    let outcome: boolean | null = null;
     let refusal = plan.refusal;
     if (plan.check && context) {
       const definition = context.ruleset?.definition;
@@ -379,8 +384,25 @@ export async function resolveGameTurnBranches(
       if (inferredWho) asked = { ...asked, who: inferredWho };
       const request = readRulesetDifficulty(asked, definition);
       // Only a named difficulty is read here; a check that wrote its own number was bounded above.
+      const groupRollers = context.ruleset ? rulesetGroupCheckRollers(context.ruleset, request.who) : undefined;
       if (plan.check.request.dc === undefined && !isResolvableSkillCheckRequest(request, definition)) {
         refusal = "unrollable-check";
+      } else if (groupRollers) {
+        // Everyone in the party rolls, and the half is the party's: at least half of them passed.
+        const group = resolveRulesetGroupCheck(context, request, groupRollers, () => session.roll(20));
+        outcome = group.success;
+        for (const one of group.results) {
+          if (session.issuedD20s && one.resolution === "sum") session.issuedD20s.push(...one.rolls);
+        }
+        edits.push({
+          start: plan.check.start,
+          end: plan.check.end,
+          replacement: serializeRulesetGroupCheck(request, group, {
+            ...(request.difficulty ? { difficulty: request.difficulty } : {}),
+            ...(request.withAbility ? { with: request.withAbility } : {}),
+            ...(request.purpose ? { for: request.purpose } : {}),
+          }),
+        });
       } else if (
         context.ruleset &&
         (rulesetCheckRollerRefused(context.ruleset, request.who) || rulesetRefusesUntrained(context.ruleset, request))
@@ -417,6 +439,7 @@ export async function resolveGameTurnBranches(
         });
       } else {
         result = resolveSkillCheckWithContext(context, request, () => session.roll(20));
+        outcome = result.success;
         // The record this writes is the Engine's own, so the tag pass after this one must vouch for it.
         if (session.issuedD20s && result.resolution === "sum") session.issuedD20s.push(...result.rolls);
         edits.push({
@@ -427,7 +450,7 @@ export async function resolveGameTurnBranches(
       }
     }
 
-    const half = refusal === null && result ? selectGameBranchHalf(plan.block, result.success) : null;
+    const half = refusal === null && outcome !== null ? selectGameBranchHalf(plan.block, outcome) : null;
     if (half) {
       edits.push({ start: plan.block.start, end: plan.block.end, replacement: half.text });
       session.ledger.push({ stage: "branch", outcome: "resolved", span: plan.block.raw.slice(0, LOGGED_SPAN_MAX) });
@@ -447,7 +470,7 @@ export async function resolveGameTurnBranches(
       session.chatId,
       plan.block.raw.slice(0, LOGGED_SPAN_MAX),
       BRANCH_REFUSAL_REASONS[refusal ?? "unmatched-label"],
-      result ? " the check was still rolled and recorded" : "",
+      outcome !== null ? " the check was still rolled and recorded" : "",
     );
   }
 

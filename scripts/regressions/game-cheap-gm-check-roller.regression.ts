@@ -12,6 +12,9 @@
  * - Where nobody is the player's own and several could roll, a check naming nobody is rolled for the
  *   member the narration gives it to, and refused when the narration names nobody.
  * - The one-request branch arm refuses the same checks, keeping neither half.
+ * - Alyssa 2026-10-30: `who="party"` (or "everyone", "the whole party") is a group check. Every member
+ *   rolls on their own sheet, each gets their own record, and the party succeeds when at least half
+ *   pass; a branch keeps the party's half.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -95,8 +98,8 @@ try {
     assert.equal(npc.unknownRoller, undefined);
   }
 
-  // ── Several, half a name, or the party: refused, not a flat die ──
-  for (const who of ["Pip", "Pip Thimblewick", "Mars Hollow", "party", "the whole party", "Everyone"]) {
+  // ── Several or half a name: refused, not a flat die ──
+  for (const who of ["Pip", "Pip Thimblewick", "Mars Hollow"]) {
     const refused = await run(`She tries. [skill_check: skill="Stealth" dc="12" who="${who}"]`, []);
     assert.equal(
       refused.content,
@@ -120,6 +123,30 @@ try {
   assert.equal(
     checkRecordsAsHistoryNotes(forged.content),
     `(Engine: Stealth check not rolled: "Pip" does not name one party member.)`,
+  );
+
+  // ── The whole party: a group check, everyone on their own sheet ──
+  for (const who of ["party", "the whole party", "Everyone"]) {
+    // Mars +5, Dagna +0, Pip Wren +2, Pip Hollow -1 against 12: 15, 10, 12, 9.
+    const group = await run(`They creep on. [skill_check: skill="Stealth" dc="12" who="${who}"]`, [10, 10, 10, 10]);
+    const records = [...group.content.matchAll(/\[skill_check:[^\]]*\]/g)].map((match) => match[0]);
+    assert.equal(records.length, 4, `who="${who}": one record each`);
+    assert.match(records[0]!, /total="15" result="success"[^\]]*who=.Marigold/);
+    assert.match(records[1]!, /total="10" result="failure"[^\]]*who="Dagna Ironhand"/);
+    assert.match(records[2]!, /total="12" result="success"[^\]]*who="Pip Wren"/);
+    assert.match(records[3]!, /total="9" result="failure"[^\]]*who="Pip Hollow"/);
+    assert.ok(group.content.endsWith(`(Group Stealth check against 12: 2 of 4 passed, so the party succeeds.)`));
+    assert.equal(group.unknownRoller, undefined);
+    assert.equal(group.results?.length, 4);
+    // Settled: read again, nothing is rolled.
+    assert.equal((await run(group.content, [])).content, group.content);
+  }
+  const caught = await run(`[skill_check: skill="Stealth" dc="12" who="party"]`, [10, 5, 5, 5]);
+  assert.ok(caught.content.endsWith(`(Group Stealth check against 12: 1 of 4 passed, so the party fails.)`));
+  assert.equal(
+    checkRecordsAsHistoryNotes(caught.content).match(/\(Engine roll for /g)?.length,
+    4,
+    "each member's roll reads back as their own",
   );
 
   // ── Naming nobody ──
@@ -186,6 +213,26 @@ try {
     );
     assert.match(rolled.content, /modifier="5" total="15" result="success"/);
     assert.match(rolled.content, /Unseen\./);
+    // A group check keeps the party's half.
+    const together = await resolveGameTurnBranches(
+      [
+        `[skill_check: skill="Stealth" dc="12" who="party" branch="sneak"]`,
+        "[branch: sneak]",
+        "[on success] Unseen.",
+        "[on failure] Spotted.",
+        "[/branch]",
+      ].join("\n"),
+      createGameTurnChanceSession({
+        db: null as never,
+        chatId: "cheap-gm-roller",
+        roll: scripted([10, 5, 5, 5]),
+        loadModifierContext: async () => owned,
+        playerD20s: [],
+      }),
+    );
+    assert.match(together.content, /1 of 4 passed, so the party fails\.\)/);
+    assert.match(together.content, /Spotted\./);
+    assert.doesNotMatch(together.content, /Unseen/);
   }
 
   // ── The brief says so, in a line ──
@@ -193,7 +240,7 @@ try {
     const reminder = buildGmFormatReminder({ hasSceneModel: true, ruleset: fiveE } as never);
     assert.match(
       reminder,
-      /A who that could be several party members, or the party, is not rolled; anyone outside the party rolls a plain die\./,
+      /A who that could be several party members is not rolled; anyone outside the party rolls a plain die\. For something the whole party does together[^.]*\), write who="party": everyone rolls, and the party succeeds when at least half of them pass\./,
     );
   }
 

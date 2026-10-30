@@ -1595,6 +1595,84 @@ export function rulesetCheckRollerRefused(ruleset: SkillCheckRulesetContext, who
   return !!ruleset.playerByPosition && ruleset.sheets.size >= 2;
 }
 
+/** Words beside the party's own that a group check may also use: "the whole party", "the entire group". */
+const GROUP_CHECK_WORDS: ReadonlySet<string> = new Set([...WHOLE_PARTY_WORDS, "whole", "all", "entire", "group", "us"]);
+
+/**
+ * The party members a group check rolls for (Alyssa 2026-10-30), in party order. A ruleset check
+ * whose `who=` names the whole party ("party", "everyone", "the whole party") is everyone's, each
+ * on their own sheet, and the party succeeds when at least half of them do. Undefined for any other
+ * `who=`, and in a game with no party cards.
+ */
+export function rulesetGroupCheckRollers(ruleset: SkillCheckRulesetContext, who?: string): string[] | undefined {
+  if (ruleset.sheets.size === 0 || !who?.trim()) return undefined;
+  const words = normalizeCharacterLookupName(who)
+    .split(" ")
+    .filter((word) => word.length >= 2 && !CHARACTER_NAME_PARTICLES.has(word));
+  if (!words.some((word) => WHOLE_PARTY_WORDS.has(word)) || !words.every((word) => GROUP_CHECK_WORDS.has(word))) {
+    return undefined;
+  }
+  return [...ruleset.sheets.keys()].map((key) => ruleset.names?.get(key) ?? key);
+}
+
+/** A group check rolled: each member's own result, who could not attempt it, and the party's outcome. */
+export interface RulesetGroupCheck {
+  results: SkillCheckResult[];
+  /** Members the ruleset does not let attempt it untrained. Each counts as a failure. */
+  untrained: string[];
+  passed: number;
+  success: boolean;
+}
+
+/**
+ * Roll a group check: every member rolls on their own sheet, and the party succeeds when at least
+ * half of them pass, as the 5e SRD's group check does. Nothing a single roller brought is shared: no
+ * die the player threw and no purchase is spent on everyone's roll.
+ */
+export function resolveRulesetGroupCheck(
+  context: SkillCheckModifierContext,
+  request: SkillCheckRequest,
+  members: readonly string[],
+  rollD20?: () => number,
+): RulesetGroupCheck {
+  const { preRolledD20: _die, spend: _spend, ...shared } = request;
+  const results: SkillCheckResult[] = [];
+  const untrained: string[] = [];
+  for (const member of members) {
+    const one = { ...shared, who: member };
+    if (context.ruleset && rulesetRefusesUntrained(context.ruleset, one)) untrained.push(member);
+    else results.push(resolveSkillCheckWithContext(context, one, rollD20));
+  }
+  const passed = results.filter((result) => result.success).length;
+  return { results, untrained, passed, success: members.length > 0 && passed * 2 >= members.length };
+}
+
+/** The visible line that says how a group check came out for the whole party. */
+export function rulesetGroupCheckLine(request: SkillCheckRequest, group: RulesetGroupCheck): string {
+  const count = group.results.length + group.untrained.length;
+  const against = request.dc !== undefined ? ` against ${request.dc}` : "";
+  return `(Group ${request.skill} check${against}: ${group.passed} of ${count} passed, so the party ${group.success ? "succeeds" : "fails"}.)`;
+}
+
+/** A group check as it is saved: each member's own record (an untrained one's ask with its reason),
+ *  then the line with the party's outcome. */
+export function serializeRulesetGroupCheck(
+  request: SkillCheckRequest,
+  group: RulesetGroupCheck,
+  extras?: Parameters<typeof serializeSparseSkillCheckTag>[1],
+): string {
+  const records = group.results.map((result) => serializeResolvedSkillCheckTag(result));
+  for (const member of group.untrained) {
+    records.push(
+      serializeSparseSkillCheckTag(
+        { skill: request.skill, dc: request.dc, advantage: request.advantage, disadvantage: request.disadvantage },
+        { ...(extras ?? {}), who: member, reason: "untrained" },
+      ),
+    );
+  }
+  return `${records.join(" ")} ${rulesetGroupCheckLine(request, group)}`;
+}
+
 /**
  * The d20 faces a check record written into this turn may stand on. In a ruleset game, only the
  * player's own and the ones a branch check rolled: the Game Master is told never to roll a check
@@ -2287,13 +2365,20 @@ export async function resolveSkillCheckTagsInContent(
         // The numbers must be the sheet's, and the dice somebody else's: the player's, or the Engine's.
         // A check with no one party member to roll it is refused below, whatever it carries: a flat die
         // is not the roll the story asked of a hero.
+        // A check the whole party makes is rolled for each of them below, whatever it carries.
+        const group =
+          !!ruleset &&
+          isRulesetRollableSkillCheckTag(tag, ruleset.definition) &&
+          !!rulesetGroupCheckRollers(ruleset, tag.who);
         const noRoller =
           !!ruleset &&
+          !group &&
           isRulesetRollableSkillCheckTag(tag, ruleset.definition) &&
           rulesetCheckRollerRefused(ruleset, tag.who);
         const vouched =
           !!ruleset &&
           !noRoller &&
+          !group &&
           rulesetVouchesFor(ruleset, tag) &&
           (!issued || takeIssuedD20s(issued, tag.resolvedResult!.rolls));
         const owesRoll = ruleset
@@ -2301,7 +2386,7 @@ export async function resolveSkillCheckTagsInContent(
           : !tag.resolvedResult && isEngineRollableSkillCheckTag(tag);
         // A check the character cannot attempt untrained is refused below whatever it carries: no
         // numbers, dice or difficulty the Game Master wrote on it gets it past the sheet.
-        const refused = !!ruleset && rulesetRefusesUntrained(ruleset, request);
+        const refused = !!ruleset && !group && rulesetRefusesUntrained(ruleset, request);
         if (noRoller || refused || (owesRoll && isResolvableSkillCheckRequest(request, ruleset?.definition))) {
           pending.push({ start: entry.start, end: entry.end, request, tag });
         } else if ((owesRoll || claimsNoRoll) && tag.resolvedResult) {
@@ -2376,7 +2461,14 @@ export async function resolveSkillCheckTagsInContent(
           entry.tag = { ...entry.tag, who: inferred };
         }
       }
-      if (context.ruleset && rulesetCheckRollerRefused(context.ruleset, request.who)) {
+      const groupRollers = context.ruleset ? rulesetGroupCheckRollers(context.ruleset, request.who) : undefined;
+      if (groupRollers && request.dc !== undefined) {
+        const group = resolveRulesetGroupCheck(context, request, groupRollers, options.rollD20);
+        results.push(...group.results);
+        const { who: _party, ...extras } = askExtras(entry.tag) ?? {};
+        return serializeRulesetGroupCheck(request, group, extras);
+      }
+      if (!groupRollers && context.ruleset && rulesetCheckRollerRefused(context.ruleset, request.who)) {
         unknownRoller.push(request.who?.trim() ?? "");
         return serializeSparseSkillCheckTag(
           {

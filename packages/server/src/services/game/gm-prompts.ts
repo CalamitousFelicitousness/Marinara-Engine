@@ -1001,8 +1001,8 @@ function renderRulesetKindCheckLine(
     : [];
   // With no character of their own, a check without a roller would be rolled off a blank sheet.
   const whoClause = playerIsParty
-    ? `Always add who="Character Name" naming the party member who rolls: the player has no character of their own. That is the one doing it, whose player wrote that action. A who that could be several party members, or the party, is not rolled; anyone outside the party rolls a plain die.`
-    : `Add who="Character Name" to roll for a party member; without it the player is checked. A who that could be several party members, or the party, is not rolled; anyone outside the party rolls a plain die.`;
+    ? `Always add who="Character Name" naming the party member who rolls: the player has no character of their own. That is the one doing it, whose player wrote that action. A who that could be several party members is not rolled; anyone outside the party rolls a plain die. For something the whole party does together (sneaking past as a group, climbing as a group), write who="party": everyone rolls, and the party succeeds when at least half of them pass.`
+    : `Add who="Character Name" to roll for a party member; without it the player is checked. A who that could be several party members is not rolled; anyone outside the party rolls a plain die. For something the whole party does together (sneaking past as a group, climbing as a group), write who="party": everyone rolls, and the party succeeds when at least half of them pass.`;
   // Every ruleset has a ladder, so every ruleset can be asked for a step by name.
   const difficultyClause = `Or name a step with difficulty="Label" in place of dc.`;
   // What having no training does, named by the section that says it or the skill or save that says

@@ -2264,8 +2264,9 @@ export function HomeProfessorMariChat({
     setWorkspaceRunClock,
     setWorkspaceTimeline,
   });
+  const attachmentReads = useRef(0);
   const handleAttachmentUpload = useCallback(
-    async (files: FileList | null) => {
+    async (files: FileList | readonly File[] | null) => {
       const acceptedFiles = Array.from(files ?? []).filter((file) => {
         if (file.size > PROFESSOR_MARI_ATTACHMENT_MAX_BYTES) {
           toast.error(localizeUi("ui.chat.homeprofessormarichat.value1IsTooLargeMax20Mb", { value1: file.name }));
@@ -2283,6 +2284,7 @@ export function HomeProfessorMariChat({
       });
       if (acceptedFiles.length === 0) return;
 
+      attachmentReads.current += 1;
       setIsReadingAttachments(true);
       const prepared: ProfessorMariAttachment[] = [];
       try {
@@ -2318,7 +2320,9 @@ export function HomeProfessorMariChat({
             }),
           );
         }
-        setIsReadingAttachments(false);
+        // Two quick pastes read at once; Send stays off until the last one is done.
+        attachmentReads.current -= 1;
+        if (attachmentReads.current === 0) setIsReadingAttachments(false);
       }
     },
     [localizeUi],

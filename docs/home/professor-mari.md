@@ -124,7 +124,7 @@ The same commands can be typed with `/`, as described in [Commands with /](#comm
 
 Choose **Attach files or photos** in the paperclip menu, or type `/attach`, to add a file to your message.
 
-She accepts images, PDF files, and common text files such as `.txt`, `.md`, `.json`, `.csv`, and `.log`. Each file can be up to 20 MB. Attached files show as removable chips above the message box before you send.
+She accepts images, PDF files, and common text files such as `.txt`, `.md`, `.json`, `.csv`, and `.log`. Each file can be up to 20 MB. Attached files show as removable chips above the message box before you send. You can also paste a screenshot or a copied file straight into the message box, with **Ctrl+V** or your phone's paste.
 
 To have her read an image, your selected connection's model must support image input.
 

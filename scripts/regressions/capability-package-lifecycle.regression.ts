@@ -235,6 +235,7 @@ try {
     [388, "host-only services"],
     [389, "hide messages from the AI"],
     [390, "let the Engine draw an agent page header"],
+    [391, "Advanced Memory scene summaries and the memory block"],
   ];
   for (const [minor, label] of supportedMinors) {
     assert.equal(

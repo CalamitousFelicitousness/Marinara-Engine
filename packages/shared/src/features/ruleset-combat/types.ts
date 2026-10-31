@@ -4668,6 +4668,8 @@ export interface RulesetCombatOption {
     label: string;
     targets: number;
     forecast?: { hitChance?: number; averageDamage?: number };
+    /** The one of what it puts on this mode picks (1.447), so the menu offers no "as it is". */
+    appliesPick?: number;
   }>;
   /** Where the `move` option may go, with what each cell costs of the allowance and who a path to
    *  it would be struck at by. */

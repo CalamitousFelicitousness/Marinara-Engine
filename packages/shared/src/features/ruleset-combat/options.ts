@@ -4208,7 +4208,13 @@ function optionFrom(
       if (mode.call?.onlyWhere && !rulesetCallWhereHolds(definition, actor, state, mode.call.onlyWhere)) return [];
       const expected = forecastFor(definition, combat, state, actor, moded);
       return [
-        { id: mode.id, label: mode.label, targets: moded.targets.count, ...(expected ? { forecast: expected } : {}) },
+        {
+          id: mode.id,
+          label: mode.label,
+          targets: moded.targets.count,
+          ...(expected ? { forecast: expected } : {}),
+          ...(mode.appliesPick !== undefined ? { appliesPick: mode.appliesPick } : {}),
+        },
       ];
     });
     if (modes.length > 0) option.modes = modes;

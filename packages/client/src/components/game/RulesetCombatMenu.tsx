@@ -804,6 +804,9 @@ export function RulesetCombatMenu({
     if (step && modes.length > 0) {
       const option = step.option;
       const plain = rulesetOptionForecastText(option, t);
+      // One that puts on one of several (1.447) has no "as it is": one of them is picked (playtest
+      // 2026-10-31, Bestow Curse).
+      const pickOnly = modes.every((mode) => mode.appliesPick !== undefined);
       // A long list is searched, and the ones that hit hardest come first.
       const searchable = modes.length > RULESET_MODE_SEARCH_FROM;
       const query = modeQuery.trim().toLowerCase();
@@ -835,21 +838,24 @@ export function RulesetCombatMenu({
             role="group"
             aria-labelledby="ruleset-mode-prompt"
           >
-            <button
-              ref={first}
-              type="button"
-              disabled={busy}
-              onClick={() => afterMode(option, step.style)}
-              className={cn(buttonClass, `${ink.border} ${ink.fill} ${ink.body} ${ink.hover}`)}
-            >
-              <span className={`block font-semibold ${ink.strong}`}>{t("game.combat.ruleset.mode.plain")}</span>
-              {plain && <span className={`block text-[0.65rem] ${ink.faint}`}>{plain}</span>}
-            </button>
-            {shown.map((mode) => {
+            {!pickOnly && (
+              <button
+                ref={first}
+                type="button"
+                disabled={busy}
+                onClick={() => afterMode(option, step.style)}
+                className={cn(buttonClass, `${ink.border} ${ink.fill} ${ink.body} ${ink.hover}`)}
+              >
+                <span className={`block font-semibold ${ink.strong}`}>{t("game.combat.ruleset.mode.plain")}</span>
+                {plain && <span className={`block text-[0.65rem] ${ink.faint}`}>{plain}</span>}
+              </button>
+            )}
+            {shown.map((mode, place) => {
               const forecast = rulesetModeText(option, mode, t);
               return (
                 <button
                   key={mode.id}
+                  ref={pickOnly && place === 0 ? first : undefined}
                   type="button"
                   disabled={busy}
                   onClick={() => afterMode(option, step.style, mode.id)}

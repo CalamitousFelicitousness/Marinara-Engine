@@ -216902,6 +216902,11 @@
                             "additionalProperties": false
                           }
                         },
+                        "toHit": {
+                          "type": "integer",
+                          "minimum": -20,
+                          "maximum": 20
+                        },
                         "spentOnUse": {
                           "type": "boolean",
                           "const": true

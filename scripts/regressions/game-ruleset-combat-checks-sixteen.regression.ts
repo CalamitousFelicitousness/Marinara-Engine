@@ -1,5 +1,5 @@
 /**
- * Up to 16 combat checks (Capability API 1.685): 5e's thieves' tools beside its skills.
+ * Up to 16 combat checks (Capability API 1.686): 5e's thieves' tools beside its skills.
  *
  *   - Sixteen parse; seventeen are refused.
  *   - The install gate, at more than twelve.
@@ -18,7 +18,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 685);
+  assert.ok(supportedCapabilityApi.minor >= 686);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -41,7 +41,7 @@ try {
   assert.equal(seventeen.ok, false, "seventeen is too many");
 
   {
-    const gate = "A ruleset with more than 12 combat checks requires schemaVersion 2 and capabilityApi 1.685 or newer";
+    const gate = "A ruleset with more than 12 combat checks requires schemaVersion 2 and capabilityApi 1.686 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -55,12 +55,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(684) as never, withChecks(13)), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(684) as never, withChecks(12)), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(685) as never, withChecks(16)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(685) as never, withChecks(13)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(685) as never, withChecks(12)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(686) as never, withChecks(16)), gate);
   }
 
-  console.log("Sixteen combat checks: parsed, seventeen refused; more than twelve gated at 1.685.");
+  console.log("Sixteen combat checks: parsed, seventeen refused; more than twelve gated at 1.686.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

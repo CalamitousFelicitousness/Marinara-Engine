@@ -199,7 +199,7 @@ const directedCombatantFields = z.object({
   inLair: z.boolean().optional(),
   /** Where the Game Master starts it on the board (2026-10-24): read by a ruleset fight only. */
   start: z.enum(COMBAT_START_PLACES).optional().catch(undefined),
-  /** What it set up before the fight, standing as it begins (1.461): read by a ruleset fight only. */
+  /** What it set up before the fight, standing as it begins (1.462): read by a ruleset fight only. */
   standing: z
     .array(
       z
@@ -268,7 +268,7 @@ const rulesetOpponentSchema = directedCombatantFields
     /** A stat block in the shared creature form. Checked when the fight is built, so a malformed
      *  one costs its opponent its proposal rather than costing the whole battle. */
     proposed: z.unknown().optional(),
-    /** What the Game Master gave it to have on it (1.794): the ruleset's items, one a line, by name
+    /** What the Game Master gave it to have on it (1.795): the ruleset's items, one a line, by name
      *  or reference; read when the fight is built, and one it has no such item of is told. */
     carrying: z.array(z.string().min(1).max(200)).max(16).optional(),
   })
@@ -341,26 +341,26 @@ const command = z.discriminatedUnion("type", [
     also: z.array(coord).max(9).optional(),
     /** A wall's section struck at instead of a creature (1.200), checked by the resolver. */
     wall: coord.optional(),
-    /** A lasting area ended instead of a creature (1.426), checked by the resolver. */
+    /** A lasting area ended instead of a creature (1.427), checked by the resolver. */
     dispel: z.object({ casterId: key, actionId: key }).strict().optional(),
-    /** A condition struck at to cut it away (1.530), checked against the menu by the resolver. */
+    /** A condition struck at to cut it away (1.531), checked against the menu by the resolver. */
     cut: z.object({ holderId: key, condition: key }).strict().optional(),
-    /** Which of its target's conditions it ends (1.426), checked by the resolver. */
+    /** Which of its target's conditions it ends (1.427), checked by the resolver. */
     ends: z.array(key).max(16).optional(),
     /** Who goes along on a teleport (1.276), checked against the menu by the resolver. */
     carries: z.array(key).max(8).optional(),
-    /** Whom a layered wall spares (1.491), checked against the menu by the resolver. */
+    /** Whom a layered wall spares (1.492), checked against the menu by the resolver. */
     designates: z.array(key).max(20).optional(),
-    /** The kinds its zone strikes (1.752), checked against the menu by the resolver. */
+    /** The kinds its zone strikes (1.753), checked against the menu by the resolver. */
     kinds: z.array(key).max(40).optional(),
-    /** Stored instead of done (1.523), in a place the menu offers, checked by the resolver. */
+    /** Stored instead of done (1.524), in a place the menu offers, checked by the resolver. */
     storesIn: z
       .object({ holderId: key, item: z.number().int().min(0).max(500).optional() })
       .strict()
       .optional(),
     /** How many uses it spends (1.251), checked against the menu by the resolver. */
     amount: z.number().int().min(1).max(1000).optional(),
-    /** How many levels up a target moved to `to` is lifted (1.564), checked by the resolver. */
+    /** How many levels up a target moved to `to` is lifted (1.565), checked by the resolver. */
     rises: z.number().int().min(0).max(100).optional(),
     /** The alterations it is used with (1.253), checked against the action by the resolver. */
     alters: z.array(z.string().min(1).max(200)).max(8).optional(),
@@ -912,7 +912,7 @@ export async function combatDirectorRoutes(
             tables: fallen.flatMap((enemy) => s.rulesetFight?.lootTables?.[enemy.id] ?? []),
             defeated: fallen.length,
             difficulty: s.difficulty,
-            // What the beaten still had on them (1.794); one that ran took its along.
+            // What the beaten still had on them (1.795); one that ran took its along.
             // Its coins too (laptop playtest 2026-10-25: a thief's stolen 9 gp never came back).
             carried: (encounter?.combatants ?? []).flatMap((combatant) =>
               combatant.side === "enemy" && combatant.defeated && !combatant.away?.left
@@ -973,7 +973,7 @@ export async function combatDirectorRoutes(
               throw new Error("Inventory changed. Reload the battle.");
             return { stacks: outcome.stacks, journal: outcome.journal, value: null };
           });
-        // What was used and is drawn as it is used (1.807) is put on, as a free swap: past what nothing
+        // What was used and is drawn as it is used (1.808) is put on, as a free swap: past what nothing
         // may be put away for, the step is refused, as the fight offered it only while it could be drawn.
         const draws = Object.entries(s.itemDraws ?? {}).flatMap(([name, count]) =>
           count > (previous.state.itemDraws?.[name] ?? 0)
@@ -1220,7 +1220,7 @@ export async function combatDirectorRoutes(
         // A ruleset's fight is on a board only when the game asks for one and the ruleset says what a cell
         // is worth; the ruleset is read once, here.
         const resolved = input.style === "ruleset" ? resolveGameRuleset(meta, await loadRulesetRegistry()) : null;
-        // Who plays the other side (1.773), read off the game's ruleset whatever style resolves the fight.
+        // Who plays the other side (1.774), read off the game's ruleset whatever style resolves the fight.
         const rules = resolved ?? (meta.gameRuleset ? resolveGameRuleset(meta, await loadRulesetRegistry()) : null);
         const opposition = rules?.status === "ok" ? rules.definition.gm.opposition : undefined;
         const here =
@@ -1290,7 +1290,7 @@ export async function combatDirectorRoutes(
           gmNamed: setup.gmBossControl === true && setup.gmNamedControl === true,
           // A cruel opponent may strike the fallen only where the game allows it (combat AI T3).
           cruel: setup.cruelOpponents === true,
-          // Every opponent, where the game's ruleset gives the Game Master the opposition (1.773).
+          // Every opponent, where the game's ruleset gives the Game Master the opposition (1.774).
           gmAll: setup.gmBossControl === true && opposition === "game-master",
           difficulty: normalizeGameDifficulty(setup.difficulty),
           weather: resolveCombatWeather(
@@ -1508,7 +1508,7 @@ export async function combatDirectorRoutes(
             live: parseStoredRulesetLive(liveRow?.rulesetLive),
             // What each member holds as the fight starts, when the ruleset's sheet reads items.
             ...(fightItems ? { items: fightItems, holders: rulesetCardHolder(cardNames, persona?.name ?? null) } : {}),
-            // The ruleset's items, for what its opponents have on them (1.794).
+            // The ruleset's items, for what its opponents have on them (1.795).
             ...(itemBook ? { itemBook } : {}),
             partyCatalogs: await loadFightCatalogs(resolved.packageId, definition, (c) => partyLists.has(c.id)),
             bestiary: await loadBestiary(
@@ -1527,14 +1527,14 @@ export async function combatDirectorRoutes(
             surprised: [...input.party, ...input.enemies].flatMap((one) => (one.surprised ? [one.id] : [])),
             // Who fights in its own lair (1.315).
             inLair: input.enemies.flatMap((one) => (one.inLair ? [one.id] : [])),
-            // What was set up before it, standing as it begins (1.461).
+            // What was set up before it, standing as it begins (1.462).
             standing: [...input.party, ...input.enemies].flatMap((one) =>
               (one.standing ?? []).map((entry) => ({ casterId: one.id, ...entry })),
             ),
             ...(heldGround ? { heldGround } : {}),
             // The scene's time of day, for the light it is fought in (1.291).
             time: liveRow?.time ?? null,
-            // The ruleset's encounter budget (1.802), for a fight the Game Master made up: a story's
+            // The ruleset's encounter budget (1.803), for a fight the Game Master made up: a story's
             // fight is its author's, and one that comes back is as it was.
             ...(storyFight
               ? {}

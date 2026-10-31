@@ -117,7 +117,7 @@ export function rulesetOptionNeedsAim(option: DirectedRulesetOption): boolean {
   return !!option.area || (option.teleport?.cells.length ?? 0) > 0;
 }
 
-/** Where an option that moves its target may set that target down (1.564), once it is picked. */
+/** Where an option that moves its target may set that target down (1.565), once it is picked. */
 export function rulesetCarryCells(option: DirectedRulesetOption, targets: readonly string[]): RulesetCombatCell[] {
   const target = targets[0];
   return target !== undefined ? (option.movesTarget?.cells[target] ?? []) : [];
@@ -142,19 +142,19 @@ export interface RulesetAimChoice {
 export type RulesetCellChoice = {
   to?: RulesetCombatCell;
   wall?: RulesetCombatCell;
-  /** A lasting area ended instead of a creature (1.426). */
+  /** A lasting area ended instead of a creature (1.427). */
   dispel?: { casterId: string; actionId: string };
-  /** A condition struck at to cut it away (1.530). */
+  /** A condition struck at to cut it away (1.531). */
   cut?: { holderId: string; condition: string };
-  /** Which of its target's conditions it ends (1.426). */
+  /** Which of its target's conditions it ends (1.427). */
   ends?: string[];
   /** Who goes along on a teleport (1.276). */
   carries?: string[];
-  /** Whom a layered wall spares (1.491). */
+  /** Whom a layered wall spares (1.492). */
   designates?: string[];
-  /** Stored instead of done (1.523). */
+  /** Stored instead of done (1.524). */
   storesIn?: { holderId: string; item?: number };
-  /** How many levels up a target moved to `to` is lifted (1.564). */
+  /** How many levels up a target moved to `to` is lifted (1.565). */
   rises?: number;
 } & Partial<RulesetAimChoice>;
 
@@ -358,7 +358,7 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
     }
     for (const cell of [step.lay?.at, ...(step.lay?.also ?? [])]) if (cell) laid.add(rulesetCellKey(cell));
   }
-  // Where its target may be moved to (1.564): Telekinesis.
+  // Where its target may be moved to (1.565): Telekinesis.
   if (step?.stage === "carry") {
     for (const cell of rulesetCarryCells(step.option, step.targets)) {
       aims.set(rulesetCellKey(cell), { targetIds: [], carry: true });

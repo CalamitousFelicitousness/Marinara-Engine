@@ -47,7 +47,7 @@ import { rulesetSheetDead } from "./combat-bridge.js";
 import { applyRulesetPrepare, rulesetPreparableEntry } from "./prepare.js";
 import type { RulesetBuilderState } from "./sheet-builder.js";
 
-/** A priced material a cast used up (1.789): whose, and how many out of which of their stacks. */
+/** A priced material a cast used up (1.790): whose, and how many out of which of their stacks. */
 export interface RulesetMaterialTaken {
   who: string;
   stacks: Array<{ id: string; count: number }>;
@@ -122,7 +122,7 @@ export function applySheetCommandTags(
   builds: Record<string, RulesetSheetBuild>;
   /** Each rest a character took, by card name: what a rest does to the items they carry follows it. */
   rests: Array<{ who: string; rest: string }>;
-  /** The priced materials a cast used up (1.789), by card name and the stacks they came out of. */
+  /** The priced materials a cast used up (1.790), by card name and the stacks they came out of. */
   materials: RulesetMaterialTaken[];
 } {
   const builds: Record<string, RulesetSheetBuild> = {};
@@ -155,7 +155,7 @@ export function applySheetCommandTags(
     if (!last) return false;
     if (last.fresh) return true;
     if (ctx.clock === undefined || last.at === undefined) return false;
-    // So many hours of the game's clock from the last one's start, where the ruleset says (1.809).
+    // So many hours of the game's clock from the last one's start, where the ruleset says (1.810).
     const every = ctx.definition.rests.find((entry) => entry.id === rest)?.every;
     return every !== undefined ? ctx.clock - last.at < every * 60 : ctx.clock <= last.at;
   };
@@ -276,13 +276,13 @@ export function applySheetCommandTags(
           } as const)
         : ({ ok: false, reason: "unknown-entry" } as const);
     }
-    // The creature a call that stays calls (1.797), named before anything is paid for it.
+    // The creature a call that stays calls (1.798), named before anything is paid for it.
     const kept = rulesetUseKeptCall(ctx.definition, card.build, ctx.catalogs ?? {}, op);
     if (kept && !kept.ok) return kept;
-    // The shape one that changes its user's own keeps them in (1.800), named the same way.
+    // The shape one that changes its user's own keeps them in (1.801), named the same way.
     const shaped = rulesetUseKeptForm(ctx.definition, card.build, ctx.catalogs ?? {}, op, live[key], card.items);
     if (shaped && !shaped.ok) return shaped;
-    // A priced material (1.789) carried, and taken only once everything else is paid.
+    // A priced material (1.790) carried, and taken only once everything else is paid.
     const used = usedUp.get(key) ?? {};
     const material = plan.material ? rulesetMaterialFor(ctx.definition, plan.material, card.items, used) : undefined;
     if (material === null) return { ok: false, reason: `no-material: ${plan.material!.label}` } as const;
@@ -294,7 +294,7 @@ export function applySheetCommandTags(
       state = result.live;
       paid.push(`${step.label} ${result.now}`);
     }
-    // What it heals its user outside a fight (1.787): Second Wind's 1d10 plus the fighter's level.
+    // What it heals its user outside a fight (1.788): Second Wind's 1d10 plus the fighter's level.
     const healed = rulesetUseHealOutsideFight(
       ctx.definition,
       card.build,
@@ -319,14 +319,14 @@ export function applySheetCommandTags(
       materials.push({ who: card.name, stacks });
       paid.push(`${plan.material.label} used up`);
     }
-    // Kept on the sheet (1.797), in place of whatever it called before: it joins every fight its
+    // Kept on the sheet (1.798), in place of whatever it called before: it joins every fight its
     // user is in until it is dismissed or killed.
     if (kept) {
       const before = (state ?? live[key] ?? {}) as RulesetLiveState;
       state = { ...before, called: { ...before.called, [kept.entry]: kept.as } };
       paid.push(`${kept.as || plan.label} called, and stays`);
     }
-    // Kept on the sheet too (1.800), in place of any shape before it: they start every fight in it
+    // Kept on the sheet too (1.801), in place of any shape before it: they start every fight in it
     // until it ends, with the form's own health.
     if (shaped) {
       state = { ...((state ?? live[key] ?? {}) as RulesetLiveState), shaped: shaped.shaped };
@@ -362,7 +362,7 @@ export function applySheetCommandTags(
     return best ? { extra: best } : {};
   };
 
-  // A feature the rest offers as it ends (1.788), named on the tag: the rest stands whatever it does,
+  // A feature the rest offers as it ends (1.789), named on the tag: the rest stands whatever it does,
   // and its words say what the feature gave back or why it gave nothing.
   const restEnds = (
     card: SheetCommandCard,

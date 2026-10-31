@@ -1,5 +1,5 @@
 /**
- * An item use whose condition lasts while the item's charges do (Capability API 1.622): 5e's Boots
+ * An item use whose condition lasts while the item's charges do (Capability API 1.623): 5e's Boots
  * of Speed, "used for a total of 10 minutes".
  *
  *   - The use pays its own charge; each round its condition then holds spends one more, and it comes
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 622);
+  assert.ok(supportedCapabilityApi.minor >= 623);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -184,7 +184,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with an item use whose condition lasts while the item's charges do (chargesPerRound) requires schemaVersion 2 and capabilityApi 1.622 or newer";
+      "A ruleset with an item use whose condition lasts while the item's charges do (chargesPerRound) requires schemaVersion 2 and capabilityApi 1.623 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -198,12 +198,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(621) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(622) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(622) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(623) as never, document()), gate);
   }
 
   console.log(
-    "chargesPerRound: the Boots of Speed spend a charge a round and stop with the last; ended early, the rest kept; refusals; gated at 1.622.",
+    "chargesPerRound: the Boots of Speed spend a charge a round and stop with the last; ended early, the rest kept; refusals; gated at 1.623.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

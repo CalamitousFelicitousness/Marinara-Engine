@@ -1,6 +1,6 @@
 /**
  * An entry's or an item use's attack that rolls differently against some targets (Capability API
- * 1.737): 5e's Shocking Grasp, advantage at a target wearing metal.
+ * 1.738): 5e's Shocking Grasp, advantage at a target wearing metal.
  *
  *   - `against` on an item's `use` (and an entry's `mechanics`) reaches its attack: advantage at the
  *     knight in metal armor, none at the cultist.
@@ -30,7 +30,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 737);
+  assert.ok(supportedCapabilityApi.minor >= 738);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -127,7 +127,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a catalog entry's or an item use's attack that rolls differently against some targets (mechanics.against or use.against) requires schemaVersion 2 and capabilityApi 1.737 or newer";
+      "A ruleset with a catalog entry's or an item use's attack that rolls differently against some targets (mechanics.against or use.against) requires schemaVersion 2 and capabilityApi 1.738 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -141,12 +141,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(736) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(737) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(736) as never, document(null)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(737) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(738) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(737) as never, document(null)), gate);
   }
 
-  console.log("Entry against: Shocking Grasp rolls with advantage at the knight in metal armor only; gated at 1.737.");
+  console.log("Entry against: Shocking Grasp rolls with advantage at the knight in metal armor only; gated at 1.738.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

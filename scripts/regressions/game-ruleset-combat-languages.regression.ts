@@ -1,5 +1,5 @@
 /**
- * Who understands whom (Capability API 1.560): 5e's Suggestion and Command.
+ * Who understands whom (Capability API 1.561): 5e's Suggestion and Command.
  *
  *   - `combat.languages` reads a character's languages off a sheet list; a creature names its own.
  *   - `targetTypes.understands` keeps out a creature that shares no language with its user; one whose
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 560);
+  assert.ok(supportedCapabilityApi.minor >= 561);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -135,7 +135,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with languages read in a fight (combat.languages, a creature's languages, targetTypes.understands) requires schemaVersion 2 and capabilityApi 1.560 or newer";
+      "A ruleset with languages read in a fight (combat.languages, a creature's languages, targetTypes.understands) requires schemaVersion 2 and capabilityApi 1.561 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -149,13 +149,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(559) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(560) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(559) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(560) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(561) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(560) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Languages: read off a sheet list and a stat block; Suggestion passes over a creature that shares no language, not one whose languages are unwritten; gated at 1.560.",
+    "Languages: read off a sheet list and a stat block; Suggestion passes over a creature that shares no language, not one whose languages are unwritten; gated at 1.561.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

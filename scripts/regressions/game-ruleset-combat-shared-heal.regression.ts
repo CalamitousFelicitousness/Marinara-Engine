@@ -1,5 +1,5 @@
 /**
- * A heal shared out among its targets (Capability API 1.562): 5e's Preserve Life.
+ * A heal shared out among its targets (Capability API 1.563): 5e's Preserve Life.
  *
  *   - `sharesHeal: "half"`: one amount, shared out in the order the targets were picked, nobody past
  *     half their maximum; one already there gets nothing.
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 562);
+  assert.ok(supportedCapabilityApi.minor >= 563);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -129,7 +129,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a heal shared out among its targets (sharesHeal) requires schemaVersion 2 and capabilityApi 1.562 or newer";
+      "A ruleset with a heal shared out among its targets (sharesHeal) requires schemaVersion 2 and capabilityApi 1.563 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -143,13 +143,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(561) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(562) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(561) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(562) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(563) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(562) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Shared heal: Preserve Life shares one amount, nobody past half their maximum; or up to each maximum; gated at 1.562.",
+    "Shared heal: Preserve Life shares one amount, nobody past half their maximum; or up to each maximum; gated at 1.563.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

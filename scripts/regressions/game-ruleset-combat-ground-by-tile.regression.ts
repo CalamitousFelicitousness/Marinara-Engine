@@ -1,5 +1,5 @@
 /**
- * Ground some creatures cross easily, or are harmed in (Capability API 1.707).
+ * Ground some creatures cross easily, or are harmed in (Capability API 1.708).
  *
  *   - Ice Walk (`easyGround`): woods on a snowy board, and a Sleet Storm's ice, are no hard going for
  *     a white dragon; woods elsewhere, and a web, still are.
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 707);
+  assert.ok(supportedCapabilityApi.minor >= 708);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -164,7 +164,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a condition whose holder goes easily over some tiles or is harmed walking into some (easyGround or harmedEntering) requires schemaVersion 2 and capabilityApi 1.707 or newer";
+      "A ruleset with a condition whose holder goes easily over some tiles or is harmed walking into some (easyGround or harmedEntering) requires schemaVersion 2 and capabilityApi 1.708 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -184,13 +184,13 @@ try {
         delete one.harmedEntering;
       }
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(706) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(707) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(706) as never, without), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(707) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(708) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(707) as never, without), gate);
   }
 
   console.log(
-    "Ground by tile: Ice Walk crosses snowy woods and a Sleet Storm at a plain step, not a web; a fire elemental takes 1 cold a cell in a Wall of Water; gated at 1.707.",
+    "Ground by tile: Ice Walk crosses snowy woods and a Sleet Storm at a plain step, not a web; a fire elemental takes 1 cold a cell in a Wall of Water; gated at 1.708.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

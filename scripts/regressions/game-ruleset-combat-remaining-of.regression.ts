@@ -1,5 +1,5 @@
 /**
- * A condition put on for what was left of another (Capability API 1.615): 5e's Wind Walk, "a creature
+ * A condition put on for what was left of another (Capability API 1.616): 5e's Wind Walk, "a creature
  * can revert to its normal form ... it can use another action to turn back into a cloud", for the rest
  * of the spell's 8 hours.
  *
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 615);
+  assert.ok(supportedCapabilityApi.minor >= 616);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -181,7 +181,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a condition put on for what was left of another (duration.remainingOf) requires schemaVersion 2 and capabilityApi 1.615 or newer";
+      "A ruleset with a condition put on for what was left of another (duration.remainingOf) requires schemaVersion 2 and capabilityApi 1.616 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -195,12 +195,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(614) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(615) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(615) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(616) as never, document()), gate);
   }
 
   console.log(
-    "remainingOf: Wind Walk back for what was left, less time spent reverted; not offered under it or with none left; refusal; gated at 1.615.",
+    "remainingOf: Wind Walk back for what was left, less time spent reverted; not offered under it or with none left; refusal; gated at 1.616.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

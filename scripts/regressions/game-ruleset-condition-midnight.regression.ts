@@ -1,6 +1,6 @@
 /**
  * Conditions until midnight, and what one deals as it ends saved against for half (Capability API
- * 1.750): 5e's Midnight tears, "no effect until the stroke of midnight. If the poison has not been
+ * 1.751): 5e's Midnight tears, "no effect until the stroke of midnight. If the poison has not been
  * neutralized before then, the creature must succeed on a DC 17 Constitution saving throw, taking 31
  * (9d6) poison damage on a failed save, or half as much damage on a successful one."
  *
@@ -40,7 +40,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 750);
+  assert.ok(supportedCapabilityApi.minor >= 751);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -219,7 +219,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      'A ruleset with a condition lasting until midnight (lastsDays "midnight") or one whose onEnd harm is saved against (onEnd.harm.save) requires schemaVersion 2 and capabilityApi 1.750 or newer';
+      'A ruleset with a condition lasting until midnight (lastsDays "midnight") or one whose onEnd harm is saved against (onEnd.harm.save) requires schemaVersion 2 and capabilityApi 1.751 or newer';
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -233,26 +233,26 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(749) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(750) as never, fiveE()), gate);
     assert.equal(
       getCapabilityPackageInstallIssue(
-        manifest(749) as never,
+        manifest(750) as never,
         fiveE({ duration: "until-dispelled", lastsDays: { const: 1 } }),
       ),
       gate,
       "the save for half alone",
     );
     assert.equal(
-      getCapabilityPackageInstallIssue(manifest(749) as never, fiveE(undefined, { dice: "9d6", type: "poison" })),
+      getCapabilityPackageInstallIssue(manifest(750) as never, fiveE(undefined, { dice: "9d6", type: "poison" })),
       gate,
       "midnight alone",
     );
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(750) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(749) as never, JSON.parse(fiveEText)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(751) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(750) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Condition midnight: Midnight tears has no clock in the fight, lasts on the sheet until its next day, then deals 9d6 poison saved against for half, nothing once cured; a fight's clock deals it with its save; gated at 1.750.",
+    "Condition midnight: Midnight tears has no clock in the fight, lasts on the sheet until its next day, then deals 9d6 poison saved against for half, nothing once cured; a fight's clock deals it with its save; gated at 1.751.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

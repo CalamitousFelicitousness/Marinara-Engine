@@ -652,7 +652,7 @@ export function useSkillCheck() {
       preRolledD20?: number;
       who?: string;
       withAbility?: string;
-      /** `for=` (1.751): what the check is made for. */
+      /** `for=` (1.752): what the check is made for. */
       purpose?: string;
       threshold?: number;
       bonusDice?: number;

@@ -1,5 +1,5 @@
 /**
- * What lands by the health its target has left (Capability API 1.449).
+ * What lands by the health its target has left (Capability API 1.450).
  *
  *   - Divine Word: on a failed save, deafened at 50 or fewer, blinded too at 40, stunned too at 30,
  *     and killed outright at 20; one with more than 50 left takes nothing. A fiend that fails is
@@ -35,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 449);
+  assert.ok(supportedCapabilityApi.minor >= 450);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -180,7 +180,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose entries act by the health their target has left (targetHealthAtMost, killsAtMost) or send away only some (dismissesIs) requires schemaVersion 2 and capabilityApi 1.449 or newer";
+      "A ruleset whose entries act by the health their target has left (targetHealthAtMost, killsAtMost) or send away only some (dismissesIs) requires schemaVersion 2 and capabilityApi 1.450 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -194,13 +194,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(448) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(449) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(448) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(449) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(450) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(449) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Divine Word: deafened, blinded and stunned by the health left, killed at 20 or fewer, fiends sent away; gated at 1.449.",
+    "Divine Word: deafened, blinded and stunned by the health left, killed at 20 or fewer, fiends sent away; gated at 1.450.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

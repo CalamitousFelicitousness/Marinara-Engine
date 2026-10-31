@@ -1,5 +1,5 @@
 /**
- * What a creature does as it dies (Capability API 1.539).
+ * What a creature does as it dies (Capability API 1.540).
  *
  *   - A dust mephit's Death Burst: dropped to 0, it bursts around itself, a save against it, on
  *     whoever stands within 5 feet; the one beside it takes it, the caster across the board does not.
@@ -37,7 +37,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 539);
+  assert.ok(supportedCapabilityApi.minor >= 540);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -234,7 +234,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a creature that bursts as it dies (onDeath) requires schemaVersion 2 and capabilityApi 1.539 or newer";
+      "A ruleset with a creature that bursts as it dies (onDeath) requires schemaVersion 2 and capabilityApi 1.540 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -248,12 +248,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(538) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(539) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(539) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(540) as never, fiveE()), gate);
   }
 
   console.log(
-    "On death: a dust mephit cut down bursts around itself on the fighter beside it and not the mage far off, a smoke mephit leaves its cloud where it fell, never offered on its menu, not while it stands; refused off-centre or with an unknown save; gated at 1.539.",
+    "On death: a dust mephit cut down bursts around itself on the fighter beside it and not the mage far off, a smoke mephit leaves its cloud where it fell, never offered on its menu, not while it stands; refused off-centre or with an unknown save; gated at 1.540.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -99,7 +99,7 @@ const sha256 = z.string().regex(/^[a-f0-9]{64}$/);
 const installBody = z.object({
   expectedVersion: packageVersion,
   expectedArtifactSha256: sha256,
-  /** The page's language, for a ruleset's language pack (1.810). */
+  /** The page's language, for a ruleset's language pack (1.811). */
   locale: rulesetLocale.optional(),
 });
 const declineUpdatesBody = z.object({
@@ -233,14 +233,14 @@ export async function capabilityPackagesRoutes(app: FastifyInstance) {
     return payload(read.entries);
   });
   // The Engine's language changed (or a page opened in it): each installed catalog ruleset's language pack
-  // (1.810) is fetched in it and the old language's removed. A pack that cannot be had leaves English.
+  // (1.811) is fetched in it and the old language's removed. A pack that cannot be had leaves English.
   app.post("/rulesets/language", { config: { rateLimit: RULESET_LANGUAGE_RATE_LIMIT } }, async (request, reply) => {
     if (!requirePrivilegedAccess(request, reply, { feature: "Ruleset language packs" })) return;
     const { locale } = rulesetLanguageBody.parse(request.body);
     return { locale, rulesets: await capabilityPackageManager.setRulesetLanguage(locale) };
   });
   // A ruleset's display strings in one language: what the fight screen shows in place of the ruleset's
-  // English, word for word, from its language pack (1.810) or the language kept with an imported file.
+  // English, word for word, from its language pack (1.811) or the language kept with an imported file.
   // None is an empty set, so a screen just shows the English.
   app.get("/rulesets/strings", async (request, reply) => {
     const { rulesetId, version, locale } = rulesetStringsQuery.parse(request.query);

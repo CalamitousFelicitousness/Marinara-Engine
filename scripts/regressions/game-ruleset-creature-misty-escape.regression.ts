@@ -1,5 +1,5 @@
 /**
- * Hanging on as one of its forms (Capability API 1.547).
+ * Hanging on as one of its forms (Capability API 1.548).
  *
  *   - A vampire's Misty Escape: dropped to 0, it hangs on at 1 and is at once in its mist form, as its
  *     Change Shape puts it on, fighting with the mist's actions; once, and then it falls.
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 547);
+  assert.ok(supportedCapabilityApi.minor >= 548);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -175,7 +175,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset that hangs on at 1 in one of its forms (hangsOn becomes) requires schemaVersion 2 and capabilityApi 1.547 or newer";
+      "A ruleset that hangs on at 1 in one of its forms (hangsOn becomes) requires schemaVersion 2 and capabilityApi 1.548 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -189,12 +189,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(546) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(547) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(547) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(548) as never, fiveE()), gate);
   }
 
   console.log(
-    "Misty Escape: a vampire dropped to 0 hangs on at 1 in its mist form, as its Shapechanger puts it on, once; refused for a form not named by catalog; gated at 1.547.",
+    "Misty Escape: a vampire dropped to 0 hangs on at 1 in its mist form, as its Shapechanger puts it on, once; refused for a form not named by catalog; gated at 1.548.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

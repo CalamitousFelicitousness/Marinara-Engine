@@ -1,5 +1,5 @@
 /**
- * Ending what a catalog's entries put on (Capability API 1.423).
+ * Ending what a catalog's entries put on (Capability API 1.424).
  *
  *   - Dispel Magic at 3rd level: a 1st-level spell's condition ends outright, a 5th-level one on a
  *     check against 10 + 5, and what no spell put on stays; one held by its caster's concentration
@@ -39,7 +39,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 423);
+  assert.ok(supportedCapabilityApi.minor >= 424);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -321,7 +321,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose entries end what a catalog's entries put on (endsSpells) requires schemaVersion 2 and capabilityApi 1.423 or newer";
+      "A ruleset whose entries end what a catalog's entries put on (endsSpells) requires schemaVersion 2 and capabilityApi 1.424 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -335,13 +335,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(422) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(423) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(422) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(423) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(424) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(423) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Ends spells: Dispel Magic ends a lower spell outright and a higher one on a check, the whole of a concentrated spell; Cleansing Touch ends one, the highest first; a spell's condition remembers its catalog; gated at 1.423.",
+    "Ends spells: Dispel Magic ends a lower spell outright and a higher one on a check, the whole of a concentrated spell; Cleansing Touch ends one, the highest first; a spell's condition remembers its catalog; gated at 1.424.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

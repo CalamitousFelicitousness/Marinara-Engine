@@ -1,5 +1,5 @@
 /**
- * Signature actions at a foe's turn start (Capability API 1.804; Alyssa's pick 2026-10-26: an opt-in
+ * Signature actions at a foe's turn start (Capability API 1.805; Alyssa's pick 2026-10-26: an opt-in
  * ruleset option, off for 5e).
  *
  *   - `combat.signatureAtTurnStart`: as a hero's turn starts, a boss holding points is asked before
@@ -200,11 +200,11 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset whose signature actions are bought at a turn's start (combat.signatureAtTurnStart) requires schemaVersion 2 and capabilityApi 1.804 or newer";
+      "A ruleset whose signature actions are bought at a turn's start (combat.signatureAtTurnStart) requires schemaVersion 2 and capabilityApi 1.805 or newer";
     const doc = fiveE((doc) => (doc.combat.signatureAtTurnStart = true));
-    assert.equal(getCapabilityPackageInstallIssue(manifest(803) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(804) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(803) as never, fiveE()), gate, "the plain 5e example");
+    assert.equal(getCapabilityPackageInstallIssue(manifest(804) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(805) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(804) as never, fiveE()), gate, "the plain 5e example");
   }
 
   console.log("game-ruleset-combat-legendary-turn-start: ok");

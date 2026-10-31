@@ -196,7 +196,7 @@ try {
     assert.deepEqual(withoutWindows, plain.events, "declining preserves the original event stream");
   }
 
-  // ── A Ring of Feather Falling (1.476): worn, no fall harms; carried, it does nothing ──
+  // ── A Ring of Feather Falling (1.477): worn, no fall harms; carried, it does nothing ──
   {
     for (const worn of [true, false]) {
       const state = fight();

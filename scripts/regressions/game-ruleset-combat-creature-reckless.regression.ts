@@ -1,5 +1,5 @@
 /**
- * A creature's free trait taken before it attacks (Capability API 1.605): a berserker's Reckless.
+ * A creature's free trait taken before it attacks (Capability API 1.606): a berserker's Reckless.
  *
  *   - A stat-block action may say `free` and `beforeAttack`: offered on its own turn before it has
  *     attacked, costing no budget, and gone once it has.
@@ -34,7 +34,7 @@ const { commandRulesetCombatDirector, createRulesetFight, rulesetDirectorStage, 
   await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 605);
+  assert.ok(supportedCapabilityApi.minor >= 606);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -203,7 +203,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a creature action that is free or taken before it attacks (free, beforeAttack) requires schemaVersion 2 and capabilityApi 1.605 or newer";
+      "A ruleset with a creature action that is free or taken before it attacks (free, beforeAttack) requires schemaVersion 2 and capabilityApi 1.606 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -217,12 +217,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(604) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(605) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(604) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(605) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(606) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(605) as never, JSON.parse(fiveEText)), gate);
   }
 
-  console.log("Creature Reckless: offered free before it attacks, taken by the Engine as it swings; gated at 1.605.");
+  console.log("Creature Reckless: offered free before it attacks, taken by the Engine as it swings; gated at 1.606.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

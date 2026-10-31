@@ -1,5 +1,5 @@
 /**
- * What lasts while an item is worn (Capability API 1.663): 5e's Armor of Invulnerability, "immune to
+ * What lasts while an item is worn (Capability API 1.664): 5e's Armor of Invulnerability, "immune to
  * nonmagical damage for 10 minutes or until you are no longer wearing the armor".
  *
  *   - Used out of a fight, the sheet remembers which stack keeps the condition on.
@@ -55,7 +55,7 @@ app.decorate("db", db);
 await app.register(gameInventoryRoutes, { prefix: "/game/inventory" });
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 663);
+  assert.ok(supportedCapabilityApi.minor >= 664);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -284,7 +284,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a condition that lasts while the item that put it on is worn (an applied condition's whileItemWorn) requires schemaVersion 2 and capabilityApi 1.663 or newer";
+      "A ruleset with a condition that lasts while the item that put it on is worn (an applied condition's whileItemWorn) requires schemaVersion 2 and capabilityApi 1.664 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -298,13 +298,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(662) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(663) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(662) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(663) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(664) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(663) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Worn keeps: Armor of Invulnerability's condition remembers its stack, comes off when the armor does (inventory, fight start), and is kept through a fight; gated at 1.663.",
+    "Worn keeps: Armor of Invulnerability's condition remembers its stack, comes off when the armor does (inventory, fight start), and is kept through a fight; gated at 1.664.",
   );
 } finally {
   await app.close();

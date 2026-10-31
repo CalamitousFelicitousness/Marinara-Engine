@@ -1,5 +1,5 @@
 /**
- * A condition holding its holder out of time (Capability API 1.646): 5e's Sequester.
+ * A condition holding its holder out of time (Capability API 1.647): 5e's Sequester.
  *
  *   - Its holder takes no turns: the order passes them by.
  *   - Their other conditions keep their rounds, and what others put on them that runs on those
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 646);
+  assert.ok(supportedCapabilityApi.minor >= 647);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -153,7 +153,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a condition holding its holder out of time (stasis) requires schemaVersion 2 and capabilityApi 1.646 or newer";
+      "A ruleset with a condition holding its holder out of time (stasis) requires schemaVersion 2 and capabilityApi 1.647 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -167,11 +167,11 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(645) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(646) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(646) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(647) as never, document()), gate);
   }
 
-  console.log("Sequester: a holder out of time takes no turns and nothing on them runs, until harmed; gated at 1.646.");
+  console.log("Sequester: a holder out of time takes no turns and nothing on them runs, until harmed; gated at 1.647.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

@@ -1,5 +1,5 @@
 /**
- * Harm copied to a condition's source (Capability API 1.408): 5e's Warding Bond.
+ * Harm copied to a condition's source (Capability API 1.409): 5e's Warding Bond.
  *
  *   - The warded ally takes half (resistance), and the caster takes the same half.
  *   - The caster's own resistance counts; two bonds do not pass the damage back and forth.
@@ -31,7 +31,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 408);
+  assert.ok(supportedCapabilityApi.minor >= 409);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -137,7 +137,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose condition copies its holder's harm to whoever put it on (copiesHarmToSource) requires schemaVersion 2 and capabilityApi 1.408 or newer";
+      "A ruleset whose condition copies its holder's harm to whoever put it on (copiesHarmToSource) requires schemaVersion 2 and capabilityApi 1.409 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -151,13 +151,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(407) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(408) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(407) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(408) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(409) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(408) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Copied harm: Warding Bond's caster takes what the warded take, after both resistances, passed on once and never back, ending as the caster falls; gated at 1.408.",
+    "Copied harm: Warding Bond's caster takes what the warded take, after both resistances, passed on once and never back, ending as the caster falls; gated at 1.409.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

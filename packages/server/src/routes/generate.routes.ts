@@ -5768,7 +5768,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             ? (stack: (typeof promptInventoryStacks)[number]) => {
                 const held = stack.item ? promptItemBook.itemOf(stack.item)?.facts.use?.charges : undefined;
                 const max = held?.max;
-                // Found with rolled charges (1.572) until something changed them.
+                // Found with rolled charges (1.573) until something changed them.
                 const now = stack.charges ?? (held ? rulesetChargesStart(held, held.max, stack.id) : 0);
                 return max === undefined ? undefined : { now: Math.min(max, now), max };
               }
@@ -10396,7 +10396,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               seed: number;
               /** The rests the turn's sheet commands took, whose charges come back to what is carried. */
               rests: Array<{ who: string; rest: string }>;
-              /** The priced materials the turn's casts used up (1.789), taken off what is carried. */
+              /** The priced materials the turn's casts used up (1.790), taken off what is carried. */
               materials: RulesetMaterialTaken[];
             };
             /** What a `[loot:]` rolls: the ruleset its tables are in, and the dice's seed. */
@@ -10587,7 +10587,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           const tellsInventory = /\[(?:inventory|loot):/i.test(fullResponse);
           // A rest the sheet commands took may bring charges back to what the rested carry.
           const turnRests = rulesetSheetTurn?.rests ?? [];
-          // A priced material a cast used up (1.789) comes out of the bag.
+          // A priced material a cast used up (1.790) comes out of the bag.
           const turnMaterials = rulesetSheetTurn?.materials ?? [];
           const retellsInventoryTurn =
             !!input.regenerateMessageId &&
@@ -11015,7 +11015,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   ) as any,
                 );
               }
-              // What waits on game time counts the days (1.555).
+              // What waits on game time counts the days (1.556).
               if (clock) await passGameInventoryTime(app.db, input.chatId, turnClockDays * 24 * 60);
             } catch (err) {
               // The reply is saved either way: a failed write is logged, never the turn's failure.

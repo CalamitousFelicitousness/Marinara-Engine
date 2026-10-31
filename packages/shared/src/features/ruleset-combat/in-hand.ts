@@ -3,7 +3,7 @@
 // weapons shoots first.
 //
 // The hands are the slots the fighter's weapons take ("hands" in Ember Roads). Taking a carried weapon
-// or shield in hand follows the rule an item drawn as it is used follows (1.807, `gameInventoryDrawPlan`):
+// or shield in hand follows the rule an item drawn as it is used follows (1.808, `gameInventoryDrawPlan`):
 // it takes its slots, and where they are full the fewest weapons in them are put away to make room.
 // Nothing else is ever taken off for it (a buckler, gauntlets, a cursed weapon): then it is refused,
 // naming what is in the way. It spends the turn's one free interaction with an object, the one a
@@ -89,7 +89,7 @@ function handsTaken(held: RulesetSheetItem, hands: ReadonlySet<string>): number 
   return taken.reduce((sum, [, count]) => sum + count, 0);
 }
 
-/** How taking the item at `index` in hand goes: as an item drawn as it is used is drawn (1.807), with
+/** How taking the item at `index` in hand goes: as an item drawn as it is used is drawn (1.808), with
  *  every weapon in the way one that may be put away for it. */
 function inHandPlan(definition: RulesetDefinition, actor: RulesetCombatant, index: number): GameInventoryDrawPlan {
   const items = actor.sheet?.items ?? [];
@@ -97,7 +97,7 @@ function inHandPlan(definition: RulesetDefinition, actor: RulesetCombatant, inde
     items.map((held, at) => {
       const worn = wornNow(actor, at);
       return {
-        // Hovering, on (1.705): its hand is free.
+        // Hovering, on (1.706): its hand is free.
         slots: held.lent || (rulesetItemOn(actor, at) && held.item.toggle?.freesSlots) ? {} : (held.item.slots ?? {}),
         quantity: at === index ? 1 : held.quantity,
         worn,
@@ -218,7 +218,7 @@ export function rulesetDrawInHand(
 }
 
 /**
- * The item at `index`, drawn as it is used (1.807), goes in its user's hands as they use it: taken in
+ * The item at `index`, drawn as it is used (1.808), goes in its user's hands as they use it: taken in
  * hand as `rulesetDrawInHand` takes it, the fewest weapons in its slots put away (playtest 2026-10-26:
  * a Longsword drawn past Shield and Shortsword left all three in hand by the next fight), and the menu
  * read again from what they hold now. It is a free swap, so the turn's free interaction stays theirs.
@@ -233,7 +233,7 @@ export function rulesetDrawAsUsed(
   const items = actor.sheet?.items ?? [];
   const held = items[index];
   if (!held?.drawOnUse || held.lent || wornNow(actor, index)) return undefined;
-  // In its user's hands: as the In hand row takes it. Anything else (1.807): as the bag draws it.
+  // In its user's hands: as the In hand row takes it. Anything else (1.808): as the bag draws it.
   const plan = carriedForHand(actor, index, handSlots(items))
     ? inHandPlan(definition, actor, index)
     : rulesetHeldDrawPlan(definition, items, index, actor.drawn);

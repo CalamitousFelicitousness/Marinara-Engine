@@ -1,5 +1,5 @@
 /**
- * Layered walls (Capability API 1.489), as 5e's Prismatic Wall has them.
+ * Layered walls (Capability API 1.490), as 5e's Prismatic Wall has them.
  *
  *   - Whoever moves into it meets each standing layer in turn, each with its own damage type, its
  *     own conditions and its own save; whom it `spares` crosses it unharmed.
@@ -8,8 +8,8 @@
  *     or aimed at it as Dispel Magic is. The wall ends with its last layer.
  *   - Its flash: whoever sees it within reach saves or is blinded, as it appears, as they move near
  *     and as their turn starts there.
- *   - Passwall (1.490): an entry with `endsLayers`, aimed at the wall, offered only while one stands.
- *   - A scroll of Passwall (1.493): an item's use with `endsLayers`, read as the spell it names.
+ *   - Passwall (1.491): an entry with `endsLayers`, aimed at the wall, offered only while one stands.
+ *   - A scroll of Passwall (1.494): an item's use with `endsLayers`, read as the spell it names.
  *   - Refusals and the install gate.
  */
 import assert from "node:assert/strict";
@@ -46,7 +46,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 489);
+  assert.ok(supportedCapabilityApi.minor >= 490);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -129,10 +129,10 @@ try {
     range: 120,
     endsSpells: { catalogs: ["spells"], upTo: "paid", zones: true },
   });
-  // Passwall, which does nothing else in a fight (1.490).
+  // Passwall, which does nothing else in a fight (1.491).
   const passwall = spell("passwall", { kind: "utility", range: 30, endsLayers: true });
   const spells = [prism, frost, gust, daylight, dispel, passwall];
-  // A scroll of it (1.493), read as the spell at a layered wall.
+  // A scroll of it (1.494), read as the spell at a layered wall.
   const scrollUse = (extra: Record<string, unknown> = {}) => ({
     kind: "utility",
     budget: "action",
@@ -407,7 +407,7 @@ try {
     assert.equal(wall(last.state), undefined, "the wall is gone with its last layer");
   }
 
-  // ── Passwall (1.490): offered only while a wall it may break stands, and only on its own layer ──
+  // ── Passwall (1.491): offered only while a wall it may break stands, and only on its own layer ──
   {
     const bare = fight();
     bare.turn = bare.order.indexOf("druid");
@@ -435,7 +435,7 @@ try {
     );
   }
 
-  // ── A scroll of Passwall (1.493): read as the spell, used up ──
+  // ── A scroll of Passwall (1.494): read as the spell, used up ──
   {
     const scrolled = walled();
     scrolled.turn = scrolled.order.indexOf("druid");
@@ -503,7 +503,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose zones are layers crossed one at a time (zone layers) requires schemaVersion 2 and capabilityApi 1.489 or newer";
+      "A ruleset whose zones are layers crossed one at a time (zone layers) requires schemaVersion 2 and capabilityApi 1.490 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -522,24 +522,24 @@ try {
       doc.catalogs.pop();
       delete doc.items;
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(488) as never, plain), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(489) as never, plain), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(489) as never, plain), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(490) as never, plain), gate);
     const passGate =
-      "A ruleset whose entries break a layered wall's layer by being aimed at it (endsLayers) requires schemaVersion 2 and capabilityApi 1.490 or newer";
+      "A ruleset whose entries break a layered wall's layer by being aimed at it (endsLayers) requires schemaVersion 2 and capabilityApi 1.491 or newer";
     const spellOnly = fiveE((doc) => {
       doc.catalogs.pop();
       delete doc.items;
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(489) as never, spellOnly), passGate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(490) as never, spellOnly), passGate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(490) as never, spellOnly), passGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(491) as never, spellOnly), passGate);
     const scrollGate =
-      "A ruleset whose items' uses break a layered wall's layer as an entry they name (endsLayersAs) requires schemaVersion 2 and capabilityApi 1.493 or newer";
-    assert.equal(getCapabilityPackageInstallIssue(manifest(492) as never, fiveE()), scrollGate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(493) as never, fiveE()), scrollGate);
+      "A ruleset whose items' uses break a layered wall's layer as an entry they name (endsLayersAs) requires schemaVersion 2 and capabilityApi 1.494 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(493) as never, fiveE()), scrollGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(494) as never, fiveE()), scrollGate);
   }
 
   console.log(
-    "Layered walls: a Prismatic Wall crossed a layer at a time, each with its own save, its caster's side spared; its layers destroyed in order by cold, wind, Daylight and Dispel Magic, Passwall and its scroll; its flash as it appears, as foes come near and as their turns start; gated at 1.489, 1.490 and 1.493.",
+    "Layered walls: a Prismatic Wall crossed a layer at a time, each with its own save, its caster's side spared; its layers destroyed in order by cold, wind, Daylight and Dispel Magic, Passwall and its scroll; its flash as it appears, as foes come near and as their turns start; gated at 1.490, 1.491 and 1.494.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

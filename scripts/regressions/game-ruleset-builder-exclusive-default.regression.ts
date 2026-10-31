@@ -1,12 +1,12 @@
 /**
- * A group's default (Capability API 1.771): `exclusiveDefault` on a catalog entry.
+ * A group's default (Capability API 1.772): `exclusiveDefault` on a catalog entry.
  *
  *   - A step that takes all it offers takes, of a group nobody picked from, its default, or the one
  *     entry of it offered, so the step waits on nothing.
  *   - A pick of the group still replaces it.
  *   - A feat in the default's place is judged without the default (1.100): the improvement it
  *     replaces never meets its prerequisite.
- *   - What a step that takes all it offers took, written to a field (1.772).
+ *   - What a step that takes all it offers took, written to a field (1.773).
  *   - Refusals and the install gates.
  */
 import assert from "node:assert/strict";
@@ -175,7 +175,7 @@ try {
     assert.ok(offeredFeat(made(12, [])), "Strength 12 of its own: the feat is offered");
   }
 
-  // ── What a step that takes all it offers took, written to a field (1.772): 5e's subclass ──
+  // ── What a step that takes all it offers took, written to a field (1.773): 5e's subclass ──
   const withField = () => {
     const doc = withDefault();
     doc.sheet.fields.push({ id: "taken", label: "Taken", type: "text", maxLength: 200 });
@@ -221,18 +221,18 @@ try {
     restartRequired: false,
   });
   const gate =
-    "A ruleset with a catalog entry that is its exclusive group's default (exclusiveDefault) requires schemaVersion 2 and capabilityApi 1.771 or newer";
-  assert.equal(getCapabilityPackageInstallIssue(manifest(770) as never, withDefault()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(771) as never, withDefault()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(770) as never, fixture()), gate, "nothing without the key");
+    "A ruleset with a catalog entry that is its exclusive group's default (exclusiveDefault) requires schemaVersion 2 and capabilityApi 1.772 or newer";
+  assert.equal(getCapabilityPackageInstallIssue(manifest(771) as never, withDefault()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(772) as never, withDefault()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(771) as never, fixture()), gate, "nothing without the key");
   const fieldGate =
-    "A ruleset with a builder step that takes all it offers and writes them to a field (takesAll with field) requires schemaVersion 2 and capabilityApi 1.772 or newer";
-  assert.equal(getCapabilityPackageInstallIssue(manifest(771) as never, withField()), fieldGate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(772) as never, withField()), fieldGate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(771) as never, withDefault()), fieldGate);
+    "A ruleset with a builder step that takes all it offers and writes them to a field (takesAll with field) requires schemaVersion 2 and capabilityApi 1.773 or newer";
+  assert.equal(getCapabilityPackageInstallIssue(manifest(772) as never, withField()), fieldGate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(773) as never, withField()), fieldGate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(772) as never, withDefault()), fieldGate);
 
   console.log(
-    "exclusiveDefault: a group nobody picked from takes its default or its one offered entry, a pick still replaces it; what it took is written to a field; refusals; gated at 1.771 and 1.772.",
+    "exclusiveDefault: a group nobody picked from takes its default or its one offered entry, a pick still replaces it; what it took is written to a field; refusals; gated at 1.772 and 1.773.",
   );
 } finally {
   for (const [key, value] of Object.entries(previous)) {

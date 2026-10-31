@@ -100,7 +100,7 @@ export interface SkillCheckTag {
    * no ability answers to is ignored there rather than refused here.
    */
   withAbility?: string;
-  /** `for=` as the GM wrote it (1.751): what the check is made for, "climb" or "swim", for a change
+  /** `for=` as the GM wrote it (1.752): what the check is made for, "climb" or "swim", for a change
    *  narrowed to that purpose. Carried, never judged. */
   purpose?: string;
   /**

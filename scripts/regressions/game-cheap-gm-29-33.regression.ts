@@ -11,7 +11,7 @@
  *   - 32: the line a fight's recap asks the Game Master for a reward on stays in the recap and never
  *     shows on the player's Combat Result card.
  *   - 33: a ranger's kit Longbow, carried and not equipped, is offered as an attack in a ruleset fight
- *     (Capability API 1.807's draw on use).
+ *     (Capability API 1.808's draw on use).
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";

@@ -1,5 +1,5 @@
 /**
- * A condition that puts others on with it (Capability API 1.764).
+ * A condition that puts others on with it (Capability API 1.765).
  *
  *   - `alsoApplies` on a `combat.conditions` entry: each named condition goes on with it, lasting until
  *     it comes off on its own, and stays when the first one ends. 5e's unconscious, prone.
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 764);
+  assert.ok(supportedCapabilityApi.minor >= 765);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -166,14 +166,14 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with a condition that puts others on with it (alsoApplies) requires schemaVersion 2 and capabilityApi 1.764 or newer";
-    assert.equal(getCapabilityPackageInstallIssue(manifest(763) as never, fiveE(withProne)), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(764) as never, fiveE(withProne)), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(763) as never, fiveE()), gate, "nothing without the key");
+      "A ruleset with a condition that puts others on with it (alsoApplies) requires schemaVersion 2 and capabilityApi 1.765 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(764) as never, fiveE(withProne)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(765) as never, fiveE(withProne)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(764) as never, fiveE()), gate, "nothing without the key");
   }
 
   console.log(
-    "alsoApplies: unconscious puts prone on, which stays once it wakes; an immunity keeps it off, a held one is not doubled; refusals; gated at 1.764.",
+    "alsoApplies: unconscious puts prone on, which stays once it wakes; an immunity keeps it off, a held one is not doubled; refusals; gated at 1.765.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -1,5 +1,5 @@
 /**
- * Storing a spell to cast later (Capability API 1.523).
+ * Storing a spell to cast later (Capability API 1.524).
  *
  *   - A mage stores a 3rd-level bolt in a worn Ring of Spell Storing instead of casting it: paid
  *     for, nothing done. Cast from the ring later it costs nothing and uses the mage's numbers, once.
@@ -7,7 +7,7 @@
  *   - The ring's stack keeps what it holds after the fight, and the next fight reads it.
  *   - A shield guardian beside the mage takes one spell and casts it itself.
  *   - Stored before the fight (`standing` with `into`). Refusals and the install gate.
- *   - Found holding some (1.575, `stores.found`): each stack's rolled levels drawn from its list,
+ *   - Found holding some (1.576, `stores.found`): each stack's rolled levels drawn from its list,
  *     the same at every reading, until a fight changes them; emptied, it stays empty.
  */
 import assert from "node:assert/strict";
@@ -46,7 +46,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 523);
+  assert.ok(supportedCapabilityApi.minor >= 524);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -245,7 +245,7 @@ try {
     );
     assert.equal(stacks?.stacks[0]?.storedEntries?.[0]?.entry, "spells/bolt");
     const emptied = applyRulesetFightItemChanges(stacks!.stacks, rulesetFightItemChanges(stored.state, cast.state));
-    assert.deepEqual(emptied?.stacks[0]?.storedEntries, [], "cast, it holds nothing, and says so (1.575)");
+    assert.deepEqual(emptied?.stacks[0]?.storedEntries, [], "cast, it holds nothing, and says so (1.576)");
   }
   // ── Too high a level; a ring not worn ──
   {
@@ -306,7 +306,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose items or creatures store entries to be cast later (stores) requires schemaVersion 2 and capabilityApi 1.523 or newer";
+      "A ruleset whose items or creatures store entries to be cast later (stores) requires schemaVersion 2 and capabilityApi 1.524 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -320,12 +320,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(522) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(523) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(522) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(523) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(524) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(523) as never, JSON.parse(fiveEText)), gate);
   }
 
-  // ── Found holding some (1.575) ──
+  // ── Found holding some (1.576) ──
   {
     const found = {
       levels: "1d6-1",
@@ -382,7 +382,7 @@ try {
       /"prayers\/x" is not of a catalog it stores/,
     );
     const gate =
-      "A ruleset with an item found holding stored entries (stores.found) requires schemaVersion 2 and capabilityApi 1.575 or newer";
+      "A ruleset with an item found holding stored entries (stores.found) requires schemaVersion 2 and capabilityApi 1.576 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -396,13 +396,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(574) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(575) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(574) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(575) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(576) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(575) as never, document()), gate);
   }
 
   console.log(
-    "Spell storing: a bolt stored in a worn ring is paid for and cast from it later for nothing with its caster's numbers, once; what does not fit is refused; the stack keeps it; a shield guardian holds one; stored before the fight; gated at 1.523.",
+    "Spell storing: a bolt stored in a worn ring is paid for and cast from it later for nothing with its caster's numbers, once; what does not fit is refused; the stack keeps it; a shield guardian holds one; stored before the fight; gated at 1.524.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

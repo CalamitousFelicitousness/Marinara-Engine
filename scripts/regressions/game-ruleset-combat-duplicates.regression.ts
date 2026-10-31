@@ -1,5 +1,5 @@
 /**
- * Casting other entries (Capability API 1.473).
+ * Casting other entries (Capability API 1.474).
  *
  *   - Wish: every other spell of its catalog from 1st to 8th level is on the menu as "Wish: <spell>",
  *     though the sheet holds none of them; cast, it is paid for with Wish's 9th-level slot and does
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 473);
+  assert.ok(supportedCapabilityApi.minor >= 474);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -159,7 +159,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose entries cast other entries of a catalog (duplicates) requires schemaVersion 2 and capabilityApi 1.473 or newer";
+      "A ruleset whose entries cast other entries of a catalog (duplicates) requires schemaVersion 2 and capabilityApi 1.474 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -173,12 +173,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(472) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(473) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(473) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(474) as never, fiveE()), gate);
   }
 
   console.log(
-    "Duplicates: Wish offers every spell from 1st to 8th as its own option, paid with Wish's slot, narrowed by only; gated at 1.473.",
+    "Duplicates: Wish offers every spell from 1st to 8th as its own option, paid with Wish's slot, narrowed by only; gated at 1.474.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

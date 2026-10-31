@@ -1,5 +1,5 @@
 /**
- * The bonus-action spell rule (Capability API 1.709): 5e's "you can't cast another spell during the
+ * The bonus-action spell rule (Capability API 1.710): 5e's "you can't cast another spell during the
  * same turn, except for a cantrip with a casting time of 1 action".
  *
  *   - After a spell cast with the bonus budget, only a cantrip with an action is offered that turn.
@@ -36,7 +36,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 709);
+  assert.ok(supportedCapabilityApi.minor >= 710);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -176,7 +176,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with the bonus-action spell rule (combat.casting.afterBonusSpell) requires schemaVersion 2 and capabilityApi 1.709 or newer";
+      "A ruleset with the bonus-action spell rule (combat.casting.afterBonusSpell) requires schemaVersion 2 and capabilityApi 1.710 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -190,13 +190,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(708) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(709) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(708) as never, fiveE(null)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(709) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(710) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(709) as never, fiveE(null)), gate);
   }
 
   console.log(
-    "Bonus-action spell rule: after Spiritual Word or Shillelagh only Fire Bolt; after Magic Missile no bonus-action spell, another Magic Missile with another action; Fire Bolt first leaves Spiritual Word open; gated at 1.709.",
+    "Bonus-action spell rule: after Spiritual Word or Shillelagh only Fire Bolt; after Magic Missile no bonus-action spell, another Magic Missile with another action; Fire Bolt first leaves Spiritual Word open; gated at 1.710.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

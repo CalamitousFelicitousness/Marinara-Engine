@@ -1,5 +1,5 @@
 /**
- * A condition kept on only while a sheet value reads above zero (Capability API 1.652): 5e's Holy
+ * A condition kept on only while a sheet value reads above zero (Capability API 1.653): 5e's Holy
  * Avenger aura, 30 feet from paladin level 17, and Aura of Protection's from level 18.
  *
  *   - An item's worn `keepsOn` line with a `when`: on while it reads above zero, off otherwise; a
@@ -31,7 +31,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 652);
+  assert.ok(supportedCapabilityApi.minor >= 653);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -130,7 +130,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a condition kept on only while a sheet value reads above zero (keepsOn[].when) requires schemaVersion 2 and capabilityApi 1.652 or newer";
+      "A ruleset with a condition kept on only while a sheet value reads above zero (keepsOn[].when) requires schemaVersion 2 and capabilityApi 1.653 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -144,11 +144,11 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(651) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(652) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(652) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(653) as never, document()), gate);
   }
 
-  console.log("Kept on when: an aura kept on only while the sheet says so, from an item or an entry; gated at 1.652.");
+  console.log("Kept on when: an aura kept on only while the sheet says so, from an item or an entry; gated at 1.653.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

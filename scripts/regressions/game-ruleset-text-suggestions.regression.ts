@@ -1,11 +1,11 @@
 /**
- * Words a text field offers to pick (Capability API 1.795, laptop class builds 2026-10-24): a
+ * Words a text field offers to pick (Capability API 1.796, laptop class builds 2026-10-24): a
  * `type: "text"` field or list column's `suggestions`, shown as chips under it, the field still typed
  * in freely. A ranger's favored enemies out of the creature types.
  *
  *   - Read and kept; refused empty or past 40.
- *   - Gated at 1.795.
- *   - How many to pick (1.796), `pick`, read off the sheet: kept, gated at 1.796.
+ *   - Gated at 1.796.
+ *   - How many to pick (1.797), `pick`, read off the sheet: kept, gated at 1.797.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -44,7 +44,7 @@ try {
   );
 
   const gate =
-    "A ruleset whose text fields offer words to pick (a text field's suggestions) requires schemaVersion 2 and capabilityApi 1.795 or newer";
+    "A ruleset whose text fields offer words to pick (a text field's suggestions) requires schemaVersion 2 and capabilityApi 1.796 or newer";
   const manifest = (minor: number) => ({
     schemaVersion: 2,
     capabilityApi: { major: 1, minor },
@@ -58,11 +58,11 @@ try {
     permissions: [],
     restartRequired: false,
   });
-  assert.equal(getCapabilityPackageInstallIssue(manifest(794) as never, ember(words)), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(795) as never, ember(words)), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(794) as never, ember()), gate);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(795) as never, ember(words)), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(796) as never, ember(words)), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(795) as never, ember()), gate);
 
-  // How many to pick (1.796), read off the sheet: kept, and gated on its own.
+  // How many to pick (1.797), read off the sheet: kept, and gated on its own.
   const picking = ember(words);
   picking.sheet.fields.find((field: { id: string }) => field.id === "calling").pick = { const: 2 };
   const picked = parseRulesetDefinition(picking);
@@ -70,11 +70,11 @@ try {
   const pickField = picked.definition.sheet.fields.find((field) => field.id === "calling");
   assert.deepEqual(pickField?.type === "text" ? pickField.pick : undefined, { const: 2 });
   const pickGate =
-    "A ruleset whose text fields say how many words to pick (a text field's pick) requires schemaVersion 2 and capabilityApi 1.796 or newer";
-  assert.equal(getCapabilityPackageInstallIssue(manifest(795) as never, picking), pickGate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(796) as never, picking), pickGate);
+    "A ruleset whose text fields say how many words to pick (a text field's pick) requires schemaVersion 2 and capabilityApi 1.797 or newer";
+  assert.equal(getCapabilityPackageInstallIssue(manifest(796) as never, picking), pickGate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(797) as never, picking), pickGate);
 
-  console.info("Text suggestions: read and kept, refused empty or past 40, gated at 1.795; pick at 1.796.");
+  console.info("Text suggestions: read and kept, refused empty or past 40, gated at 1.796; pick at 1.797.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

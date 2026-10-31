@@ -1,5 +1,5 @@
 /**
- * Zones that seal the air or stop shots (Capability API 1.658): 5e's Cube of Force, "Gases, wind, and
+ * Zones that seal the air or stop shots (Capability API 1.659): 5e's Cube of Force, "Gases, wind, and
  * fog can't pass through the barrier" (face 1) and "Nonliving matter can't pass through the barrier"
  * (face 2), a barrier around its user.
  *
@@ -41,7 +41,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 658);
+  assert.ok(supportedCapabilityApi.minor >= 659);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -178,7 +178,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a zone that seals out gases and fog or blocks shots from afar (zone sealsAir, blocks ranged) requires schemaVersion 2 and capabilityApi 1.658 or newer";
+      "A ruleset with a zone that seals out gases and fog or blocks shots from afar (zone sealsAir, blocks ranged) requires schemaVersion 2 and capabilityApi 1.659 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -192,11 +192,11 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(657) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(658) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(658) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(659) as never, fiveE()), gate);
   }
 
-  console.log("Cube of Force: fog kept to one side of its edge, shots from afar stopped across it; gated at 1.658.");
+  console.log("Cube of Force: fog kept to one side of its edge, shots from afar stopped across it; gated at 1.659.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

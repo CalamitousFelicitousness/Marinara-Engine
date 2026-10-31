@@ -1,5 +1,5 @@
 /**
- * Up to 16 contests (Capability API 1.596): 5e's Arcane Hand gets a grasp of its own.
+ * Up to 16 contests (Capability API 1.597): 5e's Arcane Hand gets a grasp of its own.
  *
  *   - Sixteen parse and are offered; seventeen are refused.
  *   - The install gate, at more than twelve.
@@ -18,7 +18,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 596);
+  assert.ok(supportedCapabilityApi.minor >= 597);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -41,7 +41,7 @@ try {
   assert.equal(seventeen.ok, false, "seventeen is too many");
 
   {
-    const gate = "A ruleset with more than 12 contests requires schemaVersion 2 and capabilityApi 1.596 or newer";
+    const gate = "A ruleset with more than 12 contests requires schemaVersion 2 and capabilityApi 1.597 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -55,12 +55,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(595) as never, withContests(13)), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(595) as never, withContests(12)), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(596) as never, withContests(16)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(596) as never, withContests(13)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(596) as never, withContests(12)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(597) as never, withContests(16)), gate);
   }
 
-  console.log("Sixteen contests: parsed, seventeen refused; more than twelve gated at 1.596.");
+  console.log("Sixteen contests: parsed, seventeen refused; more than twelve gated at 1.597.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

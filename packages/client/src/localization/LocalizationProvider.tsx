@@ -15,7 +15,7 @@ export function LocalizationProvider({ children }: { children: ReactNode }) {
       if (active && resolvedLanguage !== language && useUIStore.getState().language === language) {
         setLanguage(resolvedLanguage);
       }
-      // The rulesets' language packs follow the page's language (1.810), on opening and on each change.
+      // The rulesets' language packs follow the page's language (1.811), on opening and on each change.
       if (active && resolvedLanguage === language) void syncRulesetLanguage(resolvedLanguage, queryClient);
     });
     return () => {

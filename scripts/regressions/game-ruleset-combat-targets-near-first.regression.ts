@@ -1,5 +1,5 @@
 /**
- * Targets each within a distance of the first (Capability API 1.593): 5e's Chain Lightning.
+ * Targets each within a distance of the first (Capability API 1.594): 5e's Chain Lightning.
  *
  *   - `targetsWithinFirst: 30`: two leaps 60 feet apart, either side of the first, are allowed.
  *   - One 35 feet from the first is refused as standing too far, as `targetsWithin` refuses the pair
@@ -32,7 +32,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 593);
+  assert.ok(supportedCapabilityApi.minor >= 594);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -148,7 +148,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with targets each within a distance of the first (targetsWithinFirst) requires schemaVersion 2 and capabilityApi 1.593 or newer";
+      "A ruleset with targets each within a distance of the first (targetsWithinFirst) requires schemaVersion 2 and capabilityApi 1.594 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -162,12 +162,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(592) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(593) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(593) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(594) as never, document()), gate);
   }
 
   console.log(
-    "Targets near the first: leaps 60 feet apart either side of the first allowed, one 35 feet off refused; gated at 1.593.",
+    "Targets near the first: leaps 60 feet apart either side of the first allowed, one 35 feet off refused; gated at 1.594.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

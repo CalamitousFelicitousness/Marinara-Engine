@@ -1,5 +1,5 @@
 /**
- * A condition lasting longer for each step of higher cost paid (Capability API 1.446).
+ * A condition lasting longer for each step of higher cost paid (Capability API 1.447).
  *
  *   - Primeval Awareness: ten rounds on a 1st-level slot, twenty on a 2nd, thirty on a 3rd.
  *   - Without `perStep`, a higher slot changes nothing.
@@ -31,7 +31,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 446);
+  assert.ok(supportedCapabilityApi.minor >= 447);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -138,7 +138,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions last longer for each step of higher cost paid (perStep) requires schemaVersion 2 and capabilityApi 1.446 or newer";
+      "A ruleset whose conditions last longer for each step of higher cost paid (perStep) requires schemaVersion 2 and capabilityApi 1.447 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -152,13 +152,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(445) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(446) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(445) as never, fiveE({ rounds: 10 })), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(446) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(447) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(446) as never, fiveE({ rounds: 10 })), gate);
   }
 
   console.log(
-    "Duration per step: Primeval Awareness lasts a minute per level of the slot spent, and a duration without perStep is unchanged; gated at 1.446.",
+    "Duration per step: Primeval Awareness lasts a minute per level of the slot spent, and a duration without perStep is unchanged; gated at 1.447.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

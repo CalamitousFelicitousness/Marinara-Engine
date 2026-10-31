@@ -1,6 +1,6 @@
 /**
  * A contest that leaves something on a target its user loses to, and a condition that ends as its
- * holder can't hear whoever put it on (Capability API 1.617): 5e's Pipes of the Sewers.
+ * holder can't hear whoever put it on (Capability API 1.618): 5e's Pipes of the Sewers.
  *
  *   - `contest.onLose.applies`: a swarm the piper loses to can't be swayed for 24 hours, and a
  *     `targetTypes.not.holding` keeps it out after.
@@ -36,7 +36,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 617);
+  assert.ok(supportedCapabilityApi.minor >= 618);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -213,7 +213,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a contest that leaves conditions on a target its user loses to (contest.onLose), or a condition that ends as its holder can't hear its source (endsWhenHolder.cantHearSource), requires schemaVersion 2 and capabilityApi 1.617 or newer";
+      "A ruleset with a contest that leaves conditions on a target its user loses to (contest.onLose), or a condition that ends as its holder can't hear its source (endsWhenHolder.cantHearSource), requires schemaVersion 2 and capabilityApi 1.618 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -227,12 +227,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(616) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(617) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(617) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(618) as never, document()), gate);
   }
 
   console.log(
-    "contest.onLose and endsWhenHolder.cantHearSource: a lost sway leaves a swarm unswayed for 24 hours; a deaf swarm, or one whose piper is down, goes free and unswayed; refusals; gated at 1.617.",
+    "contest.onLose and endsWhenHolder.cantHearSource: a lost sway leaves a swarm unswayed for 24 hours; a deaf swarm, or one whose piper is down, goes free and unswayed; refusals; gated at 1.618.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

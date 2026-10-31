@@ -1,6 +1,6 @@
 /**
  * A catalog creature's actions reach the fight whole: the creature action keys of Capability API
- * 1.672 to 1.684 are carried onto its stat block (`oncePerTarget` once was not), and from there onto
+ * 1.673 to 1.685 are carried onto its stat block (`oncePerTarget` once was not), and from there onto
  * the action the fight offers.
  */
 import assert from "node:assert/strict";
@@ -14,7 +14,7 @@ import {
   supportedCapabilityApi,
 } from "../../packages/shared/src/index.js";
 
-assert.ok(supportedCapabilityApi.minor >= 684);
+assert.ok(supportedCapabilityApi.minor >= 685);
 const doc = JSON.parse(
   readFileSync(fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)), "utf8"),
 ) as Record<string, any>;
@@ -114,4 +114,4 @@ assert.deepEqual(fought("presence").sparedAfter, carried.presence.oncePerTarget)
 assert.equal(fought("slaying").slaysHealthAtMost, 190);
 assert.deepEqual(fought("etherealness").dismisses, carried.etherealness.dismisses);
 
-console.log("Creature keys carried: 1.672 to 1.684 reach a catalog creature's block and its fight.");
+console.log("Creature keys carried: 1.673 to 1.685 reach a catalog creature's block and its fight.");

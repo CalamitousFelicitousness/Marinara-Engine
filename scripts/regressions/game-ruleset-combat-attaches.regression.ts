@@ -1,5 +1,5 @@
 /**
- * Creatures that hang on (Capability API 1.675).
+ * Creatures that hang on (Capability API 1.676).
  *
  *   - A condition's `attaches`: whoever put it on comes along beside its holder as they walk or are
  *     pushed, and attacks nobody (`"none"`, a stirge) or nobody but its holder (`"holder"`, a
@@ -38,7 +38,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 675);
+  assert.ok(supportedCapabilityApi.minor >= 676);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -242,7 +242,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a condition whose source hangs on to its holder, or one put on only by an attack with advantage (attaches, withAdvantage), requires schemaVersion 2 and capabilityApi 1.675 or newer";
+      "A ruleset with a condition whose source hangs on to its holder, or one put on only by an attack with advantage (attaches, withAdvantage), requires schemaVersion 2 and capabilityApi 1.676 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -256,16 +256,16 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(674) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(675) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(675) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(676) as never, fiveE()), gate);
     assert.notEqual(
-      getCapabilityPackageInstallIssue(manifest(674) as never, JSON.parse(fiveEText) as Record<string, unknown>),
+      getCapabilityPackageInstallIssue(manifest(675) as never, JSON.parse(fiveEText) as Record<string, unknown>),
       gate,
     );
   }
 
   console.log(
-    "Attaches: carried along, attacking nobody or only its holder, let go after its harms; withAdvantage; gated at 1.675.",
+    "Attaches: carried along, attacking nobody or only its holder, let go after its harms; withAdvantage; gated at 1.676.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

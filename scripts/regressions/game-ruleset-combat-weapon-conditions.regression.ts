@@ -1,5 +1,5 @@
 /**
- * A weapon changed for a time by a condition (Capability API 1.500).
+ * A weapon changed for a time by a condition (Capability API 1.501).
  *
  *   - Magic Weapon: every weapon +1 to hit and to damage, and magical.
  *   - Shillelagh: a quarterstaff made with the spellcasting ability, a d8, magical; a dagger is not.
@@ -32,7 +32,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 500);
+  assert.ok(supportedCapabilityApi.minor >= 501);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -184,7 +184,7 @@ try {
     assert.equal(dealt.amount, 9, "a 5 on the d8 and Wisdom's 4");
   }
 
-  // ── A named blow of flat damage rolls the die instead (1.653): Alter Self's unarmed strikes ──
+  // ── A named blow of flat damage rolls the die instead (1.654): Alter Self's unarmed strikes ──
   {
     const fist = now(fight([]), "Unarmed Strike");
     assert.deepEqual([fist.damage!.count, fist.damage!.flat], [0, 4], "1 plus Strength");
@@ -233,7 +233,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions change their holder's weapons (a condition's weapon) requires schemaVersion 2 and capabilityApi 1.500 or newer";
+      "A ruleset whose conditions change their holder's weapons (a condition's weapon) requires schemaVersion 2 and capabilityApi 1.501 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -249,13 +249,13 @@ try {
     });
     const only = JSON.parse(fiveEText) as Record<string, any>;
     only.combat.conditions[0].weapon = magicWeapon;
-    assert.equal(getCapabilityPackageInstallIssue(manifest(499) as never, only), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(500) as never, only), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(499) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(500) as never, only), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(501) as never, only), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(500) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Weapon conditions: Magic Weapon adds to every weapon, Shillelagh makes a quarterstaff a Wisdom d8, read by the roll and the menu; gated at 1.500.",
+    "Weapon conditions: Magic Weapon adds to every weapon, Shillelagh makes a quarterstaff a Wisdom d8, read by the roll and the menu; gated at 1.501.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -1,5 +1,5 @@
 /**
- * How much thought a creature puts into a fight (Capability API 1.760), and the rest of what the Engine
+ * How much thought a creature puts into a fight (Capability API 1.761), and the rest of what the Engine
  * weighs for the creatures it plays.
  *
  *   - A creature's mind is its own `mind`, else its type's, else the tier its `combat.minds` ability
@@ -41,7 +41,7 @@ const { commandRulesetCombatDirector, pickRulesetChoice } =
   await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 760);
+  assert.ok(supportedCapabilityApi.minor >= 761);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -129,7 +129,7 @@ try {
     assert.equal(mindOf(bare, { type: "ooze" }), "mindless");
     assert.equal(mindOf(bare, { type: "humanoid" }), undefined, "played as it always was");
 
-    // A bestiary creature's own mind, morale and leader reach the fight (1.760, 1.761).
+    // A bestiary creature's own mind, morale and leader reach the fight (1.761, 1.762).
     const doc = fiveE();
     const creatures = doc.catalogs.find((one: { holds?: string }) => one.holds === "creatures");
     const lurker = creatures.entries.find((one: { id: string }) => one.id === "thorn-lurker");
@@ -774,7 +774,7 @@ try {
         },
         { mage: { ...master, temperament: "disciplined" } },
       );
-      // Both of its trait's spells cast from 3rd-level slots (1.641), as a bestiary mage's are.
+      // Both of its trait's spells cast from 3rd-level slots (1.642), as a bestiary mage's are.
       const mage = rulesetCombatant(encounter, "mage")!;
       for (const action of mage.actions)
         if (action.id === "counter" || action.id === "bolt") action.innate = { level: 3, baseLevel: 3, slot: 3, slots };
@@ -1548,7 +1548,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with how much thought a creature puts into a fight (a creature's or a creature type's mind, or combat.minds) requires schemaVersion 2 and capabilityApi 1.760 or newer";
+      "A ruleset with how much thought a creature puts into a fight (a creature's or a creature type's mind, or combat.minds) requires schemaVersion 2 and capabilityApi 1.761 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -1562,18 +1562,18 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(759) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(760) as never, fiveE()), gate);
     assert.equal(
-      getCapabilityPackageInstallIssue(manifest(759) as never, fiveE({ types: [{ id: "x", label: "X" }] })),
+      getCapabilityPackageInstallIssue(manifest(760) as never, fiveE({ types: [{ id: "x", label: "X" }] })),
       gate,
       "combat.minds alone",
     );
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(760) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(759) as never, JSON.parse(fiveEText)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(761) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(760) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Combat minds: a kraken a genius, an ape by instinct, a golem and a zombie mindless; the mindless go at the nearest, a hurt coward gets away, a guard goes at whoever is on its friend, a genius at whoever does its side most harm, an animal at the weaker; a tactician keeps its last slot for its answer, wards itself while the fight is far and steps back after a shot; gated at 1.760.",
+    "Combat minds: a kraken a genius, an ape by instinct, a golem and a zombie mindless; the mindless go at the nearest, a hurt coward gets away, a guard goes at whoever is on its friend, a genius at whoever does its side most harm, an animal at the weaker; a tactician keeps its last slot for its answer, wards itself while the fight is far and steps back after a shot; gated at 1.761.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -1,5 +1,5 @@
 /**
- * A floor under defense (Capability API 1.405).
+ * A floor under defense (Capability API 1.406).
  *
  *   - Barkskin: a creature's 12 becomes 16; a shield's +2 on 15 stays 17; a hit says what it raised.
  *   - Mage Armor: 13 + Dexterity read off the sheet, the better of it and what the character wears.
@@ -32,7 +32,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 405);
+  assert.ok(supportedCapabilityApi.minor >= 406);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -175,7 +175,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a floor under defense (a modifier to defense with atLeast) requires schemaVersion 2 and capabilityApi 1.405 or newer";
+      "A ruleset with a floor under defense (a modifier to defense with atLeast) requires schemaVersion 2 and capabilityApi 1.406 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -189,13 +189,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(404) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(405) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(404) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(405) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(406) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(405) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Defense floor: Barkskin's 16 under a creature's 12, not over a shield's 17; Mage Armor's 13 + Dex off the sheet, the better of it and the armor worn; a creature's const; gated at 1.405.",
+    "Defense floor: Barkskin's 16 under a creature's 12, not over a shield's 17; Mage Armor's 13 + Dex off the sheet, the better of it and the armor worn; a creature's const; gated at 1.406.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

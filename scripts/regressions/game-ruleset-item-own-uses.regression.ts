@@ -1,5 +1,5 @@
 /**
- * An item's further uses that count their own (Capability API 1.518).
+ * An item's further uses that count their own (Capability API 1.519).
  *
  *   - A staff with a cone on its charges and a Thunderclap once a long rest: the fight offers the
  *     Thunderclap while it is left, spends its own use (never a charge), and writes it to the stack.
@@ -40,7 +40,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 518);
+  assert.ok(supportedCapabilityApi.minor >= 519);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -222,7 +222,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose items have further uses that count their own, or more than 8 of them (moreUses uses), requires schemaVersion 2 and capabilityApi 1.518 or newer";
+      "A ruleset whose items have further uses that count their own, or more than 8 of them (moreUses uses), requires schemaVersion 2 and capabilityApi 1.519 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -236,15 +236,15 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(517) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(518) as never, document()), gate);
     const nine = Array.from({ length: 9 }, (_, n) => ({ label: `Bead ${n + 1}`, use: { ...heal, charges: 1 } }));
-    assert.equal(getCapabilityPackageInstallIssue(manifest(517) as never, document(nine)), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(518) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(517) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(518) as never, document(nine)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(519) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(518) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Own uses: a further use counts its own uses in a fight and outside one, kept on the stack and back on its own rest, never spending a charge; up to 16 further uses; gated at 1.518.",
+    "Own uses: a further use counts its own uses in a fight and outside one, kept on the stack and back on its own rest, never spending a charge; up to 16 further uses; gated at 1.519.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

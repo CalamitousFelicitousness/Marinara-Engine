@@ -1,4 +1,4 @@
-// A priced material (Capability API 1.789): what an entry cast from a sheet needs its user to carry,
+// A priced material (Capability API 1.790): what an entry cast from a sheet needs its user to carry,
 // worth so much by the items' own cost. Read the same way in a fight, off what the fight has left of
 // the bag, and outside one, off the bag itself: one reading, so what a fight offers is what the Game
 // Master's `use` lets through.

@@ -6,7 +6,7 @@ import { chatSettingsDrawer, drawerToggle, openChatSettings } from "./chat-setti
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 for (const mode of ["roleplay", "game"] as const) {
   test(`World Maps attachment requires an updated package in ${mode}`, async ({ page }, testInfo) => {
-    let minor = 391;
+    let minor = 392;
     await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: null } }));
     await page.route("**/api/capability-packages/agents", (route) =>
       route.fulfill({

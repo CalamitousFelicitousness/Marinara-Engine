@@ -161,7 +161,7 @@ try {
     const many = fileOf(
       packageDocs(),
       undefined,
-      // Its ruleset, 12 catalogs and 40 translations (1.810) at most.
+      // Its ruleset, 12 catalogs and 40 translations (1.811) at most.
       Object.fromEntries(Array.from({ length: 52 }, (_, n) => [`catalogs/c${n}.json`, "e30="])),
     );
     assert.match(refusal(many), /54 files; a ruleset package has at most 53/);

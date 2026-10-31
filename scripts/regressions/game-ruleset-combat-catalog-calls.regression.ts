@@ -1,5 +1,5 @@
 /**
- * Creatures called by a catalog entry or an item use (Capability API 1.393).
+ * Creatures called by a catalog entry or an item use (Capability API 1.394).
  *
  *   - `mechanics.calls` with `options`: Conjure Animals, its user picking one wolf or two hounds as
  *     they cast it, each option a mode. They join on the caster's side, beside them.
@@ -40,7 +40,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 393);
+  assert.ok(supportedCapabilityApi.minor >= 394);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -255,7 +255,7 @@ try {
     assert.equal(of(taken.events, "called")[0]?.ids.length, 4, "a d4 thrown at its most");
   }
 
-  // ── Read from a catalog (1.401): any beast, capped by challenge, picked as it is cast ──
+  // ── Read from a catalog (1.402): any beast, capped by challenge, picked as it is cast ──
   {
     const ranked = (calls: Record<string, unknown>) =>
       parsed(
@@ -321,7 +321,7 @@ try {
     );
   }
 
-  // ── Twice as many with a 5th-level slot, three times with 7th (1.401) ──
+  // ── Twice as many with a 5th-level slot, three times with 7th (1.402) ──
   {
     const upcast = conjure({ creature: "creatures/dire-wolf", count: { flat: 1 }, timesPerSteps: 2 });
     const scaled = parsed(
@@ -347,7 +347,7 @@ try {
     assert.equal(wolves(undefined), 1, "its own 3rd-level slot");
     assert.equal(wolves("slots_5"), 2);
     assert.equal(wolves("slots_7"), 3);
-    // Eight at a time, picked among options read from the bestiary: more than eight come (1.402).
+    // Eight at a time, picked among options read from the bestiary: more than eight come (1.403).
     const pack = conjure({
       options: [
         { creature: "creatures/cinder-hound", count: { flat: 2 } },
@@ -610,7 +610,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a catalog entry or an item use that calls creatures into the fight requires schemaVersion 2 and capabilityApi 1.393 or newer";
+      "A ruleset with a catalog entry or an item use that calls creatures into the fight requires schemaVersion 2 and capabilityApi 1.394 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -625,8 +625,8 @@ try {
       restartRequired: false,
     });
     const caller = document([conjure(options)]);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(392) as never, caller), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(393) as never, caller), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(393) as never, caller), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(394) as never, caller), gate);
     // A creature's own call is 1.325's, not this.
     const creatureCall = JSON.parse(fiveEText);
     creatureCall.catalogs
@@ -637,23 +637,23 @@ try {
         budget: "action",
         calls: { creature: "creatures/cinder-hound", count: { flat: 1 } },
       });
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(392) as never, creatureCall), gate);
-    // Read from a catalog or scaled by cost: 1.401.
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(393) as never, creatureCall), gate);
+    // Read from a catalog or scaled by cost: 1.402.
     const later =
-      "A ruleset with calls read from a catalog or scaled by cost, or an attack mode on melee attacks, requires schemaVersion 2 and capabilityApi 1.401 or newer";
+      "A ruleset with calls read from a catalog or scaled by cost, or an attack mode on melee attacks, requires schemaVersion 2 and capabilityApi 1.402 or newer";
     for (const calls of [
       { from: { catalog: "creatures" }, count: { flat: 1 } },
       { creature: "creatures/dire-wolf", count: { flat: 1 }, timesPerSteps: 2 },
       { options: [{ from: { catalog: "creatures" }, count: { flat: 1 } }] },
     ]) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(400) as never, document([conjure(calls)])), later);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(401) as never, document([conjure(calls)])), later);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(401) as never, document([conjure(calls)])), later);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(402) as never, document([conjure(calls)])), later);
     }
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(400) as never, document([conjure(options)])), later);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(401) as never, document([conjure(options)])), later);
   }
 
   console.log(
-    "Catalog calls: Conjure Animals' two hounds on the druid's side right after them, gone with its concentration or as its ten rounds pass; one creature by its count; refusals; gated at 1.393.",
+    "Catalog calls: Conjure Animals' two hounds on the druid's side right after them, gone with its concentration or as its ten rounds pass; one creature by its count; refusals; gated at 1.394.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

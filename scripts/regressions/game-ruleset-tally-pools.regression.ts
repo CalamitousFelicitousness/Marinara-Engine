@@ -1,5 +1,5 @@
 /**
- * List pools that count uses rather than being spent (Capability API 1.800, class pass 2026-10-25:
+ * List pools that count uses rather than being spent (Capability API 1.801, class pass 2026-10-25:
  * Relentless Rage /20 shown as a pool to spend, though 20 is only how far its save's tally counts).
  *
  *   - A row with the list's `tallyColumn` set is a tally; one without it is spent as always.
@@ -28,7 +28,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 800);
+  assert.ok(supportedCapabilityApi.minor >= 801);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -101,7 +101,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose list pools count uses (pools.tallyColumn) requires schemaVersion 2 and capabilityApi 1.800 or newer";
+      "A ruleset whose list pools count uses (pools.tallyColumn) requires schemaVersion 2 and capabilityApi 1.801 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -115,13 +115,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(799) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(800) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(799) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(800) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(801) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(800) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Tally pools: a counters row with the tally column reads as the times it was used, starts over on its rest, and is gated at 1.800.",
+    "Tally pools: a counters row with the tally column reads as the times it was used, starts over on its rest, and is gated at 1.801.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

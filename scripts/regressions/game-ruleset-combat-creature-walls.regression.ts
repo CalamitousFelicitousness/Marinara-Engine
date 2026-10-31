@@ -1,5 +1,5 @@
 /**
- * A wall a creature's action lays (Capability API 1.727): an ice devil's Wall of Ice.
+ * A wall a creature's action lays (Capability API 1.728): an ice devil's Wall of Ice.
  *
  *   - A creature action's `area` may be a `"wall"`, with `width`, `ring` and `ringOnly`, as a
  *     catalog entry's: it lays a zone that blocks and stands in sections struck one by one.
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 727);
+  assert.ok(supportedCapabilityApi.minor >= 728);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -185,7 +185,7 @@ try {
   refused(fiveE(wallOfIce({ shape: "wall", size: 30, ringOnly: true })), /"ringOnly" lays it as its ring/);
   refused(fiveE(wallOfIce({ shape: "cone", size: 30, width: 10 })), /Only a line or a wall may carry width/);
   const gate =
-    'A ruleset with a wall a creature\'s action lays (actions[].area.shape "wall") requires schemaVersion 2 and capabilityApi 1.727 or newer';
+    'A ruleset with a wall a creature\'s action lays (actions[].area.shape "wall") requires schemaVersion 2 and capabilityApi 1.728 or newer';
   const manifest = (minor: number) => ({
     schemaVersion: 2,
     capabilityApi: { major: 1, minor },
@@ -199,11 +199,11 @@ try {
     permissions: [],
     restartRequired: false,
   });
-  assert.equal(getCapabilityPackageInstallIssue(manifest(726) as never, fiveE()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(727) as never, fiveE()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(726) as never, JSON.parse(fiveEText)), gate);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(727) as never, fiveE()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(728) as never, fiveE()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(727) as never, JSON.parse(fiveEText)), gate);
 
-  console.log("Wall of Ice: a creature's action lays a wall in sections, straight or as a ring; gated at 1.727.");
+  console.log("Wall of Ice: a creature's action lays a wall in sections, straight or as a ring; gated at 1.728.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

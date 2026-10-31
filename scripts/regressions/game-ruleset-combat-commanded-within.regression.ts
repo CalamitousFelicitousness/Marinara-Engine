@@ -1,5 +1,5 @@
 /**
- * A call commanded only within some distance of its caller (Capability API 1.619): 5e's Staff of the
+ * A call commanded only within some distance of its caller (Capability API 1.620): 5e's Staff of the
  * Python, "if it is within 60 feet of you and you aren't incapacitated".
  *
  *   - Within reach and able to act: the caller pays its bonus action for the snake's turn, as ever.
@@ -37,7 +37,7 @@ const { rulesetController } =
   await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 619);
+  assert.ok(supportedCapabilityApi.minor >= 620);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -181,7 +181,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a call commanded only within some distance of its caller (calls.commandedWithin) requires schemaVersion 2 and capabilityApi 1.619 or newer";
+      "A ruleset with a call commanded only within some distance of its caller (calls.commandedWithin) requires schemaVersion 2 and capabilityApi 1.620 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -195,12 +195,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(618) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(619) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(619) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(620) as never, document()), gate);
   }
 
   console.log(
-    "calls.commandedWithin: commanded and paid for within 60 feet, on its own and run by the Engine when too far or its caller is incapacitated; gated at 1.619.",
+    "calls.commandedWithin: commanded and paid for within 60 feet, on its own and run by the Engine when too far or its caller is incapacitated; gated at 1.620.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

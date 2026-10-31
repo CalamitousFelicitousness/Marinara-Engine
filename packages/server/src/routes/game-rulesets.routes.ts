@@ -81,13 +81,13 @@ const importPackageBody = z
   .object({
     package: packageFile,
     dryRun: z.boolean().optional(),
-    /** The page's language: of the translations a file carries, the one kept (1.810). */
+    /** The page's language: of the translations a file carries, the one kept (1.811). */
     locale: z
       .string()
       .max(30)
       .refine((locale) => isRulesetLocaleCode(locale))
       .optional(),
-    /** Language packs picked with the file (1.810), each by its file name: a catalog ruleset's packs are
+    /** Language packs picked with the file (1.811), each by its file name: a catalog ruleset's packs are
      *  published beside its package file, so one installed from the file brings them the same way. */
     packs: z
       .array(z.object({ name: z.string().min(1).max(300), document: packageFile }).strict())
@@ -149,7 +149,7 @@ function leastCapabilityApi(
   catalogs: Record<string, string>,
   /** The ruleset's own text, whose size a package of it declares (a larger one needs 1.340). */
   rulesetText: string,
-  /** The languages a package file of it carries (a translation in the file needs 1.810). */
+  /** The languages a package file of it carries (a translation in the file needs 1.811). */
   locales: readonly string[] = [],
 ) {
   const paths = [

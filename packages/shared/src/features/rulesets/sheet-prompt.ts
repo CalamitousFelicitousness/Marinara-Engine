@@ -165,7 +165,7 @@ export function renderRulesetSheetBlock(
   push(
     live.pools
       .map((pool) =>
-        // A tally reads as the times it has been used (1.800), not as something left to spend.
+        // A tally reads as the times it has been used (1.801), not as something left to spend.
         pool.tally
           ? `${pool.label} used ${pool.max - pool.value} times`
           : `${pool.label} ${pool.value}/${pool.max}${pool.temp > 0 ? ` +${pool.temp} temp` : ""}`,
@@ -218,12 +218,12 @@ export function renderRulesetSheetBlock(
 
   const conditions = live.conditions.flatMap((condition) => (condition.active ? [condition.label] : []));
   if (conditions.length > 0) push(`Conditions: ${conditions.join(", ")}`);
-  // What a use outside a fight called and keeps (1.797), which comes into every fight with them.
+  // What a use outside a fight called and keeps (1.798), which comes into every fight with them.
   const kept = rulesetKeptCalls(stored).map((call) =>
     call.as ? `${safeValue(call.as)} (${safeValue(call.entry)})` : safeValue(call.entry),
   );
   if (kept.length > 0) push(`With them: ${kept.join(", ")}`);
-  // And the shape one keeps them in (1.800), which they start every fight in.
+  // And the shape one keeps them in (1.801), which they start every fight in.
   const shaped = rulesetKeptForm(stored);
   if (shaped) push(`In the shape of: ${safeValue(shaped.as)} (${safeValue(shaped.entry)})`);
   for (const source of rulesetCheckSources(definition, build, stored, items)) {

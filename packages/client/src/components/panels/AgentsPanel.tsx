@@ -176,7 +176,7 @@ type PendingRulesetImport = {
   /** A ruleset package file (a parsed `.ruleset.json`), imported whole; with each catalog file's entry count. */
   packageFile?: Record<string, unknown>;
   catalogs?: Record<string, number>;
-  /** Language packs picked with the package file, in the page's language (1.810). */
+  /** Language packs picked with the package file, in the page's language (1.811). */
   packs?: RulesetPickedPack[];
   /** Packs were picked, but none in the page's language: the ruleset will read in English. */
   packsOtherLanguage?: boolean;
@@ -1078,7 +1078,7 @@ export function AgentsPanel() {
         setAgentImportError(agentImportsDisabledHelp);
         return;
       }
-      // One ruleset, with the language packs (1.810) published beside its package file if any were picked.
+      // One ruleset, with the language packs (1.811) published beside its package file if any were picked.
       const picked: Array<{ file: File; text: string; document: unknown }> = [];
       for (const file of files) {
         if (file.size > RULESET_PACKAGE_FILE_MAX_BYTES) {

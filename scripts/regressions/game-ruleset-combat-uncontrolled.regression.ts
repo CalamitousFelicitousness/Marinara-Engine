@@ -1,5 +1,5 @@
 /**
- * A target under nobody else's control (Capability API 1.632): 5e's Pipes of the Sewers, "a swarm of
+ * A target under nobody else's control (Capability API 1.633): 5e's Pipes of the Sewers, "a swarm of
  * rats that isn't under another creature's control".
  *
  *   - A swarm nobody called, the piper's own, a wild one and one turned on its caller may be swayed;
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 632);
+  assert.ok(supportedCapabilityApi.minor >= 633);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -124,7 +124,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a target test for a creature under nobody else's control (targetTypes.uncontrolled) requires schemaVersion 2 and capabilityApi 1.632 or newer";
+      "A ruleset with a target test for a creature under nobody else's control (targetTypes.uncontrolled) requires schemaVersion 2 and capabilityApi 1.633 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -138,12 +138,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(631) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(632) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(632) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(633) as never, document()), gate);
   }
 
   console.log(
-    "targetTypes.uncontrolled: an uncalled, own, wild or turned swarm may be swayed, a vampire's may not; gated at 1.632.",
+    "targetTypes.uncontrolled: an uncalled, own, wild or turned swarm may be swayed, a vampire's may not; gated at 1.633.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

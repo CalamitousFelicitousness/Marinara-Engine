@@ -1,5 +1,5 @@
 /**
- * Squeezing, and moving as a smaller size (Capability API 1.680).
+ * Squeezing, and moving as a smaller size (Capability API 1.681).
  *
  *   - `combat.sizes.squeezing`: a Large ogre goes down a corridor one cell wide as a Medium creature,
  *     each step there costing double, and stands squeezed in it holding the ruleset's condition,
@@ -40,7 +40,7 @@ const { rankRulesetChoices } =
   await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 680);
+  assert.ok(supportedCapabilityApi.minor >= 681);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -186,7 +186,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with squeezing, or a condition whose holder moves as a smaller size (sizes.squeezing, squeezesAs), requires schemaVersion 2 and capabilityApi 1.680 or newer";
+      "A ruleset with squeezing, or a condition whose holder moves as a smaller size (sizes.squeezing, squeezesAs), requires schemaVersion 2 and capabilityApi 1.681 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -200,9 +200,9 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(679) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(680) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(679) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(680) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(681) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(680) as never, JSON.parse(fiveEText)), gate);
   }
 
   // ── Getting away never into a gap it has to squeeze into, where it can stand whole (re-test 14) ──
@@ -408,7 +408,7 @@ try {
   }
 
   console.log(
-    "Squeezing: double steps between walls as one size smaller, squeezed while there; Amorphous freely; a getaway never into a squeeze; a blow planned from a gap reaches from what fits there; gated at 1.680.",
+    "Squeezing: double steps between walls as one size smaller, squeezed while there; Amorphous freely; a getaway never into a squeeze; a blow planned from a gap reaches from what fits there; gated at 1.681.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

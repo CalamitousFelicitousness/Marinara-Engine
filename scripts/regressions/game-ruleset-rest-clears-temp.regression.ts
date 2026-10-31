@@ -1,5 +1,5 @@
 /**
- * A rest that clears temporary points (Capability API 1.803).
+ * A rest that clears temporary points (Capability API 1.804).
  *
  *   - A long rest with `clear.temp` takes temporary hit points away and says so; one without leaves
  *     them be (laptop playtest 2026-10-25: temporary hit points kept past a long rest).
@@ -26,7 +26,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 803);
+  assert.ok(supportedCapabilityApi.minor >= 804);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -81,7 +81,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose rest clears temporary points (clear.temp) requires schemaVersion 2 and capabilityApi 1.803 or newer";
+      "A ruleset whose rest clears temporary points (clear.temp) requires schemaVersion 2 and capabilityApi 1.804 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -95,13 +95,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(802) as never, document(true)), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(803) as never, document(true)), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(802) as never, document(false)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(803) as never, document(true)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(804) as never, document(true)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(803) as never, document(false)), gate);
   }
 
   console.log(
-    "Rest clears temp: a long rest with clear.temp takes temporary hit points away and says so, a short rest and a rest without it leave them; gated at 1.803.",
+    "Rest clears temp: a long rest with clear.temp takes temporary hit points away and says so, a short rest and a rest without it leave them; gated at 1.804.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

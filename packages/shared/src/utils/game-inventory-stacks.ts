@@ -50,27 +50,27 @@ export interface GameInventoryStack {
   /** The charges an item holds, as a ruleset fight left them. Kept on a stack of one item only, as a
    *  loaded count is, and an item without one holds all it can. */
   charges?: number;
-  /** What a weapon has taken off its damage rolls for good (Capability API 1.550), corroded by what
+  /** What a weapon has taken off its damage rolls for good (Capability API 1.551), corroded by what
    *  it hit, as a ruleset fight left it. Kept on a stack of one item only, as charges are. */
   corroded?: number;
-  /** The levels it has ever taken in (Capability API 1.570), a Rod of Absorption's toward its 50, as a
+  /** The levels it has ever taken in (Capability API 1.571), a Rod of Absorption's toward its 50, as a
    *  ruleset fight left them. Kept on a stack of one item only, as charges are. */
   absorbedEver?: number;
-  /** Its rolled call's lasting state (Capability API 1.590): an Efreeti Bottle's kept roll (from 1),
+  /** Its rolled call's lasting state (Capability API 1.591): an Efreeti Bottle's kept roll (from 1),
    *  its openings, and whether it is spent for good. Kept on a stack of one item only. */
   callRoll?: GameInventoryCallRoll;
-  /** The form it is in (Capability API 1.574), from 1 in its item's `forms.into`; absent, as it was
+  /** The form it is in (Capability API 1.575), from 1 in its item's `forms.into`; absent, as it was
    *  made. Kept on a stack of one item only. */
   form?: number;
-  /** What is left of each of its further uses that counts its own (Capability API 1.518), by its
+  /** What is left of each of its further uses that counts its own (Capability API 1.519), by its
    *  place in `moreUses` from 1. Kept on a stack of one item only, as charges are; one not here is full.
-   *  Under `o` (1.623), the times it was used on with no charges left since they last came back. */
+   *  Under `o` (1.624), the times it was used on with no charges left since they last came back. */
   usesLeft?: Record<string, number>;
   /** How long it has waited, in minutes of game time, for its charges (`"charges"`) or a use's own
-   *  uses (its `usesLeft` key) to come back `after` a wait (Capability API 1.555), and how long it
+   *  uses (its `usesLeft` key) to come back `after` a wait (Capability API 1.556), and how long it
    *  waits in all. Kept on a stack of one item only, as charges are. */
   waits?: Record<string, GameInventoryWait>;
-  /** What is stored in it to be cast later (Capability API 1.523): a Ring of Spell Storing's spells.
+  /** What is stored in it to be cast later (Capability API 1.524): a Ring of Spell Storing's spells.
    *  Kept on a stack of one item only, as charges are. */
   storedEntries?: GameInventoryStoredEntry[];
   /** Its switch is on (Capability API 1.170): a flame tongue's flames. Kept on a stack of one item
@@ -80,19 +80,19 @@ export interface GameInventoryStack {
    *  passes for. Set only by a dishonest seller's sale, never by an op a client sends. Only the Game
    *  Master's view, curses, use, sale and a reveal read it; everything the player sees reads `item`. */
   truly?: string;
-  /** Who has looked it over (Capability API 1.801), by their names compared without case: one try
+  /** Who has looked it over (Capability API 1.802), by their names compared without case: one try
    *  each. */
   inspected?: string[];
-  /** Who looked it over and thinks it is a fake (Capability API 1.801), by their card's name: shown
+  /** Who looked it over and thinks it is a fake (Capability API 1.802), by their card's name: shown
    *  beside it, while it is still called what it passes for. */
   suspect?: string;
-  /** The minutes of game time left before it vanishes (Capability API 1.759), counted as the clock
+  /** The minutes of game time left before it vanishes (Capability API 1.760), counted as the clock
    *  moves: 5e's Creation, a day of vegetable matter. Kept on a stack of any size, all of it made
    *  together; nothing else is ever added to it, nor it to anything else. */
   vanishesIn?: number;
 }
 
-/** The longest a thing made to vanish lasts, in minutes of game time (1.759): ten years. */
+/** The longest a thing made to vanish lasts, in minutes of game time (1.760): ten years. */
 export const GAME_INVENTORY_VANISHES_MAX_MINUTES = 5_256_000;
 
 /** Whose bag: `holder` as a stack has it, so `{}` is the player's own. */
@@ -150,7 +150,7 @@ export interface GameInventoryRulesetItem {
   weight?: number;
   /** The slots it takes while equipped, by slot id. Without any, it cannot be equipped. */
   slots?: Readonly<Record<string, number>>;
-  /** Drawn as it is used (Capability API 1.807): one of the ruleset's `items.drawOnUse` that takes
+  /** Drawn as it is used (Capability API 1.808): one of the ruleset's `items.drawOnUse` that takes
    *  slots. It is used while only carried, and a use puts it on (`drawGameInventoryStack`). */
   drawOnUse?: true;
   /** It has to be bound to work; `cursed` keeps it bound. Without this, it cannot be bound. Its bearer
@@ -175,7 +175,7 @@ export interface GameInventoryRulesetItem {
   };
   /** It has a switch (Capability API 1.170): what turning it on does, in the ruleset's words. */
   toggle?: { label: string; freesSlots?: true };
-  /** The forms it changes into (Capability API 1.574): what it is as made, then each form, by label. */
+  /** The forms it changes into (Capability API 1.575): what it is as made, then each form, by label. */
   forms?: string[];
 }
 
@@ -230,7 +230,7 @@ export interface GameInventoryItemRules {
   slots?: ReadonlyArray<{ id: string; label: string; count: number }>;
   /** What one character can carry and bind (`holder` as a stack has it, absent for the player). */
   bearer?(holder: string | undefined): GameInventoryBearer;
-  /** What a weight is counted in ("lb"), said after one wherever it is shown (1.790). */
+  /** What a weight is counted in ("lb"), said after one wherever it is shown (1.791). */
   weightUnit?: string;
   /** Whose change this is. The player's own leave a bound cursed item bound and where it is; the
    *  Game Master can end a curse in the story. */
@@ -489,11 +489,11 @@ function makeStack(stack: {
   };
 }
 
-/** The most inspectors one stack remembers (1.801): a party's worth. */
+/** The most inspectors one stack remembers (1.802): a party's worth. */
 const INSPECTED_MAX = 12;
 
 /**
- * A stack once somebody has looked it over (Capability API 1.801): `by`, their name, among those who
+ * A stack once somebody has looked it over (Capability API 1.802): `by`, their name, among those who
  * have tried (`tried`; a spell cast on it is no try), and the one who thinks it a fake when they do
  * (`suspect`). Unchanged for any other stack.
  */
@@ -559,7 +559,7 @@ export function newGameInventoryStackId(stacks: readonly { id?: string }[]): str
   }
 }
 
-/** An entry stored in an item (Capability API 1.523): which (`<catalog>/<entry>`), the level it was
+/** An entry stored in an item (Capability API 1.524): which (`<catalog>/<entry>`), the level it was
  *  paid at, and its caster's save difficulty and attack, which whoever casts it from the item uses. */
 export interface GameInventoryStoredEntry {
   entry: string;
@@ -570,7 +570,7 @@ export interface GameInventoryStoredEntry {
   toHit?: number;
 }
 
-/** What a stack stores (1.523) as stored: up to 20 entries, each naming one and a whole level. */
+/** What a stack stores (1.524) as stored: up to 20 entries, each naming one and a whole level. */
 function readStoredEntries(raw: unknown): GameInventoryStoredEntry[] | undefined {
   if (!Array.isArray(raw)) return undefined;
   const whole = (value: unknown, min: number, max: number) =>
@@ -592,12 +592,12 @@ function readStoredEntries(raw: unknown): GameInventoryStoredEntry[] | undefined
       },
     ];
   });
-  // Kept empty too (1.575): an item found holding some that has been emptied stays empty.
+  // Kept empty too (1.576): an item found holding some that has been emptied stays empty.
   return kept;
 }
 
-/** A stack's own uses left (1.518) as stored: whole counts by a further use's place, from 1. */
-/** A wait counted in game time (1.555): the minutes waited so far, and the minutes it waits in all. */
+/** A stack's own uses left (1.519) as stored: whole counts by a further use's place, from 1. */
+/** A wait counted in game time (1.556): the minutes waited so far, and the minutes it waits in all. */
 export interface GameInventoryWait {
   waited: number;
   for: number;
@@ -617,12 +617,12 @@ function readWaits(raw: unknown): Record<string, GameInventoryWait> | undefined 
   return kept.length > 0 ? Object.fromEntries(kept) : undefined;
 }
 
-/** An item's rolled call kept over its existence (Capability API 1.590). */
+/** An item's rolled call kept over its existence (Capability API 1.591). */
 export interface GameInventoryCallRoll {
   kept?: number;
   ever?: number;
   spent?: true;
-  /** Rounds the creature it called still stays past the fight (1.611), before a wait from its
+  /** Rounds the creature it called still stays past the fight (1.612), before a wait from its
    *  departure starts. */
   outRounds?: number;
 }
@@ -648,8 +648,8 @@ function readUsesLeft(raw: unknown): Record<string, number> | undefined {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
   const kept = Object.entries(raw as Record<string, unknown>).filter(
     (entry): entry is [string, number] =>
-      // A further use's place from 1, or a hit's spend's after "h" (1.533), or "o" for the times it
-      // was used on with no charges left (1.623).
+      // A further use's place from 1, or a hit's spend's after "h" (1.534), or "o" for the times it
+      // was used on with no charges left (1.624).
       /^(?:[1-9]|1[0-6]|h[1-4]|o)$/.test(entry[0]) &&
       typeof entry[1] === "number" &&
       Number.isInteger(entry[1]) &&
@@ -861,7 +861,7 @@ export interface GameInventoryTotal {
   item?: string;
   /** A fake's true item (`GameInventoryStack.truly`): for the Game Master's view only. */
   truly?: string;
-  /** Who thinks it is a fake (1.801). */
+  /** Who thinks it is a fake (1.802). */
   suspect?: string;
   /** How many of it are worn, and how many bound, when any are. */
   equipped?: number;
@@ -1048,7 +1048,7 @@ function addLike(
     if (gameInventoryStackKind(stack) !== kind || !inBag(stack, bag)) return stack;
     first ??= stack;
     // A worn stack, or one switched on (one item only), takes nothing more; nor does what is to vanish,
-    // or anything onto what is not (1.759): each lasts as long as it was made to.
+    // or anything onto what is not (1.760): each lasts as long as it was made to.
     if (gameInventoryStackWorn(stack) || stack.on || stack.vanishesIn || like.vanishesIn) return stack;
     const topUp = Math.min(Math.max(0, limit - stack.quantity), left);
     if (topUp < 1) return stack;
@@ -1280,7 +1280,7 @@ export function giveGameInventoryStack(
     amount === source.quantity
       ? stacks.filter((stack) => stack.id !== id)
       : stacks.map((stack) => (stack.id === id ? { ...stack, quantity: stack.quantity - amount } : stack));
-  // What is to vanish (1.759) joins nothing, and nothing joins it.
+  // What is to vanish (1.760) joins nothing, and nothing joins it.
   const existing = rest.find(
     (stack) =>
       gameInventoryStackKind(stack) === kind && inBag(stack, receiver) && !stack.vanishesIn && !source.vanishesIn,
@@ -1471,7 +1471,7 @@ export function gameInventorySlotsUsed(
   for (const stack of stacks) {
     if (!stack.equipped || !inBag(stack, bag) || !stack.item) continue;
     const known = rules?.itemOf(stack.item);
-    // Switched on to hover (1.705): an Animated Shield leaves its hand free.
+    // Switched on to hover (1.706): an Animated Shield leaves its hand free.
     if (stack.on && known?.toggle?.freesSlots) continue;
     for (const [slot, count] of Object.entries(known?.slots ?? {})) {
       used[slot] = (used[slot] ?? 0) + count * stack.quantity;
@@ -1526,7 +1526,7 @@ export function gameInventoryOverLimit(status: Pick<GameInventoryBearerStatus, "
 }
 
 /** A weight as it is shown: at most two decimals (a quarter of a pound), and what the ruleset counts
- *  weights in after it where it says (1.790). */
+ *  weights in after it where it says (1.791). */
 export function gameInventoryWeightText(value: number, unit?: string): string {
   const shown = String(Math.round(value * 100) / 100);
   return unit ? `${shown} ${unit}` : shown;
@@ -1629,7 +1629,7 @@ export function gameInventoryOverloads(
 
 /** What a ruleset's item asks of a stack before it may be used: worn where it takes slots, bound
  *  where it binds. The one rule the Use button, the fight menu and a fight's spends all read. An item
- *  drawn as it is used (1.807) is used while only carried, and the use puts it on; it is still bound
+ *  drawn as it is used (1.808) is used while only carried, and the use puts it on; it is still bound
  *  where it binds (laptop v3 2026-10-26: a carried Longbow was never offered as an attack). */
 export function gameInventoryWearNeeds(item: {
   slots?: Readonly<Record<string, number>>;
@@ -1659,7 +1659,7 @@ function bindingNeedsMet(
       if (other === stack || !other.item || !group.anyOf.includes(other.item)) return false;
       if (gameInventoryBagKey(other.holder) !== bag) return false;
       const item = rules?.itemOf(other.item);
-      // Worn as it is, never as it may be drawn (1.807): a belt is needed on, not carried.
+      // Worn as it is, never as it may be drawn (1.808): a belt is needed on, not carried.
       const wears = item ? gameInventoryWearNeeds({ slots: item.slots, binds: item.binds }) : {};
       return (wears.equipped || wears.bound) === true && gameInventoryWearMet(other, wears);
     }),
@@ -1702,7 +1702,7 @@ export function gameInventoryUsableStack(
   return !read || gameInventoryWearMet(stack, gameInventoryWearNeeds(read));
 }
 
-/** One thing a character holds, as drawing an item weighs it (1.807): the slots it takes while worn
+/** One thing a character holds, as drawing an item weighs it (1.808): the slots it takes while worn
  *  (none for one that leaves its slots free), how many of it, whether it is worn now, whether it is
  *  drawn as it is used, and whether it may not come off (a bound cursed item). */
 export interface GameInventoryDrawHeld {
@@ -1713,7 +1713,7 @@ export interface GameInventoryDrawHeld {
   kept: boolean;
 }
 
-/** What drawing one item takes (1.807): nothing for one already worn; the fewest other worn items
+/** What drawing one item takes (1.808): nothing for one already worn; the fewest other worn items
  *  drawn as they are used to put away to make room, by place; or, where that cannot make room, the
  *  places of the worn items that stand in its way and may not be put away for it (empty when the
  *  character has too few of a slot at all). */
@@ -1721,7 +1721,7 @@ export type GameInventoryDrawPlan = { stow: number[] } | { blockedBy: number[] }
 
 /**
  * How one item (at `index` of `held`) is drawn in its holder's hands as it is used (Capability API
- * 1.807): it takes its slots, and where they are full, the fewest other worn items that are drawn as
+ * 1.808): it takes its slots, and where they are full, the fewest other worn items that are drawn as
  * they are used and that are not cursed onto their bearer are put away to make room. A shield, armor,
  * or anything else that is not drawn as it is used is never taken off for it: then the plan names
  * what stands in the way, and the use is refused. One of a stack is drawn.
@@ -1766,11 +1766,11 @@ function subsetsOf(from: readonly number[], size: number): number[][] {
   return [...subsetsOf(rest, size - 1).map((tail) => [first!, ...tail]), ...subsetsOf(rest, size)];
 }
 
-/** Why a stack could not be drawn as it is used (1.807): what holds the slots it needs, by name, or
+/** Why a stack could not be drawn as it is used (1.808): what holds the slots it needs, by name, or
  *  too few of a slot at all. */
 export type GameInventoryDrawRefusal = { refused: "hands-full"; by: string[] } | { refused: "no-slot" };
 
-/** What one bag's stacks hold, as drawing weighs it (1.807), with the stacks they are. */
+/** What one bag's stacks hold, as drawing weighs it (1.808), with the stacks they are. */
 function drawHeld(
   stacks: readonly GameInventoryStack[],
   holder: string | undefined,
@@ -1783,7 +1783,7 @@ function drawHeld(
     held: mine.map((stack) => {
       const known = rules.itemOf(stack.item!);
       return {
-        // Switched on to hover (1.705): its hand is free.
+        // Switched on to hover (1.706): its hand is free.
         slots: stack.on && known?.toggle?.freesSlots ? {} : (known?.slots ?? {}),
         quantity: stack.quantity,
         worn: stack.equipped === true,
@@ -1794,7 +1794,7 @@ function drawHeld(
   };
 }
 
-/** Why this stack could not be drawn as it is used now (1.807), or undefined when it can (or need not
+/** Why this stack could not be drawn as it is used now (1.808), or undefined when it can (or need not
  *  be: it is worn already, or it is not drawn as it is used). */
 export function gameInventoryDrawRefusal(
   stacks: readonly GameInventoryStack[],
@@ -1818,7 +1818,7 @@ export function gameInventoryDrawRefusal(
 }
 
 /**
- * One stack drawn as it is used (Capability API 1.807): one of it put on, as a free swap that first
+ * One stack drawn as it is used (Capability API 1.808): one of it put on, as a free swap that first
  * puts away the fewest other worn items drawn as they are used where its slots are full
  * (`gameInventoryDrawPlan`). Unchanged for a stack already worn, or of an item not drawn as it is used.
  * `id` is the stack drawn (one of a larger stack is taken into a stack of its own), and `stowed` the
@@ -1860,7 +1860,7 @@ export function drawGameInventoryStack(
 }
 
 /**
- * One of the Engine's own fights using an item by its name (1.807): where it is drawn as it is used,
+ * One of the Engine's own fights using an item by its name (1.808): where it is drawn as it is used,
  * one stack of it is drawn, unless one is already on. The stacks a fight would spend come first (the
  * player's own, then the rest), and the first that can be drawn is. Unchanged where the item is not
  * drawn as it is used; refused where no stack of it can be drawn.
@@ -1985,7 +1985,7 @@ function mergeAmount(
   rules: GameInventoryItemRules | undefined,
 ): number {
   if (from.id === into.id || gameInventoryStackKind(from) !== gameInventoryStackKind(into)) return 0;
-  // A worn or bound item is one item on its own, and what is to vanish lasts on its own (1.759).
+  // A worn or bound item is one item on its own, and what is to vanish lasts on its own (1.760).
   if (gameInventoryStackWorn(from) || gameInventoryStackWorn(into)) return 0;
   if (from.vanishesIn || into.vanishesIn) return 0;
   return Math.max(0, Math.min(from.quantity, stackLimit(gameInventoryItemId(into), rules) - into.quantity));

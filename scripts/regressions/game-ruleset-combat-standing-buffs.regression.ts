@@ -1,5 +1,5 @@
 /**
- * Set up before a fight, with no zone (Capability API 1.464).
+ * Set up before a fight, with no zone (Capability API 1.465).
  *
  *   - Heroes' Feast, small: `beforeFight` with no zone parses and is never on the fight menu.
  *   - Standing `on` named allies, it is done as the fight starts on those it may be done on, paid off
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 464);
+  assert.ok(supportedCapabilityApi.minor >= 465);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -127,7 +127,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose entries with no zone are set up before a fight only (beforeFight) requires schemaVersion 2 and capabilityApi 1.464 or newer";
+      "A ruleset whose entries with no zone are set up before a fight only (beforeFight) requires schemaVersion 2 and capabilityApi 1.465 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -141,12 +141,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(463) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(464) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(464) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(465) as never, fiveE()), gate);
   }
 
   console.log(
-    "Standing buffs: a beforeFight entry with no zone stays off the menu and is done on the named allies as the fight starts; gated at 1.464.",
+    "Standing buffs: a beforeFight entry with no zone stays off the menu and is done on the named allies as the fight starts; gated at 1.465.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

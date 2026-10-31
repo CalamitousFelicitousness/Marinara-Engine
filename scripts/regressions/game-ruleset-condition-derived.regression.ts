@@ -1,5 +1,5 @@
 /**
- * Conditions that change derived values (Capability API 1.661): 5e's Enhance Ability (Bull's
+ * Conditions that change derived values (Capability API 1.662): 5e's Enhance Ability (Bull's
  * Strength), "your carrying capacity doubles".
  *
  *   - Held on the sheet, the derived value is multiplied, then added to; what reads it reads that.
@@ -26,7 +26,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 661);
+  assert.ok(supportedCapabilityApi.minor >= 662);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -74,7 +74,7 @@ try {
   refused(document({ nope: { times: 2 } }), /Unknown derived value "nope"/);
   refused(document({ carry: {} }), /multiplies it, adds to it, or both/);
   const gate =
-    "A ruleset whose conditions change their holder's derived values (a combat condition's derivedChanges) requires schemaVersion 2 and capabilityApi 1.661 or newer";
+    "A ruleset whose conditions change their holder's derived values (a combat condition's derivedChanges) requires schemaVersion 2 and capabilityApi 1.662 or newer";
   const manifest = (minor: number) => ({
     schemaVersion: 2,
     capabilityApi: { major: 1, minor },
@@ -88,10 +88,10 @@ try {
     permissions: [],
     restartRequired: false,
   });
-  assert.equal(getCapabilityPackageInstallIssue(manifest(660) as never, document()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(661) as never, document()), gate);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(661) as never, document()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(662) as never, document()), gate);
 
-  console.log("Bull's Strength: a condition doubles a derived value, read by everything after it; gated at 1.661.");
+  console.log("Bull's Strength: a condition doubles a derived value, read by everything after it; gated at 1.662.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

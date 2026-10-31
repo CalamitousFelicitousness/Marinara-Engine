@@ -161,7 +161,7 @@ export function StartingGearPicker({
         )
       : 0;
   const room = status.limit !== undefined ? status.limit - status.load : undefined;
-  // In what the ruleset counts weights in (1.790).
+  // In what the ruleset counts weights in (1.791).
   const weightText = (value: number) => gameInventoryWeightText(value, book.weightUnit);
   // What the items of some lines weigh, a choice's option or a kit's own: nothing where weight means
   // nothing here or none of them weighs anything.
@@ -365,7 +365,7 @@ export function StartingGearPicker({
                 </div>
               )}
               {chosen.choices.map((choice, choiceIndex) =>
-                // Only the options offered to this sheet (1.660), and no choice with none.
+                // Only the options offered to this sheet (1.661), and no choice with none.
                 !choice.options.some((one) => rulesetStartingGearOptionOffered(definition, one, build)) ? null : (
                   <fieldset key={choiceIndex} className="space-y-1.5">
                     <legend className={labelClass}>{choice.label}</legend>

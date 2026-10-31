@@ -65,7 +65,7 @@ export function rulesetItemFightEffect(
   const applied = use.applies?.[0];
   const rounds = applied && typeof applied.duration === "object" ? applied.duration.rounds : undefined;
   const helps = use.kind === "heal" || use.kind === "buff";
-  // Drawn as it is used (1.807): used while only carried, and put on as it is used.
+  // Drawn as it is used (1.808): used while only carried, and put on as it is used.
   const draws = read?.drawOnUse === true;
   const wear = gameInventoryWearNeeds({ ...item, drawOnUse: draws });
   return {
@@ -111,7 +111,7 @@ export function gameFightOffers(
   stacks: readonly GameInventoryStack[],
   effects: readonly CombatItemEffect[],
   rulesetItems: { native: boolean } | undefined,
-  /** The ruleset's items with the slots every character has: one drawn as it is used (1.807) is
+  /** The ruleset's items with the slots every character has: one drawn as it is used (1.808) is
    *  offered only from a stack that could be drawn now. Without them, every such stack is. */
   rules?: GameInventoryItemRules,
 ): GameInventoryFightLine[] {
@@ -125,7 +125,7 @@ export function gameFightOffers(
     if (!effect) return [];
     // Only the stacks it may be used from: worn and bound where the item asks it. A fake counts as
     // what it passes for (1.79).
-    // One drawn as it is used (1.807), only where it could be drawn: not past a shield in the hand it needs.
+    // One drawn as it is used (1.808), only where it could be drawn: not past a shield in the hand it needs.
     const usable = stacks.filter(
       (stack) =>
         stack.item === line.item &&

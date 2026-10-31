@@ -1,5 +1,5 @@
 /**
- * Weapons an item's call lends while it stands (Capability API 1.738): a Figurine of Wondrous
+ * Weapons an item's call lends while it stands (Capability API 1.739): a Figurine of Wondrous
  * Power's goat of terror, whose horns become a +1 lance and a +2 longsword, removing one an action.
  *
  *   - Nothing to wield before the goat comes; once it stands, each horn is taken on an action and
@@ -35,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 738);
+  assert.ok(supportedCapabilityApi.minor >= 739);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -196,7 +196,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with an item use whose call lends weapons while it stands (use.wieldsWhileCalled) requires schemaVersion 2 and capabilityApi 1.738 or newer";
+      "A ruleset with an item use whose call lends weapons while it stands (use.wieldsWhileCalled) requires schemaVersion 2 and capabilityApi 1.739 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -210,13 +210,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(737) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(738) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(737) as never, document(null)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(738) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(739) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(738) as never, document(null)), gate);
   }
 
   console.log(
-    "Wields while called: a goat of terror's horns are taken on an action once the goat stands, wielded, and gone with it; gated at 1.738.",
+    "Wields while called: a goat of terror's horns are taken on an action once the goat stands, wielded, and gone with it; gated at 1.739.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

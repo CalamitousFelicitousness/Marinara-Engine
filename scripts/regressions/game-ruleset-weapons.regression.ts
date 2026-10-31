@@ -596,7 +596,7 @@ try {
     assert.deepEqual([harm.damageType, harm.amount], ["cut", 6]);
   }
 
-  // ── No damage dice (1.510): a bonus alone, or nothing but what the hit puts on ──
+  // ── No damage dice (1.511): a bonus alone, or nothing but what the hit puts on ──
   {
     const blowgun = { ...axe, attack: { ...axe.attack!, damage: { bonus: 1, type: "pierce" } } };
     const net = {
@@ -636,9 +636,9 @@ try {
     );
     const pin = rulesetCombatant(thrown.state, "hound")!.tracked.find((one) => one.condition === "pinned");
     assert.deepEqual(pin?.checkEnds, { check: "brawn", difficulty: 10 }, JSON.stringify(thrown.events));
-    // Gated at 1.510; the example's own weapons, with their dice, are not.
+    // Gated at 1.511; the example's own weapons, with their dice, are not.
     const gate1458 =
-      "A ruleset whose items attack with no damage dice, or whose weapons put a condition on with any hit or one a check ends (an attack without damage dice, onHit atLeast 0 or checkEnds) requires schemaVersion 2 and capabilityApi 1.510 or newer";
+      "A ruleset whose items attack with no damage dice, or whose weapons put a condition on with any hit or one a check ends (an attack without damage dice, onHit atLeast 0 or checkEnds) requires schemaVersion 2 and capabilityApi 1.511 or newer";
     const at = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -653,7 +653,7 @@ try {
       restartRequired: false,
     });
     const diceless = variant(emberText, (doc) => (itemEntry(doc, "hand-axe").item.attack.damage = { bonus: 1 }));
-    assert.equal(getCapabilityPackageInstallIssue(at(509) as never, diceless), gate1458);
+    assert.equal(getCapabilityPackageInstallIssue(at(510) as never, diceless), gate1458);
     // And a ruleset file holding them is read (a bonus alone, or only an onHit), not refused.
     const readOk = (doc: unknown) => {
       const result = parseRulesetDefinition(doc);
@@ -667,13 +667,13 @@ try {
         attack.onHit = [{ condition: "pinned", atLeast: 0, checkEnds: { check: "brawn", difficulty: 10 } }];
       }),
     );
-    assert.notEqual(getCapabilityPackageInstallIssue(at(510) as never, diceless), gate1458);
+    assert.notEqual(getCapabilityPackageInstallIssue(at(511) as never, diceless), gate1458);
     const anyHit = variant(
       emberText,
       (doc) => (itemEntry(doc, "hand-axe").item.attack.onHit = [{ condition: "pinned", atLeast: 0 }]),
     );
-    assert.equal(getCapabilityPackageInstallIssue(at(509) as never, anyHit), gate1458);
-    assert.notEqual(getCapabilityPackageInstallIssue(at(509) as never, variant(emberText)), gate1458);
+    assert.equal(getCapabilityPackageInstallIssue(at(510) as never, anyHit), gate1458);
+    assert.notEqual(getCapabilityPackageInstallIssue(at(510) as never, variant(emberText)), gate1458);
     refused(
       emberText,
       (doc) =>

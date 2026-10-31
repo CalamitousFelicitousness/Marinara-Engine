@@ -45,7 +45,7 @@ export function resolveCapabilityPackageDisplay(manifest: CapabilityPackageManif
 }
 
 /** A catalog entry as its store card shows it: a ruleset's name and description from the catalog's
- *  listing of its language pack (1.810) where it lists one in this language, else as the manifest says. */
+ *  listing of its language pack (1.811) where it lists one in this language, else as the manifest says. */
 export function resolveCapabilityCatalogEntryDisplay(
   entry: Pick<CapabilityCatalogPackage, "manifest" | "locales">,
   locale: string | undefined,

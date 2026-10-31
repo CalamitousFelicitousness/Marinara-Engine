@@ -1,5 +1,5 @@
 /**
- * Ending somebody else's condition with a check (Capability API 1.517).
+ * Ending somebody else's condition with a check (Capability API 1.518).
  *
  *   - A creature on fire, its `checkEnds` open to anybody: a friend next to it spends their action on
  *     the check and puts it out; one further off is offered nothing; its holder still may.
@@ -30,7 +30,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 517);
+  assert.ok(supportedCapabilityApi.minor >= 518);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -168,7 +168,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions anybody next to their holder may end with a check (checkEnds by any) requires schemaVersion 2 and capabilityApi 1.517 or newer";
+      "A ruleset whose conditions anybody next to their holder may end with a check (checkEnds by any) requires schemaVersion 2 and capabilityApi 1.518 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -198,13 +198,13 @@ try {
         },
       ],
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(516) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(517) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(516) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(517) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(518) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(517) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Douse: a friend next to a burning creature puts it out with their own check and action, one further off is offered nothing, its holder still may; gated at 1.517.",
+    "Douse: a friend next to a burning creature puts it out with their own check and action, one further off is offered nothing, its holder still may; gated at 1.518.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

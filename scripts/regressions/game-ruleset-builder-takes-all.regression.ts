@@ -1,4 +1,4 @@
-/** Capability API 1.765: a builder step that takes all it offers, its groups picked one each, and
+/** Capability API 1.766: a builder step that takes all it offers, its groups picked one each, and
  *  an `upTo` read for each entry from its own class's level. */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -152,16 +152,16 @@ try {
     restartRequired: false,
   });
   const gate =
-    "A ruleset with a builder step that takes all it offers (takesAll) or limits each entry by its own value (upTo.per) requires schemaVersion 2 and capabilityApi 1.765 or newer";
-  assert.equal(getCapabilityPackageInstallIssue(manifest(764) as never, fixture()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(765) as never, fixture()), gate);
+    "A ruleset with a builder step that takes all it offers (takesAll) or limits each entry by its own value (upTo.per) requires schemaVersion 2 and capabilityApi 1.766 or newer";
+  assert.equal(getCapabilityPackageInstallIssue(manifest(765) as never, fixture()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(766) as never, fixture()), gate);
   const perOnly = fixture();
   delete perOnly.sheet.builder.steps[1].takesAll;
-  assert.equal(getCapabilityPackageInstallIssue(manifest(764) as never, perOnly), gate, "upTo.per alone");
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(764) as never, base()), gate, "nothing without the keys");
+  assert.equal(getCapabilityPackageInstallIssue(manifest(765) as never, perOnly), gate, "upTo.per alone");
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(765) as never, base()), gate, "nothing without the keys");
 
   console.log(
-    "takesAll: class features taken up to each class's own level, the ASI-or-feat group picked once, applied to the sheet; refusals; gated at 1.765.",
+    "takesAll: class features taken up to each class's own level, the ASI-or-feat group picked once, applied to the sheet; refusals; gated at 1.766.",
   );
 } finally {
   for (const [key, value] of Object.entries(previous)) {

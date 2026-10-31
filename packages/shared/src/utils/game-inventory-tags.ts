@@ -113,11 +113,11 @@ export interface GameInventoryMarket {
         /** A fake a dishonest seller passed off (Capability API 1.79): what it truly is. The buyer
          *  gets it as `item`, and the stack keeps this. */
         truly?: string;
-        /** Someone else in the party noticed it is a fake (1.801): the buy waits for their warning. */
+        /** Someone else in the party noticed it is a fake (1.802): the buy waits for their warning. */
         held?: { who: string; says: string };
       }
     | { ok: false; reason: GameInventoryMarketRefusal };
-  /** One character's look at an item before trusting it (1.801): `stack` when it is in their bag, else
+  /** One character's look at an item before trusting it (1.802): `stack` when it is in their bag, else
    *  a seller's ware here. `with` names a way of seeing through fakes, cast on it. Without it nothing
    *  is inspected. */
   inspect?(request: {
@@ -172,7 +172,7 @@ export interface GameInventoryMarket {
     done:
       | { buy: { name: string; count: number; seller?: string; stock?: boolean } }
       | { sell: { familyId: string; worth: number } }
-      /** A fake's buy held for a warning (1.801): asked again today, it goes through. */
+      /** A fake's buy held for a warning (1.802): asked again today, it goes through. */
       | { warned: { seller: string; name: string } },
   ): void;
 }
@@ -308,7 +308,7 @@ export function applyGameInventoryTags(
     bag: GameInventoryBagRef | undefined,
     note?: string,
     action: "add" | "earn" = "add",
-    /** Minutes of game time it lasts before it vanishes (1.759). */
+    /** Minutes of game time it lasts before it vanishes (1.760). */
     lasts?: number,
   ): string => {
     const vanishes = lasts ? { lasts } : {};
@@ -657,7 +657,7 @@ export function applyGameInventoryTags(
             level: quote.level,
             ...(quote.seller ? { seller: quote.seller } : {}),
           };
-          // Someone in the party noticed it is a fake (1.801): nothing is paid yet, and asked again
+          // Someone in the party noticed it is a fake (1.802): nothing is paid yet, and asked again
           // today it goes through.
           if (quote.held && quote.seller) {
             market.record?.({ warned: { seller: quote.seller, name: quote.name } });
@@ -833,7 +833,7 @@ export function applyGameInventoryTags(
           return parts.join(" ");
         }
         if (request.action === "inspect") {
-          // A look at an item before trusting it (1.801): the inspector's own stack of it, else a
+          // A look at an item before trusting it (1.802): the inspector's own stack of it, else a
           // seller's ware. What it found is kept on the stack: suspect, or shown for what it is.
           if (!market?.inspect) return serializeInventoryTag(shown, { ok: false, reason: "cannot-inspect" });
           const stack = gameInventoryStackNamed(current, item, who.bag ?? {}, true);

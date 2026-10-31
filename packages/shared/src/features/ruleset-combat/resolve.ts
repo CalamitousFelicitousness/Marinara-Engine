@@ -431,41 +431,41 @@ interface RulesetCombatContext {
    *  systems that keep such a track that is what being taken out IS, so the blow puts them down;
    *  without it a fight on one could never end. Read, and cleared, when the blow is finished. */
   overwhelmed: Set<string>;
-  /** The kinds of harm that landed on each target in the blow being dealt (1.399), "" for none: what
+  /** The kinds of harm that landed on each target in the blow being dealt (1.400), "" for none: what
    *  a hang-on at 1 refuses (Undead Fortitude's radiant). Read and cleared as the blow ends. */
   blowTypes: Map<string, Set<string>>;
   /** The kinds of harm each target was subjected to in the blow being dealt, whatever they dealt:
-   *  what a creature splits on (1.474) though it is immune to it, as a Black Pudding is to lightning.
+   *  what a creature splits on (1.475) though it is immune to it, as a Black Pudding is to lightning.
    *  Read and cleared as the blow ends. */
   blowSubjected: Map<string, Set<string>>;
-  /** What each target's own health was dealt past 0 in the blow being dealt (1.708): what massive
+  /** What each target's own health was dealt past 0 in the blow being dealt (1.709): what massive
    *  damage reads. Read and cleared as the blow ends. */
   blowOverflow: Map<string, number>;
   /** Source-side harm ends conditions only once the harmful step has finished (1.125). */
   harmEndings: Array<() => void>;
-  /** Mounts moved against their will this step (1.495), whose riders may come off. */
+  /** Mounts moved against their will this step (1.496), whose riders may come off. */
   shakenMounts?: Set<string>;
-  /** How many of `events` have been read for who was stirred (1.435). */
+  /** How many of `events` have been read for who was stirred (1.436). */
   stirredAt?: number;
   /** The cell an area was aimed at in this step, which a save against it takes cover from. */
   aimedAt?: RulesetCombatCell;
-  /** Each target's one save against the rays striking them (1.467), read by every ray after the
+  /** Each target's one save against the rays striking them (1.468), read by every ray after the
    *  first. */
   raySaves?: Map<string, boolean>;
-  /** An entry turned back at its user (1.522), being resolved on them: it turns no further. */
+  /** An entry turned back at its user (1.523), being resolved on them: it turns no further. */
   turning?: true;
   /** Where further copies of the area were set down (1.178). */
   aimedAlso?: RulesetCombatCell[];
-  /** A lasting area its endsSpells is aimed at instead of a creature (1.426). */
+  /** A lasting area its endsSpells is aimed at instead of a creature (1.427). */
   dispel?: { casterId: string; actionId: string };
-  /** The conditions its user picked for its endsSpells to end (1.426). */
+  /** The conditions its user picked for its endsSpells to end (1.427). */
   endsChosen?: ReadonlySet<string>;
   falling?: RulesetFallResume[];
   /** A standing zone is striking on its own, not its caster acting (1.180). */
   byZone?: true;
-  /** Whoever a zone's `endsWalk` just stopped (1.688): their walk ends where they stand. */
+  /** Whoever a zone's `endsWalk` just stopped (1.689): their walk ends where they stand. */
   walkHalted?: string;
-  /** A summons striking by itself as its summoner's turn starts (1.538): never held for an answer. */
+  /** A summons striking by itself as its summoner's turn starts (1.539): never held for an answer. */
   summonStriking?: true;
   /** Where a summons being cast appears, worked out before its maker strikes from there. */
   summonAppears?: RulesetCombatCell;
@@ -474,7 +474,7 @@ interface RulesetCombatContext {
   ticking?: string;
   /** A strike made inside a window that may still be held where it hits (1.243). */
   nestHit?: true;
-  /** An opportunity attack being resolved (1.429), for what is narrowed to those. */
+  /** An opportunity attack being resolved (1.430), for what is narrowed to those. */
   opportunity?: true;
   /** The budget the action being resolved was paid for from, for an answer to its hit (1.248). */
   strikeBudget?: string;
@@ -484,26 +484,26 @@ interface RulesetCombatContext {
   moreCharges?: number;
   /** Who is making a blow that reaps (1.323): whoever it fells on Held Ground is reaped. */
   reaping?: string;
-  /** The action being resolved and its maker (1.544), innermost first: what a fall was dealt by. */
+  /** The action being resolved and its maker (1.545), innermost first: what a fall was dealt by. */
   acting?: { actorId: string; action: RulesetCombatAction };
   /** Where the teleport being resolved goes, and who goes along (1.276); nowhere is out of the
    *  fight (1.279). */
   teleport?: { to?: RulesetCombatCell; carries: string[] };
-  /** Whoever is casting what was stored in them by itself (1.568), so it cannot set off another. */
+  /** Whoever is casting what was stored in them by itself (1.569), so it cannot set off another. */
   releasing?: Set<string>;
-  /** The action being resolved follows its own charge (1.573): the run is spent, so it carries none. */
+  /** The action being resolved follows its own charge (1.574): the run is spent, so it carries none. */
   uncharged?: true;
-  /** The item the action being resolved was used on with no charges left tore for it (1.623): it does
+  /** The item the action being resolved was used on with no charges left tore for it (1.624): it does
    *  nothing. */
   tore?: true;
-  /** Where the action being resolved moves its target to (1.564), and how many levels up. */
+  /** Where the action being resolved moves its target to (1.565), and how many levels up. */
   carriesTo?: { x: number; y: number; rises: number };
   /** The catalog the action being resolved was cast out of, and what it puts on (1.278). */
   harming?: { catalog: string; applies: string[] };
   /** The window between turns a legendary cast was bought in (1.284): every window opened while it
    *  resolves holds it, to be asked on from once they have all closed. */
   outer?: RulesetCombatWindow;
-  /** Harm to its user an alteration deals once the step is done (1.414): Overchannel. */
+  /** Harm to its user an alteration deals once the step is done (1.415): Overchannel. */
   backlash?: Array<{
     actorId: string;
     backlash: NonNullable<RulesetCombatAlter["backlash"]>;
@@ -511,14 +511,14 @@ interface RulesetCombatContext {
     spentBefore: number;
     label: string;
   }>;
-  /** Who just caught a weapon's missile, and its damage, for the moment that opens after (1.415). */
+  /** Who just caught a weapon's missile, and its damage, for the moment that opens after (1.416). */
   caught?: {
     targetIds: string[];
     damage: { count: number; sides: number; type?: string };
-    /** The shooter's ammunition it was (1.625). */
+    /** The shooter's ammunition it was (1.626). */
     missile?: { item: number; recover?: number };
   };
-  /** Who the use being resolved attacked, hit or missed (1.421), for the moment once it is over. */
+  /** Who the use being resolved attacked, hit or missed (1.422), for the moment once it is over. */
   attacked?: RulesetAttackedRecord;
   /** Answers to an opponent using something held but not given, and why (see `RulesetCombatStep`). */
   unanswered?: NonNullable<RulesetCombatStep["unanswered"]>;
@@ -562,10 +562,10 @@ function begin(
   return {
     ctx,
     finish: () => {
-      // Stopped time that reached somebody else is over (1.506).
+      // Stopped time that reached somebody else is over (1.507).
       timeStopReached(ctx);
       // Who a wearer's item kept off them, and whom they have now attacked, harmed or forced to save
-      // (1.618): those rats are no longer indifferent.
+      // (1.619): those rats are no longer indifferent.
       for (const event of ctx.events) {
         if (event.type === "attack" || event.type === "contest")
           rulesetNoteProvoked(next, event.actorId, event.targetId);
@@ -578,13 +578,13 @@ function begin(
         endImmuneConditions(ctx, target);
         holderBound(ctx, target);
       }
-      // Called creatures a zone sets aside, and back where it no longer does (1.532).
+      // Called creatures a zone sets aside, and back where it no longer does (1.533).
       setAsideCalled(ctx);
-      // Riders where their mounts are, or off them (1.495).
+      // Riders where their mounts are, or off them (1.496).
       syncMounts(ctx);
       leaveWithCallers(ctx);
       for (const end of ctx.harmEndings.splice(0)) end();
-      // What an alteration costs its user's health, once what it changed was cast (1.414).
+      // What an alteration costs its user's health, once what it changed was cast (1.415).
       for (const one of ctx.backlash?.splice(0) ?? []) {
         backlashOn(ctx, one);
         for (const end of ctx.harmEndings.splice(0)) end();
@@ -615,13 +615,13 @@ function begin(
       rulesetSyncZoneWalls(next);
       // Grown or shrunk as the conditions now held say (1.195).
       for (const change of rulesetSyncSizes(definition, next)) ctx.events.push({ type: "resized", ...change });
-      // Given ways of moving, or left with their own, as the conditions now held say (1.394): up in
+      // Given ways of moving, or left with their own, as the conditions now held say (1.395): up in
       // the air with no flight left, they fall.
       const heights = new Map(next.combatants.map((one) => [one.id, one.altitude]));
       for (const id of rulesetSyncSpeeds(definition, next)) {
         const one = rulesetCombatant(next, id);
         if (!one) continue;
-        // Lifted by what it now holds (1.565): Reverse Gravity.
+        // Lifted by what it now holds (1.566): Reverse Gravity.
         const was = heights.get(id);
         if (one.altitude !== undefined && one.altitude > (was ?? -Infinity) && next.board?.grid) {
           const ground = elevationAt(next.board.grid, one.x ?? 0, one.y ?? 0);
@@ -629,14 +629,14 @@ function begin(
         }
         groundFlier(ctx, one);
       }
-      // Their numbers worked out again as the conditions now held change their abilities (1.514).
+      // Their numbers worked out again as the conditions now held change their abilities (1.515).
       rulesetSyncAbilities(definition, next);
-      // On the side of whoever controls them, or back on their own (1.576); and a controller whose
+      // On the side of whoever controls them, or back on their own (1.577); and a controller whose
       // host died throws to live.
       syncControl(ctx);
-      // Off once its source cannot keep it up, or its holder cannot hear them (1.583): Enthrall.
+      // Off once its source cannot keep it up, or its holder cannot hear them (1.584): Enthrall.
       endUnkeptConditions(ctx);
-      // Given way as its holder first sees somebody (1.637): a Philter of Love.
+      // Given way as its holder first sees somebody (1.638): a Philter of Love.
       firstSightings(ctx);
       // Spread, or taken back, by auras as everybody now stands (1.263).
       for (const change of rulesetSyncAuras(definition, next)) {
@@ -654,7 +654,7 @@ function begin(
   };
 }
 
-/** A condition that comes off through its source (1.583): once they do one of its `effects` or hold
+/** A condition that comes off through its source (1.584): once they do one of its `effects` or hold
  *  one of its `conditions`, are stopped from using one of its `components`, or its holder lacks one
  *  of its `holderLacks`. 5e's Enthrall, ended by its caster's incapacitation or silence, or by its
  *  holder going deaf. */
@@ -677,14 +677,14 @@ function endUnkeptConditions(ctx: RulesetCombatContext): void {
         (rule.components &&
           theirs.some((one) => one.forbids?.components?.some((component) => rule.components!.includes(component)))) ||
         (rule.holderLacks && !rulesetTargetHasSenses(ctx.definition, ctx.state, holder, rule.holderLacks)) ||
-        // Or its source holding none of these (1.616): a swarm swayed only while its piper plays.
+        // Or its source holding none of these (1.617): a swarm swayed only while its piper plays.
         (rule.lacks && !rulesetCombatConditions(ctx.definition, source).some((id) => rule.lacks!.includes(id)));
       if (ends) removeCondition(ctx, holder, entry.condition, "expired", "endsWhenSource");
     }
   }
 }
 
-/** A condition that gives way as its holder first sees another creature (1.637), to what its
+/** A condition that gives way as its holder first sees another creature (1.638), to what its
  *  `onFirstSeen` puts on, from the nearest of those they see now: a Philter of Love's charm. */
 function firstSightings(ctx: RulesetCombatContext): void {
   const rules = new Map(
@@ -713,7 +713,7 @@ function firstSightings(ctx: RulesetCombatContext): void {
   }
 }
 
-/** What its holder keeps only while they can hear whoever put it on (1.617), asked as their turn
+/** What its holder keeps only while they can hear whoever put it on (1.618), asked as their turn
  *  starts: lacking the sense, farther than `beyond`, or with that one gone or down. 5e's Pipes of the
  *  Sewers. */
 function unheardSources(ctx: RulesetCombatContext, holder: RulesetCombatant): void {
@@ -737,7 +737,7 @@ function unheardSources(ctx: RulesetCombatContext, holder: RulesetCombatant): vo
   }
 }
 
-/** What lasts until its source acts again comes off as they take another action (1.598): 5e's
+/** What lasts until its source acts again comes off as they take another action (1.599): 5e's
  *  Interposing Hand, until the hand is given a different command. */
 function endOnSourceActing(ctx: RulesetCombatContext, source: RulesetCombatant): void {
   const acts = new Set(
@@ -753,7 +753,7 @@ function endOnSourceActing(ctx: RulesetCombatContext, source: RulesetCombatant):
 }
 
 /** Who holds a condition that `controls` them fights on its source's side while it holds and the
- *  source stands, and on their own again after (1.576): Magic Jar. As a holder of one with
+ *  source stands, and on their own again after (1.577): Magic Jar. As a holder of one with
  *  `holderDies` dies, its source throws that save against the difficulty off their own sheet, and dies
  *  on a failure. */
 function syncControl(ctx: RulesetCombatContext): void {
@@ -796,7 +796,7 @@ function syncControl(ctx: RulesetCombatContext): void {
       : one.tracked.find((entry) => {
           if (!rules.get(entry.condition)?.controls || !entry.source || entry.source === one.id) return false;
           const source = rulesetCombatant(ctx.state, entry.source);
-          // Gone into them (1.695), it controls them from inside: a ghost's Possession.
+          // Gone into them (1.696), it controls them from inside: a ghost's Possession.
           return !!source && (!source.defeated || source.away?.possessing === one.id);
         });
     const controller = holding ? rulesetCombatant(ctx.state, holding.source!) : undefined;
@@ -1022,7 +1022,7 @@ interface RulesetDamageInput {
   pool?: Extract<RulesetCombatEvent, { type: "damage" }>["pool"];
   /** What it deals its maker gains as temporary points (1.187). */
   drains?: true;
-  /** This share of what it deals its maker regains (1.533): Drain Life's half. */
+  /** This share of what it deals its maker regains (1.534): Drain Life's half. */
   drainsBack?: number;
   /** The weapon's floor, when it raised `amount` to it. */
   floor?: number;
@@ -1032,11 +1032,11 @@ interface RulesetDamageInput {
   seals?: true;
   /** Not even with a rest, only something that unseals (1.203): a clay golem's Slam. */
   lasting?: true;
-  /** Dealt by this condition, which keeps it off healing while it holds (1.749): Pale tincture. */
+  /** Dealt by this condition, which keeps it off healing while it holds (1.750): Pale tincture. */
   keptBy?: string;
-  /** Passed on by a condition (1.406, 1.408), so never passed on again. */
+  /** Passed on by a condition (1.407, 1.409), so never passed on again. */
   passedOn?: true;
-  /** Neither resistance nor immunity counts against it (1.414): Overchannel's necrotic. */
+  /** Neither resistance nor immunity counts against it (1.415): Overchannel's necrotic. */
   unblockable?: true;
   /** It never takes the target below this much health (1.235): Harm's 1. */
   leavesAtLeast?: number;
@@ -1086,7 +1086,7 @@ function applyDamage(
     dealt = 0;
     adjust = "immune";
   } else if (type && !input.unblockable && target.block?.healedBy?.some((one) => one.trim().toLowerCase() === type)) {
-    // A type that heals it instead (1.540): none taken, as much given back as the blow was.
+    // A type that heals it instead (1.541): none taken, as much given back as the blow was.
     dealHeal(ctx, target, {
       ...(input.sourceId ? { sourceId: input.sourceId } : {}),
       rolls: input.rolls,
@@ -1102,7 +1102,7 @@ function applyDamage(
       !input.unblockable &&
       (!!(type && hide && matches(hide.resist, type, input.qualities)) ||
         rulesetCombatEffects(ctx.definition, ctx.combat, target, ctx.state).has("resist-all") ||
-        // Fully under water (1.497): 5e's fire.
+        // Fully under water (1.498): 5e's fire.
         (!!type &&
           !!ctx.combat.underwater?.resist?.some((one) => one.trim().toLowerCase() === type) &&
           rulesetUnderwater(ctx.definition, ctx.state, target)));
@@ -1121,7 +1121,7 @@ function applyDamage(
       dealt *= 2;
       adjust = "vulnerable";
     }
-    // Twice as much to an object from whoever deals double to them (1.559): Siege Monster.
+    // Twice as much to an object from whoever deals double to them (1.560): Siege Monster.
     if (target.object && from?.block?.doubleToObjects) dealt *= 2;
   }
   // Its roll, as it is made, has dice taken off by the other side where that keeps one of them
@@ -1154,14 +1154,14 @@ function applyDamage(
   if (input.leavesAtLeast !== undefined) {
     dealt = Math.max(0, Math.min(dealt, before.value + before.temp - input.leavesAtLeast));
   }
-  // Somebody it holds by a condition that takes a share of what it is dealt (1.406): a rug of
+  // Somebody it holds by a condition that takes a share of what it is dealt (1.407): a rug of
   // smothering's Damage Transfer, half of it onto whom it smothers.
   const sharer = dealt > 0 && !input.passedOn ? harmSharer(ctx, target) : undefined;
   const passed = sharer ? dealt - Math.floor(dealt * (1 - sharer.share)) : 0;
   dealt -= passed;
   const toTemp = Math.min(before.temp, dealt);
   if (dealt > 0 && target.shape?.health) {
-    // A form with health of its own takes the blow (1.391); run out, the shape ends and the rest of
+    // A form with health of its own takes the blow (1.392); run out, the shape ends and the rest of
     // the blow carries on to their own.
     const form = target.shape.health;
     form.temp -= toTemp;
@@ -1171,7 +1171,7 @@ function applyDamage(
     if (form.value <= 0) {
       endShape(ctx, target, "damage");
       if (over > 0) {
-        // Back in their own form, what is left past their own health (1.708).
+        // Back in their own form, what is left past their own health (1.709).
         const own = healthOf(ctx, target);
         noteOverflow(ctx, target, over - own.temp - own.value);
         if (target.sheet) {
@@ -1213,7 +1213,7 @@ function applyDamage(
       // What only a rest gives back (1.193): the points it took off, not the buffer.
       if (input.seals || input.keptBy) {
         const sealed = Math.min(before.max, (target.health.sealed ?? 0) + (target.health.value - value));
-        // Kept off healing by the condition that dealt it until it ends (1.749).
+        // Kept off healing by the condition that dealt it until it ends (1.750).
         const holding = input.keptBy ? target.tracked.find((one) => one.condition === input.keptBy) : undefined;
         if (holding) holding.keptDamage = (holding.keptDamage ?? 0) + sealed - (target.health.sealed ?? 0);
         target.health.sealed = sealed;
@@ -1260,7 +1260,7 @@ function applyDamage(
     });
     afterBlow(ctx, sharer.holder, shared, false);
   }
-  // Whoever bonded to it takes the same (1.408): Warding Bond's caster.
+  // Whoever bonded to it takes the same (1.409): Warding Bond's caster.
   if (dealt > 0 && !input.passedOn) {
     for (const entry of [...target.tracked]) {
       const rule = ctx.combat.conditions?.find((one) => one.condition === entry.condition);
@@ -1289,7 +1289,7 @@ function applyDamage(
     ctx.blowSubjected.set(target.id, subjected);
   }
   ctx.harmEndings.push(endConditionsOnHarm(ctx, target, input.sourceId, dealt, false, damageSaves));
-  // Harm its regeneration is stopped by (1.395): fire or acid on a troll, until its next turn starts.
+  // Harm its regeneration is stopped by (1.396): fire or acid on a troll, until its next turn starts.
   if (
     type &&
     dealt > 0 &&
@@ -1298,19 +1298,19 @@ function applyDamage(
     )
   )
     target.regenHeld = true;
-  // Dealt from inside it (1.404), for what lets those it holds out on blows like it.
+  // Dealt from inside it (1.405), for what lets those it holds out on blows like it.
   if (dealt > 0 && from && from.insideOf === target.id) {
     const turn = `${ctx.state.round}:${ctx.state.turn}`;
     const hurt = target.insideHurt?.turn === turn ? target.insideHurt : { turn, by: {} };
     hurt.by[from.id] = (hurt.by[from.id] ?? 0) + dealt;
     target.insideHurt = hurt;
   }
-  // A head lost to enough of it in one turn (1.549): a hydra's.
+  // A head lost to enough of it in one turn (1.550): a hydra's.
   if (dealt > 0) harmHeads(ctx, target, type, dealt, input.sourceId ?? target.id, input.label ?? target.name);
   return dealt;
 }
 
-/** A held weapon that dealt damage to a creature that corrodes weapons (1.550): another `step` off its
+/** A held weapon that dealt damage to a creature that corrodes weapons (1.551): another `step` off its
  *  damage for good, written back to its stack, and destroyed at `destroyedAt`, its blows gone with it.
  *  Ammunition it shot of the same stuff is destroyed instead of won back. */
 function corrodeOnHit(
@@ -1327,7 +1327,7 @@ function corrodeOnHit(
   if (index === undefined || !held || actor.broken?.[index]) return;
   const made = (tags: readonly string[] | undefined) =>
     rule.tags.some((tag) => tags?.includes(tag)) && !(rule.sparesMagical && tags?.includes("magical"));
-  // The shot, when it was one (1.550): destroyed rather than won back.
+  // The shot, when it was one (1.551): destroyed rather than won back.
   if (action.ammo && rule.ammunition && actor.lastShot !== undefined) {
     const shot = items[actor.lastShot];
     const back = actor.recoverable?.[actor.lastShot];
@@ -1367,7 +1367,7 @@ function corrodeOnHit(
   ctx.events.push({ type: "corroded", actorId: actor.id, targetId: target.id, label, penalty });
 }
 
-/** A hydra's heads as damage reaches it (1.549): what stops them growing is remembered until its
+/** A hydra's heads as damage reaches it (1.550): what stops them growing is remembered until its
  *  turn ends, and the turn's damage reaching `lostAt` kills one, once a turn. With none left it dies,
  *  and with one left it holds what many heads give it no more. */
 function harmHeads(
@@ -1394,7 +1394,7 @@ function harmHeads(
   if (heads.count <= 0) slay(ctx, target, sourceId, label);
 }
 
-/** Heads grown back as a hydra's turn ends (1.549): `grows` for each that died since its last turn,
+/** Heads grown back as a hydra's turn ends (1.550): `grows` for each that died since its last turn,
  *  up to its most, with `healsPerHead` for each, unless what stops them reached it since then. */
 function regrowHeads(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   const rule = actor.block?.heads;
@@ -1426,7 +1426,7 @@ function regrowHeads(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   }
 }
 
-/** Whom `target` holds by a condition that takes a share of its harm (1.406), and that share. */
+/** Whom `target` holds by a condition that takes a share of its harm (1.407), and that share. */
 function harmSharer(
   ctx: RulesetCombatContext,
   target: RulesetCombatant,
@@ -1445,7 +1445,7 @@ function harmSharer(
   return undefined;
 }
 
-/** Damage past a target's own health in the blow being dealt (1.708), summed over its amounts. */
+/** Damage past a target's own health in the blow being dealt (1.709), summed over its amounts. */
 function noteOverflow(ctx: RulesetCombatContext, target: RulesetCombatant, past: number): void {
   if (past <= 0) return;
   ctx.blowOverflow.set(target.id, (ctx.blowOverflow.get(target.id) ?? 0) + past);
@@ -1469,7 +1469,7 @@ function afterBlow(ctx: RulesetCombatContext, target: RulesetCombatant, dealt: n
   const overflow = ctx.blowOverflow.get(target.id) ?? 0;
   ctx.blowOverflow.delete(target.id);
   if (dealt <= 0) {
-    // Split by what it shrugged off (1.474): an ooze immune to the lightning it splits on.
+    // Split by what it shrugged off (1.475): an ooze immune to the lightning it splits on.
     splitOnHarm(ctx, target, subjected);
     return;
   }
@@ -1481,11 +1481,11 @@ function afterBlow(ctx: RulesetCombatContext, target: RulesetCombatant, dealt: n
   // A blow that leaves somebody standing tests their concentration. One that takes them out does
   // not: going down ends it outright (`dropToZero`), so nothing is rolled for it.
   if (!out) concentrationFromDamage(ctx, target, dealt);
-  // Split in two by what harmed it (1.474): a Black Pudding.
+  // Split in two by what harmed it (1.475): a Black Pudding.
   if (!out) splitOnHarm(ctx, target, new Set([...kinds, ...subjected]));
-  // What the harm puts on it (1.541): a flesh golem's Aversion of Fire.
+  // What the harm puts on it (1.542): a flesh golem's Aversion of Fire.
   if (!out) harmedInto(ctx, target, kinds);
-  // Massive damage (1.708): what is left past 0 at least their most kills one who would lie dying,
+  // Massive damage (1.709): what is left past 0 at least their most kills one who would lie dying,
   // and so does as much taken while down.
   const massive =
     ctx.combat.dying?.instantDeath === "overflow-at-least-max" &&
@@ -1506,13 +1506,13 @@ function afterBlow(ctx: RulesetCombatContext, target: RulesetCombatant, dealt: n
     }
   }
   groundFlier(ctx, target);
-  // What was stored to go off as they are harmed, or go down (1.568): Contingency.
+  // What was stored to go off as they are harmed, or go down (1.569): Contingency.
   castStoredOn(ctx, target, "harmed");
   if (out && !wasDown && !target.defeated) castStoredOn(ctx, target, "down");
 }
 
 /** The first entry stored in `holder`, or in an item they wear, to be cast by itself at this moment
- *  (1.568), cast for nothing: at them, or at whoever harmed them. Contingency. */
+ *  (1.569), cast for nothing: at them, or at whoever harmed them. Contingency. */
 function castStoredOn(ctx: RulesetCombatContext, holder: RulesetCombatant, moment: "harmed" | "down"): void {
   if (holder.defeated || ctx.releasing?.has(holder.id)) return;
   const stores = (action: RulesetCombatAction) => {
@@ -1542,9 +1542,9 @@ function castStoredOn(ctx: RulesetCombatContext, holder: RulesetCombatant, momen
   }
 }
 
-/** What a condition on whoever was hit does to who hit them, nobody choosing (1.488): Holy Aura's
+/** What a condition on whoever was hit does to who hit them, nobody choosing (1.489): Holy Aura's
  *  flash, blinding a fiend or undead that hits its holder in melee unless it saves. What it puts on
- *  is held as the condition is, by the same concentration. With `touched` (1.526), it answers one who
+ *  is held as the condition is, by the same concentration. With `touched` (1.527), it answers one who
  *  only touched them, by a grapple or a shove, where it says it `touches`: Heated Body. */
 function answerHit(
   ctx: RulesetCombatContext,
@@ -1560,7 +1560,7 @@ function answerHit(
     if (!rule || attacker.defeated || (touched && !rule.touches)) continue;
     if (!touched && rule.blow && rulesetBlowKind(ctx.state, attacker, target, action) !== rule.blow) continue;
     if (rule.from && !rulesetTargetIs(ctx.definition, attacker, rule.from)) continue;
-    // Only a hitter this near (1.507), off a board everybody is.
+    // Only a hitter this near (1.508), off a board everybody is.
     const perCell = ctx.definition.combat?.distance?.perCell;
     if (
       rule.within !== undefined &&
@@ -1571,7 +1571,7 @@ function answerHit(
     )
       continue;
     const own = target.tracked.find((one) => one.condition === entry.condition);
-    // What it deals the hitter, no save, once the blow is over (1.507): Fire Shield.
+    // What it deals the hitter, no save, once the blow is over (1.508): Fire Shield.
     const harm = rule.harms;
     if (harm) {
       const label =
@@ -1593,7 +1593,7 @@ function answerHit(
       });
     }
     if (!rule.applies) continue;
-    // Spread by another's aura (1.490): what put the aura's own condition on its holder.
+    // Spread by another's aura (1.491): what put the aura's own condition on its holder.
     const held = own?.aura && !own.action ? (auraOrigin(ctx, own) ?? own) : own;
     const source = held?.source ? rulesetCombatant(ctx.state, held.source) : undefined;
     const by = held?.action ? source?.actions.find((one) => one.id === held.action![0]) : undefined;
@@ -1612,7 +1612,7 @@ function answerHit(
   }
 }
 
-/** What a mover's `entering` does to each creature whose space it now fills (1.503), the first time
+/** What a mover's `entering` does to each creature whose space it now fills (1.504), the first time
  *  in a turn: Fire Form's burn and its flames. */
 function entersSpaces(ctx: RulesetCombatContext, mover: RulesetCombatant): void {
   if (!ctx.combat.conditions?.some((entry) => entry.entering)) return;
@@ -1656,7 +1656,7 @@ function entersSpaces(ctx: RulesetCombatContext, mover: RulesetCombatant): void 
   }
 }
 
-/** What the attacker's own conditions put on whoever their hit landed on (1.502): Branding Smite. */
+/** What the attacker's own conditions put on whoever their hit landed on (1.503): Branding Smite. */
 function ownHit(
   ctx: RulesetCombatContext,
   attacker: RulesetCombatant,
@@ -1669,11 +1669,11 @@ function ownHit(
     if (!rule || target.defeated) continue;
     if (rule.weapon && !rulesetWeaponBlow(action)) continue;
     if (rule.blow && rulesetBlowKind(ctx.state, attacker, target, action) !== rule.blow) continue;
-    // Only a blow of these damage types (1.682): a poison on a slashing or piercing weapon.
+    // Only a blow of these damage types (1.683): a poison on a slashing or piercing weapon.
     const blowType = action.damage?.type?.trim().toLowerCase();
     if (rule.damageTypes && !rule.damageTypes.some((type) => type.trim().toLowerCase() === blowType)) continue;
     const own = attacker.tracked.find((one) => one.condition === entry.condition);
-    // Its save first (1.682): a poison's Constitution save.
+    // Its save first (1.683): a poison's Constitution save.
     const saved = rule.save ? rollSave(ctx, target, rule.save.save, rule.save.difficulty, attacker.id) : false;
     const thrown = rule.save
       ? [...ctx.events].reverse().find((event) => event.type === "save" && event.actorId === target.id)
@@ -1695,7 +1695,7 @@ function ownHit(
       afterBlow(ctx, target, dealt, false);
     }
     if (saved || target.defeated) continue;
-    // Failed badly (1.682): drow poison's unconsciousness on a failure by 5.
+    // Failed badly (1.683): drow poison's unconsciousness on a failure by 5.
     const worse =
       rule.failedBy &&
       thrown?.type === "save" &&
@@ -1714,7 +1714,7 @@ function ownHit(
   }
 }
 
-/** The condition an aura spread this from (1.490), as its holder holds it: whose it is, the entry
+/** The condition an aura spread this from (1.491), as its holder holds it: whose it is, the entry
  *  that put it on, and the concentration holding it. Holy Aura's ward, given to each nearby ally. */
 function auraOrigin(ctx: RulesetCombatContext, spread: RulesetTrackedCondition): RulesetTrackedCondition | undefined {
   const holder = spread.aura ? rulesetCombatant(ctx.state, spread.aura) : undefined;
@@ -1733,7 +1733,7 @@ function applySelf(
   payWith: string | undefined,
   steps: number,
 ): void {
-  // Saved against, with its own save at its own difficulty (1.692): Dust of Sneezing's thrower.
+  // Saved against, with its own save at its own difficulty (1.693): Dust of Sneezing's thrower.
   if (action.appliesSelfSaves && action.save && action.appliesSelf?.length) {
     const save = action.save;
     const against: RulesetSaveAgainst = {
@@ -1762,7 +1762,7 @@ function applySelf(
   }
 }
 
-/** What a creature puts on itself when a blow of one of its types deals it anything (1.541). */
+/** What a creature puts on itself when a blow of one of its types deals it anything (1.542). */
 function harmedInto(ctx: RulesetCombatContext, target: RulesetCombatant, kinds: ReadonlySet<string>): void {
   for (const rule of target.block?.whenHarmedBy ?? []) {
     if (!rule.by.some((kind) => kinds.has(kind.trim().toLowerCase()))) continue;
@@ -1771,7 +1771,7 @@ function harmedInto(ctx: RulesetCombatContext, target: RulesetCombatant, kinds: 
   }
 }
 
-/** A creature split in two by the harm a blow dealt it (1.474): a second of it beside it, each with
+/** A creature split in two by the harm a blow dealt it (1.475): a second of it beside it, each with
  *  half the health it had, rounded down, and each one size smaller when the fight has sizes. */
 function splitOnHarm(ctx: RulesetCombatContext, target: RulesetCombatant, kinds: ReadonlySet<string>): void {
   const splits = target.block?.splits;
@@ -1869,7 +1869,7 @@ function writeHealthLoss(
   /** Not even with a rest (1.203). */
   lasting?: true,
   kind?: string,
-  /** Kept off healing by this condition while it holds (1.749). */
+  /** Kept off healing by this condition while it holds (1.750). */
   keptBy?: string,
 ): void {
   const health = ctx.combat.health;
@@ -1951,12 +1951,12 @@ function magicalAction(action: RulesetCombatAction): boolean {
   return (action.qualities ?? action.damage?.qualities)?.includes("magical") === true;
 }
 
-/** Whether healing this combatant gets is at its most (1.499): Beacon of Hope. */
+/** Whether healing this combatant gets is at its most (1.500): Beacon of Hope. */
 function healedMax(ctx: RulesetCombatContext, target: RulesetCombatant): boolean {
   return rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state).some((entry) => entry.healedMax);
 }
 
-/** Healing rolled for somebody, at its most where they are healed at it (1.499). */
+/** Healing rolled for somebody, at its most where they are healed at it (1.500). */
 function rollHealing(
   ctx: RulesetCombatContext,
   target: RulesetCombatant,
@@ -1978,7 +1978,7 @@ function dealHeal(
   const blocked = effects.has("cannot-heal") || (!input.magical && effects.has("cannot-heal-nonmagical"));
   const amount = blocked ? 0 : Math.max(0, Math.floor(input.amount));
   if (amount > 0) {
-    // A form's own health first (1.391).
+    // A form's own health first (1.392).
     if (target.shape?.health) {
       target.shape.health.value = Math.min(target.shape.health.max, target.shape.health.value + amount);
     }
@@ -2005,7 +2005,7 @@ function dealHeal(
     maxHealth: after.max,
     ...(blocked ? { blocked: true as const } : {}),
   });
-  // Health regained, from anything or from magic, ends what lasts only until then (1.683): caltrops'
+  // Health regained, from anything or from magic, ends what lasts only until then (1.684): caltrops'
   // slowed walk, an Infernal Wound.
   if (after.value > before.value) {
     for (const condition of rulesetCombatConditions(ctx.definition, target)) {
@@ -2014,7 +2014,7 @@ function dealHeal(
         removeCondition(ctx, target, condition, "recovered");
     }
   }
-  // Back at full health, what lasts only until then ends (1.542): Berserk.
+  // Back at full health, what lasts only until then ends (1.543): Berserk.
   if (amount > 0 && after.value >= after.max) {
     for (const condition of rulesetCombatConditions(ctx.definition, target)) {
       if (ctx.combat.conditions?.find((one) => one.condition === condition)?.endsAtFullHealth)
@@ -2227,19 +2227,19 @@ function endConditionsFromSource(ctx: RulesetCombatContext, source: RulesetComba
   }
 }
 
-/** Out of the fight at 0 rather than dying (1.393): an opponent, or a creature fighting beside the
+/** Out of the fight at 0 rather than dying (1.394): an opponent, or a creature fighting beside the
  *  party with no sheet of its own, a summoned wolf. */
 function rulesetDiesAtZero(target: RulesetCombatant): boolean {
   return target.side === "enemy" || !target.sheet;
 }
 
-/** The blow that took them to 0 (1.399): what it dealt, whether it was a critical hit, and the kinds
+/** The blow that took them to 0 (1.400): what it dealt, whether it was a critical hit, and the kinds
  *  of harm in it. */
 interface RulesetDroppingBlow {
   dealt: number;
   critical: boolean;
   kinds: Set<string>;
-  /** Past 0 by at least their most (1.708): only a ward against being slain outright holds. */
+  /** Past 0 by at least their most (1.709): only a ward against being slain outright holds. */
   massive?: true;
 }
 
@@ -2251,7 +2251,7 @@ function sheetPool(
 ): { key: string; value: number; max: number } | undefined {
   if (!target.sheet) return undefined;
   const pools = readRulesetLive(ctx.definition, target.sheet.build, target.sheet.live, target.sheet.items).pools;
-  // A declared pool by id, or a list row's by its name (1.403): the half-orc's Relentless Endurance.
+  // A declared pool by id, or a list row's by its name (1.404): the half-orc's Relentless Endurance.
   const wanted = key.trim().toLowerCase();
   return (
     pools.find((entry) => !entry.listId && entry.key === key) ??
@@ -2259,7 +2259,7 @@ function sheetPool(
   );
 }
 
-/** Whether one way of hanging on at 1 works against this blow (1.320, 1.399), paying for it if it
+/** Whether one way of hanging on at 1 works against this blow (1.320, 1.400), paying for it if it
  *  does: its use this fight, its sheet pool, or the save its holder makes. */
 function hangsOnNow(
   ctx: RulesetCombatContext,
@@ -2274,7 +2274,7 @@ function hangsOnNow(
   if (blow && hangs.notCritical && blow.critical) return null;
   if (blow && hangs.notFrom?.some((kind) => blow.kinds.has(kind.trim().toLowerCase()))) return null;
   if (blow && hangs.dealtAtMost !== undefined && blow.dealt > hangs.dealtAtMost) return null;
-  // Only while its holder holds one of these (1.403): Relentless Rage, while raging.
+  // Only while its holder holds one of these (1.404): Relentless Rage, while raging.
   if (
     hangs.whileHolding &&
     !rulesetCombatConditions(ctx.definition, target).some((one) => hangs.whileHolding!.includes(one))
@@ -2301,7 +2301,7 @@ function hangsOnNow(
   return hangs.uses !== undefined ? { left: hangs.uses - used - 1 } : {};
 }
 
-/** It takes one of its own action's forms (1.547), as the action would put it on: a vampire's
+/** It takes one of its own action's forms (1.548), as the action would put it on: a vampire's
  *  Misty Escape. Nothing when it has no such action or form now. */
 function becomeForm(
   ctx: RulesetCombatContext,
@@ -2320,7 +2320,7 @@ function becomeForm(
 }
 
 /** Whether a way of hanging on spares its holder what would slay them outright without dealing
- *  damage (1.595), paying for it as hanging on at 1 does: Death Ward against Power Word Kill. */
+ *  damage (1.596), paying for it as hanging on at 1 does: Death Ward against Power Word Kill. */
 function wardedOutright(ctx: RulesetCombatContext, target: RulesetCombatant): boolean {
   if (target.defeated) return false;
   for (const { from, hangs } of rulesetHangsOn(ctx.definition, ctx.combat, target, ctx.state)) {
@@ -2347,7 +2347,7 @@ function dropToZero(
   blow?: RulesetDroppingBlow,
 ): void {
   // Hanging on at 1 instead (1.320): the Miller's Hourglass, once, with a turn of its own straight
-  // after this one. From 1.399 on a save and the blow's own terms too, from a sheet's conditions and
+  // after this one. From 1.400 on a save and the blow's own terms too, from a sheet's conditions and
   // levels as well as a block: Undead Fortitude, Relentless, Relentless Endurance, Relentless Rage.
   // A creature that fights with a sheet hangs on in its hit point pool; a wound track has no 1 to hang
   // on at.
@@ -2355,7 +2355,7 @@ function dropToZero(
   const pool = target.sheet && !target.health && !("track" in health) ? health.pool : undefined;
   if (!slain && (target.health || pool)) {
     for (const { from, hangs } of rulesetHangsOn(ctx.definition, ctx.combat, target, ctx.state)) {
-      // Massive damage slays outright (1.708): Death Ward holds, Relentless Endurance does not.
+      // Massive damage slays outright (1.709): Death Ward holds, Relentless Endurance does not.
       if (blow?.massive && !hangs.outright) continue;
       const held = hangsOnNow(ctx, target, from, hangs, blow);
       if (!held) continue;
@@ -2371,9 +2371,9 @@ function dropToZero(
         ...(hangs.label ? { label: hangs.label } : {}),
         ...(held.left !== undefined ? { left: held.left } : {}),
       });
-      // Into one of its own forms as it hangs on (1.547): Misty Escape.
+      // Into one of its own forms as it hangs on (1.548): Misty Escape.
       if (hangs.becomes) becomeForm(ctx, target, hangs.becomes);
-      // Worked, its condition is over (1.595): Death Ward.
+      // Worked, its condition is over (1.596): Death Ward.
       if (hangs.ends && from !== null) removeCondition(ctx, target, from, "spent");
       if (hangs.extraTurn) {
         const at = ctx.state.turn + 1;
@@ -2393,9 +2393,9 @@ function dropToZero(
     killedOutright(ctx, target);
     return;
   }
-  // Down, they are themselves again (1.391): a shapechanger dies in its true form.
+  // Down, they are themselves again (1.392): a shapechanger dies in its true form.
   if (target.shape) endShape(ctx, target, "damage");
-  // Down but not out while it may regenerate (1.395): a troll lies there until its turn starts.
+  // Down but not out while it may regenerate (1.396): a troll lies there until its turn starts.
   if (
     !slain &&
     !ctx.state.heldGround &&
@@ -2415,7 +2415,7 @@ function dropToZero(
     rampage(ctx, target);
   }
   target.down = true;
-  // Knocked out instead (1.719): a melee blow its maker pulled.
+  // Knocked out instead (1.720): a melee blow its maker pulled.
   if (!slain && knocksOutNow(ctx, target)) {
     knockOut(ctx, target);
     return;
@@ -2454,7 +2454,7 @@ function dropToZero(
 /** Whoever holds an aura that feeds (1.331) and reaches somebody now falling regains what it says:
  *  The Owed's Collector. Read before the one falling is out of the fight, so the aura still reaches
  *  them. */
-/** A foe dropped by whoever harmed them last gives that one temporary points (1.411): Dark One's
+/** A foe dropped by whoever harmed them last gives that one temporary points (1.412): Dark One's
  *  Blessing. Points never stack, so the bigger buffer stands. */
 function fellsGrant(ctx: RulesetCombatContext, target: RulesetCombatant): void {
   const feller = target.harmedBy ? rulesetCombatant(ctx.state, target.harmedBy) : undefined;
@@ -2481,7 +2481,7 @@ function fellsGrant(ctx: RulesetCombatContext, target: RulesetCombatant): void {
   }
 }
 
-/** A creature that drops one to 0 with a melee attack on its own turn rampages on (1.544): its
+/** A creature that drops one to 0 with a melee attack on its own turn rampages on (1.545): its
  *  budget spent, part of its speed to move and its action free once more. A gnoll's Rampage. */
 function rampage(ctx: RulesetCombatContext, target: RulesetCombatant): void {
   const acting = ctx.acting;
@@ -2553,7 +2553,7 @@ function fell(ctx: RulesetCombatContext, target: RulesetCombatant, held: Ruleset
   for (const mark of held.marks ?? []) moveTrack(ctx, target, target, mark.track, mark.by);
 }
 
-/** Whether the action being resolved knocks `target` out rather than dropping them (1.719): a melee
+/** Whether the action being resolved knocks `target` out rather than dropping them (1.720): a melee
  *  attack by somebody pulling their blows, where the ruleset allows it. */
 function knocksOutNow(ctx: RulesetCombatContext, target: RulesetCombatant): boolean {
   const acting = ctx.acting;
@@ -2563,7 +2563,7 @@ function knocksOutNow(ctx: RulesetCombatContext, target: RulesetCombatant): bool
   return rulesetBlowKind(ctx.state, feller, target, acting.action) === "melee";
 }
 
-/** Knocked out (1.719): out of the fight, stable, alive. An opponent is beaten without dying; a
+/** Knocked out (1.720): out of the fight, stable, alive. An opponent is beaten without dying; a
  *  character lies stable, to be healed up. */
 function knockOut(ctx: RulesetCombatContext, target: RulesetCombatant): void {
   const dying = ctx.combat.dying!;
@@ -2586,7 +2586,7 @@ function knockOut(ctx: RulesetCombatContext, target: RulesetCombatant): void {
   }
 }
 
-/** Items made by a cast (1.720), into its maker's hand: more of the item they were held a place for
+/** Items made by a cast (1.721), into its maker's hand: more of the item they were held a place for
  *  as the fight began, written to their bag as it ends. Goodberry. */
 function makeItems(ctx: RulesetCombatContext, maker: RulesetCombatant, action: RulesetCombatAction): void {
   const makes = action.makesItems!;
@@ -2594,7 +2594,7 @@ function makeItems(ctx: RulesetCombatContext, maker: RulesetCombatant, action: R
   if (!held) return;
   (maker.itemsUsed ??= {})[makes.at!] = (maker.itemsUsed[makes.at!] ?? 0) - makes.count;
   ctx.events.push({ type: "itemsMade", actorId: maker.id, label: held.name ?? makes.ref, count: makes.count });
-  // Lasting only so long (1.759), in its maker's turns: Creation's, by its material.
+  // Lasting only so long (1.760), in its maker's turns: Creation's, by its material.
   if (makes.lasting && makes.lasts) {
     const rounds = Math.max(1, Math.ceil((makes.lasts * 60) / (ctx.definition.combat?.roundSeconds ?? 6)));
     const key = String(makes.at);
@@ -2602,7 +2602,7 @@ function makeItems(ctx: RulesetCombatContext, maker: RulesetCombatant, action: R
   }
 }
 
-/** What was made to last only so long runs out (1.759), counted down at its maker's turn's end, each
+/** What was made to last only so long runs out (1.760), counted down at its maker's turn's end, each
  *  making on its own clock: as much of it as is left is gone, what was used first. */
 function vanishMade(ctx: RulesetCombatContext, maker: RulesetCombatant): void {
   const next: NonNullable<RulesetCombatant["madeFor"]> = {};
@@ -2718,7 +2718,7 @@ function addDeathFailures(ctx: RulesetCombatContext, target: RulesetCombatant, a
 function deathSave(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   const dying = ctx.combat.dying;
   if (!dying) return;
-  // Stable in place of the roll (1.687): a Periapt of Wound Closure.
+  // Stable in place of the roll (1.688): a Periapt of Wound Closure.
   if (
     rulesetActiveConditions(ctx.definition, ctx.combat, actor, ctx.state).some((entry) => entry.stabilizesWhenDying)
   ) {
@@ -2736,7 +2736,7 @@ function deathSave(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
     });
     return;
   }
-  // Rolled twice where a condition says (1.499): Beacon of Hope; and, as a save, as every save is.
+  // Rolled twice where a condition says (1.500): Beacon of Hope; and, as a save, as every save is.
   const leans = new Set(
     rulesetActiveConditions(ctx.definition, ctx.combat, actor, ctx.state).flatMap((entry) =>
       entry.deathSaves ? [entry.deathSaves] : [],
@@ -2759,7 +2759,7 @@ function deathSave(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
       ? Math.max(sumOf(first), sumOf(second))
       : Math.min(sumOf(first), sumOf(second))
     : sumOf(first);
-  // What adds to every save adds to it as a save (1.499): Bless.
+  // What adds to every save adds to it as a save (1.500): Bless.
   const bonuses = dying.asSave
     ? rollBonuses(ctx, rulesetConditionModifiers(ctx.definition, ctx.combat, actor, "saves", ctx.state, ""), actor)
     : [];
@@ -2815,7 +2815,7 @@ function deathSave(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
 /** A save, and a creature's legendary resistance (Capability API 1.317) turning a failure into a
  *  success while it has uses left: 5e's "If the dragon fails a saving throw, it can choose to succeed
  *  instead." A creature run by the Engine always chooses to. */
-/** The rows of an action's rays striking one target (1.467), each logged as it is rolled: a row that
+/** The rows of an action's rays striking one target (1.468), each logged as it is rolled: a row that
  *  strikes `again` rolls that many more, landing on it again rolled over. */
 function rayRows(
   ctx: RulesetCombatContext,
@@ -2886,7 +2886,7 @@ function throwSave(
   rerolled = false,
 ): boolean {
   const own = combatant.saves[save] ?? 0;
-  // A save against a condition is against those it counts as too (1.584): Enthrall's, against charm.
+  // A save against a condition is against those it counts as too (1.585): Enthrall's, against charm.
   if (against?.conditions?.length) {
     against = {
       ...against,
@@ -2922,7 +2922,7 @@ function throwSave(
       : 0;
   if (cover > 0) ctx.events.push({ type: "cover", targetId: combatant.id, bonus: cover, save });
   const modifier = own + cover;
-  // What it is against is seen, or it has no source to see (1.416): Danger Sense.
+  // What it is against is seen, or it has no source to see (1.417): Danger Sense.
   const seen = !source || source.id === combatant.id || rulesetCanSee(ctx.definition, ctx.state, combatant, source);
   const mode = rulesetSaveMode(ctx.definition, ctx.combat, combatant, save, ctx.state, against, lean, seen);
   if (rulesetCombatIsSymbol(ctx.combat)) {
@@ -3046,7 +3046,7 @@ function throwSave(
 }
 
 /** The fight's own dice for one of `who`'s own rolls, any face a condition or level of theirs rolls
- *  again (1.407) rolled again once, the new face kept: a halfling's Lucky on a natural 1. */
+ *  again (1.408) rolled again once, the new face kept: a halfling's Lucky on a natural 1. */
 function throwOwnDice(
   ctx: RulesetCombatContext,
   who: RulesetCombatant,
@@ -3078,7 +3078,7 @@ function throwOwnDice(
 /** An item's gate, rolled by its user as a check: the fight's own dice (a pool in a pool fight) with
  *  the sheet's number read as the fight began, what their conditions add to checks (and to the skill
  *  it names), and the lean they give it. Logged as a save is. */
-/** Whether a use's chance comes up (1.440): sure while its sheet says so, else one die at or under
+/** Whether a use's chance comes up (1.441): sure while its sheet says so, else one die at or under
  *  what it needs. Failed, `failUses` is spent in place of what it cost. */
 function rollsChance(
   ctx: RulesetCombatContext,
@@ -3434,7 +3434,7 @@ function spendAsked(
 function rollBonuses(
   ctx: RulesetCombatContext,
   modifiers: RulesetConditionModifier[],
-  /** Whose sheet a value it adds is read off (1.428). */
+  /** Whose sheet a value it adds is read off (1.429). */
   holder?: RulesetCombatant,
 ): RulesetConditionBonus[] {
   return modifiers.map(({ condition, level, derived, item, modifier }) => {
@@ -3442,7 +3442,7 @@ function rollBonuses(
     const dice = modifier.dice ? parseRulesetCombatDice(modifier.dice) : null;
     const rolls = dice ? rollRulesetDice(ctx.roll, dice.count, dice.sides) : undefined;
     if (dice && rolls) value += (modifier.minus ? -1 : 1) * (sumOf(rolls) + dice.flat);
-    // A value off the holder's sheet (1.428): Foe Slayer's Wisdom modifier, Natural Explorer's
+    // A value off the holder's sheet (1.429): Foe Slayer's Wisdom modifier, Natural Explorer's
     // proficiency bonus.
     if (modifier.add && holder)
       value += (modifier.minus ? -1 : 1) * (rulesetHolderValue(ctx.definition, holder, modifier.add) ?? 0);
@@ -3481,7 +3481,7 @@ function rescueBonuses(
       rescueMost(one.modifier) +
         (one.modifier.add ? (rulesetHolderValue(ctx.definition, combatant, one.modifier.add) ?? 0) : 0) >=
         short &&
-      // Once on each of its holder's own turns (1.428): Foe Slayer.
+      // Once on each of its holder's own turns (1.429): Foe Slayer.
       (!one.modifier.oncePer || oncePerTurnLeft(ctx, combatant, one)),
   );
   if (!rescue) {
@@ -3504,7 +3504,7 @@ function rescueBonuses(
     return [{ condition: own.label, entry: true, value: sumOf(rolls) + amount.flat, rolls, rescue: true }];
   }
   const bonuses = rollBonuses(ctx, [rescue], combatant).map((bonus) => ({ ...bonus, rescue: true as const }));
-  // Once a turn, it is that turn's, and the condition stays (1.428).
+  // Once a turn, it is that turn's, and the condition stays (1.429).
   if (rescue.modifier.oncePer) {
     spendOncePerTurn(ctx, combatant, onceKey(rescue));
     return bonuses;
@@ -3545,7 +3545,7 @@ function rescueEntry(
   worth?: (action: RulesetCombatAction) => boolean,
   /** The save it is, for an entry narrowed to some (1.257). */
   save?: string,
-  /** What the save is against (1.786), for an entry narrowed by its `against`. */
+  /** What the save is against (1.787), for an entry narrowed by its `against`. */
   against?: RulesetSaveAgainst,
 ): RulesetCombatAction | undefined {
   const found = holder.actions.find(
@@ -3556,7 +3556,7 @@ function rescueEntry(
       (by === undefined ? action.rescue.by === "reroll" || action.rescue.by === "success" : action.rescue.by === by) &&
       // Only the saves it names (1.257): a ring of evasion's Dexterity saves.
       (!action.rescue.saves || (save !== undefined && action.rescue.saves.includes(save))) &&
-      // Only against what it names (1.786): a Scarab of Protection's necromancy and undead.
+      // Only against what it names (1.787): a Scarab of Protection's necromancy and undead.
       (!action.rescue.against || rescuesAgainst(action.rescue.against, against)) &&
       // With the budget it takes still to be had (1.257): a ring of evasion's reaction.
       (!action.rescue.budget || canSpendAnswer(ctx, holder, action.rescue.budget)) &&
@@ -3576,7 +3576,7 @@ function rescueEntry(
   return found;
 }
 
-/** Whether a save is against what a rescue's `against` names (1.786), either one enough. */
+/** Whether a save is against what a rescue's `against` names (1.787), either one enough. */
 function rescuesAgainst(
   wanted: NonNullable<RulesetCombatRescue["against"]>,
   against: RulesetSaveAgainst | undefined,
@@ -3604,7 +3604,7 @@ function payAnswer(
 ): void {
   const paid = planRulesetCombatCost(ctx.definition, holder, action)!;
   if (paid.live && holder.sheet) holder.sheet.live = paid.live;
-  // Out of a worn item's charges (1.571).
+  // Out of a worn item's charges (1.572).
   if (paid.itemCharges) (holder.charges ??= {})[paid.itemCharges.item] = paid.itemCharges.now;
   countRulesetSpend(holder, paid.cost);
   for (const entry of paid.cost) {
@@ -3686,7 +3686,7 @@ function oneUseConditions(combatant: RulesetCombatant, ending: RulesetConditionE
 }
 
 /** What an attack roll at this target spends of theirs: what ends after any, and what ends after one
- *  by whoever put it on (1.501). */
+ *  by whoever put it on (1.502). */
 function attackedConditions(target: RulesetCombatant, attacker: RulesetCombatant): RulesetTrackedCondition[] {
   return target.tracked.filter(
     (entry) =>
@@ -3694,7 +3694,7 @@ function attackedConditions(target: RulesetCombatant, attacker: RulesetCombatant
   );
 }
 
-/** Whether an attack on `target` is turned onto one of its duplicates (1.504), with the defense it is
+/** Whether an attack on `target` is turned onto one of its duplicates (1.505), with the defense it is
  *  rolled against then: never by an attacker who can't see them, or who senses them past the trick. */
 function divertedToDuplicate(
   ctx: RulesetCombatContext,
@@ -3709,7 +3709,7 @@ function divertedToDuplicate(
   const left = Math.min(rule.count, tracked?.duplicatesLeft ?? rule.count);
   if (left < 1) return null;
   if (!rulesetCanSee(ctx.definition, ctx.state, actor, target)) return null;
-  // Seen truly (1.648): Witch Sight.
+  // Seen truly (1.649): Witch Sight.
   if (rulesetSeesTrue(ctx.definition, ctx.state, actor, target)) return null;
   if (rule.pierced) {
     const ranges = rulesetSenseRanges(ctx.definition, actor, ctx.state);
@@ -3727,7 +3727,7 @@ function divertedToDuplicate(
   return { condition: entry.condition, defense: rule.defense.flat + mod, roll, needed };
 }
 
-/** A duplicate an attack hit is destroyed (1.504), and its condition ends with the last of them. */
+/** A duplicate an attack hit is destroyed (1.505), and its condition ends with the last of them. */
 function loseDuplicate(
   ctx: RulesetCombatContext,
   actor: RulesetCombatant,
@@ -3781,7 +3781,7 @@ function applyConditionId(
     level?: number;
     /** The steps above its base cost that spell was paid at (1.300). */
     steps?: number;
-    /** The catalog of the entry that put it on (1.423), for what ends a spell's conditions. */
+    /** The catalog of the entry that put it on (1.424), for what ends a spell's conditions. */
     catalog?: string;
   } = {},
 ): void {
@@ -3789,14 +3789,14 @@ function applyConditionId(
   // Nothing anybody does puts a condition on the fallen: a body is not chilled. One only sent away
   // (banished, hurled) is still somebody.
   if (target.defeated && !target.away && putter && putter.id !== target.id) return;
-  // Only on a roll (1.645): Wish lost, 33 in 100.
+  // Only on a roll (1.646): Wish lost, 33 in 100.
   if (applies.chance !== undefined && ctx.roll(100) > applies.chance) return;
-  // Put on by an action that never hinders them (1.703): a web's restraint, on a spider.
+  // Put on by an action that never hinders them (1.704): a web's restraint, on a spider.
   if (extra.action && rulesetUnhinderedBy(target, extra.action)) {
     ctx.events.push({ type: "condition", targetId: target.id, condition, active: false, reason: "immune" });
     return;
   }
-  // Only on a target already holding what it asks, as it stands now (1.406): a kraken's swallow.
+  // Only on a target already holding what it asks, as it stands now (1.407): a kraken's swallow.
   if (applies.targetHolds && !rulesetHoldsFor(ctx.definition, target, extra.sourceId ?? "", applies.targetHolds))
     return;
   if (
@@ -3839,7 +3839,7 @@ function applyConditionId(
     ctx.events.push({ type: "condition", targetId: target.id, condition, active: false, reason: "full" });
     return;
   }
-  // Put on by somebody kept out of where its holder stands (1.451): Magic Circle's "can't be
+  // Put on by somebody kept out of where its holder stands (1.452): Magic Circle's "can't be
   // charmed, frightened, or possessed by the creature".
   const giver = extra.sourceId ? rulesetCombatant(ctx.state, extra.sourceId) : undefined;
   if (
@@ -3850,7 +3850,7 @@ function applyConditionId(
     ctx.events.push({ type: "condition", targetId: target.id, condition, active: false, reason: "warded" });
     return;
   }
-  // Its holder already holding all it has room for (1.404): Whelm's one Large or two Medium.
+  // Its holder already holding all it has room for (1.405): Whelm's one Large or two Medium.
   const insideRoom = insideRule(ctx, condition)?.room;
   const holding = extra.sourceId ? rulesetCombatant(ctx.state, extra.sourceId) : undefined;
   if (
@@ -3862,19 +3862,19 @@ function applyConditionId(
     ctx.events.push({ type: "condition", targetId: target.id, condition, active: false, reason: "full" });
     return;
   }
-  // A form above what its target may become changes nothing (1.391): Polymorph's "equal or less".
+  // A form above what its target may become changes nothing (1.392): Polymorph's "equal or less".
   const shapeRule = ctx.combat.conditions?.find((one) => one.condition === condition)?.shape;
   if (shapeRule && applies.form && !rulesetFormAllowed(ctx.definition, target, applies)) {
     ctx.events.push({ type: "shaped", targetId: target.id, condition, form: applies.form.name, refused: true });
     return;
   }
-  // For what is left of another (1.615): Wind Walk's cloud again, or nothing once it has run out.
+  // For what is left of another (1.616): Wind Walk's cloud again, or nothing once it has run out.
   const remainingOf = typeof applies.duration === "object" ? applies.duration.remainingOf : undefined;
   const left = remainingOf !== undefined ? rulesetConditionLeft(ctx.state, target, remainingOf) : undefined;
   if (left !== undefined && left < 1) return;
   if (target.sheet) writeRulesetSheet(ctx.definition, target, { op: "condition", condition, active: true });
-  // Paid high enough to have no clock (1.481): Bestow Curse from a 9th-level slot.
-  // So many times over, rolled now (1.624): a Potion of Growth's 1d4 hours.
+  // Paid high enough to have no clock (1.482): Bestow Curse from a 9th-level slot.
+  // So many times over, rolled now (1.625): a Potion of Growth's 1d4 hours.
   const times =
     typeof applies.duration === "object" && applies.duration.times
       ? parseRulesetCombatDice(applies.duration.times)
@@ -3892,12 +3892,12 @@ function applyConditionId(
         : lasts
       : null;
   if (target.conditionLeft?.[condition]) delete target.conditionLeft[condition];
-  // Days, off its applier's sheet (1.662): Quivering Palm's monk level.
+  // Days, off its applier's sheet (1.663): Quivering Palm's monk level.
   const days = ((ref) => {
     if (ref === undefined) return undefined;
-    // Until the next midnight (1.750): the next day that passes on its sheet.
+    // Until the next midnight (1.751): the next day that passes on its sheet.
     if (ref === "midnight") return 1;
-    // Rolled as it goes on (1.755): Wish's stress, 2d4 days.
+    // Rolled as it goes on (1.756): Wish's stress, 2d4 days.
     if (typeof ref === "object" && ref && "dice" in ref) {
       const dice = parseRulesetCombatDice(ref.dice);
       return dice ? Math.max(1, Math.min(3650, rollAmount(ctx, dice).total)) : undefined;
@@ -3931,7 +3931,7 @@ function applyConditionId(
   target.tracked = target.tracked.filter((entry) => entry.condition !== condition);
   target.tracked.push({
     condition,
-    // Where it was put on from (1.456), for a behavior measured from there: Symbol of Fear's glyph.
+    // Where it was put on from (1.457), for a behavior measured from there: Symbol of Fear's glyph.
     ...(rule?.behavior?.from === "point" && ctx.aimedAt ? { at: { x: ctx.aimedAt.x, y: ctx.aimedAt.y } } : {}),
     rounds: rounds !== null && startsNext ? rounds + 1 : rounds,
     ...(days !== undefined ? { days } : {}),
@@ -4000,24 +4000,24 @@ function applyConditionId(
       ? { type: "condition", targetId: target.id, condition, active: true, reason: "stacked", stacks }
       : { type: "condition", targetId: target.id, condition, active: true, reason: "applied" },
   );
-  // What it puts on as well (1.764), staying after it ends until it comes off on its own: unconscious's
+  // What it puts on as well (1.765), staying after it ends until it comes off on its own: unconscious's
   // prone, there until its holder stands.
   for (const also of rule?.alsoApplies ?? []) {
     if (also === condition || target.tracked.some((entry) => entry.condition === also)) continue;
     applyConditionId(ctx, target, also, { condition: also, duration: "instant" });
   }
-  // Its holder's health maximum raised while it holds, and their health with it (1.472): Aid.
+  // Its holder's health maximum raised while it holds, and their health with it (1.473): Aid.
   if (applies.raisesMax) raiseMax(ctx, target, condition, applies.raisesMax, extra.steps ?? 0);
-  // The shape it holds (1.391), in place of any other.
+  // The shape it holds (1.392), in place of any other.
   if (shapeRule && applies.form) takeShape(ctx, target, condition, shapeRule, applies.form);
-  // Inside whoever put it on (1.402): a gelatinous cube's engulfed, a purple worm's swallowed.
+  // Inside whoever put it on (1.403): a gelatinous cube's engulfed, a purple worm's swallowed.
   if (rule?.inside && extra.sourceId && extra.sourceId !== target.id && target.insideOf !== extra.sourceId) {
     takeInside(ctx, target, extra.sourceId);
-    // How it climbs out once they have fallen (1.404).
+    // How it climbs out once they have fallen (1.405).
     const corpse = rule.inside === true ? undefined : rule.inside.corpse;
     if (corpse) target.insideCorpse = { ...corpse };
   }
-  // What its applier had on them ends now it is on (1.406): the grapple, once swallowed.
+  // What its applier had on them ends now it is on (1.407): the grapple, once swallowed.
   for (const ended of applies.endsOnTarget ?? []) {
     if (ended === condition) continue;
     const held = target.tracked.find(
@@ -4041,7 +4041,7 @@ function applyConditionId(
   }
 }
 
-/** A condition's raise of its holder's health maximum (1.472), rolled as it goes on, and their
+/** A condition's raise of its holder's health maximum (1.473), rolled as it goes on, and their
  *  health raised by the same. A wound track has no maximum to raise. */
 function raiseMax(
   ctx: RulesetCombatContext,
@@ -4068,26 +4068,26 @@ function raiseMax(
   ctx.events.push({ type: "raisedMax", targetId: target.id, condition, amount });
 }
 
-/** What a condition's `inside` says (1.402, 1.404), `true` read as nothing more. */
+/** What a condition's `inside` says (1.403, 1.405), `true` read as nothing more. */
 function insideRule(ctx: RulesetCombatContext, condition: string): RulesetConditionInside | undefined {
   const inside = ctx.combat.conditions?.find((one) => one.condition === condition)?.inside;
   return inside === undefined ? undefined : inside === true ? {} : inside;
 }
 
-/** The places one creature takes inside another (1.404): what `takes` gives its size, else one. */
+/** The places one creature takes inside another (1.405): what `takes` gives its size, else one. */
 function insideTakes(ctx: RulesetCombatContext, one: RulesetCombatant, room: RulesetInsideRoom): number {
   const size = ctx.combat.sizes && rulesetSizeRank(ctx.combat, one) !== undefined ? one.size : undefined;
   return (size !== undefined ? room.takes?.[size] : undefined) ?? 1;
 }
 
-/** The places those `holder` already holds inside take (1.404). */
+/** The places those `holder` already holds inside take (1.405). */
 function insideUsed(ctx: RulesetCombatContext, holder: RulesetCombatant, room: RulesetInsideRoom): number {
   return ctx.state.combatants
     .filter((one) => one.insideOf === holder.id && !one.defeated)
     .reduce((total, one) => total + insideTakes(ctx, one, room), 0);
 }
 
-/** Put prone (1.404): the fight's condition that takes half a walk to stand from. */
+/** Put prone (1.405): the fight's condition that takes half a walk to stand from. */
 function layProne(ctx: RulesetCombatContext, target: RulesetCombatant): void {
   const prone = ctx.combat.conditions?.find((one) => one.effects.includes("half-move-to-stand"))?.condition;
   if (!prone || target.defeated || rulesetCombatConditions(ctx.definition, target).includes(prone)) return;
@@ -4109,7 +4109,7 @@ function letOutOf(
 }
 
 /**
- * As a turn ends (1.404), whoever was dealt `releasedWhen`'s amount or more in it by somebody they
+ * As a turn ends (1.405), whoever was dealt `releasedWhen`'s amount or more in it by somebody they
  * hold inside saves or lets them out, prone where it says so: a behir's 30 damage, DC 14.
  */
 function releaseOnHurt(ctx: RulesetCombatContext): void {
@@ -4133,7 +4133,7 @@ function releaseOnHurt(ctx: RulesetCombatContext): void {
   }
 }
 
-/** Nothing keeps `target` inside a holder who has fallen (1.404): it stays there until it climbs
+/** Nothing keeps `target` inside a holder who has fallen (1.405): it stays there until it climbs
  *  out, and on its own turn has the walk it was kept from to do it with. */
 function freeInCorpse(ctx: RulesetCombatContext, target: RulesetCombatant): void {
   if (currentRulesetActor(ctx.state)?.id !== target.id) return;
@@ -4141,7 +4141,7 @@ function freeInCorpse(ctx: RulesetCombatContext, target: RulesetCombatant): void
   target.movementLeft = Math.max(target.movementLeft ?? 0, allowance);
 }
 
-/** Climbing out of a fallen holder (1.404): what it costs of the walk, set down beside them, prone
+/** Climbing out of a fallen holder (1.405): what it costs of the walk, set down beside them, prone
  *  where it says so. */
 function resolveClimbOut(ctx: RulesetCombatContext, actor: RulesetCombatant, option: RulesetCombatOption): void {
   const corpse = rulesetInsideCorpse(ctx.state, actor);
@@ -4165,20 +4165,20 @@ function resolveClimbOut(ctx: RulesetCombatContext, actor: RulesetCombatant, opt
   if (corpse?.prone) layProne(ctx, actor);
 }
 
-/** `rider` gets up on `mount` (1.495) for `cost` of their walk. A controlled mount's turn comes
+/** `rider` gets up on `mount` (1.496) for `cost` of their walk. A controlled mount's turn comes
  *  straight after its rider's from now on; one that already had its turn this round waits for the
  *  next. */
 function mountOn(ctx: RulesetCombatContext, rider: RulesetCombatant, mount: RulesetCombatant, cost: number): void {
   spendRulesetMovement(rider, cost);
   rider.mountedOn = mount.id;
-  // One more on a mount that carries by weight (1.640): carried along, its first rider still steering.
+  // One more on a mount that carries by weight (1.641): carried along, its first rider still steering.
   if (mount.riddenBy) (mount.passengers ??= []).push(rider.id);
   else steeredBy(ctx, mount, rider);
   if (rulesetPositionOf(mount) && rulesetPositionOf(rider)) placeInside(mount, rider);
   ctx.events.push({ type: "mount", riderId: rider.id, mountId: mount.id });
 }
 
-/** `rider` steers `mount` (1.495): a controlled mount's turn comes straight after theirs from now on;
+/** `rider` steers `mount` (1.496): a controlled mount's turn comes straight after theirs from now on;
  *  one that already had its turn this round waits for the next. */
 function steeredBy(ctx: RulesetCombatContext, mount: RulesetCombatant, rider: RulesetCombatant): void {
   mount.riddenBy = rider.id;
@@ -4198,12 +4198,12 @@ function steeredBy(ctx: RulesetCombatContext, mount: RulesetCombatant, rider: Ru
   }
 }
 
-/** `rider` gets down beside their mount (1.495), or comes off it (`fell`). */
+/** `rider` gets down beside their mount (1.496), or comes off it (`fell`). */
 function dismount(ctx: RulesetCombatContext, rider: RulesetCombatant, fell = false): void {
   const mount = rider.mountedOn ? rulesetCombatant(ctx.state, rider.mountedOn) : undefined;
   delete rider.mountedOn;
   if (mount) {
-    // A passenger gets down alone (1.640); its rider's going hands it to the next one on it.
+    // A passenger gets down alone (1.641); its rider's going hands it to the next one on it.
     const next = mount.riddenBy === rider.id ? mount.passengers?.[0] : undefined;
     mount.passengers = mount.passengers?.filter((id) => id !== rider.id && id !== next);
     if (!mount.passengers?.length) delete mount.passengers;
@@ -4219,7 +4219,7 @@ function dismount(ctx: RulesetCombatContext, rider: RulesetCombatant, fell = fal
   ctx.events.push({ type: "mount", riderId: rider.id, mountId: mount?.id ?? "", off: true, ...(fell ? { fell } : {}) });
 }
 
-/** Every rider where their mount is, or off it (1.495): a mount gone, down or no longer standing, or
+/** Every rider where their mount is, or off it (1.496): a mount gone, down or no longer standing, or
  *  a rider who is, parts them; a mount holding a condition of `fall.when`, or pushed, throws its rider
  *  unless they make the save, and a rider holding one comes off. */
 function syncMounts(ctx: RulesetCombatContext): void {
@@ -4239,7 +4239,7 @@ function syncMounts(ctx: RulesetCombatContext): void {
       dismount(ctx, rider, true);
       continue;
     }
-    // Knocked down under them, they may land on their feet for a reaction instead (1.503).
+    // Knocked down under them, they may land on their feet for a reaction instead (1.504).
     if (fall?.landsWith && holds(mount!) && (rider.budgets[fall.landsWith] ?? 0) >= 1) {
       rider.budgets[fall.landsWith]! -= 1;
       dismount(ctx, rider);
@@ -4258,7 +4258,7 @@ function syncMounts(ctx: RulesetCombatContext): void {
   ctx.shakenMounts?.clear();
 }
 
-/** `target` is taken inside `holderId` (1.402): off the ground, where its holder is, and carried along
+/** `target` is taken inside `holderId` (1.403): off the ground, where its holder is, and carried along
  *  wherever it goes. Nothing reaches in or out but its holder (`rulesetSealedApart`). */
 function takeInside(ctx: RulesetCombatContext, target: RulesetCombatant, holderId: string): void {
   const holder = rulesetCombatant(ctx.state, holderId);
@@ -4269,7 +4269,7 @@ function takeInside(ctx: RulesetCombatContext, target: RulesetCombatant, holderI
   ctx.events.push({ type: "inside", targetId: target.id, holderId: holder.id });
 }
 
-/** Wherever its holder stands, inside it (1.402): on its first cell, and as high as it is. */
+/** Wherever its holder stands, inside it (1.403): on its first cell, and as high as it is. */
 function placeInside(holder: RulesetCombatant, inside: RulesetCombatant): void {
   inside.x = holder.x!;
   inside.y = holder.y!;
@@ -4277,7 +4277,7 @@ function placeInside(holder: RulesetCombatant, inside: RulesetCombatant): void {
   else delete inside.altitude;
 }
 
-/** Whether something its holder put on still keeps it inside (1.402). */
+/** Whether something its holder put on still keeps it inside (1.403). */
 function keptInside(ctx: RulesetCombatContext, target: RulesetCombatant): boolean {
   return target.tracked.some(
     (entry) =>
@@ -4286,7 +4286,7 @@ function keptInside(ctx: RulesetCombatContext, target: RulesetCombatant): boolea
   );
 }
 
-/** Let out of whoever held them inside (1.402): set down on the nearest open cell beside them. */
+/** Let out of whoever held them inside (1.403): set down on the nearest open cell beside them. */
 function letOut(ctx: RulesetCombatContext, target: RulesetCombatant): void {
   const holderId = target.insideOf!;
   delete target.insideOf;
@@ -4299,7 +4299,7 @@ function letOut(ctx: RulesetCombatContext, target: RulesetCombatant): void {
   ctx.events.push({ type: "inside", targetId: target.id, holderId, out: true });
 }
 
-/** `target` moved to the nearest cell open to it around `beside` (1.402): out of an engulf's way,
+/** `target` moved to the nearest cell open to it around `beside` (1.403): out of an engulf's way,
  *  or let out of it. Where there is none, it stays. */
 function setDownBeside(
   ctx: RulesetCombatContext,
@@ -4325,7 +4325,7 @@ function setDownBeside(
 }
 
 /**
- * An engulf lands (1.402) on whoever its maker entered, or, off a board, the one it was aimed at:
+ * An engulf lands (1.403) on whoever its maker entered, or, off a board, the one it was aimed at:
  * each makes its save against it, and on a failure takes what the action does, an `inside`
  * condition among it taking them in. Whoever saves, or finds it already holding all it may, is
  * pushed out of its way.
@@ -4337,7 +4337,7 @@ function engulfLands(
   entered: readonly RulesetCombatant[],
 ): void {
   const engulf = action.engulf!;
-  // As many as it has room for (1.404), or `atMost` of any size.
+  // As many as it has room for (1.405), or `atMost` of any size.
   const room = engulf.room ?? (engulf.atMost !== undefined ? { of: engulf.atMost } : undefined);
   let used = room ? insideUsed(ctx, actor, room) : 0;
   const taken = entered.filter((one) => {
@@ -4373,7 +4373,7 @@ function engulfLands(
 }
 
 /**
- * A leap lands (1.724) on whoever stands where it did: each makes the action's save and takes what
+ * A leap lands (1.725) on whoever stands where it did: each makes the action's save and takes what
  * it does, then is set down out of its space, beside it, riders with their mounts. One who saved with
  * no room to be set down takes the leap's `noRoom` where it is.
  */
@@ -4430,7 +4430,7 @@ function leapLands(ctx: RulesetCombatContext, actor: RulesetCombatant, action: R
   }
 }
 
-/** An engulf's walk (1.402): up to its maker's speed, lent for it, or on what is left of its own. */
+/** An engulf's walk (1.403): up to its maker's speed, lent for it, or on what is left of its own. */
 function engulfWalk(
   ctx: RulesetCombatContext,
   actor: RulesetCombatant,
@@ -4461,7 +4461,7 @@ function engulfWalk(
   });
 }
 
-/** `target` takes a form's shape (1.391), giving up one another condition held. */
+/** `target` takes a form's shape (1.392), giving up one another condition held. */
 function takeShape(
   ctx: RulesetCombatContext,
   target: RulesetCombatant,
@@ -4474,8 +4474,8 @@ function takeShape(
     leaveShape(ctx, target, "moved");
     removeCondition(ctx, target, other, "moved");
   }
-  // And what its holder's own conditions and levels say any shape keeps (1.434): Beast Spells.
-  // Narrowed to the rows it reaches (1.436): a druid's spells, not a wizard's.
+  // And what its holder's own conditions and levels say any shape keeps (1.435): Beast Spells.
+  // Narrowed to the rows it reaches (1.437): a druid's spells, not a wizard's.
   const more = rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state).flatMap((entry) => {
     if (!entry.shapeKeeps) return [];
     const keeps = new Set(entry.shapeKeeps);
@@ -4488,7 +4488,7 @@ function takeShape(
   if (shaped) ctx.events.push({ type: "shaped", targetId: target.id, condition, form: shaped.name });
 }
 
-/** `target` is itself again (1.391), saying so. */
+/** `target` is itself again (1.392), saying so. */
 function leaveShape(ctx: RulesetCombatContext, target: RulesetCombatant, reason: string): void {
   const left = rulesetLeaveShape(target);
   if (left) {
@@ -4503,14 +4503,14 @@ function leaveShape(ctx: RulesetCombatContext, target: RulesetCombatant, reason:
   }
 }
 
-/** The shape ends with the condition holding it (1.391), and ends whatever keeps that condition on. */
+/** The shape ends with the condition holding it (1.392), and ends whatever keeps that condition on. */
 function endShape(ctx: RulesetCombatContext, target: RulesetCombatant, reason: "damage"): void {
   const held = target.shape?.condition;
   if (held) removeCondition(ctx, target, held, reason);
   if (target.shape) leaveShape(ctx, target, reason);
 }
 
-/** What turning an item on or off does beyond the switch (1.705): a hovering shield's slots freed or
+/** What turning an item on or off does beyond the switch (1.706): a hovering shield's slots freed or
  *  taken again, its holder's weapons' dice with them, and how long it stays on. */
 function itemSwitched(holder: RulesetCombatant, index: number, on: boolean): void {
   const toggle = holder.sheet?.items?.[index]?.item.toggle;
@@ -4534,7 +4534,7 @@ function itemSwitched(holder: RulesetCombatant, index: number, on: boolean): voi
   }
 }
 
-/** An item's switch going off by itself (1.705): its time up, or the fight over. One that freed its
+/** An item's switch going off by itself (1.706): its time up, or the fight over. One that freed its
  *  slots falls where there is no room for it now, in the fight. */
 function switchOff(ctx: RulesetCombatContext, holder: RulesetCombatant, index: number, fight: boolean): void {
   const held = holder.sheet?.items?.[index];
@@ -4577,11 +4577,11 @@ function endImmuneConditions(ctx: RulesetCombatContext, target: RulesetCombatant
   const held = new Set(
     rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state).flatMap((entry) => entry.suppresses ?? []),
   );
-  // Held by its kind too (1.483).
+  // Held by its kind too (1.484).
   const heldOff = (condition: string) =>
     held.has(condition) ||
     !!ctx.combat.conditions?.find((one) => one.condition === condition)?.kinds?.some((kind) => held.has(kind)) ||
-    // Or one it counts as (1.584).
+    // Or one it counts as (1.585).
     rulesetConditionKin(ctx.definition, condition).some((one) => held.has(one));
   const ended = rulesetCombatConditions(ctx.definition, target).filter(
     (condition) => !heldOff(condition) && rulesetImmuneToCondition(target, condition, ctx.definition, ctx.state),
@@ -4592,10 +4592,10 @@ function endImmuneConditions(ctx: RulesetCombatContext, target: RulesetCombatant
   }
 }
 
-/** What its holder's own state ends (1.437): a condition that says its holder going down ends it,
+/** What its holder's own state ends (1.438): a condition that says its holder going down ends it,
  *  once they are down, and concentration under a condition that forbids it. 5e's Rage. */
 function holderBound(ctx: RulesetCombatContext, target: RulesetCombatant): void {
-  // Or its holder coming to hold one of these (1.439): unconscious, by a blow or by Sleep.
+  // Or its holder coming to hold one of these (1.440): unconscious, by a blow or by Sleep.
   const held = new Set(rulesetCombatConditions(ctx.definition, target));
   for (const entry of target.tracked.filter((one) => one.endsWhenHolder?.gains?.some((id) => held.has(id)))) {
     if (target.tracked.includes(entry)) removeCondition(ctx, target, entry.condition, "spent");
@@ -4605,7 +4605,7 @@ function holderBound(ctx: RulesetCombatContext, target: RulesetCombatant): void 
     if (ends?.gains?.some((id) => held.has(id)) && rulesetCombatConditions(ctx.definition, target).includes(condition))
       removeCondition(ctx, target, condition, "spent");
   }
-  // Or its holder incapacitated (1.607): a knight's Leadership.
+  // Or its holder incapacitated (1.608): a knight's Leadership.
   if (
     (target.tracked.some((one) => one.endsWhenHolder?.incapacitated) ||
       [...held].some(
@@ -4642,7 +4642,7 @@ function holderBound(ctx: RulesetCombatContext, target: RulesetCombatant): void 
     endConcentration(ctx, target, "spent");
 }
 
-/** Which kinds a presence sense finds within its reach (1.443), said as it comes on and, with
+/** Which kinds a presence sense finds within its reach (1.444), said as it comes on and, with
  *  `again`, as its holder's turn starts. Nothing of where, nor how many. */
 function sensePresence(ctx: RulesetCombatContext, holder: RulesetCombatant, again: boolean): void {
   const senses = holder.defeated
@@ -4700,7 +4700,7 @@ function spendBudget(ctx: RulesetCombatContext, combatant: RulesetCombatant, bud
 function countAttack(
   ctx: RulesetCombatContext,
   combatant: RulesetCombatant,
-  /** What it was made with, an item's remembered (1.736). */
+  /** What it was made with, an item's remembered (1.737). */
   action?: Pick<RulesetCombatAction, "id">,
 ): void {
   if (!rulesetOnOwnTurn(ctx.state, combatant)) return;
@@ -4710,7 +4710,7 @@ function countAttack(
     (combatant.flags.attackedWith ??= []).push(item);
 }
 
-/** A weapon's attacks given back, or less, so much of their bonus to hit and damage (1.736): a
+/** A weapon's attacks given back, or less, so much of their bonus to hit and damage (1.737): a
  *  Defender's lent to its wielder's defense. */
 function shiftWeaponBonus(combatant: RulesetCombatant, item: number, by: number): void {
   for (const one of combatant.actions) {
@@ -4750,7 +4750,7 @@ function removeCondition(
     | "dispelled"
     | "freed"
     | "slipped",
-  /** What ended it, where that is more than `reason` says (1.631): its source's `endsWhenSource`, or
+  /** What ended it, where that is more than `reason` says (1.632): its source's `endsWhenSource`, or
    *  its holder no longer hearing whoever put it on. Read by `onEnd.when`. */
   cause?: "endsWhenSource" | "cantHearSource",
 ): void {
@@ -4760,29 +4760,29 @@ function removeCondition(
   // told twice.
   if (!removed && !rulesetCombatConditions(ctx.definition, target).includes(condition)) return;
   target.tracked = target.tracked.filter((entry) => entry.condition !== condition);
-  // What it kept off a block's healing, healable again (1.749). A sheet's is given back by its sheet.
+  // What it kept off a block's healing, healable again (1.750). A sheet's is given back by its sheet.
   if (removed?.keptDamage && target.health && !target.sheet)
     target.health.sealed = Math.max(0, (target.health.sealed ?? 0) - removed.keptDamage);
-  // What was left of it, come off before it ran out (1.615): Wind Walk's cloud, for the way back.
+  // What was left of it, come off before it ran out (1.616): Wind Walk's cloud, for the way back.
   if (removed?.rounds && removed.rounds > 0 && reason !== "expired")
     (target.conditionLeft ??= {})[condition] = { rounds: removed.rounds, round: ctx.state.round };
-  // What lasted only while they held it ends with it, on anybody (1.552): a pin with its grapple.
+  // What lasted only while they held it ends with it, on anybody (1.553): a pin with its grapple.
   for (const one of ctx.state.combatants) {
     for (const entry of [...one.tracked]) {
       if (entry.whileHeld?.holderId !== target.id || entry.whileHeld.condition !== condition) continue;
       if (one.tracked.includes(entry)) removeCondition(ctx, one, entry.condition, "linked");
     }
   }
-  // The maximum it raised falls back, and health above it with it (1.472): Heroes' Feast.
+  // The maximum it raised falls back, and health above it with it (1.473): Heroes' Feast.
   if (removed?.raisedMax && target.health && !target.sheet) {
     target.health.value = Math.min(target.health.value, healthOf(ctx, target).max);
   }
-  // The shape it held ends with it (1.391).
+  // The shape it held ends with it (1.392).
   if (target.shape?.condition === condition) leaveShape(ctx, target, reason);
   // Out of the sphere, nobody is carrying them (1.314).
   if (target.carriedBy && !rulesetSealed(ctx.definition, target, ctx.state)) delete target.carriedBy;
-  // Out of whoever held them inside (1.402), once nothing of theirs keeps them there: still inside
-  // where they have fallen and may be climbed out of (1.404).
+  // Out of whoever held them inside (1.403), once nothing of theirs keeps them there: still inside
+  // where they have fallen and may be climbed out of (1.405).
   if (target.insideOf && !keptInside(ctx, target)) {
     if (rulesetInsideCorpse(ctx.state, target)) freeInCorpse(ctx, target);
     else letOut(ctx, target);
@@ -4810,7 +4810,7 @@ function removeCondition(
   if (target.away?.while === condition && (!removed || removed.source === target.away.by)) {
     bringBack(ctx, target, reason);
   }
-  // Whoever went into them while they held this (1.695) comes out beside them: a ghost out of the body.
+  // Whoever went into them while they held this (1.696) comes out beside them: a ghost out of the body.
   const possessor = removed?.source !== undefined ? rulesetCombatant(ctx.state, removed.source) : undefined;
   if (possessor?.away?.possessing === target.id && possessor.away.while === condition) {
     const at = rulesetPositionOf(target);
@@ -4843,7 +4843,7 @@ function removeCondition(
   // What it leaves behind when it ends (combat C6d), as Haste's lethargy is. Putting it on again
   // replaces it without ending it, so that never comes here.
   const leftBehind = ctx.combat.conditions?.find((entry) => entry.condition === condition)?.onEnd;
-  // Only as it ended the ways it names (1.631): Pipes of the Sewers' day unswayed, once unheard.
+  // Only as it ended the ways it names (1.632): Pipes of the Sewers' day unswayed, once unheard.
   const ending = leftBehind?.when && !leftBehind.when.some((way) => way === (cause ?? reason)) ? undefined : leftBehind;
   // Its tracks moved as it ends (1.239), by nobody else's doing: Frenzy's exhaustion.
   if (ending?.tracks && !target.defeated) {
@@ -4998,7 +4998,7 @@ function endConditionsOnHarm(
 }
 
 /** Conditions the ruleset says any damage ends. */
-/** What damage stops working until its holder's next turn starts (1.513), not ended: a Cloak of
+/** What damage stops working until its holder's next turn starts (1.514), not ended: a Cloak of
  *  Displacement. */
 function stopConditionsOnDamage(ctx: RulesetCombatContext, target: RulesetCombatant): void {
   for (const entry of rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state)) {
@@ -5039,18 +5039,18 @@ function ticksOnSource(ctx: RulesetCombatContext, holder: RulesetCombatant, entr
 }
 
 function tickConditionsNow(ctx: RulesetCombatContext, actor: RulesetCombatant, at: "turn-start" | "turn-end"): void {
-  // Let out on what was dealt from inside this turn (1.404).
+  // Let out on what was dealt from inside this turn (1.405).
   if (at === "turn-end") releaseOnHurt(ctx);
-  // What they made to last only so long (1.759): Creation's.
+  // What they made to last only so long (1.760): Creation's.
   if (at === "turn-end" && actor.madeFor) vanishMade(ctx, actor);
-  // A switch that stays on only so long (1.705): an Animated Shield's minute.
+  // A switch that stays on only so long (1.706): an Animated Shield's minute.
   if (at === "turn-end") {
     for (const [key, left] of Object.entries(actor.onFor ?? {})) {
       if (left > 1) actor.onFor = { ...actor.onFor, [key]: left - 1 };
       else switchOff(ctx, actor, Number(key), true);
     }
   }
-  // Off as its holder starts a turn unable to hear whoever put it on (1.617): the Pipes of the
+  // Off as its holder starts a turn unable to hear whoever put it on (1.618): the Pipes of the
   // Sewers' hold on a swarm that can't hear their music.
   if (at === "turn-start") unheardSources(ctx, actor);
   // What this one put on others that runs on their turns.
@@ -5058,14 +5058,14 @@ function tickConditionsNow(ctx: RulesetCombatContext, actor: RulesetCombatant, a
     // The fallen are left as they fell: what is on them neither harms, is saved against nor runs out.
     // One only sent away still counts the time until it comes back.
     if (holder.id === actor.id || (holder.defeated && !holder.away)) continue;
-    // Held out of time (1.646): nothing else on them runs, but what holds them there.
+    // Held out of time (1.647): nothing else on them runs, but what holds them there.
     const stasis = rulesetStasis(ctx.definition, holder, ctx.state);
     for (const entry of [...holder.tracked]) {
       if (stasis && entry.condition !== stasis) continue;
-      // What it harms them with as this one's turn starts or ends (1.402): a gelatinous cube's acid.
+      // What it harms them with as this one's turn starts or ends (1.403): a gelatinous cube's acid.
       if (entry.source === actor.id) harmFromCondition(ctx, holder, entry, `source-${at}`);
       if (!holder.tracked.includes(entry)) continue;
-      // Its save, made as this one's turn starts (1.482): Prismatic Spray's Violet ray.
+      // Its save, made as this one's turn starts (1.483): Prismatic Spray's Violet ray.
       if (
         at === "turn-start" &&
         entry.source === actor.id &&
@@ -5123,14 +5123,14 @@ function tickConditionsNow(ctx: RulesetCombatContext, actor: RulesetCombatant, a
     }
     // A clock counts the holder's turns down as each one ends, or, where it says so, as each begins.
     if (entry.rounds === null || at !== (entry.clock ?? "turn-end") || ticksOnSource(ctx, actor, entry)) continue;
-    // Its time drawn from an item's charges (1.622): gone with the last of them.
+    // Its time drawn from an item's charges (1.623): gone with the last of them.
     if (drawItemCharge(ctx, actor, entry)) continue;
     entry.rounds -= 1;
     if (entry.rounds <= 0) removeCondition(ctx, actor, entry.condition, "expired");
   }
 }
 
-/** A round of a condition kept up by an item's charges (1.622), spent as its clock counts one down:
+/** A round of a condition kept up by an item's charges (1.623), spent as its clock counts one down:
  *  true once that was the last and it has come off. The Boots of Speed's 10 minutes, kept across
  *  uses. */
 function drawItemCharge(ctx: RulesetCombatContext, holder: RulesetCombatant, entry: RulesetTrackedCondition): boolean {
@@ -5153,7 +5153,7 @@ function endsAway(ctx: RulesetCombatContext, turnEnder?: RulesetCombatant): void
   for (const holder of ctx.state.combatants) {
     for (const entry of holder.tracked.filter((one) => one.endsAway && one.source)) {
       const source = rulesetCombatant(ctx.state, entry.source!);
-      // Far OR out of sight (1.432), asked only as its holder ends a turn.
+      // Far OR out of sight (1.433), asked only as its holder ends a turn.
       if (entry.endsAway!.orUnseen) {
         if (turnEnder?.id !== holder.id) continue;
         const far = !source || rulesetGap(holder, source) > rulesetInCells(entry.endsAway!.beyond, perCell);
@@ -5168,7 +5168,7 @@ function endsAway(ctx: RulesetCombatContext, turnEnder?: RulesetCombatant): void
   }
 }
 
-/** Whoever made an attack at a foe, or took damage, in what this step has done so far (1.435). */
+/** Whoever made an attack at a foe, or took damage, in what this step has done so far (1.436). */
 function noteStirred(ctx: RulesetCombatContext): void {
   const from = ctx.stirredAt ?? 0;
   ctx.stirredAt = ctx.events.length;
@@ -5184,7 +5184,7 @@ function noteStirred(ctx: RulesetCombatContext): void {
   }
 }
 
-/** What ends as its holder ends a turn with nothing done to stir it (1.435): Rage, unless what keeps
+/** What ends as its holder ends a turn with nothing done to stir it (1.436): Rage, unless what keeps
  *  it on says otherwise. Whatever they did is forgotten for the next turn. */
 function endsIdle(ctx: RulesetCombatContext, leaving: RulesetCombatant): void {
   noteStirred(ctx);
@@ -5209,7 +5209,7 @@ function endsIdle(ctx: RulesetCombatContext, leaving: RulesetCombatant): void {
 
 /** Whether a save that ends a condition may be rolled now: one rolled only out of its putter's
  *  sight waits while its holder can see them (1.266), Fear's. */
-/** Whether a condition's save is kept from being rolled now (1.650): its holder holds one of its
+/** Whether a condition's save is kept from being rolled now (1.651): its holder holds one of its
  *  `savesUnless`. Dust of Sneezing and Choking, saved against only while conscious. */
 function savesHeldOff(ctx: RulesetCombatContext, holder: RulesetCombatant, entry: RulesetTrackedCondition): boolean {
   const unless = ctx.combat.conditions?.find((one) => one.condition === entry.condition)?.savesUnless;
@@ -5234,7 +5234,7 @@ function saveOutOfSight(ctx: RulesetCombatContext, holder: RulesetCombatant, ent
 
 /** The lean a save that ends a condition is rolled with while its holder can see whoever put it on
  *  (1.268): a sea hag's Horrific Appearance, with disadvantage while she is in sight. */
-/** How a save on damage leans (1.711): the condition's own lean, and the lean of its maker in sight;
+/** How a save on damage leans (1.712): the condition's own lean, and the lean of its maker in sight;
  *  the two of them opposite, neither. */
 function damagedLean(
   ctx: RulesetCombatContext,
@@ -5291,7 +5291,7 @@ function savedAgainst(
   entry.fails = (entry.fails ?? 0) + 1;
   if (entry.fails < ends.failures.count) return false;
   removeCondition(ctx, holder, entry.condition, "worsened");
-  // Or out of the fight for good, alive (1.482): Violet's other plane.
+  // Or out of the fight for good, alive (1.483): Violet's other plane.
   if (ends.failures.dismisses) {
     const label =
       entry.action?.[1] ??
@@ -5375,7 +5375,7 @@ function temporaryFromCondition(
   if (amount > before) entry.gaveTemp = amount;
 }
 
-/** What a condition deals its holder as they attack whoever put it on, or their side (1.561), once
+/** What a condition deals its holder as they attack whoever put it on, or their side (1.562), once
  *  while it holds where it says: Geas. */
 function harmForDefiance(
   ctx: RulesetCombatContext,
@@ -5405,7 +5405,7 @@ function harmForDefiance(
   }
 }
 
-/** What a condition deals its holder as they cast from its catalogs (1.645), for each level it was
+/** What a condition deals its holder as they cast from its catalogs (1.646), for each level it was
  *  cast at where it says, and past every resistance where it says: Wish's stress. */
 function harmForCasting(
   ctx: RulesetCombatContext,
@@ -5436,7 +5436,7 @@ function harmForCasting(
   }
 }
 
-/** What breaking a condition's command deals its holder (1.643), once the choice that broke it is
+/** What breaking a condition's command deals its holder (1.644), once the choice that broke it is
  *  done, once while it holds where it says: 5e's Geas. */
 function harmForBreaking(
   definition: RulesetDefinition,
@@ -5468,7 +5468,7 @@ function harmFromCondition(
 ): void {
   const harms = ctx.combat.conditions?.find((one) => one.condition === entry.condition)?.harms;
   if (!harms || harms.at !== at || holder.defeated) return;
-  // Not while it is held off (1.713): a vampire's running water away from water, sunlight in the dark.
+  // Not while it is held off (1.714): a vampire's running water away from water, sunlight in the dark.
   if (
     at !== "defies" &&
     !rulesetActiveConditions(ctx.definition, ctx.combat, holder, ctx.state).some(
@@ -5477,11 +5477,11 @@ function harmFromCondition(
   )
     return;
   const dice = harms.dice ? parseRulesetCombatDice(harms.dice) : null;
-  // Spared this time by a save (1.402): a shambling mound's engulfed.
+  // Spared this time by a save (1.403): a shambling mound's engulfed.
   if (harms.save) {
     const difficulty = harms.save.difficulty ?? entry.difficulty;
     if (difficulty !== undefined && rollSave(ctx, holder, harms.save.save, difficulty, entry.source)) {
-      // Each save takes some of its dice off for good (1.634), and with none left it is over: a
+      // Each save takes some of its dice off for good (1.635), and with none left it is over: a
       // Potion of Poison.
       const drops = harms.save.drops ? parseRulesetCombatDice(harms.save.drops) : null;
       if (drops && dice) {
@@ -5492,7 +5492,7 @@ function harmFromCondition(
       return;
     }
   }
-  // What its saves have taken off (1.634).
+  // What its saves have taken off (1.635).
   const left =
     entry.harmDropped && dice
       ? {
@@ -5515,7 +5515,7 @@ function conditionHarm(
     flat?: number;
     type?: string;
     healedOnlyByRest?: true;
-    /** An ending's save for half (1.750), thrown as it is dealt. */
+    /** An ending's save for half (1.751), thrown as it is dealt. */
     halfOnSave?: { save: string; difficulty: number };
   },
   times: number,
@@ -5548,7 +5548,7 @@ function conditionHarm(
         return { rolls, flat: amount.flat, amount: sumOf(rolls) + amount.flat };
       })();
   const label = ctx.definition.sheet.live.conditions.find((one) => one.id === condition)?.label ?? condition;
-  // Saved against for half (1.750): Midnight tears' DC 17 Constitution.
+  // Saved against for half (1.751): Midnight tears' DC 17 Constitution.
   if (harms.halfOnSave && rollSave(ctx, holder, harms.halfOnSave.save, harms.halfOnSave.difficulty, source))
     harm.amount = Math.floor(harm.amount / 2);
   const dealt = applyDamage(ctx, holder, {
@@ -5557,7 +5557,7 @@ function conditionHarm(
     ...(harms.type ? { damageType: harms.type } : {}),
     ...harm,
     ...(harms.healedOnlyByRest ? { seals: true as const } : {}),
-    // Kept off healing while it holds (1.749): Pale tincture. Dealt as it ends, there is nothing left to
+    // Kept off healing while it holds (1.750): Pale tincture. Dealt as it ends, there is nothing left to
     // keep it.
     ...(holder.tracked.some((one) => one.condition === condition) &&
     ctx.combat.conditions?.some((one) => one.condition === condition && one.keepsDamage)
@@ -5565,7 +5565,7 @@ function conditionHarm(
       : {}),
   });
   afterBlow(ctx, holder, dealt, false);
-  // Let go once it has dealt its most in all (1.675): a stirge full of blood.
+  // Let go once it has dealt its most in all (1.676): a stirge full of blood.
   const most = ctx.combat.conditions?.find((one) => one.condition === condition)?.attaches?.endsAfterHarm;
   const entry =
     most !== undefined ? holder.tracked.find((one) => one.condition === condition && one.source === source) : undefined;
@@ -5598,7 +5598,7 @@ function summonCell(
   return cells[0] ?? at;
 }
 
-/** Each summons of theirs that strikes by itself (1.538), as their turn starts: its entry's attack at
+/** Each summons of theirs that strikes by itself (1.539), as their turn starts: its entry's attack at
  *  the nearest creature hostile to them within its reach of where it stands (anybody hostile off a
  *  board), never held for an answer. One with nobody near does nothing. */
 function summonsStrike(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
@@ -5651,7 +5651,7 @@ function endZones(ctx: RulesetCombatContext, actor: RulesetCombatant, actionId?:
   const ended: RulesetCombatZone[] = [];
   actor.zones = actor.zones.filter((zone) => {
     if (actionId !== undefined && zone.actionId !== actionId) return true;
-    // Its caster gone, one that outlasts them stays (1.455).
+    // Its caster gone, one that outlasts them stays (1.456).
     if (actionId === undefined && actor.actions.find((entry) => entry.id === zone.actionId)?.zone?.outlasts) {
       return true;
     }
@@ -5661,7 +5661,7 @@ function endZones(ctx: RulesetCombatContext, actor: RulesetCombatant, actionId?:
   if (actor.zones.length === 0) delete actor.zones;
   // Off the board before it goes off (1.183), so nothing its blast sets moving can end it twice.
   for (const zone of ended) {
-    // Gone off and staying as what it becomes (1.452): back on the board.
+    // Gone off and staying as what it becomes (1.453): back on the board.
     if (detonate(ctx, actor, zone)) {
       actor.zones = [...(actor.zones ?? []), zone];
       continue;
@@ -5670,7 +5670,7 @@ function endZones(ctx: RulesetCombatContext, actor: RulesetCombatant, actionId?:
   }
 }
 
-/** A burst that widens as it lasts (1.636), by its `spreads` every so many of its caster's turns to its
+/** A burst that widens as it lasts (1.637), by its `spreads` every so many of its caster's turns to its
  *  most, never once closed: one held at a point laid again around where it was put. */
 function spreadZone(ctx: RulesetCombatContext, caster: RulesetCombatant, zone: RulesetCombatZone): void {
   const action = caster.actions.find((entry) => entry.id === zone.actionId);
@@ -5696,16 +5696,16 @@ function spreadZone(ctx: RulesetCombatContext, caster: RulesetCombatant, zone: R
 
 /** A zone that goes off as it ends (1.183): the entry's own effect, once, on everybody in it, with
  *  what it has grown by added to its amount. Its caster's, though they may be down by now. Whether it
- *  stays, as what it `becomes` (1.452). */
+ *  stays, as what it `becomes` (1.453). */
 function detonate(ctx: RulesetCombatContext, caster: RulesetCombatant, zone: RulesetCombatZone): boolean {
   const action = caster.actions.find((entry) => entry.id === zone.actionId);
   const rule = action?.zone?.detonates;
-  // Once gone off and stayed (1.452), its time running out just ends it.
+  // Once gone off and stayed (1.453), its time running out just ends it.
   if (!action || !rule || zone.became) return false;
-  // Set off only by somebody entering it (1.450): its time running out just ends it.
+  // Set off only by somebody entering it (1.451): its time running out just ends it.
   if (rule.entered && !zone.tripped) return false;
   ctx.events.push({ type: "zone", actorId: caster.id, label: zone.label, outcome: "detonated" });
-  // A spell glyph (1.453): what it stores, cast at whoever set it off, in place of its own effect.
+  // A spell glyph (1.454): what it stores, cast at whoever set it off, in place of its own effect.
   const stored = zone.stored ? caster.actions.find((entry) => entry.id === zone.stored) : undefined;
   if (stored) {
     castStored(ctx, caster, zone, stored);
@@ -5715,7 +5715,7 @@ function detonate(ctx: RulesetCombatContext, caster: RulesetCombatant, zone: Rul
   const ids = !ctx.state.board?.grid
     ? (zone.held ?? [])
     : rule.within !== undefined && middle
-      ? // Everybody within its reach of its middle (1.450): Symbol's sphere.
+      ? // Everybody within its reach of its middle (1.451): Symbol's sphere.
         ctx.state.combatants
           .filter(
             (one) => rulesetZoneCatches(caster, zone, action, one) && rulesetDistanceTo(middle, one) <= rule.within!,
@@ -5754,7 +5754,7 @@ function detonate(ctx: RulesetCombatContext, caster: RulesetCombatant, zone: Rul
       rulesetZoneCells(ctx.state, caster, zone),
     );
   }
-  // It stays (1.452): a burst of its own around its middle, for its own rounds, striking at its own
+  // It stays (1.453): a burst of its own around its middle, for its own rounds, striking at its own
   // triggers. Symbol's sphere.
   const becomes = rule.becomes;
   if (!becomes) return false;
@@ -5768,7 +5768,7 @@ function detonate(ctx: RulesetCombatContext, caster: RulesetCombatant, zone: Rul
   return true;
 }
 
-/** An entry stored instead of done (1.523): in a place its option offers, at the level it is paid at,
+/** An entry stored instead of done (1.524): in a place its option offers, at the level it is paid at,
  *  which must be the first or higher and fit the room left there. Paid for, and its budget spent, as
  *  a cast is; it does nothing now. */
 function storeChoice(
@@ -5799,7 +5799,7 @@ function storeChoice(
   const paid = planRulesetCombatCost(definition, working, action, choice.payWith);
   if (!paid) return refusal(state, choice.actorId, "insufficient", option.id);
   if (paid.live && working.sheet) working.sheet.live = paid.live;
-  // Out of a worn item's charges (1.571).
+  // Out of a worn item's charges (1.572).
   if (paid.itemCharges) (working.charges ??= {})[paid.itemCharges.item] = paid.itemCharges.now;
   countRulesetSpend(working, paid.cost);
   for (const entry of paid.cost) {
@@ -5822,7 +5822,7 @@ function storeChoice(
 }
 
 /** An entry its caster has paid for, stored in `holder`'s item at `item`, or in `holder` itself when
- *  it is a creature that stores (1.523): to be cast from there once, at `level`, with the caster's
+ *  it is a creature that stores (1.524): to be cast from there once, at `level`, with the caster's
  *  numbers. False when its entry cannot be read. */
 function storeInto(
   ctx: RulesetCombatContext,
@@ -5869,7 +5869,7 @@ function storeInto(
   return true;
 }
 
-/** A spell glyph's stored entry, cast as it goes off (1.453): at whoever set it off, or, for one with
+/** A spell glyph's stored entry, cast as it goes off (1.454): at whoever set it off, or, for one with
  *  an area, at everybody it reaches centred on them. Paid for as the glyph was cast, so it costs
  *  nothing now; whatever it would hold its caster's concentration for lasts its full time. */
 function castStored(
@@ -5909,7 +5909,7 @@ function castStored(
  *  rounds running: 5e's Stinking Cloud. */
 function disperseFogs(ctx: RulesetCombatContext): void {
   if (!ctx.state.board?.grid) return;
-  // A wind, or a stage of one that is a wind now (1.579).
+  // A wind, or a stage of one that is a wind now (1.580).
   const winds = rulesetStandingZones(ctx.state).filter(
     ({ action, zone }) =>
       action.zone?.disperses || (zone.stage !== undefined && action.zone?.stages?.[zone.stage]?.disperses),
@@ -5934,7 +5934,7 @@ function disperseFogs(ctx: RulesetCombatContext): void {
       spendZone(ctx, caster, zone);
     }
   }
-  // A wind reaching a layered wall (1.489): the orange layer.
+  // A wind reaching a layered wall (1.490): the orange layer.
   if (blown.size > 0) {
     for (const { caster, zone, action, cells } of rulesetStandingLayers(ctx.state)) {
       if (cells.some((cell) => blown.has(`${cell.x},${cell.y}`))) {
@@ -6055,7 +6055,7 @@ function igniteZones(ctx: RulesetCombatContext, types: Array<string | undefined>
   }
 }
 
-/** Whom a layered wall spares (1.489): its caster, or their whole side. */
+/** Whom a layered wall spares (1.490): its caster, or their whole side. */
 function layersSpare(
   caster: RulesetCombatant,
   zone: RulesetCombatZone,
@@ -6065,11 +6065,11 @@ function layersSpare(
   const spares = layers.spares;
   if (!spares) return false;
   if (spares === "allies") return one.side === caster.side;
-  // Its caster and those they picked as it was cast (1.491).
+  // Its caster and those they picked as it was cast (1.492).
   return one.id === caster.id || (typeof spares === "object" && !!zone.spared?.includes(one.id));
 }
 
-/** The damage of each type a stand-in took since `from` (1.489), before its lines leave the log. */
+/** The damage of each type a stand-in took since `from` (1.490), before its lines leave the log. */
 function dealtByType(ctx: RulesetCombatContext, from: number, id: string): Map<string, number> {
   const dealt = new Map<string, number>();
   for (const event of ctx.events.slice(from)) {
@@ -6080,7 +6080,7 @@ function dealtByType(ctx: RulesetCombatContext, from: number, id: string): Map<s
   return dealt;
 }
 
-/** What reached a layered wall (1.489): its first standing layer, and only that one, is destroyed
+/** What reached a layered wall (1.490): its first standing layer, and only that one, is destroyed
  *  when this is what its `endedBy` names; the wall ends with its last. `tell` says a layer that held. */
 function wearLayer(
   ctx: RulesetCombatContext,
@@ -6118,7 +6118,7 @@ function wearLayer(
   if (zone.layersGone >= rows.length) spendZone(ctx, caster, zone);
 }
 
-/** Every layered wall these cells reach, worn by what reached them (1.489). */
+/** Every layered wall these cells reach, worn by what reached them (1.490). */
 function wearLayersAt(
   ctx: RulesetCombatContext,
   cells: RulesetCombatCell[],
@@ -6131,7 +6131,7 @@ function wearLayersAt(
   }
 }
 
-/** Whether somebody stands within a layered wall's flash (1.489). */
+/** Whether somebody stands within a layered wall's flash (1.490). */
 function flashNear(
   ctx: RulesetCombatContext,
   caster: RulesetCombatant,
@@ -6144,7 +6144,7 @@ function flashNear(
   return rulesetZoneCells(ctx.state, caster, zone).some((cell) => rulesetDistanceTo(cell, one) <= flash.within);
 }
 
-/** A layered wall's flash on somebody near it who sees it (1.489): its save at the entry's own
+/** A layered wall's flash on somebody near it who sees it (1.490): its save at the entry's own
  *  difficulty, or what it puts on. Prismatic Wall's blinding. */
 function flashOne(
   ctx: RulesetCombatContext,
@@ -6157,7 +6157,7 @@ function flashOne(
   const flash = layers?.flash;
   if (!layers || !flash || !rulesetCombatStanding(one) || one.object || layersSpare(caster, zone, layers, one)) return;
   const cells = rulesetZoneCells(ctx.state, caster, zone);
-  // Seen as it shines, whatever it hides behind it (1.491): its own murk is no veil over itself.
+  // Seen as it shines, whatever it hides behind it (1.492): its own murk is no veil over itself.
   const view: RulesetEncounterState = {
     ...ctx.state,
     combatants: ctx.state.combatants.map((other) =>
@@ -6212,9 +6212,9 @@ function burnAtTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   }
 }
 
-/** A turn begun under water (1.497): one more of the turns they hold their breath for, then of those
+/** A turn begun under water (1.498): one more of the turns they hold their breath for, then of those
  *  they last without it, and as the next starts they drop to 0. Out of the water, their breath is back.
- *  Whoever breathes only water (1.511) holds it out of the water instead. */
+ *  Whoever breathes only water (1.512) holds it out of the water instead. */
 function holdBreath(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   const breath = ctx.combat.underwater?.breath;
   if (!breath) return;
@@ -6223,7 +6223,7 @@ function holdBreath(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
     (!!breath.exempt?.tags && rulesetTargetIs(ctx.definition, actor, { tags: breath.exempt.tags }));
   const waterOnly = !!breath.waterOnly && rulesetTargetIs(ctx.definition, actor, { tags: breath.waterOnly.tags });
   const under = rulesetUnderwater(ctx.definition, ctx.state, actor);
-  // Choking wherever they are (1.650): Dust of Sneezing and Choking.
+  // Choking wherever they are (1.651): Dust of Sneezing and Choking.
   const choking = rulesetActiveConditions(ctx.definition, ctx.combat, actor, ctx.state).some(
     (entry) => entry.suffocates,
   );
@@ -6254,7 +6254,7 @@ function holdBreath(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
 }
 
 /** Whoever walks into a cell on a tile their `harmedEntering` names takes what it says, with no save
- *  (1.707): a fire elemental's 1 cold for each 5 feet it moves in water. */
+ *  (1.708): a fire elemental's 1 cold for each 5 feet it moves in water. */
 function harmedEntering(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   const rule = actor.harmedEntering;
   const grid = ctx.state.board?.grid;
@@ -6291,7 +6291,7 @@ function harmedEntering(ctx: RulesetCombatContext, actor: RulesetCombatant): voi
 }
 
 /** Whoever walks through solid ground and ends a turn of theirs inside it takes what it says, with
- *  no save (1.494): a ghost's 1d10 force. */
+ *  no save (1.495): a ghost's 1d10 force. */
 function insideGround(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   const harm = actor.passesObjects?.harm;
   const grid = ctx.state.board?.grid;
@@ -6347,7 +6347,7 @@ function placeZone(
     ? wall.cells
     : grid && at && rule.anchor === "point"
       ? action.around && (action.onDeath || !action.area)
-        ? // Left as its maker dies (1.539), or a burst centred on it (1.282): around every cell it
+        ? // Left as its maker dies (1.540), or a burst centred on it (1.282): around every cell it
           // fills, as nobody aimed it. A kraken's Ink Cloud, bought between turns.
           rulesetAroundCells(actor, action.around, grid)
         : areaCellsFor(ctx.state, actor, action.id, at, resume.also ? { also: resume.also } : undefined)
@@ -6378,7 +6378,7 @@ function placeZone(
     // Until its maker's next lair count (1.324).
     ...(rule.untilLair ? { untilLair: true as const } : {}),
     ...(at && rule.anchor === "point" ? { at: { x: at.x, y: at.y } } : {}),
-    // Laid as a ring (1.602), so what it rings is inside it.
+    // Laid as a ring (1.603), so what it rings is inside it.
     ...(wall && action.area?.ring && (resume.ring === true || action.area.ringOnly) ? { ringed: true as const } : {}),
     ...(also.length ? { also } : {}),
     ...(holder ? { on: holder.id } : {}),
@@ -6392,18 +6392,18 @@ function placeZone(
     ...(!grid ? { held: [...resume.targetIds] } : {}),
     ...(resume.payWith !== undefined ? { payWith: resume.payWith } : {}),
     ...(caught.length ? { struck: Object.fromEntries(caught.map((id) => [id, stamp])) } : {}),
-    // Whom it works on inside, chosen as it was cast (1.465).
+    // Whom it works on inside, chosen as it was cast (1.466).
     ...(rule.inside?.chooses && resume.mode
       ? (() => {
           const kind = action.modes?.find((one) => one.id === resume.mode)?.insideType;
           return kind ? { insideIs: { types: [kind] } } : {};
         })()
       : {}),
-    // Whom its caster picked for it to spare (1.491).
+    // Whom its caster picked for it to spare (1.492).
     ...(rule.layers?.spares && typeof rule.layers.spares === "object"
       ? { spared: [...(resume.designates ?? [])] }
       : {}),
-    // The kinds it strikes and the damage type it deals, named as it was cast (1.752).
+    // The kinds it strikes and the damage type it deals, named as it was cast (1.753).
     ...(action.kindsOf && resume.kinds?.length ? { strikesIs: chosenKinds(ctx.definition, resume.kinds) } : {}),
     ...(resume.mode
       ? (() => {
@@ -6411,7 +6411,7 @@ function placeZone(
           return type ? { damageType: type } : {};
         })()
       : {}),
-    // What its caster stored in it (1.453).
+    // What its caster stored in it (1.454).
     ...(rule.detonates?.stores && resume.mode
       ? (() => {
           const stores = action.modes?.find((one) => one.id === resume.mode)?.stores;
@@ -6422,14 +6422,14 @@ function placeZone(
   (actor.flags.freshZones ??= []).push(action.id);
   ctx.events.push({ type: "zone", actorId: actor.id, label: action.label, outcome: "appeared" });
   if (rule.blocks?.move && cells && grid) shoveOffWall(ctx, actor, cells, wall?.side ?? []);
-  // Its flash on whoever sees it appear near it (1.489).
+  // Its flash on whoever sees it appear near it (1.490).
   const placed = actor.zones.at(-1)!;
   if (rule.layers?.flash?.triggers.includes("appears")) {
     for (const one of [...ctx.state.combatants]) {
       if (flashNear(ctx, actor, placed, action, one)) flashOne(ctx, actor, placed, action, one);
     }
   }
-  // Whoever is inside as it is cast throws its save now (1.578), before what it does there goes on:
+  // Whoever is inside as it is cast throws its save now (1.579), before what it does there goes on:
   // Reverse Gravity's grab at something fixed.
   if (rule.inside?.save?.onCast) {
     for (const id of rulesetZoneOccupants(ctx.state, actor, placed, action)) {
@@ -6537,7 +6537,7 @@ function zoneStrike(
   // A ram is no trigger of its own: being rammed always catches, whatever moving in would do (1.175).
   if ((trigger !== "ram" && !triggers.includes(trigger)) || !rulesetCombatStanding(target)) return;
   if (!action || !rulesetZoneCatches(caster, zone, action, target)) return;
-  // Crossed unharmed by whom it spares (1.489).
+  // Crossed unharmed by whom it spares (1.490).
   const layers = action.zone?.layers;
   if (layers && layersSpare(caster, zone, layers, target)) return;
   const stamp = turnStamp(ctx);
@@ -6547,7 +6547,7 @@ function zoneStrike(
     ...Object.fromEntries(Object.entries(zone.struck ?? {}).filter(([, when]) => when === stamp)),
     [target.id]: stamp,
   };
-  // A layered wall says each layer it strikes with (1.489), below.
+  // A layered wall says each layer it strikes with (1.490), below.
   if (!layers) {
     ctx.events.push({
       type: "zone",
@@ -6601,17 +6601,17 @@ function zoneStrike(
   }
   const { concentration: _held, zone: _zone, summons: _summons, gives: _gives, ...again } = action;
   // What it deals at its triggers may be another type than as it appeared (1.198), or the one
-  // named as it was cast (1.752).
+  // named as it was cast (1.753).
   const struckType = zone.damageType ?? action.zone?.damageType;
   if (struckType && again.damage) again.damage = { ...again.damage, type: struckType };
-  // Only the kinds named as it was cast (1.752), in place of its own.
+  // Only the kinds named as it was cast (1.753), in place of its own.
   if (zone.strikesIs) again.targetTypes = { ...(again.targetTypes ?? {}), is: zone.strikesIs };
   const from = ctx.events.length;
   // The zone acting, not its caster (1.180).
   const byZone = ctx.byZone;
   ctx.byZone = true;
   if (layers) {
-    // Each standing layer in turn (1.489), as its row says, each saved against on its own.
+    // Each standing layer in turn (1.490), as its row says, each saved against on its own.
     for (const row of layers.rows.slice(zone.layersGone ?? 0)) {
       if (!rulesetCombatStanding(target)) break;
       const derived: RulesetCombatAction = { ...again };
@@ -6633,7 +6633,7 @@ function zoneStrike(
       resolveAction(ctx, caster, derived, [target], zone.payWith);
     }
   } else resolveAction(ctx, caster, again, [target], zone.payWith);
-  // Stopped where it caught them walking in, unless they saved (1.688): caltrops.
+  // Stopped where it caught them walking in, unless they saved (1.689): caltrops.
   if (action.zone?.endsWalk && trigger === "enter") {
     const saved = ctx.events
       .slice(from)
@@ -6701,7 +6701,7 @@ function zoneShakes(ctx: RulesetCombatContext, action: RulesetCombatAction, targ
   } else endConcentration(ctx, target, "zone");
 }
 
-/** A stage that shakes concentration (1.579): whoever starts a turn inside while it lasts rolls the
+/** A stage that shakes concentration (1.580): whoever starts a turn inside while it lasts rolls the
  *  ruleset's concentration save against the entry's own save difficulty, else 10. */
 function stageShakes(
   ctx: RulesetCombatContext,
@@ -6741,7 +6741,7 @@ function zoneDealt(
  *  those it holds off one. */
 function zonesAtTurn(ctx: RulesetCombatContext, actor: RulesetCombatant, trigger: "turn-start" | "turn-end"): void {
   for (const { caster, zone, action } of rulesetStandingZones(ctx.state)) {
-    // Starting a turn near a layered wall (1.489): its flash.
+    // Starting a turn near a layered wall (1.490): its flash.
     if (
       trigger === "turn-start" &&
       action.zone?.layers?.flash?.triggers.includes("turn-start") &&
@@ -6752,9 +6752,9 @@ function zonesAtTurn(ctx: RulesetCombatContext, actor: RulesetCombatant, trigger
     const inside = ctx.state.board?.grid
       ? rulesetZoneHoldsOne(rulesetZoneCells(ctx.state, caster, zone), actor)
       : (zone.held ?? []).includes(actor.id);
-    // Starting a turn inside, its save to shrug off what it does there (1.459).
+    // Starting a turn inside, its save to shrug off what it does there (1.460).
     if (inside && trigger === "turn-start") insideSave(ctx, caster, zone, action, actor);
-    // And a stage that shakes concentration (1.579): Storm of Vengeance's wind and rain.
+    // And a stage that shakes concentration (1.580): Storm of Vengeance's wind and rain.
     if (inside && trigger === "turn-start") stageShakes(ctx, zone, action, actor);
     if (inside) zoneStrike(ctx, caster, zone, actor, trigger);
     else if (rulesetZoneHoldsOne(zone.sideCells ?? [], actor)) {
@@ -6764,7 +6764,7 @@ function zonesAtTurn(ctx: RulesetCombatContext, actor: RulesetCombatant, trigger
 }
 
 /** The save whoever enters a zone, or starts a turn in it, throws to ignore what it does inside until
- *  they leave (1.459): Hallow's Charisma save. Only one it works on, who has not made it already. */
+ *  they leave (1.460): Hallow's Charisma save. Only one it works on, who has not made it already. */
 function insideSave(
   ctx: RulesetCombatContext,
   caster: RulesetCombatant,
@@ -6836,7 +6836,7 @@ function moveZone(
   }
   place(to);
   ctx.events.push({ type: "zone", actorId: caster.id, label: zone.label, outcome, to: { ...zone.at! } });
-  // Only a creature's own moving catches them in a zone that says so (1.763).
+  // Only a creature's own moving catches them in a zone that says so (1.764).
   if (action.zone?.enterOnlyByMoving) return;
   for (const id of rulesetZoneOccupants(ctx.state, caster, zone, action)) {
     if (before.has(id)) continue;
@@ -6868,7 +6868,7 @@ function turnZone(
 }
 
 /** Every zone of this caster's that drifts, moving as their turn starts (1.173). */
-/** A caster's zones in stages, as their turn starts (1.556): one turn on, on to the stage that turn
+/** A caster's zones in stages, as their turn starts (1.557): one turn on, on to the stage that turn
  *  begins where one does, and its strike at whoever is inside, at most its `count` of them, its
  *  caster's foes first and those nearest its middle first. Its ground and its cloud are the stage's. */
 function stageZones(ctx: RulesetCombatContext, caster: RulesetCombatant): void {
@@ -7035,7 +7035,7 @@ function endConcentration(
   const held = actor.concentrating;
   if (!held) return;
   actor.concentrating = null;
-  // A cast taking rounds (1.460) fails with it, what it cost given back.
+  // A cast taking rounds (1.461) fails with it, what it cost given back.
   if (actor.casting && held.actionId === castingHeld(actor.casting.optionId)) loseCasting(ctx, actor);
   // A spell held ready by it is lost with it (1.288).
   const readied = actor.readied;
@@ -7045,8 +7045,8 @@ function endConcentration(
   }
   endSummons(ctx, actor, held.actionId);
   endZones(ctx, actor, held.actionId);
-  // Whoever it called (1.393) goes with it, or, broken, turns on its caller's side where it says so
-  // (1.537): Conjure Elemental's elemental.
+  // Whoever it called (1.394) goes with it, or, broken, turns on its caller's side where it says so
+  // (1.538): Conjure Elemental's elemental.
   if (reason === "damage" || reason === "down" || reason === "zone") turnCalled(ctx, actor, held.actionId);
   dismissCalled(ctx, actor, (one) => one.calledWith === held.actionId, "concentration");
   // Broken, it makes its lair's next action this one (1.327), or one of these (1.336): the Litany of Keeping.
@@ -7146,7 +7146,7 @@ function pickTargets(
   if (within !== undefined && targets.some((one) => targets.some((other) => rulesetGap(one, other) > within))) {
     return "targets-apart";
   }
-  // Each after the first within so far of the first (1.593): Chain Lightning's leaps.
+  // Each after the first within so far of the first (1.594): Chain Lightning's leaps.
   const first = targets[0];
   const nearFirst = own?.targetsWithinFirst;
   if (first && nearFirst !== undefined && targets.slice(1).some((one) => rulesetGap(first, one) > nearFirst)) {
@@ -7184,20 +7184,20 @@ function conjure(ctx: RulesetCombatContext, actor: RulesetCombatant, action: Rul
     switches: { conjured: action.id },
   });
   actor.conjured = { ...actor.conjured, [action.id]: { mode, ...(was ? { was } : {}) } };
-  // The one it replaces, if it lay where it fell, is gone (1.479).
+  // The one it replaces, if it lay where it fell, is gone (1.480).
   if (actor.dropped?.length) actor.dropped = actor.dropped.filter((thing) => thing.key !== `conjured:${action.id}`);
   // Named as the entry, not as the mode it was used in: "Pact of the Blade", not "(Longsword)".
   const label = actor.actions.find((one) => one.id === action.id)?.label ?? action.label;
   ctx.events.push({ type: "conjured", actorId: actor.id, optionId: action.id, label, item: made.item });
 }
 
-/** Kept off by what ended (1.269), and spared a creature's action (1.673). */
+/** Kept off by what ended (1.269), and spared a creature's action (1.674). */
 function keepOff(target: RulesetCombatant, key: string): void {
   if (key.startsWith("spared|")) spare(target, key);
   else if (!target.auraSafe?.includes(key)) target.auraSafe = [...(target.auraSafe ?? []), key];
 }
 
-/** Spared a creature's action (1.673): for the fight, and on a sheet until the rest its key names. */
+/** Spared a creature's action (1.674): for the fight, and on a sheet until the rest its key names. */
 function spare(target: RulesetCombatant, key: string): void {
   if (!target.auraSafe?.includes(key)) target.auraSafe = [...(target.auraSafe ?? []), key];
   const until = key.split("|")[1];
@@ -7216,9 +7216,9 @@ function noteSaved(
   action: RulesetCombatAction,
   target: RulesetCombatant,
 ): void {
-  // Spared it until the rest that frees it (1.430): Intimidating Presence's 24 hours.
+  // Spared it until the rest that frees it (1.431): Intimidating Presence's 24 hours.
   if (action.oncePerTarget?.whenSaved) markUsedOn(state, actor, action, [target], true);
-  // A creature's, spared once saved against (1.673).
+  // A creature's, spared once saved against (1.674).
   if (action.sparedAfter?.whenSaved) spare(target, rulesetSparedKey(actor, action));
   const held = actor.concentrating;
   if (!held || (held.actionId !== action.id && !(action.again && rulesetRepeatsHeld(actor, action.again)))) return;
@@ -7238,12 +7238,12 @@ function unconjure(ctx: RulesetCombatContext, actor: RulesetCombatant, actionId:
   );
   if (bound !== undefined && made.was) actor.actions.push(...structuredClone(made.was));
   delete actor.conjured![actionId];
-  // Gone from where it lay, too (1.479).
+  // Gone from where it lay, too (1.480).
   if (actor.dropped?.length) actor.dropped = actor.dropped.filter((thing) => thing.key !== `conjured:${actionId}`);
   ctx.events.push({ type: "conjured", actorId: actor.id, optionId: actionId, label: "", item, gone: true });
 }
 
-/** A weapon put in hand, let fall and left far off long enough, gone (1.479): a pact weapon more than
+/** A weapon put in hand, let fall and left far off long enough, gone (1.480): a pact weapon more than
  *  5 feet from its maker for a minute. Counted as its maker's turns start. */
 function conjuredLeftBehind(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   const at = rulesetPositionOf(actor);
@@ -7275,11 +7275,11 @@ function markUsedOn(
   actor: RulesetCombatant,
   action: RulesetCombatAction,
   targets: RulesetCombatant[],
-  /** Marked as they made their save (1.430), for an entry that spares only those. */
+  /** Marked as they made their save (1.431), for an entry that spares only those. */
   saved = false,
 ): void {
   if (!action.oncePerTarget || targets.length === 0) return;
-  // Only whoever made their save, as they make it (1.430).
+  // Only whoever made their save, as they make it (1.431).
   if (action.oncePerTarget.whenSaved && !saved) return;
   const key = rulesetUsedOnKey(action);
   const marks = targets.flatMap((target) => rulesetUsedOnMarks(state, target));
@@ -7293,26 +7293,26 @@ function markUsedOn(
 function spendAvailability(ctx: RulesetCombatContext, actor: RulesetCombatant, action: RulesetCombatAction): void {
   // Paid already, as it was readied (1.288).
   if (rulesetUseIsFree(actor.id, action.id)) return;
-  // Used on with none of its charges left (1.623): a Wind Fan past its once a dawn.
+  // Used on with none of its charges left (1.624): a Wind Fan past its once a dawn.
   const use = action.itemUse;
   const overusing =
     !!use?.charges?.overuse && !use.consumes && !use.ownUses && rulesetItemUseLeft(actor, use) < use.charges.cost;
   const shot = spendRulesetShots(actor, action, action.itemUse ? (ctx.moreCharges ?? 0) : 0);
   if (shot) ctx.events.push(shot);
-  // A priced material the cast consumes (1.789), out of the bag as the fight left it.
+  // A priced material the cast consumes (1.790), out of the bag as the fight left it.
   if (action.material?.consumed) {
     const taken = rulesetMaterialFor(ctx.definition, action.material, actor.sheet?.items, actor.itemsUsed) ?? [];
     for (const { index, count } of taken) (actor.itemsUsed ??= {})[index] = (actor.itemsUsed[index] ?? 0) + count;
   }
   if (overusing) overuseItem(ctx, actor, action);
-  // Used again before its user rested (1.743): a Ring of X-ray Vision's exhaustion.
+  // Used again before its user rested (1.744): a Ring of X-ray Vision's exhaustion.
   if (use?.againBeforeRest && !ctx.tore) usedAgainBeforeRest(ctx, actor, action);
-  // A chance to backfire as it is used (1.629): a Horn of Blasting.
+  // A chance to backfire as it is used (1.630): a Horn of Blasting.
   if (use?.backfires && !ctx.tore) backfireItem(ctx, actor, action);
   // The last charge spent: an item that may break rolls for it now.
   const broke = shot?.type === "uses" ? breakRulesetItem(actor, action, ctx.roll) : null;
   if (broke) ctx.events.push(broke);
-  // A slot of a creature's trait (1.641), its coven's where it is a coven spell.
+  // A slot of a creature's trait (1.642), its coven's where it is a coven spell.
   const slot = rulesetInnateSlot(actor, action, ctx.state);
   if (slot !== undefined) {
     const left = Math.max(0, rulesetInnateSlotsLeft(actor, action, slot, ctx.state) - 1);
@@ -7348,7 +7348,7 @@ function spendAvailability(ctx: RulesetCombatContext, actor: RulesetCombatant, a
   }
 }
 
-/** An item that costs something used again before a rest (1.743) counts the use on its stack, and
+/** An item that costs something used again before a rest (1.744) counts the use on its stack, and
  *  past the first since that rest asks its save of its user: failed, their tracks move and its
  *  conditions go on them. */
 function usedAgainBeforeRest(ctx: RulesetCombatContext, actor: RulesetCombatant, action: RulesetCombatAction): void {
@@ -7362,7 +7362,7 @@ function usedAgainBeforeRest(ctx: RulesetCombatContext, actor: RulesetCombatant,
     applyConditionId(ctx, actor, condition, { condition, duration: "until-dispelled" }, { sourceId: actor.id });
 }
 
-/** An item used on with no charges left (1.623) counts it, and rolls its d100 against its chance (that
+/** An item used on with no charges left (1.624) counts it, and rolls its d100 against its chance (that
  *  chance again for each such use since they came back, where it is cumulative): at or under it, the
  *  item tears, gone for good, and the use does nothing. */
 function overuseItem(ctx: RulesetCombatContext, actor: RulesetCombatant, action: RulesetCombatAction): void {
@@ -7379,7 +7379,7 @@ function overuseItem(ctx: RulesetCombatContext, actor: RulesetCombatant, action:
   ctx.tore = true;
 }
 
-/** The item whose use put a condition on, spent for good (1.635) and told: Iron Bands of Binding,
+/** The item whose use put a condition on, spent for good (1.636) and told: Iron Bands of Binding,
  *  destroyed by a successful escape. Nothing where no item put it on. */
 function spendApplyingItem(ctx: RulesetCombatContext, entry: RulesetTrackedCondition): void {
   const source = entry.source ? rulesetCombatant(ctx.state, entry.source) : undefined;
@@ -7391,7 +7391,7 @@ function spendApplyingItem(ctx: RulesetCombatContext, entry: RulesetTrackedCondi
   ctx.events.push({ type: "itemSpent", actorId: source.id, label: source.sheet?.items?.[use.item]?.name ?? "" });
 }
 
-/** An item that may backfire as it is used (1.629) rolls its d100: at or under its chance, it deals
+/** An item that may backfire as it is used (1.630) rolls its d100: at or under its chance, it deals
  *  its amount to its user, with `destroys` is gone for good, and with `instead` does nothing besides. */
 function backfireItem(ctx: RulesetCombatContext, actor: RulesetCombatant, action: RulesetCombatAction): void {
   const use = action.itemUse!;
@@ -7422,7 +7422,7 @@ function backfireItem(ctx: RulesetCombatContext, actor: RulesetCombatant, action
   if (rule.instead) ctx.tore = true;
 }
 
-/** A missile caught, kept (1.625): one of its shooter's own ammunition where it was that, which they
+/** A missile caught, kept (1.626): one of its shooter's own ammunition where it was that, which they
  *  no longer win back, else the `otherwise` item. It goes into its catcher's bag: onto a stack of the
  *  same item there, or a new one beside their others, written back as the fight's items are. */
 function keepCaught(
@@ -7504,7 +7504,7 @@ function whyNotOffered(
     }
     return "unreachable";
   }
-  // Closing a zone (1.636): none to close, or nothing left to close it with.
+  // Closing a zone (1.637): none to close, or nothing left to close it with.
   if (optionId.startsWith(RULESET_ZONE_CLOSE_OPTION_PREFIX)) {
     const actionId = optionId.slice(RULESET_ZONE_CLOSE_OPTION_PREFIX.length);
     const close = actor.actions.find((entry) => entry.id === actionId)?.zone?.close;
@@ -7522,8 +7522,8 @@ function whyNotOffered(
     }
     return "unreachable";
   }
-  // Slipping free (1.485): nothing it may slip, or too little of the walk left to do it with.
-  // An attack given up (1.487): nobody to give it to, or nothing left to give.
+  // Slipping free (1.486): nothing it may slip, or too little of the walk left to do it with.
+  // An attack given up (1.488): nobody to give it to, or nothing left to give.
   if (optionId.startsWith(RULESET_LEND_OPTION_PREFIX)) return "no-budget";
   if (optionId.startsWith(RULESET_SLIP_OPTION_PREFIX)) {
     const condition = optionId.slice(RULESET_SLIP_OPTION_PREFIX.length);
@@ -7591,7 +7591,7 @@ export function applyRulesetCombatChoice(
 }
 
 /**
- * A choice made with a held item drawn as it is used (Capability API 1.807), a blow or a use, puts it
+ * A choice made with a held item drawn as it is used (Capability API 1.808), a blow or a use, puts it
  * in its user's hands once it is made, as a free swap: taken in hand as the In hand row takes it
  * (`rulesetDrawAsUsed`), the fewest weapons in its slots put away, the menu read again from what they
  * hold, and the fight's line for the draw said ahead of the blow. Both are written to the bag as the
@@ -7740,7 +7740,7 @@ function applyAlteredChoice(
     return refusal(state, choice.actorId, "bad-alter", choice.optionId);
   }
   const chosen = alters as RulesetCombatAction[];
-  // At the level it is paid at (1.414): Overchannel only from 1st to 5th.
+  // At the level it is paid at (1.415): Overchannel only from 1st to 5th.
   const paidLevel = rulesetPaidLevel(definition, actor, own, choice.payWith);
   if (chosen.some((alter) => !rulesetAlterLevelFits(alter.alters!, paidLevel))) {
     return refusal(state, choice.actorId, "bad-alter", choice.optionId);
@@ -7749,7 +7749,7 @@ function applyAlteredChoice(
   // once and each of its user's side.
   const spares = choice.spares;
   if (spares !== undefined) {
-    // As many more as the level it is paid at, for one that says so (1.413): Sculpt Spells.
+    // As many more as the level it is paid at, for one that says so (1.414): Sculpt Spells.
     const level = rulesetPaidLevel(definition, actor, own, choice.payWith);
     const most = Math.max(
       0,
@@ -7866,7 +7866,7 @@ function applyChoice(
     return refusal(state, choice.actorId, "down", choice.optionId);
 
   const option = rulesetCombatOptions(definition, state, actor.id).find((entry) => entry.id === choice.optionId);
-  // Breaking what a condition commands (1.643): worked out with what it stops lifted, and then
+  // Breaking what a condition commands (1.644): worked out with what it stops lifted, and then
   // harmed for it. A walk breaks it only where it ends at a cell it may not go.
   const defies = option?.defies;
   if (
@@ -7923,7 +7923,7 @@ function applyChoice(
     return finish();
   }
 
-  // Slipping free (1.485): the condition comes off, the walk it kept from them comes back, and what
+  // Slipping free (1.486): the condition comes off, the walk it kept from them comes back, and what
   // slipping costs comes off that.
   if (option.slip && option.id.startsWith(RULESET_SLIP_OPTION_PREFIX)) {
     const { ctx, finish } = begin(definition, combat, state, roller);
@@ -7958,7 +7958,7 @@ function applyChoice(
     return finish();
   }
 
-  // Closing a zone its caster holds (1.636): ended, or lingering its last rounds.
+  // Closing a zone its caster holds (1.637): ended, or lingering its last rounds.
   if (option.id.startsWith(RULESET_ZONE_CLOSE_OPTION_PREFIX)) {
     const { ctx, finish } = begin(definition, combat, state, roller);
     const working = rulesetCombatant(ctx.state, actor.id)!;
@@ -7975,7 +7975,7 @@ function applyChoice(
     return finish();
   }
 
-  // Moving a zone anybody near may move (1.693): its check thrown against its difficulty, or against
+  // Moving a zone anybody near may move (1.694): its check thrown against its difficulty, or against
   // whoever else moved it last; won, it goes to the cell picked and is theirs, failed against the
   // difficulty, it comes at them. A Sphere of Annihilation.
   if (option.id.startsWith(RULESET_ZONE_CHECK_OPTION_PREFIX)) {
@@ -7992,7 +7992,7 @@ function applyChoice(
     const holder =
       zone.heldBy !== undefined && zone.heldBy !== working.id ? rulesetCombatant(ctx.state, zone.heldBy) : undefined;
     const rival = holder && rulesetCombatStanding(holder) ? holder : undefined;
-    // Holding a talisman (1.702): what it adds, and advantage.
+    // Holding a talisman (1.703): what it adds, and advantage.
     const holding = check.holding && rulesetHoldsTagged(working, check.holding.tags) ? check.holding : undefined;
     const adds = holding?.adds ? (rulesetCombatValue(ctx.definition, working, holding.adds) ?? 0) : 0;
     const before = ctx.events.length;
@@ -8074,7 +8074,7 @@ function applyChoice(
     return finish();
   }
 
-  // Stored instead of done (1.523): in one of the places its option offers, paid for as it is cast.
+  // Stored instead of done (1.524): in one of the places its option offers, paid for as it is cast.
   if (choice.storesIn !== undefined) return storeChoice(definition, combat, state, actor, option, choice, roller);
 
   // An area lands on a CELL, and everybody standing in the shape is caught by it. Its own
@@ -8128,13 +8128,13 @@ function applyChoice(
     return refusal(state, choice.actorId, "bad-cell", option.id);
   }
   // A weapon's mode is one the option offers now, and aims at as many as the mode says.
-  // A repeat made with none picked is made in the cast's (1.691).
+  // A repeat made with none picked is made in the cast's (1.692).
   const keptMode = rulesetKeptMode(
     actor,
     actor.actions.find((entry) => entry.id === option.id),
   );
   const namedIn = actor.actions.find((entry) => entry.id === option.id);
-  // A damage type left unnamed (1.752) is the first one offered, as it is set up before a fight: a
+  // A damage type left unnamed (1.753) is the first one offered, as it is set up before a fight: a
   // cast refused for it struck nobody (Ruleset 0.431: Spirit Guardians cast with no type named).
   const modeId =
     choice.mode ??
@@ -8144,7 +8144,7 @@ function applyChoice(
   if (choice.mode !== undefined && !mode) return refusal(state, choice.actorId, "unknown-mode", option.id);
   // A creature type is picked as it is used (1.270): no kind, no Antipathy.
   // And so is the weapon put in hand (1.306).
-  // How well its user knows where it goes, leaving the fight (1.669).
+  // How well its user knows where it goes, leaving the fight (1.670).
   if (
     !mode &&
     (namedIn?.kindChoice ||
@@ -8158,7 +8158,7 @@ function applyChoice(
   if (choice.payWith !== undefined && !(option.payWith ?? []).includes(choice.payWith)) {
     return refusal(state, choice.actorId, "bad-pool", option.id);
   }
-  // A call this payment is too low for (1.536): Create Undead's mummies below a 9th-level slot.
+  // A call this payment is too low for (1.537): Create Undead's mummies below a 9th-level slot.
   const callNeeds = namedIn?.modes?.find((entry) => entry.id === choice.mode)?.call?.fromStep;
   if (callNeeds && namedIn) {
     const steps = namedIn.innate
@@ -8191,14 +8191,14 @@ function applyChoice(
   ) {
     return refusal(state, choice.actorId, "bad-target", option.id);
   }
-  // The one thing it wards off (1.757): one its option offered, its first where none is named (a
+  // The one thing it wards off (1.758): one its option offered, its first where none is named (a
   // creature's own choice).
   if (option.kindsOne && choice.kinds === undefined && option.kindsOf?.length)
     choice = { ...choice, kinds: [option.kindsOf[0]!.id] };
   if (option.kindsOne && (!Array.isArray(choice.kinds) || choice.kinds.length !== 1)) {
     return refusal(state, choice.actorId, "unknown-mode", option.id);
   }
-  // The kinds its zone strikes (1.752): one or more its option offered, none twice.
+  // The kinds its zone strikes (1.753): one or more its option offered, none twice.
   if (
     choice.kinds !== undefined &&
     !(
@@ -8211,7 +8211,7 @@ function applyChoice(
   ) {
     return refusal(state, choice.actorId, "unknown-mode", option.id);
   }
-  // Whom a layered wall spares (1.491): those its option offered, no more than it spares.
+  // Whom a layered wall spares (1.492): those its option offered, no more than it spares.
   const designated = option.designates;
   if (
     choice.designates !== undefined &&
@@ -8227,9 +8227,9 @@ function applyChoice(
   }
   // A wall's section struck at instead of a creature (1.200).
   if (choice.wall !== undefined) return strikeSection(definition, combat, state, actor, option, choice, roller);
-  // A condition struck at to cut it away (1.530): a net.
+  // A condition struck at to cut it away (1.531): a net.
   if (choice.cut !== undefined) return strikeCut(definition, combat, state, actor, option, choice, roller);
-  // A lasting area to end instead of a creature (1.426), one the menu offered; and what to end on a
+  // A lasting area to end instead of a creature (1.427), one the menu offered; and what to end on a
   // target, picked from what the menu offered for them.
   const dispel =
     choice.dispel !== undefined
@@ -8314,17 +8314,17 @@ function applyChoice(
   ) {
     return refusal(state, choice.actorId, "bad-target", option.id);
   }
-  // Where an engulf walks to (1.402): a cell its option offered.
+  // Where an engulf walks to (1.403): a cell its option offered.
   const engulfTo = named?.engulf && option.cells ? destinationOf(option, choice.to) : undefined;
   if (named?.engulf && option.cells && !engulfTo) return refusal(state, choice.actorId, "unreachable", option.id);
-  // Where a leap lands (1.724): a cell its option offered.
+  // Where a leap lands (1.725): a cell its option offered.
   const leapTo = named?.leapsOnto && option.cells ? destinationOf(option, choice.to) : undefined;
   if (named?.leapsOnto && option.cells && !leapTo) return refusal(state, choice.actorId, "unreachable", option.id);
-  // Where a creature's move on its own turn goes (1.606): a cell its option offered.
+  // Where a creature's move on its own turn goes (1.607): a cell its option offered.
   const ownMove = named?.move && !named.signature && rulesetMovesOnly(named) && option.cells;
   const moveTo = ownMove ? destinationOf(option, choice.to) : undefined;
   if (ownMove && !moveTo) return refusal(state, choice.actorId, "unreachable", option.id);
-  // Where its target is moved to (1.564): a cell its option offered for that target, lifted no more
+  // Where its target is moved to (1.565): a cell its option offered for that target, lifted no more
   // levels than it may be and no farther up or down than it carries.
   const moving = option.movesTarget;
   if (choice.rises !== undefined) {
@@ -8363,10 +8363,10 @@ function applyChoice(
   }
   const working = rulesetCombatant(ctx.state, actor.id)!;
   const workingTargets = targets.map((target) => rulesetCombatant(ctx.state, target.id)!);
-  // Another action of theirs ends what lasts until they act again (1.598): the Interposing Hand.
+  // Another action of theirs ends what lasts until they act again (1.599): the Interposing Hand.
   endOnSourceActing(ctx, working);
 
-  // One attack given up for one by what they called (1.487): out of a strike in hand, or the attack
+  // One attack given up for one by what they called (1.488): out of a strike in hand, or the attack
   // action taken now with the rest of its strikes put in hand; the called one pays its own budget.
   if (option.lend) {
     const { calledId, actionId, spends, attackBudget, strikes } = option.lend;
@@ -8393,7 +8393,7 @@ function applyChoice(
   // The budget goes first: what a turn may hold is not a matter of how the dice fall.
   const budget = option.budget;
   if (budget) spendBudget(ctx, working, budget);
-  // What the bonus-action spell rule reads for the rest of the turn (1.709).
+  // What the bonus-action spell rule reads for the rest of the turn (1.710).
   const cast = working.actions.find((entry) => entry.id === option.id);
   if (cast && budget && rulesetOnOwnTurn(ctx.state, working)) {
     const kind = rulesetBonusSpellKind(ctx.definition, ctx.combat, working, cast, budget);
@@ -8435,7 +8435,7 @@ function applyChoice(
 
   // A check that ends what it holds (1.313): Maze's way out.
   if (option.checkEnds) {
-    // Their own, or one next to them they end for its holder (1.517), rolled with their own check.
+    // Their own, or one next to them they end for its holder (1.518), rolled with their own check.
     const holder = option.checkEnds.holderId ? rulesetCombatant(ctx.state, option.checkEnds.holderId) : working;
     const entry = holder?.tracked.find((one) => one.condition === option.checkEnds!.condition);
     const rule = entry?.checkEnds;
@@ -8458,10 +8458,10 @@ function applyChoice(
         noteShookOff(holder, entry);
         // The spell ends with it: its concentration too, where that is what held it.
         endHoldingConcentration(ctx, entry);
-        // And the item that put it on is spent (1.635): Iron Bands of Binding.
+        // And the item that put it on is spent (1.636): Iron Bands of Binding.
         if (rule.spendsItem) spendApplyingItem(ctx, entry);
       } else if (rule.failedRetryAfter && holder === working) {
-        // Its holder's own tries barred for a while (1.635).
+        // Its holder's own tries barred for a while (1.636).
         entry.checkBarredUntil = ctx.state.round + rule.failedRetryAfter;
       }
     }
@@ -8469,7 +8469,7 @@ function applyChoice(
     return finish();
   }
 
-  // The way back at will (1.626): what keeps them away taken off, a Robe of Stars' wearer returning.
+  // The way back at will (1.627): what keeps them away taken off, a Robe of Stars' wearer returning.
   if (working.away?.turns && working.away.while && option.id === `end-condition:${working.away.while}`) {
     endOwnCondition(ctx, working, working.away.while);
     noteOutcome(ctx);
@@ -8567,7 +8567,7 @@ function applyChoice(
       }
       return finish();
     }
-    // Disarming a trap (1.668).
+    // Disarming a trap (1.669).
     if (option.disarms) {
       resolveDisarm(ctx, working, option.disarms);
       noteOutcome(ctx);
@@ -8588,7 +8588,7 @@ function applyChoice(
       if (switching.free) working.flags.lightSwitched = true;
       ctx.events.push({ type: "switch", actorId: working.id, optionId: switching.id, label: switching.label, on });
     } else if (switching?.switches && "take" in switching.switches) {
-      // A weapon a call lends taken in hand (1.738), theirs while that one stands.
+      // A weapon a call lends taken in hand (1.739), theirs while that one stands.
       const index = switching.switches.take;
       const lent = working.sheet?.items?.[index]?.lent;
       const from = ctx.state.combatants.find(
@@ -8603,7 +8603,7 @@ function applyChoice(
         on: true,
       });
     } else if (switching?.switches && "shift" in switching.switches) {
-      // Some of a weapon's bonus to their defense (1.736), until the start of their next turn.
+      // Some of a weapon's bonus to their defense (1.737), until the start of their next turn.
       const { item, amount } = switching.switches.shift;
       shiftWeaponBonus(working, item, -amount);
       working.bonusShift = { item, amount };
@@ -8615,7 +8615,7 @@ function applyChoice(
         on: true,
       });
     } else if (switching?.switches && "knockOut" in switching.switches) {
-      // Pulling their blows, or no longer (1.719).
+      // Pulling their blows, or no longer (1.720).
       const on = !working.knocksOut;
       if (on) working.knocksOut = true;
       else delete working.knocksOut;
@@ -8625,12 +8625,12 @@ function applyChoice(
       // A weapon put in hand, put away for nothing (1.308).
       unconjure(ctx, working, switching.switches.conjured);
     } else if (switching?.switches && "called" in switching.switches) {
-      // Those it called sent away as an action (1.448): Summon Demon's dismissal.
+      // Those it called sent away as an action (1.449): Summon Demon's dismissal.
       const by = switching.switches.called;
-      // Not those ignoring every order (1.664).
+      // Not those ignoring every order (1.665).
       dismissCalled(ctx, working, (one) => one.calledWith === by && !one.calledDisobeys, "dismissed");
     } else if (switching?.switches && "form" in switching.switches) {
-      // Into another of its forms (1.574): the item as that form, and what it does then.
+      // Into another of its forms (1.575): the item as that form, and what it does then.
       const { item: index, to } = switching.switches.form;
       const formed = working.itemFormed?.[index]?.[to];
       const held = working.sheet?.items?.[index];
@@ -8747,7 +8747,7 @@ function applyChoice(
     return refusal(state, choice.actorId, "insufficient", option.id);
   }
   if (paid.live && working.sheet) working.sheet.live = paid.live;
-  // Out of a worn item's charges (1.571).
+  // Out of a worn item's charges (1.572).
   if (paid.itemCharges) (working.charges ??= {})[paid.itemCharges.item] = paid.itemCharges.now;
   countRulesetSpend(working, paid.cost);
   for (const entry of paid.cost) {
@@ -8763,7 +8763,7 @@ function applyChoice(
   }
   // And what it was altered with (1.253), each at the level it was paid at.
   for (const alter of alters ?? []) {
-    // Its counter's uses already spent since it came back, before this one (1.414).
+    // Its counter's uses already spent since it came back, before this one (1.415).
     const spentBefore = alter.alters?.backlash ? counterSpent(definition, working, alter) : 0;
     const price = planRulesetAlterCost(definition, working, alter, action, choice.payWith);
     if (!price) return refusal(state, choice.actorId, "insufficient", option.id);
@@ -8790,7 +8790,7 @@ function applyChoice(
     }
     spendAvailability(ctx, working, alter);
   }
-  // A spell glyph (1.453): the entry stored in it, no higher than the glyph is paid at, paid too.
+  // A spell glyph (1.454): the entry stored in it, no higher than the glyph is paid at, paid too.
   const storedId = mode ? own.modes?.find((one) => one.id === mode.id)?.stores : undefined;
   const stored = storedId ? working.actions.find((one) => one.id === storedId) : undefined;
   if (storedId) {
@@ -8830,7 +8830,7 @@ function applyChoice(
   // The other half of an action made this turn (1.280), once, and already paid for when the strike
   // came first. Made as the first half, it lets the other follow.
   const following = option.followUp ? working.flags.followUps?.find((one) => one.id === action.id) : undefined;
-  // One of a choice (1.786): the rest of it are gone with it.
+  // One of a choice (1.787): the rest of it are gone with it.
   if (following)
     working.flags.followUps = working.flags.followUps!.filter(
       (one) => one !== following && (!following.oneOf || one.oneOf !== following.oneOf),
@@ -8838,17 +8838,17 @@ function applyChoice(
   if (following?.uncharged) ctx.uncharged = true;
   if (!following?.paid) spendAvailability(ctx, working, action);
   markUsedOn(ctx.state, working, action, workingTargets);
-  // A creature's, spared once used on them at all (1.673).
+  // A creature's, spared once used on them at all (1.674).
   if (action.sparedAfter && !action.sparedAfter.whenSaved && !action.sparedAfter.whenEnds) {
     for (const target of workingTargets) spare(target, rulesetSparedKey(working, action));
   }
   if (action.conjures && mode) conjure(ctx, working, action, mode.id);
   if (action.makesItems) makeItems(ctx, working, action);
-  // Those it commands through this action act at their next turn (1.735): a chain devil's chains.
+  // Those it commands through this action act at their next turn (1.736): a chain devil's chains.
   for (const one of ctx.state.combatants) {
     if (one.calledBy === working.id && one.calledCommand?.action === action.id) one.calledCommand.given = true;
   }
-  // Then one spell of its own spellcasting (1.786): a glabrezu's, after its pincers.
+  // Then one spell of its own spellcasting (1.787): a glabrezu's, after its pincers.
   if (!option.followUp && action.castsOne) {
     const spells = working.actions.filter((one) => one.innate && !one.reaction && !one.lair && one.id !== action.id);
     working.flags.followUps = [
@@ -8862,11 +8862,11 @@ function applyChoice(
       ...(action.pairedWith?.includes(action.followUp) ? { paid: true as const } : {}),
     });
   }
-  // A strike again made (1.427): once a turn. One offered after a weapon attack at one creature, the
+  // A strike again made (1.428): once a turn. One offered after a weapon attack at one creature, the
   // same weapon at another near them, for nothing: Horde Breaker.
   if (action.strikeAgain) working.flags.struckAgain = true;
   else offerStrikeAgain(ctx, working, action, workingTargets);
-  // A chance rolled once it is paid for (1.440): failed, it does nothing, and with `failUses` that
+  // A chance rolled once it is paid for (1.441): failed, it does nothing, and with `failUses` that
   // row is spent in place of its own.
   if (action.chance && !rollsChance(ctx, working, action, unpaid)) {
     noteOutcome(ctx);
@@ -8878,7 +8878,7 @@ function applyChoice(
     noteOutcome(ctx);
     return finish();
   }
-  // Torn as it was used on with no charges left (1.623), or backfired in place of working (1.629): it
+  // Torn as it was used on with no charges left (1.624), or backfired in place of working (1.630): it
   // did nothing, so nothing was aimed either: only what tore it is told.
   if (ctx.tore) {
     delete ctx.tore;
@@ -8925,26 +8925,26 @@ function applyChoice(
     // A grab or a shove gives a hider away as an attack does (1.287).
     if (working.hiding) (ctx.giveaways ??= new Map()).set(working.id, "attack");
     resolveContest(ctx, working, action, action.contest, workingTargets[0]!);
-    // Whoever they laid hands on answers a touch (1.526), won or lost: Heated Body.
+    // Whoever they laid hands on answers a touch (1.527), won or lost: Heated Body.
     if (workingTargets[0]) answerHit(ctx, workingTargets[0], working, action, true);
     holderActed(ctx, working, action, before);
     noteOutcome(ctx);
     return finish();
   }
-  // A creature's move on its own turn (1.606), its turn's own movement kept: Aggressive.
+  // A creature's move on its own turn (1.607), its turn's own movement kept: Aggressive.
   if (moveTo && action.move) {
     legendaryMove(ctx, working, action.move, moveTo.path);
     noteOutcome(ctx);
     return finish();
   }
-  // An engulf (1.402): the walk, and whoever it enters on the way; off a board, the one aimed at.
+  // An engulf (1.403): the walk, and whoever it enters on the way; off a board, the one aimed at.
   if (action.engulf) {
     if (engulfTo) engulfWalk(ctx, working, action, engulfTo.path);
     else engulfLands(ctx, working, action, workingTargets);
     noteOutcome(ctx);
     return finish();
   }
-  // A leap (1.724): the jump, and whoever it lands on.
+  // A leap (1.725): the jump, and whoever it lands on.
   if (action.leapsOnto && leapTo) {
     walkOn(ctx, working, {
       kind: "walk",
@@ -8996,7 +8996,7 @@ function applyChoice(
       : {}),
     ...(ctx.carriesTo ? { carriesTo: { ...ctx.carriesTo } } : {}),
   };
-  // A cast taking rounds (1.460): begun now, and landing as its last round is spent.
+  // A cast taking rounds (1.461): begun now, and landing as its last round is spent.
   if (action.castingRounds) {
     beginCasting(ctx, working, action, resume, budget);
     noteOutcome(ctx);
@@ -9017,7 +9017,7 @@ function applyChoice(
 /** Who stands in for a wall's section while a blow is struck at it (1.200). */
 const SECTION_ID = "wall-section";
 
-/** How many of an alteration's counter's uses are spent since it last came back (1.414). */
+/** How many of an alteration's counter's uses are spent since it last came back (1.415). */
 function counterSpent(definition: RulesetDefinition, holder: RulesetCombatant, alter: RulesetCombatAction): number {
   const name = alter.use?.name;
   if (!holder.sheet || !name) return 0;
@@ -9028,7 +9028,7 @@ function counterSpent(definition: RulesetDefinition, holder: RulesetCombatant, a
   return pool ? Math.max(0, pool.max - pool.value) : 0;
 }
 
-/** An alteration's harm to its user (1.414): past the first `free` uses, `dice` for each level the
+/** An alteration's harm to its user (1.415): past the first `free` uses, `dice` for each level the
  *  entry was paid at, and `grows` more for each use past the first that harms. Overchannel. */
 function backlashOn(ctx: RulesetCombatContext, one: NonNullable<RulesetCombatContext["backlash"]>[number]): void {
   const holder = rulesetCombatant(ctx.state, one.actorId);
@@ -9055,7 +9055,7 @@ function backlashOn(ctx: RulesetCombatContext, one: NonNullable<RulesetCombatCon
   afterBlow(ctx, holder, dealt, false);
 }
 
-/** What a layered wall stands in as for a blow or an area (1.489): struck by anything, taking all of it. */
+/** What a layered wall stands in as for a blow or an area (1.490): struck by anything, taking all of it. */
 const LAYERED_STAND_IN = { defense: 0, health: 100000 };
 
 /** A wall's section or a prop (1.200, 1.316) standing in as a creature for one blow or one area: its
@@ -9164,7 +9164,7 @@ function breakProp(
 const CUT_ID = "cut-free";
 
 /**
- * A blow struck at a condition to cut it away (1.530), paid for as any attack is: the condition stands
+ * A blow struck at a condition to cut it away (1.531), paid for as any attack is: the condition stands
  * in as a thing with its `cutFree` defense and what is left of it, for that blow only. Only damage of
  * the types it names wears it down; with none left, it ends on its holder.
  */
@@ -9201,7 +9201,7 @@ function strikeCut(
   const paid = planRulesetCombatCost(definition, working, action, choice.payWith);
   if (!paid) return refusal(state, choice.actorId, "insufficient", option.id);
   if (paid.live && working.sheet) working.sheet.live = paid.live;
-  // Out of a worn item's charges (1.571).
+  // Out of a worn item's charges (1.572).
   if (paid.itemCharges) (working.charges ??= {})[paid.itemCharges.item] = paid.itemCharges.now;
   countRulesetSpend(working, paid.cost);
   for (const entry of paid.cost) {
@@ -9301,7 +9301,7 @@ function strikeSection(
   const paid = planRulesetCombatCost(definition, working, action, choice.payWith);
   if (!paid) return refusal(state, choice.actorId, "insufficient", option.id);
   if (paid.live && working.sheet) working.sheet.live = paid.live;
-  // Out of a worn item's charges (1.571).
+  // Out of a worn item's charges (1.572).
   if (paid.itemCharges) (working.charges ??= {})[paid.itemCharges.item] = paid.itemCharges.now;
   countRulesetSpend(working, paid.cost);
   for (const entry of paid.cost) {
@@ -9318,7 +9318,7 @@ function strikeSection(
   spendAvailability(ctx, working, action);
   const standing = rulesetStandingSections(ctx.state).find(({ section }) => at(section.cells));
   const prop = standing ? undefined : rulesetStandingProps(ctx.state).find((one) => at(one.cells));
-  // A layered wall (1.489): it stands in for the blow, never broken by it, and what the blow dealt of
+  // A layered wall (1.490): it stands in for the blow, never broken by it, and what the blow dealt of
   // each type is read against its first standing layer.
   const layered = standing || prop ? undefined : rulesetStandingLayers(ctx.state).find((one) => at(one.cells));
   if (layered) {
@@ -9490,12 +9490,12 @@ function completeDelayed(ctx: RulesetCombatContext, actor: RulesetCombatant): vo
   reopenAction(ctx, actor, action, resume);
 }
 
-/** The concentration a cast taking rounds is held by (1.460), apart from the entry's own. */
+/** The concentration a cast taking rounds is held by (1.461), apart from the entry's own. */
 function castingHeld(optionId: string): string {
   return `casting:${optionId}`;
 }
 
-/** A cast taking rounds begun (1.460): paid for now, concentrated on, and given back if it fails. */
+/** A cast taking rounds begun (1.461): paid for now, concentrated on, and given back if it fails. */
 function beginCasting(
   ctx: RulesetCombatContext,
   actor: RulesetCombatant,
@@ -9512,7 +9512,7 @@ function beginCasting(
   ctx.events.push({ type: "casting", actorId: actor.id, label: action.label, outcome: "started", left });
 }
 
-/** A cast taking rounds failing (1.460): what it cost given back. */
+/** A cast taking rounds failing (1.461): what it cost given back. */
 function loseCasting(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   const casting = actor.casting;
   if (!casting) return;
@@ -9523,7 +9523,7 @@ function loseCasting(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   ctx.events.push({ type: "casting", actorId: actor.id, label: casting.label, outcome: "lost" });
 }
 
-/** A cast taking rounds carried on as its maker's turn starts (1.460): its budget spent on it again,
+/** A cast taking rounds carried on as its maker's turn starts (1.461): its budget spent on it again,
  *  and on the last, it lands. One who cannot act, or has no budget to spend, loses it. */
 function continueCasting(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   const casting = actor.casting;
@@ -9619,7 +9619,7 @@ function throwCheck(
   modifier: number,
   /** What whoever it is made against puts on it (1.290): a Cloak of Elvenkind on a Search. */
   taken?: { advantage: boolean; disadvantage: boolean },
-  /** Whom it is made to find (1.566): Enthrall. */
+  /** Whom it is made to find (1.567): Enthrall. */
   perceiving?: string,
 ): RulesetContestSide {
   // What is narrowed to the ability the check is made with counts (1.188): Rage's Strength. And,
@@ -9664,7 +9664,7 @@ function throwCheck(
       ? Math.max(sumOf(first), sumOf(second))
       : Math.min(sumOf(first), sumOf(second))
     : sumOf(first);
-  // Floors under the check (1.417): Reliable Talent lifts a single die, Indomitable Might the total.
+  // Floors under the check (1.418): Reliable Talent lifts a single die, Indomitable Might the total.
   const floors = checkFloors(ctx, who, skill, ability);
   const kept = count === 1 && floors.face !== undefined ? Math.max(thrown, floors.face) : thrown;
   const bonuses = rollBonuses(ctx, checkModifiers(), who);
@@ -9678,7 +9678,7 @@ function throwCheck(
   };
 }
 
-/** The floors under one of this combatant's checks (1.417), off their active conditions and levels:
+/** The floors under one of this combatant's checks (1.418), off their active conditions and levels:
  *  the highest face and the highest total. A `proficient` one counts only on a skill their sheet adds
  *  their whole proficiency to; a creature off a stat block has none of those. */
 function checkFloors(
@@ -9715,7 +9715,7 @@ function checkFloors(
   return out;
 }
 
-/** How many more cells a contest's win pushes by (1.586), read off the actor's sheet, or its caller's
+/** How many more cells a contest's win pushes by (1.587), read off the actor's sheet, or its caller's
  *  where it has none: Arcane Hand's Forceful Hand, its caster's 5 + 5 x modifier feet. */
 function contestPushRead(
   ctx: RulesetCombatContext,
@@ -9754,9 +9754,9 @@ function resolveContest(
   // fight each side throws its check as a pool and the one with more net successes wins.
   const thrown = (who: RulesetCombatant, check: string, modifier: number) => throwCheck(ctx, who, check, modifier);
   const picked = rulesetContestCheck(actor, contest, "attacker");
-  // What it adds to the actor's own check (1.702): a Talisman of the Sphere's.
+  // What it adds to the actor's own check (1.703): a Talisman of the Sphere's.
   const mine = contest.attackerAdds ? { ...picked, modifier: picked.modifier + contest.attackerAdds } : picked;
-  // With advantage at one no bigger than it says (1.586): the Forceful Hand at a Medium creature.
+  // With advantage at one no bigger than it says (1.587): the Forceful Hand at a Medium creature.
   const atMost = contest.advantageAtMostSize
     ? ctx.combat.sizes?.order.findIndex((one) => one.id === contest.advantageAtMostSize)
     : undefined;
@@ -9768,7 +9768,7 @@ function resolveContest(
   // Breaking free of a hold that names its escape DC (1.103): nobody throws for the holder, and the
   // actor wins on meeting the number.
   const escapeDc = rulesetEscapeDc(actor, contest, target);
-  // What keeps the one pulled out inside (1.406), and what it does to whoever pulls.
+  // What keeps the one pulled out inside (1.407), and what it does to whoever pulls.
   const pulledFrom = contest.pulls
     ? target.tracked.find((entry) => entry.condition === contest.targetHolds)
     : undefined;
@@ -9854,7 +9854,7 @@ function resolveContest(
     ...(escapeDc !== undefined ? (contest.from ? { escapeDc } : { difficulty: escapeDc }) : {}),
     winner,
   });
-  // Reaching in hurts, win or lose (1.406): the cube's acid on whoever pulls.
+  // Reaching in hurts, win or lose (1.407): the cube's acid on whoever pulls.
   if (pulledFrom?.harmsPuller) {
     conditionHarm(ctx, actor, pulledFrom.condition, pulledFrom.source, pulledFrom.harmsPuller, 1);
   }
@@ -9874,7 +9874,7 @@ function resolveContest(
       { sourceId: actor.id },
     );
   }
-  // On both, while the target holds what it names (1.552): a pin's restraint.
+  // On both, while the target holds what it names (1.553): a pin's restraint.
   if (contest.both) {
     const tie = { holderId: target.id, condition: contest.both.whileTargetHolds };
     for (const condition of contest.both.applies) {
@@ -9885,11 +9885,11 @@ function resolveContest(
       }
     }
   }
-  // And farther by what is read off its sheet, or its caller's (1.586): the Forceful Hand.
+  // And farther by what is read off its sheet, or its caller's (1.587): the Forceful Hand.
   const pushed = (contest.push ?? 0) + contestPushRead(ctx, actor, contest);
   if (contest.push !== undefined || pushed > 0) {
     const event = pushTarget(ctx, actor, target, pushed);
-    // And after them, into the last cell they left (1.597): the Forceful Hand.
+    // And after them, into the last cell they left (1.598): the Forceful Hand.
     if (contest.follows && event) followPushed(ctx, actor, target, event);
   }
   // Treated in time (1.193): the DC 10 Medicine check that keeps the dying from dying.
@@ -9900,7 +9900,7 @@ function resolveContest(
   }
 }
 
-/** What a blow does to whoever it dropped (1.676): left stable, then what it puts on them. */
+/** What a blow does to whoever it dropped (1.677): left stable, then what it puts on them. */
 function fellByBlow(
   ctx: RulesetCombatContext,
   actor: RulesetCombatant,
@@ -9921,7 +9921,7 @@ function fellByBlow(
   }
 }
 
-/** Whether `actor` wins the contest an action is decided by against `target` (1.564): Telekinesis. */
+/** Whether `actor` wins the contest an action is decided by against `target` (1.565): Telekinesis. */
 function wonContest(
   ctx: RulesetCombatContext,
   actor: RulesetCombatant,
@@ -9935,7 +9935,7 @@ function wonContest(
   return thrown?.type === "contest" && thrown.winner === "actor";
 }
 
-/** Somebody set down where an action that moves them was aimed (1.564), with no step between, so
+/** Somebody set down where an action that moves them was aimed (1.565), with no step between, so
  *  nobody gets a strike at them, and lifted the levels it says; somebody left up in the air with
  *  nothing to keep them there comes down. Telekinesis. */
 function carryTarget(
@@ -9956,7 +9956,7 @@ function carryTarget(
   const level = elevationAt(grid, to.x, to.y) + to.rises;
   if (to.rises > 0) target.altitude = level;
   else delete target.altitude;
-  // A mount moved against its will may throw its rider (1.495).
+  // A mount moved against its will may throw its rider (1.496).
   if (target.riddenBy) (ctx.shakenMounts ??= new Set()).add(target.id);
   ctx.events.push({
     type: "carried",
@@ -9977,17 +9977,17 @@ function pushTarget(
   actor: RulesetCombatant,
   target: RulesetCombatant,
   cells: number,
-  /** The way already worked out (1.630), when it is not straight away from `actor`. */
+  /** The way already worked out (1.631), when it is not straight away from `actor`. */
   path = rulesetPushPath(ctx.state, actor.id, target.id, cells),
 ): Extract<RulesetCombatEvent, { type: "pushed" }> | undefined {
   const from = rulesetPositionOf(target);
-  // Braced against it (1.717): Dwarven Plate, so much less of the way.
+  // Braced against it (1.718): Dwarven Plate, so much less of the way.
   path = bracedPath(ctx, target, path);
   const to = path[path.length - 1];
   if (!from || !to) return undefined;
   target.x = to.x;
   target.y = to.y;
-  // A mount moved against its will may throw its rider (1.495).
+  // A mount moved against its will may throw its rider (1.496).
   if (target.riddenBy) (ctx.shakenMounts ??= new Set()).add(target.id);
   const event: Extract<RulesetCombatEvent, { type: "pushed" }> = {
     type: "pushed",
@@ -10003,7 +10003,7 @@ function pushTarget(
   const edge = path.length > 1 ? path[path.length - 2]! : from;
   const levels = grid ? elevationAt(grid, edge.x, edge.y) - elevationAt(grid, to.x, to.y) : 0;
   if (levels >= 2) fall(ctx, actor, target, levels);
-  // Whoever hangs on to them is carried along (1.675), into the last cell they passed.
+  // Whoever hangs on to them is carried along (1.676), into the last cell they passed.
   for (const id of attachedClingers(ctx, target)) {
     const clinger = rulesetCombatant(ctx.state, id);
     if (!clinger || clinger.id === actor.id) continue;
@@ -10013,7 +10013,7 @@ function pushTarget(
   return event;
 }
 
-/** The way somebody is moved against their will, less what they brace against it (1.717): a
+/** The way somebody is moved against their will, less what they brace against it (1.718): a
  *  condition's `pushReducedBy`, paying its budget where it names one. Never while up in the air. */
 function bracedPath(
   ctx: RulesetCombatContext,
@@ -10038,7 +10038,7 @@ function bracedPath(
   return path.slice(0, path.length - cells);
 }
 
-/** Where a walk ends (1.680): squeezed into less of themselves between walls, with the ruleset's
+/** Where a walk ends (1.681): squeezed into less of themselves between walls, with the ruleset's
  *  condition for it, or back to their whole size once they fit again. */
 function settleSqueeze(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   const at = rulesetPositionOf(actor);
@@ -10068,7 +10068,7 @@ function settleSqueeze(ctx: RulesetCombatContext, actor: RulesetCombatant): void
   }
 }
 
-/** Who hangs on to `holder` by a condition that `attaches` (1.675), still standing. */
+/** Who hangs on to `holder` by a condition that `attaches` (1.676), still standing. */
 function attachedClingers(ctx: RulesetCombatContext, holder: RulesetCombatant): string[] {
   const rules = ctx.combat.conditions;
   if (!rules?.some((one) => one.attaches)) return [];
@@ -10080,7 +10080,7 @@ function attachedClingers(ctx: RulesetCombatContext, holder: RulesetCombatant): 
   });
 }
 
-/** Somebody who saved against an area that pushes them out (1.630), pushed straight away from where it
+/** Somebody who saved against an area that pushes them out (1.631), pushed straight away from where it
  *  was aimed (its user, for a burst around them) until no cell they fill is inside it, as far as the
  *  way allows: a Bead of Force's sphere. */
 function pushOutOfArea(
@@ -10103,7 +10103,7 @@ function pushOutOfArea(
   pushTarget(ctx, actor, target, 0, out >= 0 ? path.slice(0, out + 1) : path);
 }
 
-/** The pusher moved with the one it pushed (1.597), into the last cell they left on the way, or for
+/** The pusher moved with the one it pushed (1.598), into the last cell they left on the way, or for
  *  one wider than a cell (or with no room there) the open place beside them nearest where it stands,
  *  unless still beside them or with no room anywhere beside. Drawing no strikes, as a push draws
  *  none. The Arcane Hand, two cells a side, follows a goblin pushed away from it. */
@@ -10261,7 +10261,7 @@ function hasFallingAnswer(ctx: RulesetCombatContext): boolean {
   );
 }
 
-/** What the faller's conditions take off a fall's own damage (1.412), each condition that did spent
+/** What the faller's conditions take off a fall's own damage (1.413), each condition that did spent
  *  by it: Slow Fall's five times the monk's level, put on as the answer to the fall. */
 function lessenFall(
   ctx: RulesetCombatContext,
@@ -10295,7 +10295,7 @@ function lessenFall(
 function landFall(ctx: RulesetCombatContext, actor: RulesetCombatant, target: RulesetCombatant, levels: number): void {
   ctx.events.push({ type: "fell", targetId: target.id, levels });
   const elevation = ctx.combat.elevation;
-  // Safe from any fall, or from one no higher than its `upTo` while none of `unless` holds (1.649).
+  // Safe from any fall, or from one no higher than its `upTo` while none of `unless` holds (1.650).
   const active = rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state);
   const held = new Set(active.map((entry) => entry.condition));
   const height = levels * (elevation?.levelHeight ?? 0);
@@ -10350,7 +10350,7 @@ function noteOutcome(ctx: RulesetCombatContext): void {
  *  through here, so none of them leaves anybody crashed. */
 function pushOutcome(ctx: RulesetCombatContext, outcome: Exclude<RulesetEncounterOutcome, "ongoing">): void {
   rollOutCountedSaves(ctx);
-  // A switch that stays on only so long goes off with the fight (1.705), and its stack with it.
+  // A switch that stays on only so long goes off with the fight (1.706), and its stack with it.
   for (const one of ctx.state.combatants) {
     for (const key of Object.keys(one.onFor ?? {})) switchOff(ctx, one, Number(key), false);
   }
@@ -10547,13 +10547,13 @@ export function liftRulesetFightEffects(
       if (entry.endsWith === condition) lift(combatant, entry.condition, "linked");
   };
   for (const combatant of state.combatants) {
-    // A save it is made against as days pass (1.525) goes onto the sheet it stays on: Feeblemind.
+    // A save it is made against as days pass (1.526) goes onto the sheet it stays on: Feeblemind.
     if (combatant.sheet && !combatant.defeated) {
       for (const entry of combatant.tracked) {
         const ends = entry.saveEnds;
         if (ends?.at !== "days" || !ends.days || entry.difficulty === undefined || entry.rounds !== null) continue;
         if (entry.aura || entry.kept || entry.endsAfter || entry.endsWhenHolder || entry.concentration) continue;
-        // So many made to end it, and what a failure deals (1.749), kept off healing as it says.
+        // So many made to end it, and what a failure deals (1.750), kept off healing as it says.
         const keeps = definition.combat?.conditions?.some(
           (one) => one.condition === entry.condition && one.keepsDamage,
         );
@@ -10566,7 +10566,7 @@ export function liftRulesetFightEffects(
           ...(keeps ? { keeps: true as const } : {}),
         });
       }
-      // Days it lasts (1.662) go onto the sheet it stays on, to be counted as days pass.
+      // Days it lasts (1.663) go onto the sheet it stays on, to be counted as days pass.
       for (const entry of combatant.tracked) {
         if (entry.days === undefined || entry.rounds !== null) continue;
         if (entry.aura || entry.kept || entry.endsAfter || entry.endsWhenHolder || entry.concentration) continue;
@@ -10577,13 +10577,13 @@ export function liftRulesetFightEffects(
           entry.restingCounts,
         );
       }
-      // And what it wards off (1.757), as it was picked: Wish's.
+      // And what it wards off (1.758), as it was picked: Wish's.
       for (const entry of combatant.tracked) {
         if (entry.wardsOff === undefined || entry.rounds !== null) continue;
         if (entry.aura || entry.kept || entry.endsAfter || entry.endsWhenHolder || entry.concentration) continue;
         combatant.sheet.live = rulesetLiveWithWardsOff(combatant.sheet.live, entry.condition, entry.wardsOff);
       }
-      // And the worn item that keeps it on (1.663), off once it is taken off.
+      // And the worn item that keeps it on (1.664), off once it is taken off.
       for (const entry of combatant.tracked) {
         if (entry.wornItem === undefined || entry.rounds !== null) continue;
         if (entry.aura || entry.kept || entry.endsAfter || entry.endsWhenHolder || entry.concentration) continue;
@@ -10593,7 +10593,7 @@ export function liftRulesetFightEffects(
     const dazed = combatant.dazed;
     delete combatant.dazed;
     if (dazed?.condition) lift(combatant, dazed.condition, "expired");
-    // Squeezed between the board's walls (1.680): out of the fight there are none (laptop 2026-10-25:
+    // Squeezed between the board's walls (1.681): out of the fight there are none (laptop 2026-10-25:
     // a party member left the fight still Squeezing).
     if (combatant.squeezedFrom !== undefined) {
       combatant.span = combatant.squeezedFrom;
@@ -10653,7 +10653,7 @@ export function liftRulesetFightEffects(
   return events;
 }
 
-/** A shape of their own they are still in, kept on their sheet as the fight ends (1.800), so it does
+/** A shape of their own they are still in, kept on their sheet as the fight ends (1.801), so it does
  *  not run out with it (laptop 2026-10-25: the card said Wild Shape ran out, the sheet that they were
  *  still a wolf). */
 function keptPastFight(combatant: RulesetCombatant, entry: RulesetTrackedCondition): boolean {
@@ -10902,7 +10902,7 @@ function takeReaction(
   );
   const source = rulesetCombatant(state, declared.reaction?.at === "target" ? (about ?? actor.id) : trigger.sourceId);
   let targets: RulesetCombatant[] | RulesetCombatRefusal;
-  // Sent to the one its holder picks (1.421): Stand Against the Tide.
+  // Sent to the one its holder picks (1.422): Stand Against the Tide.
   if (declared.redirects) {
     const open =
       trigger.kind === "attacked" ? rulesetRedirectTargets(state, actor, trigger.sourceId, trigger.optionId) : [];
@@ -10956,7 +10956,7 @@ function takeReaction(
     const paid = planRulesetCombatCost(definition, taking, action, choice.payWith);
     if (!paid) return refusal(state, choice.actorId, "insufficient", choice.optionId);
     if (paid.live && taking.sheet) taking.sheet.live = paid.live;
-    // Out of a worn item's charges (1.571).
+    // Out of a worn item's charges (1.572).
     if (paid.itemCharges) (taking.charges ??= {})[paid.itemCharges.item] = paid.itemCharges.now;
     countRulesetSpend(taking, paid.cost);
     for (const entry of paid.cost) {
@@ -11034,7 +11034,7 @@ function takeReaction(
       with: action.label,
     });
   }
-  // Stepping in to be its target instead (1.508): the one within reach it was aimed at.
+  // Stepping in to be its target instead (1.509): the one within reach it was aimed at.
   if (action.takesAim && trigger.kind === "aimed" && ctx.state.window?.resume?.kind === "action") {
     const held = ctx.state.window.resume;
     // The one its moment was about: aimed at, on its holder's side and within its reach.
@@ -11099,7 +11099,7 @@ function takeReaction(
     return finish();
   }
   // Added to its holder's own blow, held where it hit (1.241): rolled as that blow lands. Or only
-  // its conditions (1.533).
+  // its conditions (1.534).
   if (
     action.addsToBlow &&
     (action.damage || action.onHit?.length) &&
@@ -11136,7 +11136,7 @@ function takeReaction(
     noteOutcome(ctx);
     return finish();
   }
-  // Its holder's own best melee strike at whoever caused it (1.421), made as an opportunity attack
+  // Its holder's own best melee strike at whoever caused it (1.422), made as an opportunity attack
   // is: Retaliation, Giant Killer.
   if (action.strikesWith) {
     const strike = rulesetOpportunityAttack(taking);
@@ -11159,7 +11159,7 @@ function takeReaction(
     noteOutcome(ctx);
     return finish();
   }
-  // Whoever missed makes that attack again at the one its holder picked (1.421).
+  // Whoever missed makes that attack again at the one its holder picked (1.422).
   if (action.redirects && trigger.kind === "attacked") {
     const attacker = rulesetCombatant(ctx.state, trigger.sourceId);
     const attack = attacker?.actions.find((one) => one.id === trigger.optionId);
@@ -11174,10 +11174,10 @@ function takeReaction(
     noteOutcome(ctx);
     return finish();
   }
-  // Kept (1.625): Gloves of Missile Snaring.
+  // Kept (1.626): Gloves of Missile Snaring.
   if (action.keepsCaught && trigger.kind === "caught") keepCaught(ctx, taking, action.keepsCaught, trigger);
-  // Thrown back with the caught missile's own dice and kind of harm, its own flat part kept (1.415),
-  // or one die of its own where that is the better on average (1.419): Martial Arts' die.
+  // Thrown back with the caught missile's own dice and kind of harm, its own flat part kept (1.416),
+  // or one die of its own where that is the better on average (1.420): Martial Arts' die.
   const caughtDice = (() => {
     if (!action.throwsCaught || trigger.kind !== "caught") return undefined;
     const own = typeof action.throwsCaught === "object" ? action.throwsCaught.sides : 0;
@@ -11240,7 +11240,7 @@ function reachesHeld(
 }
 
 /** A check against `dc` plus a level (1.116), for what reaches past it: Counterspell above its own
- *  level, Dispel Magic past its own (1.423). Said as a counter event, made or not. */
+ *  level, Dispel Magic past its own (1.424). Said as a counter event, made or not. */
 function levelCheck(
   ctx: RulesetCombatContext,
   answering: RulesetCombatant,
@@ -11425,7 +11425,7 @@ function windowClosed(
   } else if (!over && trigger.kind === "between-turns") beginNextTurn(definition, combat, ctx);
   if (!over && trigger.kind === "turn-start") {
     const actor = rulesetCombatant(ctx.state, trigger.sourceId);
-    // The reactions at its start answered, the points bought at it are asked for next (1.804).
+    // The reactions at its start answered, the points bought at it are asked for next (1.805).
     if (actor && window.kind === "reaction" && openTurnStartSignature(ctx, actor)) return;
     if (actor) {
       completeDelayed(ctx, actor);
@@ -11663,8 +11663,8 @@ function takeLairAction(
 }
 
 /** The action with what it applies lasting `perStep` rounds more for each step of higher cost it is
- *  paid with (1.446), or its `bySteps` rounds (1.469), and held by no concentration from its
- *  `concentrationBelowStep` up (1.469); or as it is when nothing of it changes. */
+ *  paid with (1.447), or its `bySteps` rounds (1.470), and held by no concentration from its
+ *  `concentrationBelowStep` up (1.470); or as it is when nothing of it changes. */
 function durationsPaid(
   ctx: RulesetCombatContext,
   actor: RulesetCombatant,
@@ -11680,7 +11680,7 @@ function durationsPaid(
     : payWith
       ? rulesetCostSteps(ctx.definition, action, payWith, actor)
       : 0;
-  // Only what the steps paid put on (1.516): Magic Weapon's +2 from a 4th-level slot.
+  // Only what the steps paid put on (1.517): Magic Weapon's +2 from a 4th-level slot.
   if (picked) {
     action = {
       ...action,
@@ -11721,7 +11721,7 @@ function durationsPaid(
 
 /** Calls an action's creatures into the fight (1.325), as many as its count throws, and says so. */
 /** The open cells within `within.distance` of a caller, ones it sees with `seen`, nearest its foes
- *  first and then nearest itself (1.620): where a treant's Animate Trees wakes trees. Nothing off a
+ *  first and then nearest itself (1.621): where a treant's Animate Trees wakes trees. Nothing off a
  *  board. */
 function callCellsWithin(
   ctx: RulesetCombatContext,
@@ -11762,16 +11762,16 @@ function callCreatures(
   actor: RulesetCombatant,
   action: RulesetCombatAction,
   cells?: RulesetCombatCell[],
-  /** Steps of higher cost it was paid with (1.401): Conjure Animals at 5th level calls twice as many. */
+  /** Steps of higher cost it was paid with (1.402): Conjure Animals at 5th level calls twice as many. */
   steps = 0,
 ): void {
   if (!action.calls) return;
-  // Which call comes is rolled (1.558): a Bag of Tricks' beast, an Efreeti Bottle's efreeti, which may
+  // Which call comes is rolled (1.559): a Bag of Tricks' beast, an Efreeti Bottle's efreeti, which may
   // turn on whoever let it out, or grant wishes and leave nobody behind.
   let hostile = false;
   if (action.callsRolled) {
     const rows = action.callsRolled;
-    // An item's call that keeps its first roll and counts its uses (1.590): an Efreeti Bottle, the
+    // An item's call that keeps its first roll and counts its uses (1.591): an Efreeti Bottle, the
     // same effect at the next two openings and the efreeti's escape at the fourth.
     const item = action.itemUse?.item;
     const lasting =
@@ -11794,7 +11794,7 @@ function callCreatures(
       if (lasting && action.callsRollKept && row?.index !== undefined) lasting.kept = row.index;
     }
     if (lasting) lasting.ever = ever + 1;
-    // Spent for good once it comes (1.590): the efreeti that attacks, the wishes granted.
+    // Spent for good once it comes (1.591): the efreeti that attacks, the wishes granted.
     if (row?.spendsItem && item !== undefined) {
       const spent = lasting ?? { ...rulesetItemCallRoll(actor, item) };
       spent.spent = true;
@@ -11806,19 +11806,19 @@ function callCreatures(
   }
   if (!action.calls) return;
   const per = action.calls.timesPerSteps;
-  // And so many more for each step past the steps it needs (1.536): Animate Dead's two.
+  // And so many more for each step past the steps it needs (1.537): Animate Dead's two.
   const more = action.calls.perStep ? action.calls.perStep * Math.max(0, steps - (action.calls.fromStep ?? 0)) : 0;
   const count = rollAmount(ctx, action.calls.count).total * (per ? 1 + Math.floor(steps / per) : 1) + more;
-  // Set down only where it says (1.620): a treant wakes no tree it cannot see.
+  // Set down only where it says (1.621): a treant wakes no tree it cannot see.
   const only = !!action.calls.within && cells !== undefined;
   const ids = rulesetCallCreatures(ctx.definition, ctx.state, actor, action, count, ctx.roll, cells, only);
-  // Ignoring every order (1.664), on a d100 rolled as they come: the obsidian steed.
+  // Ignoring every order (1.665), on a d100 rolled as they come: the obsidian steed.
   const disobeys =
     !!action.calls.disobeys &&
     ids.length > 0 &&
     rulesetSheetWithin(ctx.definition, actor, action.calls.disobeys.when) &&
     ctx.roll(100) <= action.calls.disobeys.chance;
-  // Kept by what called them (1.393): its concentration, and its rounds.
+  // Kept by what called them (1.394): its concentration, and its rounds.
   for (const id of ids) {
     const called = rulesetCombatant(ctx.state, id);
     if (!called) continue;
@@ -11827,7 +11827,7 @@ function callCreatures(
     if (action.calls.endsWithCaller) called.calledEndsWithCaller = action.calls.endsWithCaller;
     if (action.calls.endsWhenSpent) called.calledEndsWhenSpent = true;
     if (action.calls.hostileOnBreak) called.calledHostileOnBreak = true;
-    // Spent with them, or waiting on their departure (1.611): a Ring of Djinni Summoning.
+    // Spent with them, or waiting on their departure (1.612): a Ring of Djinni Summoning.
     const item = action.itemUse?.item;
     const held = item !== undefined ? actor.sheet?.items?.[item]?.item : undefined;
     const departure =
@@ -11839,32 +11839,32 @@ function callCreatures(
         item,
         ...(action.calls.spendsItemOnDeath ? { spends: true as const } : {}),
         ...(departure ? { departure: true as const } : {}),
-        // The item itself, out of its holder's hands while it stands (1.612).
+        // The item itself, out of its holder's hands while it stands (1.613).
         ...(action.calls.becomesItem ? { becomes: true as const } : {}),
       };
-    // Under nobody's control (1.614): Pipes of the Sewers' swarms.
+    // Under nobody's control (1.615): Pipes of the Sewers' swarms.
     if (action.calls.wild) called.calledWild = { ...action.calls.wild };
     if (disobeys) {
       called.calledWild = {};
       called.calledDisobeys = true;
     }
-    // Held within so far of their caller (1.609): a treant's trees.
+    // Held within so far of their caller (1.610): a treant's trees.
     if (action.calls.leash)
       called.calledLeash = rulesetInCells(action.calls.leash, ctx.definition.combat?.distance?.perCell ?? 1);
-    // Commanded only within so far of their caller (1.619): the Staff of the Python's snake.
+    // Commanded only within so far of their caller (1.620): the Staff of the Python's snake.
     if (action.calls.commandedWithin)
       called.calledCommandWithin = rulesetInCells(
         action.calls.commandedWithin,
         ctx.definition.combat?.distance?.perCell ?? 1,
       );
-    // Commanded by their caller (1.557), the turn they come on free.
+    // Commanded by their caller (1.558), the turn they come on free.
     if (action.calls.commandedWith) called.calledCommand = { budget: action.calls.commandedWith, free: true };
-    // Or only once their caller has made one of its own actions (1.735): a chain devil's chains.
+    // Or only once their caller has made one of its own actions (1.736): a chain devil's chains.
     if (action.calls.commandedBy) called.calledCommand = { action: action.calls.commandedBy };
-    // An image, not a creature (1.567).
+    // An image, not a creature (1.568).
     if (action.calls.illusion) called.illusion = { seenBy: [] };
   }
-  // Built from their caller (1.557): Arcane Hand's health, attack bonus and modifier.
+  // Built from their caller (1.558): Arcane Hand's health, attack bonus and modifier.
   const from = action.calls.fromCaller;
   if (from) {
     const most = healthOf(ctx, actor).max;
@@ -11886,7 +11886,7 @@ function callCreatures(
     };
     const toHit = read(from.toHit);
     const adds = read(from.adds);
-    // Their attacks made as one of their caller's own (1.706): the solar's greatsword, for its sword.
+    // Their attacks made as one of their caller's own (1.707): the solar's greatsword, for its sword.
     const own = from.action ? actor.actions.find((one) => one.id === from.action) : undefined;
     for (const id of ids) {
       const called = rulesetCombatant(ctx.state, id);
@@ -11901,13 +11901,13 @@ function callCreatures(
       }
       for (const one of called.actions) {
         if (toHit !== undefined && one.toHit !== undefined) one.toHit = toHit;
-        // Not on one that keeps it off (1.585): Arcane Hand's Clenched Fist.
+        // Not on one that keeps it off (1.586): Arcane Hand's Clenched Fist.
         if (adds && one.damage && one.callerAdds !== false)
           one.damage = { ...one.damage, flat: one.damage.flat + adds };
       }
     }
   }
-  // More for each step the call was paid above its base (1.585): Arcane Hand's 2d8 a slot level.
+  // More for each step the call was paid above its base (1.586): Arcane Hand's 2d8 a slot level.
   if (steps > 0) {
     for (const id of ids) {
       const called = rulesetCombatant(ctx.state, id);
@@ -11953,7 +11953,7 @@ function callCreatures(
     ...(short ? { short } : {}),
   });
   departuresOf(ctx, actor);
-  // On their way, there after so many of their caller's turns (1.613): Children of the Night's.
+  // On their way, there after so many of their caller's turns (1.614): Children of the Night's.
   const arrivesIn = action.calls.arrivesIn ?? action.callsArriveIn;
   if (arrivesIn && ids.length) {
     const turns = rollAmount(ctx, arrivesIn).total;
@@ -11966,7 +11966,7 @@ function callCreatures(
       }
     }
   }
-  // Or unless their caller meets a requirement (1.610): a Horn of Valhalla's.
+  // Or unless their caller meets a requirement (1.611): a Horn of Valhalla's.
   const unless = action.calls.hostileUnless;
   if (unless && !hostile) {
     const met = actor.sheet
@@ -11985,7 +11985,7 @@ function callCreatures(
       : Number.NaN;
     if (!(met >= unless.atLeast)) hostile = true;
   }
-  // Come against whoever called them (1.558): the other side's from the start, never theirs.
+  // Come against whoever called them (1.559): the other side's from the start, never theirs.
   if (hostile && ids.length) {
     for (const id of ids) {
       const called = rulesetCombatant(ctx.state, id);
@@ -11998,7 +11998,7 @@ function callCreatures(
     }
     ctx.events.push({ type: "turnedOn", actorId: actor.id, ids });
   }
-  // What it puts on goes on them (1.478): Antipathy's condition on its object, the kind remembered.
+  // What it puts on goes on them (1.479): Antipathy's condition on its object, the kind remembered.
   if (action.appliesToCalled) {
     for (const id of ids) {
       const called = rulesetCombatant(ctx.state, id);
@@ -12014,7 +12014,7 @@ function callCreatures(
   }
 }
 
-/** Health regained as a turn starts (1.395): Regeneration, Survivor. Stopped since its last turn by
+/** Health regained as a turn starts (1.396): Regeneration, Survivor. Stopped since its last turn by
  *  the harm it names, it regains nothing this once; down at 0 and regaining nothing, it is out. */
 function regenerate(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   const regenerations = rulesetRegenerations(ctx.definition, ctx.combat, actor, ctx.state);
@@ -12029,7 +12029,7 @@ function regenerate(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
         if (one.notAtZero && health.value <= 0) continue;
         if (one.atMostHalf && health.value > Math.floor(health.max / 2)) continue;
         if (health.value >= health.max) continue;
-        // Not in sunlight or running water (1.554).
+        // Not in sunlight or running water (1.555).
         const notIn = one.notIn;
         if (
           notIn &&
@@ -12090,10 +12090,10 @@ function regenerate(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   }
 }
 
-/** What a creature does as it dies (1.539): its own burst around it, on whoever it catches, never
+/** What a creature does as it dies (1.540): its own burst around it, on whoever it catches, never
  *  held for an answer. A mephit's Death Burst, a balor's Death Throes. */
 function dies(ctx: RulesetCombatContext, dead: RulesetCombatant): void {
-  // The item that called it spent for good (1.611): a Ring of Djinni Summoning's djinni.
+  // The item that called it spent for good (1.612): a Ring of Djinni Summoning's djinni.
   const caller = dead.calledBy ? rulesetCombatant(ctx.state, dead.calledBy) : undefined;
   if (caller && dead.calledItem && !dead.dismissed) {
     const { item, spends } = dead.calledItem;
@@ -12127,7 +12127,7 @@ function dies(ctx: RulesetCombatContext, dead: RulesetCombatant): void {
   }
 }
 
-/** One row of a table rolled as something is used (1.558), each as likely as its weight: told, and
+/** One row of a table rolled as something is used (1.559), each as likely as its weight: told, and
  *  the row it came up. */
 function rollWeighted<Row extends { weight: number; label: string }>(
   ctx: RulesetCombatContext,
@@ -12144,8 +12144,8 @@ function rollWeighted<Row extends { weight: number; label: string }>(
   return row;
 }
 
-/** Those bound to their caller (1.445) leave once it is out: a demon's summoned kin. Some also once
- *  it is down or cannot act (1.732): a Feather Token's whip. */
+/** Those bound to their caller (1.446) leave once it is out: a demon's summoned kin. Some also once
+ *  it is down or cannot act (1.733): a Feather Token's whip. */
 function leaveWithCallers(ctx: RulesetCombatContext): void {
   for (const caller of ctx.state.combatants) {
     if (caller.defeated) {
@@ -12161,7 +12161,7 @@ function leaveWithCallers(ctx: RulesetCombatContext): void {
     )
       dismissCalled(ctx, caller, (one) => one.calledEndsWithCaller === "incapacitated", "caller");
   }
-  // Those that leave once every counted action of theirs is spent (1.741): a Dancing Sword after its
+  // Those that leave once every counted action of theirs is spent (1.742): a Dancing Sword after its
   // fourth attack, back in hand.
   for (const caller of ctx.state.combatants) {
     dismissCalled(
@@ -12174,7 +12174,7 @@ function leaveWithCallers(ctx: RulesetCombatContext): void {
       "spent",
     );
   }
-  // Areas that end as their maker is incapacitated (1.740): an ice devil's Wall of Ice.
+  // Areas that end as their maker is incapacitated (1.741): an ice devil's Wall of Ice.
   for (const maker of ctx.state.combatants) {
     const ending = (maker.zones ?? []).filter(
       (zone) => maker.actions.find((entry) => entry.id === zone.actionId)?.zone?.endsWithCaller === "incapacitated",
@@ -12190,7 +12190,7 @@ function leaveWithCallers(ctx: RulesetCombatContext): void {
       continue;
     for (const actionId of new Set(ending.map((zone) => zone.actionId))) endZones(ctx, maker, actionId);
   }
-  // And those held within so far of their caller (1.609), once it is farther: a treant's trees.
+  // And those held within so far of their caller (1.610), once it is farther: a treant's trees.
   for (const caller of ctx.state.combatants) {
     if (caller.defeated || !rulesetPositionOf(caller)) continue;
     dismissCalled(
@@ -12202,8 +12202,8 @@ function leaveWithCallers(ctx: RulesetCombatContext): void {
   }
 }
 
-/** Sends away those `caller` called that `which` picks (1.393): off the board and out of the fight. */
-/** Called creatures that turn on their caller's side as the concentration holding them breaks (1.537):
+/** Sends away those `caller` called that `which` picks (1.394): off the board and out of the fight. */
+/** Called creatures that turn on their caller's side as the concentration holding them breaks (1.538):
  *  on the other side now, no longer held by it nor theirs to dismiss or command, their rounds still
  *  running. */
 function turnCalled(ctx: RulesetCombatContext, caller: RulesetCombatant, actionId: string): void {
@@ -12237,7 +12237,7 @@ function dismissCalled(
   if (!going.length) return;
   for (const one of going) {
     if (one.concentrating) endConcentration(ctx, one, "spent");
-    // Sent away by its caller's choice, a kept call is gone from their sheet too (1.797).
+    // Sent away by its caller's choice, a kept call is gone from their sheet too (1.798).
     if (one.calledKept && reason === "dismissed") one.calledKept.gone = true;
     one.dismissed = true;
     one.defeated = true;
@@ -12248,7 +12248,7 @@ function dismissCalled(
   departuresOf(ctx, caller);
 }
 
-/** How long what each of `caller`'s items called still stays (1.611), in rounds, kept on the item
+/** How long what each of `caller`'s items called still stays (1.612), in rounds, kept on the item
  *  for a wait that starts at their departure: the longest stay of those still standing, or none
  *  once all have left. One without `rounds` stays to the fight's end. */
 function departuresOf(ctx: RulesetCombatContext, caller: RulesetCombatant): void {
@@ -12276,7 +12276,7 @@ function departuresOf(ctx: RulesetCombatContext, caller: RulesetCombatant): void
  * goes on as it was handed out once it closes. Anything that turn's start was asking waits behind
  * it. The fight as it was when nobody's lair is due.
  */
-/** The kinds a zone strikes (1.752), named as it was cast, as creature types and tags. */
+/** The kinds a zone strikes (1.753), named as it was cast, as creature types and tags. */
 function chosenKinds(definition: RulesetDefinition, kinds: readonly string[]): RulesetTargetIs {
   const types = definition.combat?.creatureTypes?.types ?? [];
   const typed = kinds.filter((id) => types.some((type) => type.id === id));
@@ -12284,7 +12284,7 @@ function chosenKinds(definition: RulesetDefinition, kinds: readonly string[]): R
   return { ...(typed.length ? { types: typed } : {}), ...(tagged.length ? { tags: tagged } : {}) };
 }
 
-/** An action reaching only the kinds named as it was cast (1.752), where it names them: named none,
+/** An action reaching only the kinds named as it was cast (1.753), where it names them: named none,
  *  it reaches whom its own `targetTypes` say. */
 function withChosenKinds<T extends RulesetCombatAction | undefined>(
   definition: RulesetDefinition,
@@ -12292,17 +12292,17 @@ function withChosenKinds<T extends RulesetCombatAction | undefined>(
   kinds: readonly string[] | undefined,
 ): T {
   if (!kinds?.length) return action;
-  // The one thing what it puts on wards off (1.757): Wish.
+  // The one thing what it puts on wards off (1.758): Wish.
   if (action?.wardPick && action.applies)
     return { ...action, applies: action.applies.map((entry) => ({ ...entry, wardsOff: kinds[0]! })) };
   if (!action?.kindsOf) return action;
   return { ...action, targetTypes: { ...(action.targetTypes ?? {}), is: chosenKinds(definition, kinds) } };
 }
 
-/** A zone somebody set up before a fight (1.461): one of their own entries with a zone, by id or
+/** A zone somebody set up before a fight (1.462): one of their own entries with a zone, by id or
  *  name, set down where they stand (`self`) or between them and their nearest foe (`between`, the
  *  default); for a glyph that stores another entry, that one too, by name. Or any other entry of
- *  theirs (1.464), done as the fight starts `on` whoever it names, by id or name: themselves when
+ *  theirs (1.465), done as the fight starts `on` whoever it names, by id or name: themselves when
  *  it names nobody. */
 export interface RulesetStandingZone {
   casterId: string;
@@ -12310,29 +12310,29 @@ export interface RulesetStandingZone {
   at?: "self" | "between";
   stores?: string;
   on?: string[];
-  /** The creature type a zone that chooses whom it works on works on (1.465), by id or name; or
-   *  that an entry that names one as it is used names (1.486): Antipathy/Sympathy on an object. */
+  /** The creature type a zone that chooses whom it works on works on (1.466), by id or name; or
+   *  that an entry that names one as it is used names (1.487): Antipathy/Sympathy on an object. */
   kind?: string;
-  /** The mode an entry is done in (1.486), by id or name: the creature Find Familiar calls. */
+  /** The mode an entry is done in (1.487), by id or name: the creature Find Familiar calls. */
   mode?: string;
-  /** Cast into something that stores it (1.523), by name: an item of theirs, or of the one `on`
+  /** Cast into something that stores it (1.524), by name: an item of theirs, or of the one `on`
    *  names first, or that creature itself. Paid for off their sheet at its own level. */
   into?: string;
-  /** Creature types, by id or name, left out of what a zone keeps out (1.665): Hallow's excluded
+  /** Creature types, by id or name, left out of what a zone keeps out (1.666): Hallow's excluded
    *  kinds. Each must be one it keeps out. */
   spares?: string[];
-  /** Whom a zone's inside works on, by a tag they carry (1.665): Hallow's "creatures that follow a
+  /** Whom a zone's inside works on, by a tag they carry (1.666): Hallow's "creatures that follow a
    *  specific deity or leader". */
   tag?: string;
-  /** The kinds a zone strikes (1.752), creature types or tags by id or name, as its caster named
+  /** The kinds a zone strikes (1.753), creature types or tags by id or name, as its caster named
    *  them: Forbiddance's. */
   kinds?: string[];
-  /** Kept on its caster's sheet from a use outside a fight (1.797), by the entry's name there: paid
+  /** Kept on its caster's sheet from a use outside a fight (1.798), by the entry's name there: paid
    *  for then, so not again, and what it calls is marked as kept for the fight's write-back. */
   kept?: string;
 }
 
-/** Where a zone set up before a fight is set down (1.461), on a board. */
+/** Where a zone set up before a fight is set down (1.462), on a board. */
 function standingCell(
   state: RulesetEncounterState,
   caster: RulesetCombatant,
@@ -12401,7 +12401,7 @@ function standingCell(
 }
 
 /**
- * What stands as a fight starts (Capability API 1.461): each zone its caster set up before it, paid
+ * What stands as a fight starts (Capability API 1.462): each zone its caster set up before it, paid
  * for now off their sheet and put down as though just cast, held by their concentration where it
  * needs it. A hidden one is put down unsaid, so its foes learn of it only by finding it. What cannot
  * be set up (no such entry, nothing to pay with, a stored entry it cannot hold) is left out and said.
@@ -12416,7 +12416,7 @@ export function rulesetStandingAtStart(
   const { ctx, finish } = begin(definition, combat, state, rulesetCombatRoller(state.seed, state.cursor));
   const skipped: string[] = [];
   const pay = (caster: RulesetCombatant, action: RulesetCombatAction, kept?: string): boolean => {
-    // Paid for when it was used outside the fight (1.797).
+    // Paid for when it was used outside the fight (1.798).
     if (kept !== undefined) return true;
     const price = planRulesetCombatCost(definition, caster, action);
     if (!price) return false;
@@ -12447,7 +12447,7 @@ export function rulesetStandingAtStart(
         .filter((ref): ref is string => typeof ref === "string"),
     );
     const aliases = rows.filter((row) => refs.has(rulesetRowEntryRef(row) as string)).flatMap(cells);
-    // The mode it is done in (1.486), by id or name, or the kind it names.
+    // The mode it is done in (1.487), by id or name, or the kind it names.
     const lower = (text: string) => text.trim().toLowerCase();
     // Or by the creature it calls or the form it takes, without its count or its kind (class pass
     // 2026-10-24: "Imp" for "Imp ×1", "Warhorse" for "Warhorse, Celestial"), the first such way.
@@ -12459,7 +12459,7 @@ export function rulesetStandingAtStart(
         .trim();
     const action =
       caster.actions.find((entry) => !!entry.zone && named(entry, one.entry)) ??
-      // Any other entry of theirs (1.464), done as the fight starts.
+      // Any other entry of theirs (1.465), done as the fight starts.
       caster.actions.find((entry) => named(entry, one.entry)) ??
       caster.actions.find((entry) => aliases.some((alias) => named(entry, alias))) ??
       // What their sheet keeps, through any entry of theirs that calls it or takes its form (cloud
@@ -12478,7 +12478,7 @@ export function rulesetStandingAtStart(
     }
     const picked = one.mode
       ? (action.modes?.find((entry) => entry.id === one.mode || lower(entry.label) === lower(one.mode!)) ??
-        // Its creature and type without its count (1.797): "Owl, Fey" for "Owl ×1, Fey".
+        // Its creature and type without its count (1.798): "Owl, Fey" for "Owl ×1, Fey".
         action.modes?.find((entry) => lower(entry.label).replace(/\s*×\s*[^,\s]+/, "") === lower(one.mode!)) ??
         action.modes?.find((entry) =>
           [entry.label, entry.call?.name, entry.form?.name].some(
@@ -12490,7 +12490,7 @@ export function rulesetStandingAtStart(
       skipped.push(`${caster.name}'s ${action.label} has no "${one.mode}", so it is not done.`);
       continue;
     }
-    // Stored before the fight (1.523): in an item, or a creature that stores, as it is named.
+    // Stored before the fight (1.524): in an item, or a creature that stores, as it is named.
     if (one.into) {
       const holder = one.on?.[0]
         ? ctx.state.combatants.find((other) => other.id === one.on![0] || lower(other.name) === lower(one.on![0]!))
@@ -12585,13 +12585,13 @@ export function rulesetStandingAtStart(
       }
       const there = new Set(ctx.state.combatants.map((other) => other.id));
       resolveAction(ctx, caster, done, targets);
-      // What it called is the one their sheet keeps (1.797), told apart for the write-back.
+      // What it called is the one their sheet keeps (1.798), told apart for the write-back.
       if (one.kept !== undefined)
         for (const other of ctx.state.combatants)
           if (!there.has(other.id) && other.calledBy === caster.id) other.calledKept = { entry: one.kept };
       continue;
     }
-    // The kind it works on (1.465), as a mode.
+    // The kind it works on (1.466), as a mode.
     const kindMode = one.kind
       ? action.modes?.find(
           (entry) =>
@@ -12602,7 +12602,7 @@ export function rulesetStandingAtStart(
     if (one.kind && !kindMode) {
       skipped.push(`${caster.name}'s ${action.label} cannot be set on "${one.kind}", so it works on everybody.`);
     }
-    // A spell glyph's stored entry (1.453), as a mode.
+    // A spell glyph's stored entry (1.454), as a mode.
     const mode =
       picked ??
       kindMode ??
@@ -12626,14 +12626,14 @@ export function rulesetStandingAtStart(
       skipped.push(`${caster.name} has nothing left to pay for ${action.label} with, so it does not stand.`);
       continue;
     }
-    // The kinds it strikes, as its caster named them (1.752): its own when none were.
+    // The kinds it strikes, as its caster named them (1.753): its own when none were.
     const kinds = (one.kinds ?? []).flatMap((name) => {
       const kind = action.kindsOf?.find((entry) => entry.id === name || lower(entry.label) === lower(name));
       if (kind) return [kind.id];
       skipped.push(`${caster.name}'s ${action.label} cannot be set against "${name}", so it is not.`);
       return [];
     });
-    // Its damage type (1.752): the first when none was named, and said.
+    // Its damage type (1.753): the first when none was named, and said.
     const typed = mode ?? (action.damageTypeChoice ? action.modes?.find((entry) => entry.damageType) : undefined);
     if (typed && !mode) {
       skipped.push(`${caster.name}'s ${action.label} was given no damage type, so it deals ${lower(typed.label)}.`);
@@ -12655,7 +12655,7 @@ export function rulesetStandingAtStart(
       caster.flags.freshZones = caster.flags.freshZones.filter((id) => id !== action.id);
       if (caster.flags.freshZones.length === 0) delete caster.flags.freshZones;
     }
-    // What its caster left out of what it keeps out, and whom its inside works on by a tag (1.665).
+    // What its caster left out of what it keeps out, and whom its inside works on by a tag (1.666).
     const placed = [...(caster.zones ?? [])].reverse().find((zone) => zone.actionId === action.id);
     if (placed && one.spares?.length) {
       const keeps = action.zone?.keepsOut?.is.types ?? [];
@@ -13008,14 +13008,14 @@ function resolveFly(ctx: RulesetCombatContext, actor: RulesetCombatant, option: 
 function groundFlier(ctx: RulesetCombatContext, flier: RulesetCombatant): void {
   const grid = ctx.state.board?.grid;
   if (!grid || flier.hover || !(flier.airborne || rulesetAirborne(grid, flier))) return;
-  // Kept up by a condition put on as it was lifted (1.564), before its holder's speeds are synced:
+  // Kept up by a condition put on as it was lifted (1.565), before its holder's speeds are synced:
   // Telekinesis.
   if (rulesetActiveConditions(ctx.definition, ctx.combat, flier, ctx.state).some((entry) => entry.hover)) return;
   const grounded =
     !rulesetCombatStanding(flier) ||
     !!rulesetProneCondition(ctx.definition, ctx.combat, flier) ||
     rulesetSpeedZero(ctx.definition, ctx.combat, flier, ctx.state) ||
-    // Its flight gone with what gave it (1.394).
+    // Its flight gone with what gave it (1.395).
     !flier.speeds?.fly;
   if (!grounded) return;
   // Out of the air (1.354); from up above the ground, a fall too.
@@ -13071,13 +13071,13 @@ function zonesAround(ctx: RulesetCombatContext): Map<RulesetCombatZone, ZoneOccu
       zone: new Set(rulesetZoneOccupants(ctx.state, caster, zone, action)),
       // A wall's side counts apart (1.177): walking onto it catches as the side says.
       side: new Set(rulesetZoneSideOccupants(ctx.state, caster, zone, action)),
-      // Who stands within a layered wall's flash (1.489), for whoever moves near it.
+      // Who stands within a layered wall's flash (1.490), for whoever moves near it.
       near: new Set(
         action.zone?.layers?.flash?.triggers.includes("enter")
           ? ctx.state.combatants.filter((one) => flashNear(ctx, caster, zone, action, one)).map((one) => one.id)
           : [],
       ),
-      // Who it keeps out stands in it already (1.594), for a zone that ends on being carried over one.
+      // Who it keeps out stands in it already (1.595), for a zone that ends on being carried over one.
       kept: new Set(action.zone?.keepsOut?.endsOnSweep ? sweptKept(ctx, caster, zone, action) : []),
     });
   }
@@ -13092,7 +13092,7 @@ interface ZoneOccupancy {
   kept: Set<string>;
 }
 
-/** Those a zone keeps out standing in it now (1.594), but whoever it is around. */
+/** Those a zone keeps out standing in it now (1.595), but whoever it is around. */
 function sweptKept(
   ctx: RulesetCombatContext,
   caster: RulesetCombatant,
@@ -13120,13 +13120,13 @@ function zonesEntered(
   ctx: RulesetCombatContext,
   mover: RulesetCombatant,
   before: Map<RulesetCombatZone, ZoneOccupancy>,
-  /** Walking carefully (1.688): ground that spares slow walkers lets them by. */
+  /** Walking carefully (1.689): ground that spares slow walkers lets them by. */
   careful = false,
 ): void {
   for (const { caster, zone, action } of rulesetStandingZones(ctx.state)) {
     const was = before.get(zone);
     if (!was) continue;
-    // Carried over somebody it keeps out, it ends (1.594): Antilife Shell.
+    // Carried over somebody it keeps out, it ends (1.595): Antilife Shell.
     if (
       action.zone?.keepsOut?.endsOnSweep &&
       (zone.on ?? (zone.anchor === "caster" ? caster.id : undefined)) === mover.id &&
@@ -13136,7 +13136,7 @@ function zonesEntered(
       spendZone(ctx, caster, zone);
       continue;
     }
-    // Moving near a layered wall (1.489): its flash.
+    // Moving near a layered wall (1.490): its flash.
     if (
       action.zone?.layers?.flash?.triggers.includes("enter") &&
       !was.near.has(mover.id) &&
@@ -13144,7 +13144,7 @@ function zonesEntered(
     ) {
       flashOne(ctx, caster, zone, action, mover);
     }
-    // Out of it again, what they shrugged off works on them once more (1.459); in it anew, its save.
+    // Out of it again, what they shrugged off works on them once more (1.460); in it anew, its save.
     const insideNow = rulesetZoneHoldsOne(rulesetZoneCells(ctx.state, caster, zone), mover);
     if (zone.shrugged?.includes(mover.id) && !insideNow) {
       zone.shrugged = zone.shrugged.filter((id) => id !== mover.id);
@@ -13153,7 +13153,7 @@ function zonesEntered(
     if (insideNow && !was.zone.has(mover.id) && caster.zones?.includes(zone)) {
       insideSave(ctx, caster, zone, action, mover);
     }
-    // Stepping onto hallowed ground (1.458): what those it keeps out put on them comes off.
+    // Stepping onto hallowed ground (1.459): what those it keeps out put on them comes off.
     const kept = action.zone?.keepsOut;
     if (
       kept?.frees &&
@@ -13168,7 +13168,7 @@ function zonesEntered(
         }
       }
     }
-    // Somebody walking into a glyph (1.450): it goes off, with no save of their own.
+    // Somebody walking into a glyph (1.451): it goes off, with no save of their own.
     const glyph = action.zone?.detonates;
     if (
       glyph?.entered &&
@@ -13197,9 +13197,9 @@ function zonesEntered(
       if (was.zone.has(id)) continue;
       // Only the mover walks in, and only the mover's own zone moves onto anybody.
       if (id !== mover.id && caster.id !== mover.id) continue;
-      // Carried onto somebody, a zone that says so leaves them be (1.763): Spirit Guardians.
+      // Carried onto somebody, a zone that says so leaves them be (1.764): Spirit Guardians.
       if (id !== mover.id && action.zone?.enterOnlyByMoving) continue;
-      // At half speed over caltrops (1.688), let by.
+      // At half speed over caltrops (1.689), let by.
       if (careful && id === mover.id && action.zone?.spareSlowWalkers) continue;
       const target = rulesetCombatant(ctx.state, id);
       if (target) zoneStrike(ctx, caster, zone, target, "enter", "zone", id !== mover.id);
@@ -13215,9 +13215,9 @@ function resolveMove(
   ctx: RulesetCombatContext,
   actor: RulesetCombatant,
   destination: { path: RulesetCombatCell[] },
-  /** A jump (1.498): a cell of movement a cell, touching nothing on the way but where it lands. */
+  /** A jump (1.499): a cell of movement a cell, touching nothing on the way but where it lands. */
   jump = false,
-  /** Walked carefully (1.688). */
+  /** Walked carefully (1.689). */
   careful = false,
 ) {
   walkOn(ctx, actor, {
@@ -13252,9 +13252,9 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
   const walked = [...resume.walked];
   const asked = new Set(resume.asked);
   const readyAsked = new Set(resume.readyAsked ?? []);
-  // Whom they drag as they go (1.496), as it stood when the walk began or picked up again.
+  // Whom they drag as they go (1.497), as it stood when the walk began or picked up again.
   const draggingNow = rulesetDragging(ctx.definition, ctx.state, actor);
-  // Whoever hangs on to them (1.675) comes along as a dragged one does.
+  // Whoever hangs on to them (1.676) comes along as a dragged one does.
   const clinging = attachedClingers(ctx, actor);
   // Only when somebody has readied something for an opponent coming near (1.288).
   const readying =
@@ -13267,7 +13267,7 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
   // Whoever came along on the way, for the walk's own event (re-test 14): a crocodile's prey.
   const broughtAlong: string[] = [];
   const legendary = resume.legendary;
-  // An engulf's walk (1.402): whoever it has entered so far.
+  // An engulf's walk (1.403): whoever it has entered so far.
   const engulfAction = resume.engulf ? actor.actions.find((one) => one.id === resume.engulf!.actionId) : undefined;
   const engulfing =
     resume.engulf && engulfAction?.engulf
@@ -13343,7 +13343,7 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     // path came from that menu, so a cliff is never on it; a saved one that has one costs a plain step.
     // With other ways of moving (1.113) the same choice the menu made, on what this walk has spent.
     // Ground a lasting area makes hard going costs what the menu priced it at (1.173).
-    // Through solid ground, and into another's space, as the menu priced them (1.494).
+    // Through solid ground, and into another's space, as the menu priced them (1.495).
     if (resume.jump) spent += 1;
     else if (grid) {
       const through = rulesetThroughSolid(grid, cell.x, cell.y, actor);
@@ -13360,9 +13360,9 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
         actor,
       );
       const crowdedStep = rulesetCrowdedStep(ctx.definition, ctx.state, actor, cell, plain, slowedStep);
-      // Squeezed between walls (1.680), as the menu priced it.
+      // Squeezed between walls (1.681), as the menu priced it.
       const squeeze = rulesetSqueezeAt(ctx.definition, ctx.state, actor, cell);
-      // Dragging somebody they hold (1.496), as the menu priced it.
+      // Dragging somebody they hold (1.497), as the menu priced it.
       spent += (draggingNow.halves ? crowdedStep * 2 : crowdedStep) * (squeeze?.costs ?? 1);
     } else spent += 1;
     walked.push(cell);
@@ -13373,7 +13373,7 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
       actor.trail.push({ ...cell });
     }
     // Whoever they carry shut in a sphere (1.314) comes along, into the cell they left, and so does
-    // whoever they drag (1.496).
+    // whoever they drag (1.497).
     for (const carried of ctx.state.combatants) {
       const sealed = carried.carriedBy === actor.id && rulesetSealed(ctx.definition, carried, ctx.state);
       if (!sealed && !draggingNow.ids.includes(carried.id) && !clinging.includes(carried.id)) continue;
@@ -13384,15 +13384,15 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     at = cell;
     actor.x = cell.x;
     actor.y = cell.y;
-    // Harmed walking into some ground (1.707): a fire elemental into water.
+    // Harmed walking into some ground (1.708): a fire elemental into water.
     harmedEntering(ctx, actor);
-    // And whoever they hold inside (1.402), within them still, and whoever rides them (1.495).
+    // And whoever they hold inside (1.403), within them still, and whoever rides them (1.496).
     for (const inside of ctx.state.combatants) {
       if (inside.insideOf === actor.id || inside.mountedOn === actor.id) placeInside(actor, inside);
     }
-    // Into a creature's space (1.503): what its holder's entering does to them, once a turn each.
+    // Into a creature's space (1.504): what its holder's entering does to them, once a turn each.
     if (!legendary?.untouchable && (!resume.jump || rest.length === 0)) entersSpaces(ctx, actor);
-    // Whoever an engulf walks into (1.402), taken in once the walk ends.
+    // Whoever an engulf walks into (1.403), taken in once the walk ends.
     if (engulfing) {
       const covered = new Set(rulesetFootprint(actor).map((one) => `${one.x},${one.y}`));
       for (const one of ctx.state.combatants) {
@@ -13453,12 +13453,12 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     if (actor.altitude !== undefined && !rulesetAirborne(grid, actor)) delete actor.altitude;
     // Into a zone, or a zone carried onto somebody (1.172), and ground that hurts to cross (1.173).
     // Nothing harms one that nothing can (1.283).
-    // A jump touches the ground only where it lands (1.498).
+    // A jump touches the ground only where it lands (1.499).
     if (!legendary?.untouchable && (!resume.jump || rest.length === 0)) {
       zonesEntered(ctx, actor, before, !!resume.careful);
       zoneGround(ctx, actor, cell);
     }
-    // Stopped by what they walked into (1.688): caltrops.
+    // Stopped by what they walked into (1.689): caltrops.
     if (ctx.walkHalted === actor.id) {
       halted = true;
       stopped = true;
@@ -13472,7 +13472,7 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     actor.movementLeft = 0;
   }
   settleSqueeze(ctx, actor);
-  // Stopped on water they could only run across (1.431): it does not hold them up, and they come out
+  // Stopped on water they could only run across (1.432): it does not hold them up, and they come out
   // on the nearest open ground.
   let ashore: RulesetCombatCell | null = null;
   if (grid && rulesetCombatStanding(actor) && rulesetPositionOf(actor) && rulesetOnlyCrosses(grid, at, actor)) {
@@ -13511,7 +13511,7 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
       ...(broughtAlong.length ? { dragged: broughtAlong } : {}),
     });
   if (ashore) ctx.events.push({ type: "ashore", actorId: actor.id, to: { ...ashore } });
-  // Landed on hard going (1.498): the check, or its condition. 5e's DC 10 Acrobatics, or prone.
+  // Landed on hard going (1.499): the check, or its condition. 5e's DC 10 Acrobatics, or prone.
   const landing = ctx.combat.jumping?.hardLanding;
   if (
     resume.jump &&
@@ -13524,12 +13524,12 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
   ) {
     applyConditionId(ctx, actor, landing.applies, { condition: landing.applies, duration: "instant" }, {});
   }
-  // Landed from a leap (1.724), all the way: whoever stands there.
+  // Landed from a leap (1.725), all the way: whoever stands there.
   const leapAction = resume.leap ? actor.actions.find((one) => one.id === resume.leap!.actionId) : undefined;
   if (leapAction?.leapsOnto && !stopped && rest.length === 0 && rulesetCombatStanding(actor)) {
     leapLands(ctx, actor, leapAction);
   }
-  // Whoever an engulf walked into (1.402), once it has stopped.
+  // Whoever an engulf walked into (1.403), once it has stopped.
   if (engulfing && engulfAction && rulesetCombatStanding(actor)) {
     engulfLands(
       ctx,
@@ -13634,7 +13634,7 @@ function openAimed(
   const targets = resume.targetIds
     .map((id) => rulesetCombatant(ctx.state, id))
     .filter((target): target is RulesetCombatant => !!target && !target.defeated);
-  // The kind of attack it is (1.508), for an answer only to ranged ones.
+  // The kind of attack it is (1.509), for an answer only to ranged ones.
   const aimed = actor.actions.find((one) => one.id === resume.optionId);
   const blow =
     aimed && aimed.toHit !== undefined && targets[0] ? rulesetBlowKind(ctx.state, actor, targets[0], aimed) : undefined;
@@ -13696,7 +13696,7 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
 function resumeActionFrom(ctx: RulesetCombatContext, resume: RulesetActionResume): void {
   const actor = rulesetCombatant(ctx.state, resume.actorId);
   const found = actor?.actions.find((entry) => entry.id === resume.optionId);
-  // A fake does what it truly does (1.79), and a weapon suppressed is a plain one (1.520): made from
+  // A fake does what it truly does (1.79), and a weapon suppressed is a plain one (1.521): made from
   // inside an antimagic zone, or at somebody inside one.
   const asUsed = found && rulesetActionAsUsed(found);
   const hushed =
@@ -13728,9 +13728,9 @@ function resumeActionFrom(ctx: RulesetCombatContext, resume: RulesetActionResume
   }
   // A later strike keeps the cast's amount and payment level, but does not start concentration again.
   if (resume.summon) action = { ...action, concentration: false };
-  // Lasting longer for each step of higher cost paid (1.446): Primeval Awareness.
+  // Lasting longer for each step of higher cost paid (1.447): Primeval Awareness.
   action = durationsPaid(ctx, actor, action, resume.payWith);
-  // One of what it puts on, with none picked: the first (1.447).
+  // One of what it puts on, with none picked: the first (1.448).
   if (action.appliesOneOf && action.applies?.length) action = { ...action, applies: [action.applies[0]!] };
   // A saved fight can come back through an import, so only a real cell of this board is taken.
   const grid = ctx.state.board?.grid;
@@ -13773,7 +13773,7 @@ function resumeActionFrom(ctx: RulesetCombatContext, resume: RulesetActionResume
               !!target &&
               (!target.defeated ||
                 rulesetCanRevive(ctx.state, action, target) ||
-                // A corpse to raise from (1.553).
+                // A corpse to raise from (1.554).
                 (!!action.calls?.atCorpse &&
                   rulesetRaisableCorpse(ctx.definition, ctx.state, action.calls.atCorpse, target))),
           );
@@ -13832,7 +13832,7 @@ function resumeActionFrom(ctx: RulesetCombatContext, resume: RulesetActionResume
             ]
           : [];
       });
-  // Layered walls it reaches (1.489), standing in as props do, never broken by it.
+  // Layered walls it reaches (1.490), standing in as props do, never broken by it.
   const walls = !reaches
     ? []
     : rulesetStandingLayers(ctx.state).flatMap((wall) => {
@@ -13941,7 +13941,7 @@ function resumeActionFrom(ctx: RulesetCombatContext, resume: RulesetActionResume
       }),
     );
   }
-  // An entry a layered wall's layer names, reaching it (1.489): Daylight on the indigo.
+  // An entry a layered wall's layer names, reaching it (1.490): Daylight on the indigo.
   if (grid && at && action.area && action.entry && !resume.held && rulesetStandingLayers(ctx.state).length > 0) {
     wearLayersAt(
       ctx,
@@ -14018,7 +14018,7 @@ function harmedBy(
   else delete ctx.reaping;
   let hold: RulesetHitHold | null;
   delete ctx.caught;
-  // Whoever it attacked before it was held (1.421), and whoever it attacks now.
+  // Whoever it attacked before it was held (1.422), and whoever it attacks now.
   if (resume.held?.attacked) ctx.attacked = structuredClone(resume.held.attacked);
   else delete ctx.attacked;
   try {
@@ -14060,7 +14060,7 @@ function harmedBy(
       [...hurt].map((id) => rulesetCombatant(ctx.state, id)).filter((one): one is RulesetCombatant => !!one),
       action.summons || action.zone ? { ...resume, resolved: true } : undefined,
     );
-  // A missile caught (1.415), asked of whoever caught it once nobody hurt had anything to answer.
+  // A missile caught (1.416), asked of whoever caught it once nobody hurt had anything to answer.
   // Read fresh: resolve() above records it, which the narrowing from the delete before cannot see.
   const caught = ctx.caught as RulesetCombatContext["caught"];
   delete ctx.caught;
@@ -14084,7 +14084,7 @@ function harmedBy(
       caught.targetIds.map((id) => rulesetCombatant(ctx.state, id)).filter((one): one is RulesetCombatant => !!one),
       action.summons || action.zone ? { ...resume, resolved: true } : undefined,
     );
-  // An attack over, hit or missed (1.421), asked of whoever it was made at once nothing else was.
+  // An attack over, hit or missed (1.422), asked of whoever it was made at once nothing else was.
   const attacked = ctx.attacked as RulesetCombatContext["attacked"];
   delete ctx.attacked;
   const attacking =
@@ -14261,7 +14261,7 @@ function opportunityStrike(
   const strike = rulesetOpportunityAttack(striker);
   if (!strike) return false;
   ctx.events.push({ type: "opportunity", actorId: striker.id, targetId: mover.id, label: strike.label, budget });
-  // A spare head's first (1.549), keeping its own reaction for anything else.
+  // A spare head's first (1.550), keeping its own reaction for anything else.
   if (striker.heads?.spare) striker.heads.spare -= 1;
   else spendBudget(ctx, striker, budget);
   countAttack(ctx, striker);
@@ -14349,7 +14349,7 @@ function resolveStandard(
   else if (action === "help" && target) {
     target.flags.helped = true;
     delete target.flags.helpedAgainst;
-    // Against whoever is beside its helper, where the ruleset says so (1.770).
+    // Against whoever is beside its helper, where the ruleset says so (1.771).
     if (ctx.combat.standardEffects?.help?.beside && rulesetPositionOf(actor)) {
       target.flags.helpedAgainst = ctx.state.combatants
         .filter(
@@ -14369,7 +14369,7 @@ function resolveStandard(
   });
 }
 
-/** Help spent by an attack it counted for (1.770: only one at whom it was given). */
+/** Help spent by an attack it counted for (1.771: only one at whom it was given). */
 function spendHelp(actor: RulesetCombatant, target: RulesetCombatant): void {
   if (!rulesetHelpCounts(actor, target)) return;
   actor.flags.helped = false;
@@ -14377,7 +14377,7 @@ function spendHelp(actor: RulesetCombatant, target: RulesetCombatant): void {
 }
 
 /**
- * Disarming a trap (1.668): its check against its difficulty. Made, the trap is gone without going
+ * Disarming a trap (1.669): its check against its difficulty. Made, the trap is gone without going
  * off; failed by its `tripsOnFailBy` or more, it goes off, at whoever tried where entering it sets it
  * off.
  */
@@ -14429,7 +14429,7 @@ function hidingCheck(
 }
 
 /**
- * Looking for hidden zones as a Search is made (1.454): each check they are found with thrown once,
+ * Looking for hidden zones as a Search is made (1.455): each check they are found with thrown once,
  * and every one of its foes' its total meets the entry's own save difficulty for is found by the
  * searcher's side.
  */
@@ -14729,7 +14729,7 @@ function resolveSequence(
   styleId?: string,
 ): RulesetHitHold | null {
   const byId = new Map(actor.actions.map((entry) => [entry.id, entry]));
-  // Each strike, with the place of the step it is made for (1.642). A rolled step holds as many
+  // Each strike, with the place of the step it is made for (1.643). A rolled step holds as many
   // places as its dice may come to, so targets are handed out the same however they fall, and only
   // the ones they came to are `live`. A step made after another's hit takes no target of its own.
   const parts: Array<{
@@ -14746,9 +14746,9 @@ function resolveSequence(
     const named = byId.get(step.actionId);
     // A part that names another sequence is refused at import, so this is a hand-written block
     // pointing at nothing, and it costs that part rather than the turn. One left out in the mode
-    // the sequence is made in (1.642) does not happen either.
+    // the sequence is made in (1.643) does not happen either.
     if (!named || named.sequence || step.skipped) return;
-    // Only up in the air (1.786): a wyvern's claws.
+    // Only up in the air (1.787): a wyvern's claws.
     if (named.whileFlying && !rulesetUpInTheAir(ctx.state, actor)) return;
     let strikes = rulesetStepTimes(actor, step);
     let places = strikes;
@@ -14780,9 +14780,9 @@ function resolveSequence(
   const wanted = parts.reduce((total, one) => total + (one.after === undefined ? one.part.targets.count : 0), 0);
   const enough = targets.length >= wanted;
   let cursor = 0;
-  // The one target every attack in it has hit so far (1.404), false once one has not.
+  // The one target every attack in it has hit so far (1.405), false once one has not.
   let allHit: string | false | undefined = action.allHit ? held?.allHit : undefined;
-  // The one target every attack of each step hit (1.642), false once one of it has not.
+  // The one target every attack of each step hit (1.643), false once one of it has not.
   const hits: Record<string, string | false> = { ...held?.stepHits };
   const tracked = () => (tracks ? { stepHits: { ...hits }, stepRolls: { ...rolls } } : {});
   // Who was down already when it began: whoever chose them chose that.
@@ -14810,13 +14810,13 @@ function resolveSequence(
   };
   for (const [index, { part, step, live, after, rolled }] of parts.entries()) {
     const count = after === undefined ? part.targets.count : 0;
-    // After an earlier step hit (1.642): at the one it hit, and only then.
+    // After an earlier step hit (1.643): at the one it hit, and only then.
     const followed = after === undefined ? undefined : hits[after];
     const offered =
       after === undefined
         ? enough
           ? targets.slice(cursor, cursor + count)
-          : // A rolled step's strikes go round the targets given (1.642), as its dice may come to
+          : // A rolled step's strikes go round the targets given (1.643), as its dice may come to
             // more than anybody could pick ahead.
             rolled !== undefined && count === 1 && targets.length > 1
             ? [targets[rolled % targets.length]!]
@@ -14844,7 +14844,7 @@ function resolveSequence(
     if (held && index < (held.part ?? 0)) continue;
     const resuming = held && index === (held.part ?? 0) ? held : undefined;
     if (!resuming) {
-      // A strike its dice did not come to is not made at all (1.642).
+      // A strike its dice did not come to is not made at all (1.643).
       if (!live) continue;
       // One budget for the whole sequence, and each part still keeps its own books: a part that
       // counts its uses spends one, a part that recharges is spent until its dice bring it back, and
@@ -14880,7 +14880,7 @@ function resolveSequence(
   return null;
 }
 
-/** Whether one attack part of a sequence hit `so far`'s target, or the first it was made at (1.404):
+/** Whether one attack part of a sequence hit `so far`'s target, or the first it was made at (1.405):
  *  its target, or false where it missed, hit another, or never came round. */
 function partHit(
   events: readonly RulesetCombatEvent[],
@@ -14916,7 +14916,7 @@ function partHit(
   return target ?? false;
 }
 
-/** A sequence whose every attack hit the one target (1.404): what it puts on them, then the action it
+/** A sequence whose every attack hit the one target (1.405): what it puts on them, then the action it
  *  uses on them, while they are what it asks. A shambling mound's grapple, and its Engulf. */
 function allHitLands(
   ctx: RulesetCombatContext,
@@ -14998,13 +14998,13 @@ function firingRider(
   action: RulesetCombatAction,
   target: RulesetCombatant,
   mode: RulesetCombatRollMode,
-  /** Whether the target was hurt before this blow landed (1.392). */
+  /** Whether the target was hurt before this blow landed (1.393). */
   hurt: boolean,
 ): RulesetCombatRider | null {
   const spent = actor.ridersSpent ?? [];
   for (const rider of actor.riders ?? []) {
     if (rider.on !== "hit" || spent.includes(rider.id)) continue;
-    // Once on each of its holder's own turns (1.392), and never on anybody else's.
+    // Once on each of its holder's own turns (1.393), and never on anybody else's.
     if (rider.oncePer === "own-turn" && !rulesetOnOwnTurn(ctx.state, actor)) continue;
     if (rider.actions && !rider.actions.includes(action.id)) continue;
     // Any-of: one of the things it asked for being true is enough.
@@ -15043,7 +15043,7 @@ function holderActed(
   /** What they held before it: one it put on them itself (Invisibility cast on oneself) stays. */
   before?: ReadonlySet<RulesetTrackedCondition>,
   /** Whom it was aimed at, and where in the step's events it began, for a cast that ends it only
-   *  when it reaches a foe (1.424). Unknown, a cast counts as reaching one. */
+   *  when it reaches a foe (1.425). Unknown, a cast counts as reaching one. */
   reached?: { targets: readonly RulesetCombatant[]; from: number },
 ): void {
   if (ctx.byZone) return;
@@ -15064,7 +15064,7 @@ function holderActed(
   for (const entry of ended) {
     if (actor.tracked.includes(entry)) removeCondition(ctx, actor, entry.condition, "spent");
   }
-  // And what its rule says attacking or casting ends, however it was put on (1.425): Tranquility,
+  // And what its rule says attacking or casting ends, however it was put on (1.426): Tranquility,
   // held from a rest.
   for (const condition of rulesetCombatConditions(ctx.definition, actor)) {
     const ends = ctx.combat.conditions?.find((rule) => rule.condition === condition)?.endsWhenHolder;
@@ -15081,7 +15081,7 @@ function holderActed(
   }
 }
 
-/** Whether a cast reached one of its maker's foes (1.424): aimed at one, or one it harmed, put a
+/** Whether a cast reached one of its maker's foes (1.425): aimed at one, or one it harmed, put a
  *  condition on or made save as its area or its harm caught them. */
 function castReachesFoe(
   ctx: RulesetCombatContext,
@@ -15115,11 +15115,11 @@ function resolveAction(
   /** The number a spending blow throws, read as it was made. */
   spend?: number,
 ): RulesetHitHold | null {
-  // Where its events begin, for a cast that ends a condition only when it reaches a foe (1.424).
+  // Where its events begin, for a cast that ends a condition only when it reaches a foe (1.425).
   const reachedFrom = ctx.events.length;
-  // Harmed for acting against who put a condition on (1.561): Geas.
+  // Harmed for acting against who put a condition on (1.562): Geas.
   if (!held) harmForDefiance(ctx, actor, action, targets);
-  // Harmed for casting (1.645): Wish's stress.
+  // Harmed for casting (1.646): Wish's stress.
   if (!held) harmForCasting(ctx, actor, action, payWith);
   // What shakes surprise off, taken first (1.237): the rest of the turn is a turn like any other.
   if (actor.surprised && actor.surpriseOut?.includes(action.id)) endSurprise(ctx, actor, action.label);
@@ -15135,7 +15135,7 @@ function resolveAction(
     });
     return null;
   }
-  // Steering a condition it put on (1.463), and nothing else: Compulsion's direction.
+  // Steering a condition it put on (1.464), and nothing else: Compulsion's direction.
   if (action.steers) {
     const at = ctx.aimedAt;
     const steered: string[] = [];
@@ -15155,7 +15155,7 @@ function resolveAction(
     });
     return null;
   }
-  // A ray rolled for each target, each struck as its rows say (1.467): Prismatic Spray.
+  // A ray rolled for each target, each struck as its rows say (1.468): Prismatic Spray.
   if (action.rays && !ctx.raySaves) {
     ctx.raySaves = new Map();
     try {
@@ -15179,19 +15179,19 @@ function resolveAction(
   }
   // Creatures called beside it (1.325), and nothing else: Jars Burst.
   if (action.calls && !action.area && !action.damage) {
-    // Held by its concentration (1.393): Conjure Animals.
+    // Held by its concentration (1.394): Conjure Animals.
     if (action.concentration && !held) startConcentration(ctx, actor, action);
     const steps = action.innate
       ? Math.max(0, action.innate.level - action.innate.baseLevel)
       : payWith
         ? rulesetCostSteps(ctx.definition, action, payWith, actor)
         : 0;
-    // Risen from a corpse (1.553): in its space, and the corpse gone.
+    // Risen from a corpse (1.554): in its space, and the corpse gone.
     const corpse = action.calls.atCorpse
       ? targets.find((one) => rulesetRaisableCorpse(ctx.definition, ctx.state, action.calls!.atCorpse!, one))
       : undefined;
     if (action.calls.atCorpse && !corpse) return null;
-    // Or on open cells within so far of their caller, seen (1.620): a treant's trees.
+    // Or on open cells within so far of their caller, seen (1.621): a treant's trees.
     const cells = corpse
       ? rulesetFootprint(corpse)
       : action.calls.within
@@ -15203,7 +15203,7 @@ function resolveAction(
       delete corpse.y;
     }
     callCreatures(ctx, actor, action, cells, steps);
-    // And what it puts on its user (1.486): Find Familiar's bond with what it called.
+    // And what it puts on its user (1.487): Find Familiar's bond with what it called.
     if (!held) applySelf(ctx, actor, action, payWith, steps);
     return null;
   }
@@ -15290,7 +15290,7 @@ function teleport(ctx: RulesetCombatContext, actor: RulesetCombatant, action: Ru
   delete ctx.teleport;
   if (!to) {
     if (!action.teleport?.leaves || !rulesetCombatStanding(actor)) return;
-    // Kept in a zone that lets nobody out unsaved (1.602), the use spent.
+    // Kept in a zone that lets nobody out unsaved (1.603), the use spent.
     const from = rulesetPositionOf(actor);
     if (from && teleportHeld(ctx, actor, action, from, null)) return;
     // Out of the fight (1.279), and whoever goes along with it.
@@ -15301,7 +15301,7 @@ function teleport(ctx: RulesetCombatContext, actor: RulesetCombatant, action: Ru
         const was = rulesetPositionOf(one);
         return !was || !teleportHeld(ctx, one, action, was, null, actor.id);
       });
-    // Where it lands, by its familiarity (1.669): a mishap hurts every traveller and rolls again.
+    // Where it lands, by its familiarity (1.670): a mishap hurts every traveller and rolls again.
     rollFamiliarity(ctx, actor, action, along);
     if (!actor.defeated) leaveFight(ctx, actor, action);
     for (const one of along) if (!one.defeated) leaveFight(ctx, one, action, actor.id);
@@ -15310,7 +15310,7 @@ function teleport(ctx: RulesetCombatContext, actor: RulesetCombatant, action: Ru
   const grid = ctx.state.board?.grid;
   const from = rulesetPositionOf(actor);
   if (!grid || !from || !rulesetCombatStanding(actor) || !rulesetRoomAt(ctx.state, grid, actor, to)) return;
-  // Kept in a zone that lets nobody out unsaved (1.602), the use spent: nobody goes along.
+  // Kept in a zone that lets nobody out unsaved (1.603), the use spent: nobody goes along.
   if (teleportHeld(ctx, actor, action, from, to)) return;
   // A cloud where it left and where it lands (1.279), until the end of its next turn.
   if (action.teleport?.smoke) {
@@ -15355,7 +15355,7 @@ function teleport(ctx: RulesetCombatContext, actor: RulesetCombatant, action: Ru
     const one = rulesetCombatant(ctx.state, id);
     const was = rulesetPositionOf(one);
     if (!one || !was || !rulesetCombatStanding(one) || !rulesetCombatStanding(actor)) continue;
-    // Each one carried out of such a zone saves for themselves (1.602).
+    // Each one carried out of such a zone saves for themselves (1.603).
     if (teleportHeld(ctx, one, action, was, rulesetPositionOf(actor), actor.id)) continue;
     let spot: RulesetCombatCell | null = null;
     const here = rulesetPositionOf(actor)!;
@@ -15364,7 +15364,7 @@ function teleport(ctx: RulesetCombatContext, actor: RulesetCombatant, action: Ru
         for (let x = here.x - reach; x <= here.x + reach; x++) {
           if (Math.max(Math.abs(x - here.x), Math.abs(y - here.y)) !== reach) continue;
           if (!rulesetRoomAt(ctx.state, grid, one, { x, y })) continue;
-          // Never into ground nobody may teleport into (1.752).
+          // Never into ground nobody may teleport into (1.753).
           if (rulesetTeleportIntoBarred(ctx.state, one, { x, y })) continue;
           spot = { x, y };
           break;
@@ -15376,7 +15376,7 @@ function teleport(ctx: RulesetCombatContext, actor: RulesetCombatant, action: Ru
 }
 
 /**
- * A teleport's familiarity rolled as it leaves the fight (1.669): a d100 against the row picked, a
+ * A teleport's familiarity rolled as it leaves the fight (1.670): a d100 against the row picked, a
  * mishap first, then a similar area, then off target, the rest on target. A mishap deals its damage
  * to its user and everybody along, and rolls again, twenty times at most.
  */
@@ -15419,7 +15419,7 @@ function rollFamiliarity(
 }
 
 /**
- * Whether a zone keeps somebody from teleporting out of it (1.602): one whose `forbids.teleport` is
+ * Whether a zone keeps somebody from teleporting out of it (1.603): one whose `forbids.teleport` is
  * a save, works on them, and holds where they stand but not all of where they would land (off the
  * board, when they leave the fight). They throw its save against its caster's difficulty; failed,
  * they stay where they are, said in the log. 5e's Forcecage.
@@ -15496,7 +15496,7 @@ function dismiss(
       : target.tracked.find((entry) => entry.condition === rule.while && entry.source === actor.id);
   // Kept off what it is away under, it stays.
   if (rule !== true && !held) return;
-  // Gone into whom it landed on, its user leaves instead (1.695): a ghost's Possession. What it put
+  // Gone into whom it landed on, its user leaves instead (1.696): a ghost's Possession. What it put
   // on them stays, holding it away.
   if (rule !== true && rule.possesses) {
     if (actor.defeated || actor.id === target.id) return;
@@ -15539,12 +15539,12 @@ function dismiss(
   endZones(ctx, target);
   endConcentration(ctx, target, "spent");
   endConditionsFromSource(ctx, target);
-  // Its allies near it along with it (1.684): a nightmare's riders.
+  // Its allies near it along with it (1.685): a nightmare's riders.
   if (rule !== true && rule.carries && target.id === actor.id) carryAway(ctx, actor, action.label, rule.carries);
 }
 
 /** Up to `count` allies within `within` cells of `carrier`, nearest first, out of the fight with it
- *  (1.684), each away while it holds `condition` from the carrier and back when the carrier is. */
+ *  (1.685), each away while it holds `condition` from the carrier and back when the carrier is. */
 function carryAway(
   ctx: RulesetCombatContext,
   carrier: RulesetCombatant,
@@ -15584,7 +15584,7 @@ function carryAway(
   }
 }
 
-/** Out of the fight for good, alive, by no use of an entry (1.482): a failed save against what
+/** Out of the fight for good, alive, by no use of an entry (1.483): a failed save against what
  *  `sourceId` put on it. What it held up ends. */
 function sendAway(ctx: RulesetCombatContext, sourceId: string, target: RulesetCombatant, label: string): void {
   if (target.defeated) return;
@@ -15611,26 +15611,26 @@ function bringBack(ctx: RulesetCombatContext, target: RulesetCombatant, reason: 
   target.defeated = false;
   placeNearest(ctx, target);
   ctx.events.push({ type: "returned", targetId: target.id });
-  // Those it carried away come back with it (1.684).
+  // Those it carried away come back with it (1.685).
   for (const rider of ctx.state.combatants) {
     if (rider.away?.carried && rider.away.by === target.id && rider.away.while)
       removeCondition(ctx, rider, rider.away.while, "linked");
   }
 }
 
-/** Whoever has stopped time and is taking the turns it gave (1.506), if anybody: the actor. */
+/** Whoever has stopped time and is taking the turns it gave (1.507), if anybody: the actor. */
 function timeStopper(ctx: RulesetCombatContext): RulesetCombatant | undefined {
   const actor = currentRulesetActor(ctx.state);
   return actor?.tracked.some((one) => one.stoppedTurns !== undefined) ? actor : undefined;
 }
 
-/** Whether `one` is held still by somebody else's stopped time (1.506): no answer, no readied use. */
+/** Whether `one` is held still by somebody else's stopped time (1.507): no answer, no readied use. */
 function heldInTime(ctx: RulesetCombatContext, one: RulesetCombatant): boolean {
   const stopper = timeStopper(ctx);
   return !!stopper && stopper.id !== one.id;
 }
 
-/** As a turn of `leaving`'s ends (1.506): whether they take another straight after, time stopped.
+/** As a turn of `leaving`'s ends (1.507): whether they take another straight after, time stopped.
  *  The turns are rolled as the turn it was put on in ends, and it ends after the last of them. */
 function timeStoppedTurn(ctx: RulesetCombatContext, leaving: RulesetCombatant): boolean {
   const entry = rulesetActiveConditions(ctx.definition, ctx.combat, leaving, ctx.state).find((one) => one.stopsTime);
@@ -15656,7 +15656,7 @@ function timeStoppedTurn(ctx: RulesetCombatContext, leaving: RulesetCombatant): 
   return false;
 }
 
-/** Stopped time ends once its holder reaches somebody else (1.506): attacks them, harms them, has
+/** Stopped time ends once its holder reaches somebody else (1.507): attacks them, harms them, has
  *  them save, or puts a condition on them. Read over what a step did, as it finishes. */
 function timeStopReached(ctx: RulesetCombatContext): void {
   const stopper = timeStopper(ctx);
@@ -15680,7 +15680,7 @@ function timeStopReached(ctx: RulesetCombatContext): void {
 }
 
 /** Called creatures set aside where a zone that suppresses what called them covers them, and back
- *  where it stood once none does (1.532): Antimagic Field's "summoned creatures disappear". Set
+ *  where it stood once none does (1.533): Antimagic Field's "summoned creatures disappear". Set
  *  aside, they are out of the fight as one sent away is, and nothing they hold up ends. */
 function setAsideCalled(ctx: RulesetCombatContext): void {
   for (const one of ctx.state.combatants) {
@@ -15701,7 +15701,7 @@ function setAsideCalled(ctx: RulesetCombatContext): void {
   }
 }
 
-/** Off the board as its turn ends, on its `blinks` die (1.505): Blink. Nothing it holds up ends. */
+/** Off the board as its turn ends, on its `blinks` die (1.506): Blink. Nothing it holds up ends. */
 function blinkAway(ctx: RulesetCombatContext, holder: RulesetCombatant): void {
   if (holder.defeated || !rulesetCombatStanding(holder)) return;
   const entry = rulesetActiveConditions(ctx.definition, ctx.combat, holder, ctx.state).find((one) => one.blinks);
@@ -15717,7 +15717,7 @@ function blinkAway(ctx: RulesetCombatContext, holder: RulesetCombatant): void {
   holder.away = { by: holder.id, label, blinked: true };
 }
 
-/** Those `caller` called that are on their way (1.613) a turn nearer as its turn starts, and those
+/** Those `caller` called that are on their way (1.614) a turn nearer as its turn starts, and those
  *  whose time has come set down where they were to be, or the nearest free place. */
 function arriveCalled(ctx: RulesetCombatContext, caller: RulesetCombatant): void {
   const came: string[] = [];
@@ -15736,7 +15736,7 @@ function arriveCalled(ctx: RulesetCombatContext, caller: RulesetCombatant): void
   if (came.length) ctx.events.push({ type: "arrived", actorId: caller.id, ids: came });
 }
 
-/** Back from a blink as its turn starts (1.505): where it vanished, or the nearest free place. */
+/** Back from a blink as its turn starts (1.506): where it vanished, or the nearest free place. */
 function blinkBack(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   if (!actor.away?.blinked) return;
   delete actor.away;
@@ -15824,7 +15824,7 @@ function resolveActionFalling(
   return result;
 }
 
-/** Ammunition spent as its clause reached a target (1.656): an Arrow of Slaying become a plain arrow.
+/** Ammunition spent as its clause reached a target (1.657): an Arrow of Slaying become a plain arrow.
  *  The share of it that would have come back comes back after the fight as its holder's plain
  *  ammunition of the same tag, where they carry any, and otherwise not at all. */
 function spendShot(actor: RulesetCombatant, action: RulesetCombatAction, clause: RulesetCombatDamageClause): void {
@@ -15855,20 +15855,20 @@ function clauseReaches(
   return !clause.blow || rulesetBlowKind(ctx.state, actor, target, action) === clause.blow;
 }
 
-/** That `attacker` hit `target` with an attack in this turn (1.429): Multiattack Defense. */
+/** That `attacker` hit `target` with an attack in this turn (1.430): Multiattack Defense. */
 function noteHitBy(ctx: RulesetCombatContext, target: RulesetCombatant, attacker: RulesetCombatant): void {
   const at = `${ctx.state.round}:${ctx.state.turn}`;
   if (target.hitBy?.at !== at) target.hitBy = { at, ids: [] };
   if (!target.hitBy.ids.includes(attacker.id)) target.hitBy.ids.push(attacker.id);
 }
 
-/** What a change once on each of its holder's own turns (1.428) is counted under: its condition, level
+/** What a change once on each of its holder's own turns (1.429) is counted under: its condition, level
  *  or item, and what it changes. */
 function onceKey(entry: RulesetConditionModifier): string {
   return `once:${entry.item ? "item" : entry.level !== undefined ? `level${entry.level}` : "condition"}:${entry.condition}`;
 }
 
-/** Whether a change once on each of its holder's own turns (1.428) is still to be had: their own turn,
+/** Whether a change once on each of its holder's own turns (1.429) is still to be had: their own turn,
  *  and not had in it. Nothing is spent. */
 function oncePerTurnLeft(
   ctx: RulesetCombatContext,
@@ -16007,7 +16007,7 @@ function endConditionsOf(
   level: number,
 ): void {
   let left = ends.count ?? ends.conditions.length;
-  // Only what its user picked (1.441), where they picked.
+  // Only what its user picked (1.442), where they picked.
   const picked = action.ends?.chosen && !action.endsSpells?.chosen ? ctx.endsChosen : undefined;
   for (const condition of ends.conditions) {
     if (left <= 0) break;
@@ -16031,7 +16031,7 @@ function endConditionsOf(
 }
 
 /**
- * What a catalog's entries put on a creature, ended (1.423): the highest level first, as many as
+ * What a catalog's entries put on a creature, ended (1.424): the highest level first, as many as
  * `count` says. One within `upTo` (the level it is paid at, or a number) simply ends; one above it
  * ends on a check against `above.dc` plus its level; with neither, every one does. Held by its
  * caster's concentration, the whole of that spell ends with it.
@@ -16047,7 +16047,7 @@ function endSpellsOn(
   const reach = ends.upTo === "paid" ? paid : ends.upTo;
   const found = target.tracked
     .filter((entry) => entry.catalog !== undefined && ends.catalogs.includes(entry.catalog) && !entry.kept)
-    // Only what its user picked (1.426), where they picked.
+    // Only what its user picked (1.427), where they picked.
     .filter((entry) => !ends.chosen || !ctx.endsChosen || ctx.endsChosen.has(entry.condition))
     .sort((a, b) => (b.level ?? 0) - (a.level ?? 0));
   let left = ends.count ?? found.length;
@@ -16085,7 +16085,7 @@ function endSpellsOn(
   }
 }
 
-/** A lasting area an endsSpells is aimed at (1.426), ended on the same terms as a condition: within
+/** A lasting area an endsSpells is aimed at (1.427), ended on the same terms as a condition: within
  *  reach outright, above it on the check. Dispel Magic on a Wall of Fire. */
 function endSpellZone(
   ctx: RulesetCombatContext,
@@ -16098,7 +16098,7 @@ function endSpellZone(
   const found = rulesetStandingZones(ctx.state).find(
     ({ caster, zone }) => caster.id === aimed.casterId && zone.actionId === aimed.actionId,
   );
-  // A layered wall (1.489) loses its first standing layer only to what that layer names.
+  // A layered wall (1.490) loses its first standing layer only to what that layer names.
   if (found?.action.zone?.layers) {
     wearLayer(ctx, found.caster, found.zone, found.action, action.entry ? { entry: action.entry } : {}, actor.id);
     return;
@@ -16129,7 +16129,7 @@ function endSpellZone(
 }
 
 /** After a weapon attack at one creature on its maker's own turn, the same weapon at another within
- *  reach of them, once a turn (1.427): Horde Breaker. Made as an action of its own, offered as a
+ *  reach of them, once a turn (1.428): Horde Breaker. Made as an action of its own, offered as a
  *  follow-up for nothing until the turn ends. */
 function offerStrikeAgain(
   ctx: RulesetCombatContext,
@@ -16246,7 +16246,7 @@ function slay(ctx: RulesetCombatContext, target: RulesetCombatant, sourceId: str
   dieNow(ctx, target);
 }
 
-/** Killed by massive damage (1.708): dead, never dying. Nobody dies on Held Ground: felled. */
+/** Killed by massive damage (1.709): dead, never dying. Nobody dies on Held Ground: felled. */
 function killedOutright(ctx: RulesetCombatContext, target: RulesetCombatant): void {
   if (ctx.state.heldGround) {
     if (!target.down) dropToZero(ctx, target, true);
@@ -16291,7 +16291,7 @@ function chargedAction(action: RulesetCombatAction, charge: RulesetCombatCharge)
 }
 
 /**
- * The targets an attack goes to once whoever draws aim near them has drawn it (1.657): the Shield of
+ * The targets an attack goes to once whoever draws aim near them has drawn it (1.658): the Shield of
  * Missile Attraction's curse, "you become the target instead". Not a reaction, so nothing is spent and
  * nobody is asked. The nearest such holder to a target takes its place, never its maker, nor one the
  * attack is already aimed at. Only on a board, which says who is near.
@@ -16343,7 +16343,7 @@ function drawnAim(
 
 /**
  * The targets an attack or a harmful entry goes to once every sanctuary among them has been tried
- * (1.422): its maker saves against each it is aimed at, an area aside; a failure sends it to the
+ * (1.423): its maker saves against each it is aimed at, an area aside; a failure sends it to the
  * nearest other creature it could be aimed at that is not already one of its targets and holds no
  * sanctuary, or loses it. One that saves is free of a sanctuary that says so, for the fight.
  */
@@ -16363,7 +16363,7 @@ function sanctuaryTargets(
     (action.kind === "block" && !!action.applies?.length);
   if (!harmful || action.area || action.around || targets.length === 0) return targets;
   const rules = ctx.combat.conditions ?? [];
-  // On the holder as tracked, or held on their sheet (1.425): Tranquility, put on by a rest.
+  // On the holder as tracked, or held on their sheet (1.426): Tranquility, put on by a rest.
   const sanctuaries = (one: RulesetCombatant) =>
     rulesetCombatConditions(ctx.definition, one).flatMap((condition) => {
       const rule = rules.find((candidate) => candidate.condition === condition)?.sanctuary;
@@ -16381,7 +16381,7 @@ function sanctuaryTargets(
     let kept = true;
     for (const { condition, entry, rule } of sanctuaries(target)) {
       if (rule.from && !rulesetTargetIs(ctx.definition, actor, rule.from)) continue;
-      // Only what it stops (1.424): attacks, and harmful entries cast from its catalogs.
+      // Only what it stops (1.425): attacks, and harmful entries cast from its catalogs.
       if (
         rule.against &&
         !(rule.against.attacks && attack) &&
@@ -16426,7 +16426,7 @@ function sanctuaryTargets(
   return out;
 }
 
-/** Whether its only target takes this action in (1.521): an entry of a catalog its condition or worn
+/** Whether its only target takes this action in (1.522): an entry of a catalog its condition or worn
  *  item absorbs, at that level or lower, from a foe. An item's charges are spent or gained as it says,
  *  and one that spends them takes in nothing it has too few for. Says so, and takes it in. */
 function absorbAction(
@@ -16443,7 +16443,7 @@ function absorbAction(
   const takes = (rule: RulesetAbsorbs) =>
     rule.catalogs.includes(catalog) &&
     (rule.by === "base" ? base : paid) <= rule.maxLevel &&
-    // Only a seen caster's (1.569), and only with the budget it costs left (1.569).
+    // Only a seen caster's (1.570), and only with the budget it costs left (1.570).
     (!rule.seen || rulesetCanSee(ctx.definition, ctx.state, target, actor)) &&
     (!rule.spends || (target.budgets[rule.spends] ?? 0) >= 1);
   const level = (rule: RulesetAbsorbs) => (rule.by === "base" ? base : paid);
@@ -16460,7 +16460,7 @@ function absorbAction(
     });
     return true;
   };
-  // A condition's first (1.521): a creature's, or one a spell gave.
+  // A condition's first (1.522): a creature's, or one a spell gave.
   for (const entry of rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state)) {
     if (entry.absorbs && takes(entry.absorbs)) {
       const label =
@@ -16468,7 +16468,7 @@ function absorbAction(
       return said(label, entry.absorbs);
     }
   }
-  // Then a worn item's, with its charges; never one an antimagic zone suppresses (1.520).
+  // Then a worn item's, with its charges; never one an antimagic zone suppresses (1.521).
   const hush = rulesetSuppressedOn(ctx.state, target);
   const items = target.sheet?.items ?? [];
   for (let index = 0; index < items.length; index++) {
@@ -16476,7 +16476,7 @@ function absorbAction(
     const rule = held.worn ? held.item.worn?.absorbs : undefined;
     if (!rule || !takes(rule) || rulesetItemSuppressed(hush, held.item)) continue;
     const name = held.name ?? held.stack?.ref ?? "";
-    // Never past what it may take in over its whole existence (1.570), counted for good.
+    // Never past what it may take in over its whole existence (1.571), counted for good.
     const ever = target.absorbedEver?.[index] ?? held.absorbedEver ?? 0;
     if (rule.lifetime !== undefined && ever + level(rule) > rule.lifetime) continue;
     const count = () => {
@@ -16500,7 +16500,7 @@ function absorbAction(
   return false;
 }
 
-/** Whether its only target turns a foe's entry back at its user (1.522): a condition's `turns`, or a
+/** Whether its only target turns a foe's entry back at its user (1.523): a condition's `turns`, or a
  *  worn item's no antimagic zone suppresses, of the entry's catalog and at its level or lower, and
  *  the save they just threw showing its top face. Said as it turns. */
 function turnsAction(
@@ -16544,7 +16544,7 @@ function turnsAction(
   return false;
 }
 
-/** Whether a foe's entry aimed at `target` is taken by a carapace of theirs (1.722): one of the entries
+/** Whether a foe's entry aimed at `target` is taken by a carapace of theirs (1.723): one of the entries
  *  it names, of an area shape it names, or a ranged attack roll, of a catalog it takes from. Its die
  *  rolled and said: `back` when it is turned at its maker, `untouched` otherwise. A tarrasque's
  *  Reflective Carapace. */
@@ -16583,7 +16583,7 @@ function reflectsAction(
   return null;
 }
 
-/** The action as it is resolved, its maker and it known to whatever it sets off (1.544). */
+/** The action as it is resolved, its maker and it known to whatever it sets off (1.545). */
 function resolveActionBody(
   ctx: RulesetCombatContext,
   actor: RulesetCombatant,
@@ -16615,7 +16615,7 @@ function resolveActionBody(
   return result;
 }
 
-/** What a charge lets follow at the one it struck (1.545), once the blow is done: a lion's bite at a
+/** What a charge lets follow at the one it struck (1.546), once the blow is done: a lion's bite at a
  *  target its Pounce knocked prone, paid from its bonus action. */
 function chargeThen(
   ctx: RulesetCombatContext,
@@ -16637,7 +16637,7 @@ function chargeThen(
   if (then.targetHolds && !then.targetHolds.every((one) => held.includes(one))) return;
   actor.flags.followUps = [
     ...(actor.flags.followUps ?? []).filter((one) => one.id !== then.action),
-    // The charging action again (1.573) carries no charge the second time.
+    // The charging action again (1.574) carries no charge the second time.
     {
       id: then.action,
       budget: then.budget,
@@ -16661,7 +16661,7 @@ function resolveActionBodyIn(
   /** The number a spending blow throws, read as it was made. */
   spend?: number,
 ): RulesetHitHold | null {
-  // The ammunition it was shot with (1.656): an Arrow of Slaying's clauses on the blow it rides.
+  // The ammunition it was shot with (1.657): an Arrow of Slaying's clauses on the blow it rides.
   const rider =
     action.ammo && !action.clip && actor.lastShot !== undefined
       ? action.ammo.riders?.[String(actor.lastShot)]
@@ -16676,7 +16676,7 @@ function resolveActionBodyIn(
       },
     };
   }
-  // And what it adds to the attack roll (1.811): an Arrow +1's +1.
+  // And what it adds to the attack roll (1.812): an Arrow +1's +1.
   if (rider?.toHit && action.toHit !== undefined) action = { ...action, toHit: action.toHit + rider.toHit };
   if (action.sequence) {
     return resolveSequence(
@@ -16688,11 +16688,11 @@ function resolveActionBodyIn(
       styleId ?? rulesetAttackStyles(ctx.combat, actor, action)[0]?.id,
     );
   }
-  // Cast, a summons that strikes by itself only appears (1.538): its strikes come as turns start.
+  // Cast, a summons that strikes by itself only appears (1.539): its strikes come as turns start.
   if (action.summons?.strikesAtTurnStart && !ctx.summonStriking && !held) return null;
-  // What it does, rolled for (1.558): a Wand of Wonder's row, at whom it was aimed, centred there
+  // What it does, rolled for (1.559): a Wand of Wonder's row, at whom it was aimed, centred there
   // with an area, or on its user. A row that does nothing a fight can use is only told.
-  // Or by how many times it has been used (1.686): an androsphinx's Roar, louder each time. Its uses
+  // Or by how many times it has been used (1.687): an androsphinx's Roar, louder each time. Its uses
   // are spent as it is made, so the count already holds this one.
   if ((action.rollsAmong || action.byUse) && !held) {
     let part: RulesetCombatAction | undefined;
@@ -16731,7 +16731,7 @@ function resolveActionBodyIn(
     }
     return null;
   }
-  // Other uses' effects beside it (1.534), each on whom its burst around its user catches, spending
+  // Other uses' effects beside it (1.535), each on whom its burst around its user catches, spending
   // nothing of theirs: Thunder and Lightning's Thunderclap.
   if (action.alongside && !held) {
     for (const id of action.alongside) {
@@ -16748,18 +16748,18 @@ function resolveActionBodyIn(
   if (action.damage?.alternatives) {
     action = { ...action, damage: rulesetDamageInEffect(ctx.definition, ctx.combat, actor, action.damage) };
   }
-  // As the conditions its maker holds make it now (1.500): Magic Weapon, Shillelagh.
+  // As the conditions its maker holds make it now (1.501): Magic Weapon, Shillelagh.
   action = rulesetWeaponNow(ctx.definition, ctx.state, actor, action);
-  // Kept off a sanctuary's holder by a failed save (1.422), before anything is rolled at them. A held
+  // Kept off a sanctuary's holder by a failed save (1.423), before anything is rolled at them. A held
   // blow picking up was let through already.
   if (!held) targets = sanctuaryTargets(ctx, actor, action, targets);
-  // Drawn to whoever near them draws it (1.657), forced, before anything is rolled at them.
+  // Drawn to whoever near them draws it (1.658), forced, before anything is rolled at them.
   if (!held) targets = drawnAim(ctx, actor, action, targets);
-  // Aimed at a lasting area rather than a creature (1.426): Dispel Magic on a wall.
+  // Aimed at a lasting area rather than a creature (1.427): Dispel Magic on a wall.
   if (action.endsSpells && ctx.dispel && !held) {
     endSpellZone(ctx, actor, action, rulesetPaidLevel(ctx.definition, actor, action, payWith));
   } else if (action.endsLayers && ctx.dispel && !held) {
-    // At a layered wall one of whose layers names it (1.490): Passwall.
+    // At a layered wall one of whose layers names it (1.491): Passwall.
     const aimed = ctx.dispel;
     const found = rulesetStandingZones(ctx.state).find(
       ({ caster, zone }) => caster.id === aimed.casterId && zone.actionId === aimed.actionId,
@@ -16769,7 +16769,7 @@ function resolveActionBodyIn(
       wearLayer(ctx, found.caster, found.zone, found.action, { entry: as }, actor.id);
     }
   }
-  // Its user's weapon at each creature its area catches (1.427), a roll and a shot for each:
+  // Its user's weapon at each creature its area catches (1.428), a roll and a shot for each:
   // Whirlwind Attack, Volley. Its own side only when it says "any".
   if (action.strikesWith && !action.reaction && !held) {
     const weapon = rulesetBestWeapon(actor, action.strikesWith);
@@ -16783,10 +16783,10 @@ function resolveActionBodyIn(
     }
     return null;
   }
-  // What it put on them kept up (1.430), its rounds started again as if put on now, and nothing else:
+  // What it put on them kept up (1.431), its rounds started again as if put on now, and nothing else:
   // Intimidating Presence on a later turn.
   if (action.sustain && !held) {
-    // An area's (1.726): everybody still holding what it put on, the area not read again. A harpy's
+    // An area's (1.727): everybody still holding what it put on, the area not read again. A harpy's
     // Luring Song.
     const sustained = actor.actions.find((one) => one.id === action.sustain!.of);
     const keeping = sustained?.area || sustained?.around ? ctx.state.combatants : targets;
@@ -16851,12 +16851,12 @@ function resolveActionBodyIn(
     actor.concentrating.steps = steps;
     if (rulesetIsSpell(action)) actor.concentrating.level = rulesetPaidLevel(ctx.definition, actor, action, payWith);
     actor.concentrating.targets = targets.map((one) => one.id);
-    // And in what mode (1.691): the one picked, else the first, as it is made with none picked.
+    // And in what mode (1.692): the one picked, else the first, as it is made with none picked.
     const kept = action.inMode ?? action.modes?.[0]?.id;
     if (kept !== undefined) actor.concentrating.mode = kept;
     else delete actor.concentrating.mode;
   }
-  // Moved on from those who are down (1.603): what the cast put on them goes, and the new target is
+  // Moved on from those who are down (1.604): what the cast put on them goes, and the new target is
   // the one it waits on next. Hunter's Mark.
   if (!held && action.again?.afterTargetDown && actor.concentrating && rulesetRepeatsHeld(actor, action.again)) {
     const moving = new Set((action.applies ?? []).map((one) => one.condition));
@@ -16970,7 +16970,7 @@ function resolveActionBodyIn(
     for (const die of low) rolls[die.index] = rollRulesetDice(ctx.roll, 1, die.sides)[0]!;
     return { ...bonus, rolls };
   };
-  // At its most (1.414): Overchannel, every die at its top face.
+  // At its most (1.415): Overchannel, every die at its top face.
   const maximized = !!action.altered?.maximizes;
   // One shared roll for everybody it does not roll to hit, as any other.
   let maxedShared: Rolled | null = null;
@@ -16980,7 +16980,7 @@ function resolveActionBodyIn(
       : empowered > 0 && action.damage
         ? () => hitFor(true).sets[0]!
         : once(action.damage, action.damage?.reroll);
-  // Added to the first damage roll of the use (1.413): every target of a roll they share, the first
+  // Added to the first damage roll of the use (1.414): every target of a roll they share, the first
   // of one rolled for each. Empowered Evocation.
   let onceLeft = action.damageOnce ?? 0;
   const whole =
@@ -16995,7 +16995,7 @@ function resolveActionBodyIn(
           return rolled;
         }
       : rollDamage;
-  // Times so many, and split evenly among everybody it catches (1.592): the Wand of Wonder's gems.
+  // Times so many, and split evenly among everybody it catches (1.593): the Wand of Wonder's gems.
   let split: Rolled | null = null;
   const damage =
     whole && (action.damageTimes !== undefined || action.damageDivided)
@@ -17013,7 +17013,7 @@ function resolveActionBodyIn(
   // the ones its user picked (1.254), else in the order it caught them. Heightened: its first target
   // rolls its first save at disadvantage.
   const picked = action.altered?.spared;
-  // As many more as the level it is paid at (1.413): Sculpt Spells' 1 + the spell's level.
+  // As many more as the level it is paid at (1.414): Sculpt Spells' 1 + the spell's level.
   const sparing =
     (action.altered?.spares ?? 0) +
     (action.altered?.sparesByLevel ? rulesetPaidLevel(ctx.definition, actor, action, payWith) : 0);
@@ -17038,9 +17038,9 @@ function resolveActionBodyIn(
     action.heal && times > 1
       ? { ...action.heal, count: action.heal.count * times, flat: action.heal.flat * times }
       : action.heal;
-  // At its most (1.414): Supreme Healing.
+  // At its most (1.415): Supreme Healing.
   const heal = action.healsMax && healing ? () => maxAmount(healing, extra) : once(healing);
-  // More to each it heals, and its user's own once when it heals somebody else (1.420), by the
+  // More to each it heals, and its user's own once when it heals somebody else (1.421), by the
   // level it is paid at: Disciple of Life, Blessed Healer.
   const paidLevel = action.healAdd || action.healsSelf ? rulesetPaidLevel(ctx.definition, actor, action, payWith) : 0;
   const healMore = (adds: RulesetCombatHealAdd[] | undefined) =>
@@ -17050,7 +17050,7 @@ function resolveActionBodyIn(
     );
   const healAdded = healMore(action.healAdd);
   let healsSelf = action.healsSelf ? healMore(action.healsSelf) : 0;
-  // One amount shared out among them (1.562): Preserve Life.
+  // One amount shared out among them (1.563): Preserve Life.
   let shareLeft = action.sharesHeal && heal ? heal().total + healAdded : 0;
   const temporary = once(action.temporary);
   const restore = once(action.restore?.amount);
@@ -17067,7 +17067,7 @@ function resolveActionBodyIn(
     // An area or a list catches only who the action may take, by what they are (1.168).
     rulesetTargetTypesAllow(ctx.definition, target, action.targetTypes, actor);
   const spared = sparedByHealth(ctx, actor, action, targets.filter(reaches), extra);
-  // Taken in by its only target (1.521), a foe's: a Rod of Absorption, an Ioun Stone of Absorption.
+  // Taken in by its only target (1.522), a foe's: a Rod of Absorption, an Ioun Stone of Absorption.
   const only = targets.length === 1 && !action.area ? targets[0]! : undefined;
   const absorbed = only && reaches(only) && absorbAction(ctx, actor, action, only, payWith) ? only.id : undefined;
   // Each of one that may be pointed at the same one again (1.305) that finds its target already
@@ -17085,13 +17085,13 @@ function resolveActionBodyIn(
     }
     struck.add(target.id);
     if (!reaches(target) || spared.has(target.id) || target.id === absorbed) continue;
-    // An image (1.567): it passes through, and its maker's side sees it for what it is.
+    // An image (1.568): it passes through, and its maker's side sees it for what it is.
     if (target.illusion && target.id !== actor.id && target.calledBy !== actor.id) {
       if (!target.illusion.seenBy.includes(actor.side)) target.illusion.seenBy.push(actor.side);
       ctx.events.push({ type: "seenThrough", actorId: actor.id, targetId: target.id, label: action.label });
       continue;
     }
-    // Taken by a carapace (1.722): untouched on its die, and on its top faces turned at its maker.
+    // Taken by a carapace (1.723): untouched on its die, and on its top faces turned at its maker.
     if (!ctx.turning && held?.targetId !== target.id) {
       const reflected = reflectsAction(ctx, actor, action, target);
       if (reflected === "back") {
@@ -17108,7 +17108,7 @@ function resolveActionBodyIn(
     hitNow = null;
     // Killed outright (1.196): nothing else it does matters to the dead.
     if (action.kills) {
-      // Unless warded against it (1.595): Death Ward.
+      // Unless warded against it (1.596): Death Ward.
       if (!wardedOutright(ctx, target)) slay(ctx, target, actor.id, action.label);
       continue;
     }
@@ -17140,7 +17140,7 @@ function resolveActionBodyIn(
       if (!used) return;
       spendOneUse(ctx, actor, used.mine);
       spendOneUse(ctx, target, used.theirs);
-      // A hit that was rolled for (1.502): what the attacker's conditions put on whoever it hit, and
+      // A hit that was rolled for (1.503): what the attacker's conditions put on whoever it hit, and
       // what lasted until their next weapon hit.
       if (landed) {
         const smites = rulesetWeaponBlow(action) ? oneUseConditions(actor, "own-hit") : [];
@@ -17406,7 +17406,7 @@ function resolveActionBodyIn(
         }
       } else {
         const dice = ctx.combat.attackRoll!.dice;
-        // Turned onto a duplicate (1.504): rolled against its defense, and whatever it hits is only it.
+        // Turned onto a duplicate (1.505): rolled against its defense, and whatever it hits is only it.
         const duplicate = divertedToDuplicate(ctx, actor, target);
         if (duplicate) guarded = { ...guarded, defense: duplicate.defense };
         const first = throwOwnDice(ctx, actor, "attacks", dice.count, dice.sides);
@@ -17474,7 +17474,7 @@ function resolveActionBodyIn(
         if (outcome === "hit" && rulesetCriticalFromAdjacent(ctx.definition, ctx.combat, ctx.state, actor, target)) {
           outcome = "critical";
         }
-        // A change on the attacker that makes its hit a critical where it reaches (1.543): Assassinate.
+        // A change on the attacker that makes its hit a critical where it reaches (1.544): Assassinate.
         if (
           outcome === "hit" &&
           rulesetActiveConditions(ctx.definition, ctx.combat, actor, ctx.state).some((entry) =>
@@ -17490,7 +17490,7 @@ function resolveActionBodyIn(
         }
         // Missed, what its maker spends to hit all the same (1.249): Stroke of Luck.
         if (outcome === "miss" && rescueEntry(ctx, actor, "attacks", "success")) outcome = "hit";
-        // No critical lands on its holder (1.509): Adamantine Armor.
+        // No critical lands on its holder (1.510): Adamantine Armor.
         if (
           outcome === "critical" &&
           rulesetCombatEffects(ctx.definition, ctx.combat, target, ctx.state).has("criticals-against-normal")
@@ -17527,7 +17527,7 @@ function resolveActionBodyIn(
         // A hit on somebody who holds an answer for being hit stops here, before its damage: the
         // window asks them, and the attack picks up from this roll once they have answered. Nothing
         // opened inside a window opens another, so an attack made inside one is never held, nor a
-        // summons' own strike as a turn starts (1.538).
+        // summons' own strike as a turn starts (1.539).
         if (
           landed &&
           (!ctx.state.window || ctx.nestHit) &&
@@ -17557,7 +17557,7 @@ function resolveActionBodyIn(
         }
       }
     }
-    // Attacked, hit or missed (1.421), for the moment asked once the use is over.
+    // Attacked, hit or missed (1.422), for the moment asked once the use is over.
     if ((held && target.id === held.targetId) || (action.toHit !== undefined && !action.autoHit)) {
       const record = (ctx.attacked ??= { targetIds: [], missedIds: [], blows: {} });
       if (!record.targetIds.includes(target.id)) record.targetIds.push(target.id);
@@ -17596,10 +17596,10 @@ function resolveActionBodyIn(
       continue;
     }
 
-    // Won over by a contest of checks instead of a roll or a save (1.564): Telekinesis. Nothing
+    // Won over by a contest of checks instead of a roll or a save (1.565): Telekinesis. Nothing
     // else it does lands on a target it loses to.
     if (action.contested && !action.contested.riders && !wonContest(ctx, actor, action, target)) {
-      // What it leaves on a target it lost to (1.617): a swarm the Pipes of the Sewers can't sway
+      // What it leaves on a target it lost to (1.618): a swarm the Pipes of the Sewers can't sway
       // for 24 hours.
       for (const one of action.contested.onLose?.applies ?? []) {
         if (target.defeated) break;
@@ -17614,7 +17614,7 @@ function resolveActionBodyIn(
       spendUsed();
       continue;
     }
-    // Won, what it takes from them (1.667): the first such thing they hold, set at its user's feet.
+    // Won, what it takes from them (1.668): the first such thing they hold, set at its user's feet.
     const takesAway = action.contested?.takes;
     if (takesAway && !target.defeated) {
       const userAt = rulesetPositionOf(actor);
@@ -17641,13 +17641,13 @@ function resolveActionBodyIn(
         ...(action.save?.against?.damage ?? []),
       ].filter((type): type is string => type !== undefined),
       magic: magicalAction(action),
-      // What its save says it is (1.651): a gas.
+      // What its save says it is (1.652): a gas.
       ...(action.save?.against?.qualities ? { qualities: action.save.against.qualities } : {}),
       action: [action.id, action.label, ...(action.recharge?.group ? [action.recharge.group] : [])],
       ...((action.casts ?? action.catalog) ? { catalog: action.casts ?? action.catalog } : {}),
-      // Aimed at them alone (1.522).
+      // Aimed at them alone (1.523).
       ...(target === only ? { alone: true } : {}),
-      // What its entry declares (1.786): a necromancy spell, for a Scarab of Protection.
+      // What its entry declares (1.787): a necromancy spell, for a Scarab of Protection.
       ...(action.filters ? { filters: action.filters } : {}),
     };
     let saved = false;
@@ -17684,13 +17684,13 @@ function resolveActionBodyIn(
         automatic: true,
       });
     } else if (action.save) {
-      // One save against every ray striking them (1.467).
+      // One save against every ray striking them (1.468).
       saved =
         ctx.raySaves?.get(target.id) ??
         rollSave(
           ctx,
           target,
-          // The target's choice of two (1.723): the better of them.
+          // The target's choice of two (1.724): the better of them.
           action.save.or && (target.saves[action.save.or] ?? 0) > (target.saves[action.save.save] ?? 0)
             ? action.save.or
             : action.save.save,
@@ -17700,13 +17700,13 @@ function resolveActionBodyIn(
           against,
           (() => {
             let lean = saveLean(ctx, target, action.save.modes);
-            // Being fought by its user's side, with advantage (1.581): Charm Person.
+            // Being fought by its user's side, with advantage (1.582): Charm Person.
             if (action.save.advantageIfFought && target.side !== actor.side) lean = leanWith(lean, "advantage");
             return target.id === heightened ? leanWith(lean, "disadvantage") : lean;
           })(),
         );
       ctx.raySaves?.set(target.id, saved);
-      // Turned back at its user on the save's top face (1.522): a Ring of Spell Turning.
+      // Turned back at its user on the save's top face (1.523): a Ring of Spell Turning.
       if (target === only && !ctx.turning && turnsAction(ctx, actor, action, target, payWith)) {
         spendUsed();
         ctx.turning = true;
@@ -17718,14 +17718,14 @@ function resolveActionBodyIn(
         continue;
       }
       if (saved) noteSaved(ctx.state, actor, action, target);
-      // Pushed out of the area for saving (1.630): a Bead of Force.
+      // Pushed out of the area for saving (1.631): a Bead of Force.
       if (saved && action.pushesOutSaved) pushOutOfArea(ctx, actor, action, target);
       if (saved && action.save.onSuccess === "negates") {
         spendUsed();
         continue;
       }
       // Failed, it dies (1.311), and its slayer gains what it says: Consume Life.
-      // Only one this low as it fails (1.677): a solar's Slaying Longbow, 190 or fewer.
+      // Only one this low as it fails (1.678): a solar's Slaying Longbow, 190 or fewer.
       const slays =
         action.slaysOnFailedSave &&
         (action.slaysHealthAtMost === undefined || healthOf(ctx, target).value <= action.slaysHealthAtMost);
@@ -17748,9 +17748,9 @@ function resolveActionBodyIn(
         continue;
       }
     }
-    // What goes on after the blow, won by a contest (1.694): lost, it is as a save made that does
+    // What goes on after the blow, won by a contest (1.695): lost, it is as a save made that does
     // nothing to the damage. A merrow's Harpoon.
-    // Only on a target that is what it names (1.697): no contest with one too big for the Harpoon,
+    // Only on a target that is what it names (1.698): no contest with one too big for the Harpoon,
     // and nothing put on, pushed, pulled or sent away; its damage lands all the same.
     const riderless = !!action.ridersIs && !rulesetTargetIs(ctx.definition, target, action.ridersIs);
     if (action.contested?.riders && !saved && !riderless && !wonContest(ctx, actor, action, target)) saved = true;
@@ -17760,7 +17760,7 @@ function resolveActionBodyIn(
       rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state).some((entry) =>
         entry.evasion?.includes(action.save!.save),
       );
-    // Spared whole (1.413): Sculpt Spells' allies take nothing where a success leaves half.
+    // Spared whole (1.414): Sculpt Spells' allies take nothing where a success leaves half.
     const sculpted = careful.has(target.id) && !!action.altered?.sparesWhole && action.save?.onSuccess === "half";
     if ((evades || sculpted) && saved) {
       ctx.events.push({ type: "evaded", targetId: target.id, label: action.label });
@@ -17803,7 +17803,7 @@ function resolveActionBodyIn(
     const takenModifiers = rulesetDamageModifiers(ctx.definition, ctx.state, actor, action, target, true);
     const modifiers = [
       ...rulesetDamageModifiers(ctx.definition, ctx.state, actor, action, target),
-      // A change held back for the attack roll that it hit without, on its damage instead (1.428):
+      // A change held back for the attack roll that it hit without, on its damage instead (1.429):
       // Foe Slayer.
       ...(action.toHit !== undefined && !action.autoHit && !action.save
         ? rulesetConditionModifiers(
@@ -17836,7 +17836,7 @@ function resolveActionBodyIn(
     let sappedDealt = 0;
     // What of it its maker drains back (1.281): Psychic Drain's all, Vampiric Touch's half.
     let drainDealt = 0;
-    // What its maker added to the blow drains back (1.533): Drain Life's half.
+    // What its maker added to the blow drains back (1.534): Drain Life's half.
     let addDrained = 0;
     const landNow = (part: RulesetDamageInput) => {
       if (takes) {
@@ -17909,9 +17909,9 @@ function resolveActionBodyIn(
     // Keep the old path unchanged unless this hit actually has damage modifiers. A modified blow
     // collects its amounts so additions happen once and times changes the whole hit before hide.
     const land = (part: RulesetDamageInput) => (modifiers.length ? parts.push(part) : landNow(part));
-    // Whether it was hurt as the blow came (1.392), before any of the blow lands: Colossus Slayer.
+    // Whether it was hurt as the blow came (1.393), before any of the blow lands: Colossus Slayer.
     const hurtBefore = rulesetCombatHurt(ctx.definition, ctx.combat, target);
-    // Whether they were down already (1.676), so a blow that drops them is told from one that lands
+    // Whether they were down already (1.677), so a blow that drops them is told from one that lands
     // on somebody lying there.
     const downBefore = !!target.down;
     if (pooled && action.damage && spends && target.hardness !== undefined && spends.number < target.hardness) {
@@ -17995,7 +17995,7 @@ function resolveActionBodyIn(
       });
     } else if (damage && action.damage) {
       // At its most against what it names (1.185): Blight on a plant. Another amount instead against
-      // what it names (1.628): a Horn of Blasting's 10d6 to glass.
+      // what it names (1.629): a Horn of Blasting's 10d6 to glass.
       const rolled =
         action.maxAgainst && rulesetTargetIs(ctx.definition, target, action.maxAgainst)
           ? maxAmount(
@@ -18086,7 +18086,7 @@ function resolveActionBodyIn(
     // higher payment adds, doubled by a critical, and each clause only on a target it reaches.
     const adds = held && target.id === held.targetId && !spends ? (held.adds ?? []) : [];
     for (const add of adds) {
-      // Only its conditions (1.533), or kept off by a made save of its own: Drain Life's.
+      // Only its conditions (1.534), or kept off by a made save of its own: Drain Life's.
       if (!add.damage) continue;
       if (add.save && rollSave(ctx, target, add.save.save, add.save.difficulty, actor.id, undefined, against)) continue;
       const addDamage = add.damage;
@@ -18122,12 +18122,12 @@ function resolveActionBodyIn(
         });
       }
     }
-    // Whether something its target holds took some of it away (1.415): a missile so lessened to
+    // Whether something its target holds took some of it away (1.416): a missile so lessened to
     // nothing is caught.
     let lessened = false;
-    // What the blow itself deals as it lands (1.791), before anything is added: oil wants fire.
+    // What the blow itself deals as it lands (1.792), before anything is added: oil wants fire.
     const carried = new Set(parts.flatMap((part) => (part.damageType ? [part.damageType.toLowerCase()] : [])));
-    // Conditions a change spends once it adds (1.791), with whoever holds them.
+    // Conditions a change spends once it adds (1.792), with whoever holds them.
     const spentOnUse: { holder: RulesetCombatant; condition: string }[] = [];
     if (parts.length) {
       for (const one of modifiers) {
@@ -18146,7 +18146,7 @@ function resolveActionBodyIn(
               ? parseRulesetCombatDice(modifier.dice)
               : null;
         if (!dice && modifier.flat === undefined && modifier.add === undefined) continue;
-        // Once on each of its holder's own turns (1.428), spent by the first blow it adds to.
+        // Once on each of its holder's own turns (1.429), spent by the first blow it adds to.
         if (modifier.oncePer && !takenModifiers.includes(one)) {
           if (!oncePerTurnLeft(ctx, actor, one)) continue;
           spendOncePerTurn(ctx, actor, onceKey(one));
@@ -18158,7 +18158,7 @@ function resolveActionBodyIn(
         const rolled = rollAmount(ctx, amount);
         const bonus = critical && !onCritical ? criticalExtra(ctx, amount) : { rolls: [], flat: 0 };
         const sign = modifier.minus ? -1 : 1;
-        // A value off its holder's sheet (1.412): Deflect Missiles' Dexterity modifier + monk level.
+        // A value off its holder's sheet (1.413): Deflect Missiles' Dexterity modifier + monk level.
         const added = modifier.add
           ? (rulesetHolderValue(ctx.definition, takenModifiers.includes(one) ? target : actor, modifier.add) ?? 0)
           : 0;
@@ -18215,15 +18215,15 @@ function resolveActionBodyIn(
       }
     }
     if (before) afterBlow(ctx, target, dealt, critical);
-    // Dust at 0 (1.786): whoever its damage leaves at 0 dies outright, never dying. One that hung on
+    // Dust at 0 (1.787): whoever its damage leaves at 0 dies outright, never dying. One that hung on
     // at 1 is not down; a thing is broken as it was.
     if (action.fellsKill && dealt > 0 && target.down && !target.defeated && !target.object)
       slay(ctx, target, actor.id, action.label);
-    // Dropped by this blow (1.676): a giant spider's poison leaves them stable, poisoned and paralyzed.
+    // Dropped by this blow (1.677): a giant spider's poison leaves them stable, poisoned and paralyzed.
     if (action.onFell && !downBefore && target.down && !target.defeated) fellByBlow(ctx, actor, action, target);
-    // A weapon that hit it corroded (1.550): a rust monster's Rust Metal.
+    // A weapon that hit it corroded (1.551): a rust monster's Rust Metal.
     if (dealt > 0) corrodeOnHit(ctx, actor, action, target);
-    // Caught (1.415): a weapon's missile its target took all of away, to be thrown back with the
+    // Caught (1.416): a weapon's missile its target took all of away, to be thrown back with the
     // missile's own damage.
     if (before && lessened && dealt === 0 && action.damage && rulesetWeaponBlow(action) && !target.defeated) {
       ctx.caught ??= {
@@ -18233,7 +18233,7 @@ function resolveActionBodyIn(
           sides: action.damage.sides,
           ...(action.damage.type ? { type: action.damage.type } : {}),
         },
-        // The ammunition it was (1.625), for a catch that keeps it.
+        // The ammunition it was (1.626), for a catch that keeps it.
         ...(action.ammo && actor.lastShot !== undefined
           ? {
               missile: {
@@ -18314,14 +18314,14 @@ function resolveActionBodyIn(
         entry.condition,
         {
           condition: entry.condition,
-          // Some rounds at most beside a save that ends it, and on its maker's turns (1.533).
+          // Some rounds at most beside a save that ends it, and on its maker's turns (1.534).
           duration: entry.rounds
             ? { rounds: entry.rounds, ...(entry.of ? { of: entry.of } : {}) }
             : entry.saveEnds
               ? "until-save"
               : "instant",
           ...(entry.saveEnds ? { saveEnds: { save: entry.saveEnds.save, at: entry.saveEnds.at } } : {}),
-          // Ended by its holder's own check (1.510): breaking out of a net.
+          // Ended by its holder's own check (1.511): breaking out of a net.
           ...(entry.checkEnds ? { checkEnds: { ...entry.checkEnds } } : {}),
         },
         {
@@ -18376,7 +18376,7 @@ function resolveActionBodyIn(
     const cureUnseals = action.cureOneOf ? picked?.unseals : action.unseals;
     if (cureEnds)
       endConditionsOf(ctx, action, target, cureEnds, rulesetPaidLevel(ctx.definition, actor, action, payWith));
-    // What a catalog's entries put on them, ended (1.423): Dispel Magic, Cleansing Touch.
+    // What a catalog's entries put on them, ended (1.424): Dispel Magic, Cleansing Touch.
     if (action.endsSpells)
       endSpellsOn(ctx, actor, action, target, rulesetPaidLevel(ctx.definition, actor, action, payWith));
     if (heal && action.sharesHeal) {
@@ -18394,7 +18394,7 @@ function resolveActionBodyIn(
           magical: magicalAction(action),
         });
     } else if (heal && action.healsAll) {
-      // All they are missing (1.756): Wish.
+      // All they are missing (1.757): Wish.
       const now = healthOf(ctx, target);
       const given = Math.max(0, now.max - now.value);
       dealHeal(ctx, target, {
@@ -18427,7 +18427,7 @@ function resolveActionBodyIn(
         amount: rolled.total,
       });
     }
-    // Spent pools given back by itself (1.655): a Pearl of Power's slot.
+    // Spent pools given back by itself (1.656): a Pearl of Power's slot.
     if (action.recovers && target.sheet) {
       for (const pool of rulesetRecoverPicks(ctx.definition, target.sheet.build, target.sheet.live, action.recovers))
         restorePool(ctx, target, pool, { sourceId: actor.id, rolls: [], flat: 1, amount: 1 });
@@ -18446,23 +18446,23 @@ function resolveActionBodyIn(
       // Tracks moved and sealed health given back (1.201), before the conditions it puts on.
       for (const entry of cureTracks ?? []) moveTrack(ctx, actor, target, entry.track, entry.by);
       if (cureUnseals) unsealHealth(ctx, actor, target);
-      // Its health as it lands (1.449), read once: Divine Word's tiers, and its kill at the lowest.
+      // Its health as it lands (1.450), read once: Divine Word's tiers, and its kill at the lowest.
       const healthNow = healthOf(ctx, target).value;
       const dies =
         action.killsAtMost !== undefined &&
         target.id !== actor.id &&
         !target.defeated &&
         healthNow <= action.killsAtMost;
-      // Warded against it (1.595), nothing of it takes: Death Ward against Divine Word.
+      // Warded against it (1.596), nothing of it takes: Death Ward against Divine Word.
       const warded = dies && wardedOutright(ctx, target);
       const slain = dies && !warded;
       if (slain) slay(ctx, target, actor.id, action.label);
-      // Failed by enough, something worse goes on instead (1.591): a Wand of Wonder's petrifying.
+      // Failed by enough, something worse goes on instead (1.592): a Wand of Wonder's petrifying.
       const failedBy = action.save?.failedBy;
       const missed = failedBy
         ? [...ctx.events].reverse().find((event) => event.type === "save" && event.actorId === target.id)
         : undefined;
-      // Or with a total that low (1.672): a sprite's arrow.
+      // Or with a total that low (1.673): a sprite's arrow.
       const worse =
         failedBy &&
         missed?.type === "save" &&
@@ -18471,7 +18471,7 @@ function resolveActionBodyIn(
         ((failedBy.atLeast !== undefined && missed.difficulty - missed.total >= failedBy.atLeast) ||
           (failedBy.resultAtMost !== undefined && missed.total <= failedBy.resultAtMost));
       const putting = worse ? failedBy.applies : (action.applies ?? []);
-      // Not while its applier already holds what it names on somebody (1.739), nor what ends with it:
+      // Not while its applier already holds what it names on somebody (1.740), nor what ends with it:
       // a chain devil already grappling, and the restraint of its grapple.
       const imposing = new Set(
         putting
@@ -18487,14 +18487,14 @@ function resolveActionBodyIn(
           }
         }
       }
-      // Not on whoever it catches where it goes on what it calls (1.478).
+      // Not on whoever it catches where it goes on what it calls (1.479).
       for (const applies of slain || warded || riderless || action.appliesToCalled ? [] : putting) {
         if (imposing.has(applies.condition)) continue;
         // Read off whoever applies it, as it applies (1.167): Rage's bonus by barbarian level.
         if (!rulesetSheetWithin(ctx.definition, actor, applies.when)) continue;
         if (!rulesetTargetIs(ctx.definition, target, applies.targetIs)) continue;
         if (applies.targetHealthAtMost !== undefined && healthNow > applies.targetHealthAtMost) continue;
-        // Only by an attack rolled with advantage (1.675): a cloaker's bite on the head.
+        // Only by an attack rolled with advantage (1.676): a cloaker's bite on the head.
         if (applies.withAdvantage) {
           const swing = [...ctx.events]
             .reverse()
@@ -18518,7 +18518,7 @@ function resolveActionBodyIn(
               : {}),
           // And how far above its base cost (1.300): what an action the condition gives grows by.
           ...(rulesetIsSpell(action) && steps > 0 ? { steps } : {}),
-          // What put it on, for an entry that ends what a catalog's entries put on (1.423).
+          // What put it on, for an entry that ends what a catalog's entries put on (1.424).
           ...(action.catalog ? { catalog: action.catalog } : {}),
           // What it harms with grows with the higher cost it was put on with (1.255): Acid Arrow.
           ...(applies.harmsPerCostStep && steps > 0
@@ -18535,7 +18535,7 @@ function resolveActionBodyIn(
               : {}),
           ...(action.concentration ? { concentration: true } : {}),
         });
-        // Spared once what it put on ends (1.673): a dragon's Frightful Presence.
+        // Spared once what it put on ends (1.674): a dragon's Frightful Presence.
         if (action.sparedAfter?.whenEnds) {
           const on = target.tracked.find((entry) => entry.condition === applies.condition && entry.source === actor.id);
           if (on) on.auraSafeOnEnd = rulesetSparedKey(actor, action);
@@ -18548,7 +18548,7 @@ function resolveActionBodyIn(
       if (pushBy !== undefined && !riderless && target.id !== actor.id && rulesetCombatStanding(target)) {
         pushTarget(ctx, actor, target, pushBy);
       }
-      // Pulled toward its maker (1.674), stopping beside them: a balor's whip, Thorn Whip.
+      // Pulled toward its maker (1.675), stopping beside them: a balor's whip, Thorn Whip.
       if (action.pull !== undefined && !riderless && target.id !== actor.id && rulesetCombatStanding(target)) {
         const pulled = pushTarget(ctx, actor, target, 0, rulesetPullPath(ctx.state, actor.id, target.id, action.pull));
         if (pulled) pulled.pulled = true;
@@ -18557,10 +18557,10 @@ function resolveActionBodyIn(
       if (action.draws && target.id !== actor.id && rulesetCombatStanding(target)) {
         drawTarget(ctx, actor, target, action.draws.spends);
       }
-      // Moved where its user picked (1.564), once what holds it there has gone on: Telekinesis.
+      // Moved where its user picked (1.565), once what holds it there has gone on: Telekinesis.
       if (action.movesTarget && ctx.carriesTo && !target.defeated) carryTarget(ctx, actor, action, target);
       // Sent out of the fight (1.236), last of all; its user too where they still take their turns
-      // away (1.626), as a Robe of Stars takes its wearer to the Astral Plane.
+      // away (1.627), as a Robe of Stars takes its wearer to the Astral Plane.
       if (
         action.dismisses &&
         (target.id !== actor.id || (typeof action.dismisses === "object" && !!action.dismisses.turns)) &&
@@ -18723,10 +18723,10 @@ function rollRulesetRecharges(ctx: RulesetCombatContext, actor: RulesetCombatant
 /** Who is next to act: anybody the fight is not over for. A member who is down with nothing left to
  *  roll is stepped over until somebody brings them back. */
 function canTakeTurn(ctx: RulesetCombatContext, combatant: RulesetCombatant): boolean {
-  // Held out of time (1.646): no turn at all.
+  // Held out of time (1.647): no turn at all.
   if (rulesetStasis(ctx.definition, combatant, ctx.state)) return false;
   // Away and still taking turns (1.313), to find the way out of a maze, or to come back from a
-  // blink (1.505) as one starts.
+  // blink (1.506) as one starts.
   if (combatant.defeated) return !!(combatant.away?.blinked || (combatant.away?.turns && combatant.away.while));
   return !combatant.down || (combatant.dying && !combatant.stable) || !!combatant.regrowing;
 }
@@ -18749,7 +18749,7 @@ export function advanceRulesetTurn(
   if (state.window) return refusal(state, currentRulesetActor(state)?.id ?? "", "window-open", "end-turn");
   const { ctx, finish } = begin(definition, combat, state, roller);
   const leaving = currentRulesetActor(ctx.state);
-  // Walked with what movement is left as they end the turn (1.471), having acted: Compulsion. A walk
+  // Walked with what movement is left as they end the turn (1.472), having acted: Compulsion. A walk
   // held open by somebody's reach waits for its answers, and ending the turn again goes on.
   if (
     leaving &&
@@ -18764,19 +18764,19 @@ export function advanceRulesetTurn(
       if (walkCompelled(ctx, leaving, active, "after") && ctx.state.window) return finish();
     }
   }
-  // Time stopped (1.506), read before the turn's own conditions run out: another turn straight after.
+  // Time stopped (1.507), read before the turn's own conditions run out: another turn straight after.
   const again = !!leaving && timeStoppedTurn(ctx, leaving);
   if (leaving) {
     // Ending a turn in a zone comes before the turn's own conditions run out (1.172).
     zonesAtTurn(ctx, leaving, "turn-end");
-    // Ending a turn inside solid ground (1.494): Incorporeal Movement.
+    // Ending a turn inside solid ground (1.495): Incorporeal Movement.
     insideGround(ctx, leaving);
     endsAway(ctx, leaving);
     endsIdle(ctx, leaving);
     tickConditions(ctx, leaving, "turn-end");
-    // Heads grown back as its turn ends (1.549): a hydra's.
+    // Heads grown back as its turn ends (1.550): a hydra's.
     regrowHeads(ctx, leaving);
-    // Off the board until their next turn, on their blink's die (1.505).
+    // Off the board until their next turn, on their blink's die (1.506).
     blinkAway(ctx, leaving);
     // The first turn, spent surprised, is over (1.237).
     endSurprise(ctx, leaving);
@@ -18790,7 +18790,7 @@ export function advanceRulesetTurn(
       if (leaving.actions.find((entry) => entry.id === zone.actionId)?.zone?.detonates?.grows) {
         zone.grown = (zone.grown ?? 0) + 1;
       }
-      // Widening as it lasts (1.636), until closed: an Eversmoking Bottle's smoke.
+      // Widening as it lasts (1.637), until closed: an Eversmoking Bottle's smoke.
       spreadZone(ctx, leaving, zone);
       if (leaving.flags.freshZones?.includes(zone.actionId)) continue;
       zone.rounds -= 1;
@@ -18798,7 +18798,7 @@ export function advanceRulesetTurn(
     }
     // Strikes a spend bought are for the turn it was spent on. Nothing is carried over.
     delete leaving.strikesLeft;
-    // Time stopped (1.506): their next turn straight after, nobody else's, and no window between.
+    // Time stopped (1.507): their next turn straight after, nobody else's, and no window between.
     if (again) {
       beginNextTurn(definition, combat, ctx, true);
       return finish();
@@ -18844,7 +18844,7 @@ function openSignatureWindow(ctx: RulesetCombatContext): boolean {
   return true;
 }
 
-/** Signature actions bought as a foe's turn starts (Capability API 1.804), where the ruleset's
+/** Signature actions bought as a foe's turn starts (Capability API 1.805), where the ruleset's
  *  `combat.signatureAtTurnStart` allows it: a boss answering the hero about to act, as well as
  *  between turns. Only the points' own actions are offered, not a lair's, which keep their count. */
 function openTurnStartSignature(ctx: RulesetCombatContext, actor: RulesetCombatant): boolean {
@@ -18889,7 +18889,7 @@ function beginNextTurn(
   definition: RulesetDefinition,
   combat: RulesetCombat,
   ctx: RulesetCombatContext,
-  /** The same actor again, time stopped (1.506): no step along the order and no new round. */
+  /** The same actor again, time stopped (1.507): no step along the order and no new round. */
   again = false,
 ): void {
   // A turn put in after another (1.320), the Hourglass's, is taken once and leaves the order again.
@@ -18928,7 +18928,7 @@ function beginNextTurn(
       refreshRulesetBudgets(combat, combatant.budgets, "round");
       refreshSpendLimits(combatant, "round");
     }
-    // What outlasts a caster who takes no turns any more counts down as the round ends (1.455).
+    // What outlasts a caster who takes no turns any more counts down as the round ends (1.456).
     for (const caster of ctx.state.combatants) {
       if (!caster.defeated || canTakeTurn(ctx, caster)) continue;
       for (const zone of [...(caster.zones ?? [])]) {
@@ -18961,7 +18961,7 @@ function beginNextTurn(
   // so a strike made while somebody else is acting can still carry one; "round" waits for the round
   // to turn over. Everybody's, because a rider fires on its holder's blow, not on their turn.
   for (const combatant of ctx.state.combatants) clearSpentRiders(combatant, fresh);
-  // What some have back as every turn starts, anybody's (1.548): a marilith's reaction.
+  // What some have back as every turn starts, anybody's (1.549): a marilith's reaction.
   for (const combatant of ctx.state.combatants) {
     for (const id of combatant.block?.refillsEveryTurn ?? []) {
       const budget = combat.economy.budgets.find((one) => one.id === id);
@@ -18971,20 +18971,20 @@ function beginNextTurn(
 
   const actor = currentRulesetActor(ctx.state);
   if (actor) {
-    // Back from a blink before anything of the turn (1.505).
+    // Back from a blink before anything of the turn (1.506).
     blinkBack(ctx, actor);
-    // What it called on their way come a turn nearer, and arrive (1.613).
+    // What it called on their way come a turn nearer, and arrive (1.614).
     arriveCalled(ctx, actor);
     refreshRulesetBudgets(combat, actor.budgets, "turn");
     refreshSpendLimits(actor, "turn");
-    // A spare reaction for each head beyond one (1.549), for opportunity attacks only.
+    // A spare reaction for each head beyond one (1.550), for opportunity attacks only.
     if (actor.heads && actor.block?.heads?.opportunityReactions) actor.heads.spare = Math.max(0, actor.heads.count - 1);
     // A stance lasts until the actor's next turn, and that turn is now. Help was given to somebody
     // else and is spent by their own next attack, so it survives this.
     actor.flags = actor.flags.helped
       ? { helped: true, ...(actor.flags.helpedAgainst ? { helpedAgainst: actor.flags.helpedAgainst } : {}) }
       : {};
-    // A weapon's bonus lent to their defense comes back to it (1.736).
+    // A weapon's bonus lent to their defense comes back to it (1.737).
     if (actor.bonusShift) {
       shiftWeaponBonus(actor, actor.bonusShift.item, actor.bonusShift.amount);
       delete actor.bonusShift;
@@ -19000,36 +19000,36 @@ function beginNextTurn(
     delete actor.trail;
     if (!actor.dazed) ctx.events.push({ type: "turn", actorId: actor.id, round });
     if (!ctx.state.acted?.includes(actor.id)) (ctx.state.acted ??= []).push(actor.id);
-    // And at all this fight (1.543).
+    // And at all this fight (1.544).
     if (!ctx.state.tookTurn?.includes(actor.id)) (ctx.state.tookTurn ??= []).push(actor.id);
     refreshRulesetSignature(actor);
     rollRulesetRecharges(ctx, actor);
-    // What it regains as its turn starts (1.395), and a troll down at 0 that cannot is out.
+    // What it regains as its turn starts (1.396), and a troll down at 0 that cannot is out.
     regenerate(ctx, actor);
-    // What damage stopped works again (1.513).
+    // What damage stopped works again (1.514).
     delete actor.harmStopped;
-    // Holding their breath under water, or out of it (1.497).
+    // Holding their breath under water, or out of it (1.498).
     holdBreath(ctx, actor);
-    // A pact weapon left lying far off long enough is gone (1.479).
+    // A pact weapon left lying far off long enough is gone (1.480).
     if (actor.dropped?.length) conjuredLeftBehind(ctx, actor);
-    // What it senses the presence of (1.443), said again each turn.
+    // What it senses the presence of (1.444), said again each turn.
     sensePresence(ctx, actor, true);
-    // Whoever it called for a while (1.393) leaves as its time comes round.
+    // Whoever it called for a while (1.394) leaves as its time comes round.
     dismissCalled(ctx, actor, (one) => one.calledUntil !== undefined && round >= one.calledUntil, "rounds");
-    // What its items called stays a round less (1.611).
+    // What its items called stays a round less (1.612).
     departuresOf(ctx, actor);
     recoverFromCrash(ctx, actor);
     // Its own drifting zones move first (1.173), then starting a turn in a zone (1.172), before
     // the turn's own conditions tick.
     driftZones(ctx, actor);
-    // Its zones in stages on to their next turn, and what each does now (1.556).
+    // Its zones in stages on to their next turn, and what each does now (1.557).
     stageZones(ctx, actor);
     burnAtTurn(ctx, actor);
     zonesAtTurn(ctx, actor, "turn-start");
     tickConditions(ctx, actor, "turn-start");
     // After the clocks, so what an aura's save puts on "until the start of its next turn" lasts it.
     if (!actor.defeated) aurasAtTurn(ctx, actor);
-    // What strikes by itself for them as their turn starts (1.538): a Faithful Hound's bite.
+    // What strikes by itself for them as their turn starts (1.539): a Faithful Hound's bite.
     if (!actor.defeated) summonsStrike(ctx, actor);
     // Before the walk and the budgets are read, so one a roll brings back up stands and acts on
     // this turn (laptop playtest 2026-10-23: back up on 1, still prone, with no walk to stand with).
@@ -19044,17 +19044,17 @@ function beginNextTurn(
       "turn",
       rulesetConditionEconomy(definition, combat, actor, ctx.state).budgets,
     );
-    // Out of their caller's command (1.619): too far, or the caller unable to act. They act on their
+    // Out of their caller's command (1.620): too far, or the caller unable to act. They act on their
     // own this turn, and the caller pays nothing for it.
     if (actor.calledCommandWithin !== undefined) {
       if (rulesetCommandReaches(definition, ctx.state, actor)) delete actor.calledOnOwn;
       else actor.calledOnOwn = true;
     }
-    // Commanded by their caller (1.557): the caller pays for this turn, or it passes.
+    // Commanded by their caller (1.558): the caller pays for this turn, or it passes.
     const command = actor.calledCommand;
     if (command && !actor.defeated && !actor.calledTurned && !actor.calledOnOwn) {
       const caller = actor.calledBy ? rulesetCombatant(ctx.state, actor.calledBy) : undefined;
-      // Through one of its caller's actions (1.735): only once the caller has made it.
+      // Through one of its caller's actions (1.736): only once the caller has made it.
       const given = command.action !== undefined ? command.given === true : undefined;
       if (command.action !== undefined) delete command.given;
       if (given === true || (given === undefined && command.free)) delete command.free;
@@ -19075,7 +19075,7 @@ function beginNextTurn(
         }
       }
     }
-    // Under nobody's control (1.614), unless tamed: it walks toward its caller, and that is its turn.
+    // Under nobody's control (1.615), unless tamed: it walks toward its caller, and that is its turn.
     const wild = actor.calledWild;
     if (
       wild &&
@@ -19103,12 +19103,12 @@ function beginNextTurn(
         return;
       }
     }
-    // Whether it loses heart, or gets away now that it has (1.761): out, the turn goes with it.
+    // Whether it loses heart, or gets away now that it has (1.762): out, the turn goes with it.
     if (moraleTurn(ctx, actor) && rulesetEncounterOutcome(ctx.state) === "ongoing") {
       beginNextTurn(definition, combat, ctx);
       return;
     }
-    // What its low health may set off as its turn starts (1.542): Berserk.
+    // What its low health may set off as its turn starts (1.543): Berserk.
     rollAtTurnStart(ctx, actor);
     // What a condition's table makes of this turn (1.264), once nothing else is left to change it.
     compelTurn(ctx, actor);
@@ -19116,7 +19116,7 @@ function beginNextTurn(
     openMoment(ctx, { kind: "turn-start", sourceId: actor.id, label: actor.name }, ctx.state.combatants);
     if (!ctx.state.window && !openTurnStartSignature(ctx, actor)) {
       completeDelayed(ctx, actor);
-      // A cast taking rounds carried on (1.460).
+      // A cast taking rounds carried on (1.461).
       continueCasting(ctx, actor);
     }
   }
@@ -19215,8 +19215,8 @@ const WANDER_WAYS: ReadonlyArray<readonly [number, number]> = [
   [-1, -1],
 ];
 
-/** Walked the way the first condition that `walks` them now moves, as far as they can (1.463), as
- *  their turn starts (`true`) or as they end it (`"after"`, 1.471). Whether they were walked. */
+/** Walked the way the first condition that `walks` them now moves, as far as they can (1.464), as
+ *  their turn starts (`true`) or as they end it (`"after"`, 1.472). Whether they were walked. */
 function walkCompelled(
   ctx: RulesetCombatContext,
   actor: RulesetCombatant,
@@ -19246,7 +19246,7 @@ function walkCompelled(
   return false;
 }
 
-/** A creature's low-health roll as its turn starts (1.542): a golem's Berserk, a 6 on a d6 at 40
+/** A creature's low-health roll as its turn starts (1.543): a golem's Berserk, a 6 on a d6 at 40
  *  hit points or fewer. Not rolled once it holds all of what it puts on. */
 function rollAtTurnStart(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   if (!rulesetCombatStanding(actor) || actor.defeated) return;
@@ -19266,7 +19266,7 @@ function rollAtTurnStart(ctx: RulesetCombatContext, actor: RulesetCombatant): vo
 }
 
 /**
- * Whether a combatant with a stat block loses heart as its turn starts (1.761). Each of
+ * Whether a combatant with a stat block loses heart as its turn starts (1.762). Each of
  * `combat.morale.on` that has happened and not yet been checked for it is checked now, in the order
  * the ruleset names them, and the first that breaks it decides: it gives up where its mind is among
  * `surrenders` and an opponent is beside it (or there is no board), else it runs. One already running
@@ -19304,7 +19304,7 @@ function moraleTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): boolean
     if (trigger === "first-fall") return fallen.length > 0;
     if (trigger === "half-down") {
       if (side.length <= 1 || fallen.length * 2 < side.length) return false;
-      // With no losses on the other side (1.774), as the Dungeon Master's Guide has it.
+      // With no losses on the other side (1.775), as the Dungeon Master's Guide has it.
       return (
         !morale.halfDownUnanswered ||
         !ctx.state.combatants.some(
@@ -19316,9 +19316,9 @@ function moraleTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): boolean
         )
       );
     }
-    // Caught unaware (1.774): a turn it starts surprised.
+    // Caught unaware (1.775): a turn it starts surprised.
     if (trigger === "surprised") return !!actor.surprised;
-    // No way to harm the other side at all (1.774), as the Dungeon Master's Guide means it: nothing
+    // No way to harm the other side at all (1.775), as the Dungeon Master's Guide means it: nothing
     // it has could hurt or hold anybody of theirs, wherever they stand (its weapons and its magic
     // gone, a grapple or a shove all it has left), or every one of them is up in the air out of
     // reach of a creature that can neither fly nor shoot. Out of reach of a walk is not helpless.
@@ -19382,7 +19382,7 @@ function moraleTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): boolean
           !!rulesetPositionOf(actor) &&
           rulesetGap(one, actor) <= 1,
       );
-    // Of a kind that never gives itself up (1.784): it flees whatever its mind.
+    // Of a kind that never gives itself up (1.785): it flees whatever its mind.
     const kind = rulesetCreatureKind(ctx.definition, actor).type;
     const yields = morale.surrenders?.includes(mind) && !(kind !== undefined && morale.neverSurrender?.includes(kind));
     const outcome = held ? "held" : yields && pinned ? "surrender" : "flee";
@@ -19408,7 +19408,7 @@ function moraleTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): boolean
   return false;
 }
 
-/** Whether a combatant fills a cell on the board's edge, or there is no board to cross (1.761). */
+/** Whether a combatant fills a cell on the board's edge, or there is no board to cross (1.762). */
 export function rulesetAtBoardEdge(state: RulesetEncounterState, combatant: RulesetCombatant): boolean {
   const grid = state.board?.grid;
   if (!grid || !rulesetPositionOf(combatant)) return true;
@@ -19439,9 +19439,9 @@ function compelTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   for (const entry of active) {
     if (entry.behavior?.drops?.at === "turn-start") letFall(ctx, actor, entry.condition, entry.behavior.drops);
   }
-  // Walked the way it moves as far as it can (1.463): Compulsion.
+  // Walked the way it moves as far as it can (1.464): Compulsion.
   walkCompelled(ctx, actor, active, true);
-  // A save as the turn starts, or a budget wasted for it (1.462): Bestow Curse.
+  // A save as the turn starts, or a budget wasted for it (1.463): Bestow Curse.
   for (const entry of active) {
     const wastes = entry.behavior?.wastes;
     if (!wastes) continue;
@@ -19456,7 +19456,7 @@ function compelTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   if (active.some((entry) => entry.behavior?.onlyWhenStuck === "any")) {
     actor.flags.stuck = rulesetReachableCells(ctx.definition, ctx.state, actor.id).length === 0;
   }
-  // At the nearest creature it sees, walked to it first (1.542): Berserk.
+  // At the nearest creature it sees, walked to it first (1.543): Berserk.
   const nearest = active.find((entry) => entry.behavior?.nearest);
   if (nearest) {
     const seen = ctx.state.combatants
@@ -19621,12 +19621,12 @@ export function rulesetEncounterOutcome(state: RulesetEncounterState): RulesetEn
   if (state.window?.resume?.kind === "fall" || state.pendingFalls?.length) return "ongoing";
   const enemies = state.combatants.filter((combatant) => combatant.side === "enemy");
   const party = state.combatants.filter((combatant) => combatant.side === "party");
-  // Down at 0 while it may regenerate (1.395), a troll is not out of it yet.
-  // An object called to take no turns (1.478) keeps no side standing.
-  // Blinked away (1.505), back as their next turn starts, they are still in it.
-  // Set aside by a zone (1.532), it is still in it too.
-  // Nor one under nobody's control (1.614).
-  // Gone of its own accord and back when it likes (1.626), a Robe of Stars' wearer is still in it.
+  // Down at 0 while it may regenerate (1.396), a troll is not out of it yet.
+  // An object called to take no turns (1.479) keeps no side standing.
+  // Blinked away (1.506), back as their next turn starts, they are still in it.
+  // Set aside by a zone (1.533), it is still in it too.
+  // Nor one under nobody's control (1.615).
+  // Gone of its own accord and back when it likes (1.627), a Robe of Stars' wearer is still in it.
   const out = (combatant: RulesetCombatant) =>
     combatant.turnless ||
     !!combatant.calledWild ||

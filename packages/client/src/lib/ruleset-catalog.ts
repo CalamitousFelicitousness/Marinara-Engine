@@ -490,7 +490,7 @@ export type CatalogMechanicsLabels = {
   value?: (ref: RulesetValueRef) => string;
   /** Condition id to the name the sheet shows, for a cure that ends some (1.176). */
   conditions?: Readonly<Record<string, string>>;
-  /** The ruleset's own words (a damage type, a sense) in the player's language (1.805). */
+  /** The ruleset's own words (a damage type, a sense) in the player's language (1.806). */
   text?: (english: string) => string;
 };
 
@@ -682,7 +682,7 @@ export function formatCatalogMechanics(
     const save = labels.saves[mechanics.save.save] ?? mechanics.save.save;
     parts.push(t(SAVE_KEYS[mechanics.save.onSuccess], { save }));
   }
-  // A ray rolled for each target (1.467).
+  // A ray rolled for each target (1.468).
   if (mechanics.rays) {
     parts.push(
       t("game.ruleset.catalog.mechanics.rays", {
@@ -809,12 +809,12 @@ export function formatCatalogMechanics(
         t("game.ruleset.catalog.mechanics.zoneForbids", { components: words(mechanics.zone.forbids.components) }),
       );
     }
-    // No teleporting into, out of or within it (1.466).
+    // No teleporting into, out of or within it (1.467).
     if (mechanics.zone.forbids?.teleport === true) parts.push(t("game.ruleset.catalog.mechanics.zoneForbidsTeleport"));
-    // Nobody into it at all (1.752): Forbiddance.
+    // Nobody into it at all (1.753): Forbiddance.
     else if (mechanics.zone.forbids?.teleport === "into")
       parts.push(t("game.ruleset.catalog.mechanics.zoneForbidsTeleportInto"));
-    // Or out of it only past a save (1.602).
+    // Or out of it only past a save (1.603).
     else if (mechanics.zone.forbids?.teleport)
       parts.push(
         t("game.ruleset.catalog.mechanics.zoneForbidsTeleportSave", {

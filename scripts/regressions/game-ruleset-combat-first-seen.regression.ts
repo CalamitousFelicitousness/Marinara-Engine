@@ -1,5 +1,5 @@
 /**
- * A condition that gives way as its holder first sees somebody (Capability API 1.637): 5e's Philter of
+ * A condition that gives way as its holder first sees somebody (Capability API 1.638): 5e's Philter of
  * Love, "The next time you see a creature within 10 minutes after drinking the philter, you become
  * charmed by that creature for 1 hour."
  *
@@ -31,7 +31,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 637);
+  assert.ok(supportedCapabilityApi.minor >= 638);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -104,7 +104,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a condition that gives way as its holder first sees somebody (onFirstSeen) requires schemaVersion 2 and capabilityApi 1.637 or newer";
+      "A ruleset with a condition that gives way as its holder first sees somebody (onFirstSeen) requires schemaVersion 2 and capabilityApi 1.638 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -118,11 +118,11 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(636) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(637) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(637) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(638) as never, document()), gate);
   }
 
-  console.log("onFirstSeen: a Philter of Love's drinker is charmed by the nearest creature they see; gated at 1.637.");
+  console.log("onFirstSeen: a Philter of Love's drinker is charmed by the nearest creature they see; gated at 1.638.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

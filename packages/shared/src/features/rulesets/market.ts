@@ -218,20 +218,20 @@ export interface RulesetMarketDay {
   bought: ReadonlyMap<string, number>;
   stockBought: ReadonlyMap<string, number>;
   paidOut: ReadonlyMap<string, number>;
-  /** The buys of a fake held today for a warning (1.801), by seller and item (`rulesetMarketStockKey`):
+  /** The buys of a fake held today for a warning (1.802), by seller and item (`rulesetMarketStockKey`):
    *  asked again, each goes through. */
   warned?: ReadonlySet<string>;
-  /** Who has inspected a seller's ware today (1.801), by `rulesetMarketInspectKey`: one try each. */
+  /** Who has inspected a seller's ware today (1.802), by `rulesetMarketInspectKey`: one try each. */
   inspected?: ReadonlySet<string>;
 }
 
-/** The key one character's inspection of a seller's ware is kept by in a market day (1.801). */
+/** The key one character's inspection of a seller's ware is kept by in a market day (1.802). */
 export function rulesetMarketInspectKey(who: string, seller: string, item: string): string {
   return `${gameInventoryNameKey(who)}|${rulesetMarketStockKey(seller, item)}`;
 }
 
 /**
- * Who in the party may spot a fake (1.801), for a market that answers inspections and holds a fake's
+ * Who in the party may spot a fake (1.802), for a market that answers inspections and holds a fake's
  * buy for a warning: every member's sheet, the player's first, and the chat's own name for the rolls.
  */
 export interface RulesetMarketSpotting {
@@ -329,7 +329,7 @@ export function rulesetMarketQuoter(
   ) => boolean,
   layerOptions?: RulesetLayerOptions | null,
   day?: RulesetMarketDay,
-  /** The party's sheets, for inspecting and for noticing a fake before it is bought (1.801). */
+  /** The party's sheets, for inspecting and for noticing a fake before it is bought (1.802). */
   spotting?: RulesetMarketSpotting,
 ): GameInventoryMarket {
   const priced = rulesetPricedCoins(book.entries ?? []);
@@ -340,7 +340,7 @@ export function rulesetMarketQuoter(
   const inspected = new Set(day?.inspected ?? []);
   // The same check by the same character on the same thing rolls the same all day.
   const roller = (what: string) => rulesetCombatRoller(dayHash(`${spotting?.seed ?? ""}|${day?.key ?? ""}|${what}`), 0);
-  /** A fake's buy held for a warning (1.801): the first in the party, the buyer aside, who notices it,
+  /** A fake's buy held for a warning (1.802): the first in the party, the buyer aside, who notices it,
    *  unless a buy of it from this seller was held today already. */
   const heldFor = (
     seller: RulesetMarketSeller,
@@ -623,7 +623,7 @@ export function rulesetMarketQuoter(
   };
 }
 
-/** What an inspection found, in words for the Game Master (1.801). */
+/** What an inspection found, in words for the Game Master (1.802). */
 function inspectWords(found: RulesetInspectFound, trueName: string | undefined): string {
   if (found === "named") return `it is a fake: really ${trueName ?? "something else"}`;
   if (found === "fake") return "something is off: they think it is a fake";
@@ -650,7 +650,7 @@ export function rulesetMarketPromptText(
 ): string | undefined {
   const market = definition.items?.market;
   if (!market) return undefined;
-  // Looking an item over (1.801) is taught wherever the party is, a market or none.
+  // Looking an item over (1.802) is taught wherever the party is, a market or none.
   const spotting = rulesetSpottingPromptLines(definition, book);
   const alone = (line: string) => [line, ...spotting].join("\n");
   if (!place) return alone("MARKET: no place said yet. Say where the party is with [place:] before anyone buys.");
@@ -752,7 +752,7 @@ export function rulesetMarketPromptText(
 }
 
 /**
- * How the Game Master asks the Engine about fakes (1.801), for a ruleset whose fakes can be spotted:
+ * How the Game Master asks the Engine about fakes (1.802), for a ruleset whose fakes can be spotted:
  * the inspect tag, a buy held for a warning, and the ways of seeing through fakes. None otherwise.
  */
 export function rulesetSpottingPromptLines(

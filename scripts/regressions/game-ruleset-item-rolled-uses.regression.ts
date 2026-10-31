@@ -1,5 +1,5 @@
 /**
- * Rolled counts of an item's own uses (Capability API 1.535).
+ * Rolled counts of an item's own uses (Capability API 1.536).
  *
  *   - A further use's `uses.rolled`: each stack of the item has that many, rolled once and the same at
  *     every reading after, never past `max`. A Helm of Brilliance's 1d10 diamonds, a Necklace of
@@ -35,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 535);
+  assert.ok(supportedCapabilityApi.minor >= 536);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -164,7 +164,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with an item's further use whose count is rolled for each item (moreUses uses rolled) requires schemaVersion 2 and capabilityApi 1.535 or newer";
+      "A ruleset with an item's further use whose count is rolled for each item (moreUses uses rolled) requires schemaVersion 2 and capabilityApi 1.536 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -178,11 +178,11 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(534) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(535) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(535) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(536) as never, document()), gate);
     assert.notEqual(
       getCapabilityPackageInstallIssue(
-        manifest(534) as never,
+        manifest(535) as never,
         document((item) => item.moreUses.forEach((more: any) => delete more.uses.rolled)),
       ),
       gate,
@@ -190,7 +190,7 @@ try {
   }
 
   console.log(
-    "Item rolled uses: a further use's count rolled once for each stack (a Helm of Brilliance's 1d10 diamonds, Prayer Beads' 1d4+2), the same at every reading, offered in a fight and brought back to it by a rest; refusals and the gate at 1.535.",
+    "Item rolled uses: a further use's count rolled once for each stack (a Helm of Brilliance's 1d10 diamonds, Prayer Beads' 1d4+2), the same at every reading, offered in a fight and brought back to it by a rest; refusals and the gate at 1.536.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

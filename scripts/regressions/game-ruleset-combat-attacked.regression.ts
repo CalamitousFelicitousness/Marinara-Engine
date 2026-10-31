@@ -1,5 +1,5 @@
 /**
- * An attack that is over, and answers that strike or send it on (Capability API 1.421).
+ * An attack that is over, and answers that strike or send it on (Capability API 1.422).
  *
  *   - Retaliation: hurt by a creature beside them, the barbarian answers with their own best melee
  *     weapon strike at it.
@@ -39,7 +39,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 421);
+  assert.ok(supportedCapabilityApi.minor >= 422);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -274,7 +274,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose reactions answer an attack that is over (on attacked, missed), test whoever caused their moment (sourceIs), strike with their holder's own weapon (strikesWith) or send a missed attack elsewhere (redirects) requires schemaVersion 2 and capabilityApi 1.421 or newer";
+      "A ruleset whose reactions answer an attack that is over (on attacked, missed), test whoever caused their moment (sourceIs), strike with their holder's own weapon (strikesWith) or send a missed attack elsewhere (redirects) requires schemaVersion 2 and capabilityApi 1.422 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -288,13 +288,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(420) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(421) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(420) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(421) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(422) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(421) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Attacked: Retaliation strikes back with the barbarian's own greataxe when hurt from beside them; Giant Killer when a Large creature beside them attacks, hit or missed; Stand Against the Tide sends a missed melee attack at another; gated at 1.421.",
+    "Attacked: Retaliation strikes back with the barbarian's own greataxe when hurt from beside them; Giant Killer when a Large creature beside them attacks, hit or missed; Stand Against the Tide sends a missed melee attack at another; gated at 1.422.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

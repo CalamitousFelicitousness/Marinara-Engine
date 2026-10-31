@@ -1,5 +1,5 @@
 /**
- * Wards a condition puts on its holder (Capability API 1.519).
+ * Wards a condition puts on its holder (Capability API 1.520).
  *
  *   - A rakshasa keeping Limited Magic Immunity on: a 1st-level spell aimed at it is refused, a 7th
  *     reaches it, and a 1st-level burst passes it by while it catches the one beside it.
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 519);
+  assert.ok(supportedCapabilityApi.minor >= 520);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -162,7 +162,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions ward their holders from entries of a level or lower (a condition's wards) requires schemaVersion 2 and capabilityApi 1.519 or newer";
+      "A ruleset whose conditions ward their holders from entries of a level or lower (a condition's wards) requires schemaVersion 2 and capabilityApi 1.520 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -176,13 +176,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(518) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(519) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(518) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(519) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(520) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(519) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Holder wards: a rakshasa's Limited Magic Immunity refuses a 1st-level spell, lets a 7th through, and is passed by a burst that catches the one beside it; never from itself; gated at 1.519.",
+    "Holder wards: a rakshasa's Limited Magic Immunity refuses a 1st-level spell, lets a 7th through, and is passed by a burst that catches the one beside it; never from itself; gated at 1.520.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

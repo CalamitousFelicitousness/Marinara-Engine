@@ -1,5 +1,5 @@
 /**
- * A touch answered (Capability API 1.526).
+ * A touch answered (Capability API 1.527).
  *
  *   - Heated Body: a grapple or a shove at its holder costs the one who tried 1d10 fire, won or lost,
  *     as a melee hit does; a condition without `touches` answers only the hit.
@@ -29,7 +29,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 526);
+  assert.ok(supportedCapabilityApi.minor >= 527);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -124,7 +124,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions answer whoever touches their holder (whenHit touches) requires schemaVersion 2 and capabilityApi 1.526 or newer";
+      "A ruleset whose conditions answer whoever touches their holder (whenHit touches) requires schemaVersion 2 and capabilityApi 1.527 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -138,13 +138,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(525) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(526) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(525) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(526) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(527) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(526) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Touches: Heated Body burns whoever grapples its holder, won or lost, and a melee hitter; Fire Shield answers no grapple; gated at 1.526.",
+    "Touches: Heated Body burns whoever grapples its holder, won or lost, and a melee hitter; Fire Shield answers no grapple; gated at 1.527.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

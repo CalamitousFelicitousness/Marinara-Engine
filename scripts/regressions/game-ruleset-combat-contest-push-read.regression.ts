@@ -1,5 +1,5 @@
 /**
- * A contest rolled with advantage by size and pushing by a sheet's value (Capability API 1.586).
+ * A contest rolled with advantage by size and pushing by a sheet's value (Capability API 1.587).
  *
  *   - `advantageAtMostSize: "medium"`: the actor throws its check with advantage against a Medium
  *     target and not against a Large one (Arcane Hand's Forceful Hand).
@@ -35,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 586);
+  assert.ok(supportedCapabilityApi.minor >= 587);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -161,7 +161,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a contest rolled with advantage by size or pushing by a sheet's value (advantageAtMostSize, onWin.pushRead) requires schemaVersion 2 and capabilityApi 1.586 or newer";
+      "A ruleset with a contest rolled with advantage by size or pushing by a sheet's value (advantageAtMostSize, onWin.pushRead) requires schemaVersion 2 and capabilityApi 1.587 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -175,12 +175,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(585) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(586) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(586) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(587) as never, document()), gate);
   }
 
   console.log(
-    "Contest push reads: advantage against a target no bigger than the size named, a push farther by a sheet's value or its caller's; refusals; gated at 1.586.",
+    "Contest push reads: advantage against a target no bigger than the size named, a push farther by a sheet's value or its caller's; refusals; gated at 1.587.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

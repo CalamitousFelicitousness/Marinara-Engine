@@ -1,5 +1,5 @@
 /**
- * More senses (Capability API 1.742): up to 12 in `combat.senses`, 8 before. 5e's Ring of X-ray
+ * More senses (Capability API 1.743): up to 12 in `combat.senses`, 8 before. 5e's Ring of X-ray
  * Vision is its ninth.
  *
  *   - A ruleset takes 12 senses; a 13th is refused.
@@ -19,7 +19,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 742);
+  assert.ok(supportedCapabilityApi.minor >= 743);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -39,7 +39,7 @@ try {
 
   // ── The install gate ──
   const gate =
-    "A ruleset with more than 8 senses (combat.senses) requires schemaVersion 2 and capabilityApi 1.742 or newer";
+    "A ruleset with more than 8 senses (combat.senses) requires schemaVersion 2 and capabilityApi 1.743 or newer";
   const manifest = (minor: number) => ({
     schemaVersion: 2,
     capabilityApi: { major: 1, minor },
@@ -53,11 +53,11 @@ try {
     permissions: [],
     restartRequired: false,
   });
-  assert.equal(getCapabilityPackageInstallIssue(manifest(741) as never, document(9)), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(742) as never, document(9)), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(741) as never, document(8)), gate);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(742) as never, document(9)), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(743) as never, document(9)), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(742) as never, document(8)), gate);
 
-  console.log("Senses twelve: a ruleset takes up to 12 senses, 8 before; gated at 1.742.");
+  console.log("Senses twelve: a ruleset takes up to 12 senses, 8 before; gated at 1.743.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

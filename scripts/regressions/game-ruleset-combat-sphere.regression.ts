@@ -1,5 +1,5 @@
 /**
- * A zone anybody near may move on a check (Capability API 1.693): 5e's Sphere of Annihilation, moved
+ * A zone anybody near may move on a check (Capability API 1.694): 5e's Sphere of Annihilation, moved
  * with a DC Arcana check by whoever is within 60 feet, 5 × their Intelligence modifier feet, coming
  * 10 feet at whoever fails, and contested once somebody else moved it last.
  *
@@ -38,7 +38,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 693);
+  assert.ok(supportedCapabilityApi.minor >= 694);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -220,7 +220,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a zone anybody near may move on a check (zone.move.check) requires schemaVersion 2 and capabilityApi 1.693 or newer";
+      "A ruleset with a zone anybody near may move on a check (zone.move.check) requires schemaVersion 2 and capabilityApi 1.694 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -234,12 +234,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(692) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(693) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(693) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(694) as never, document()), gate);
   }
 
   console.log(
-    "Sphere: moved by anybody near on an Arcana check, coming at a failed mover, contested while held, catching whoever it is moved onto; gated at 1.693.",
+    "Sphere: moved by anybody near on an Arcana check, coming at a failed mover, contested while held, catching whoever it is moved onto; gated at 1.694.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

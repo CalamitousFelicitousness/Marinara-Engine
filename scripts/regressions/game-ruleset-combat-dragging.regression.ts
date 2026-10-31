@@ -1,5 +1,5 @@
 /**
- * Dragging a grappled creature (Capability API 1.496).
+ * Dragging a grappled creature (Capability API 1.497).
  *
  *   - A grappler's walk drags whoever holds `grappled` from them into each cell they leave, at half
  *     speed; a creature two sizes smaller is dragged at full speed.
@@ -31,7 +31,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 496);
+  assert.ok(supportedCapabilityApi.minor >= 497);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -134,7 +134,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions drag their holder along with whoever put them on (dragged) requires schemaVersion 2 and capabilityApi 1.496 or newer";
+      "A ruleset whose conditions drag their holder along with whoever put them on (dragged) requires schemaVersion 2 and capabilityApi 1.497 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -150,13 +150,13 @@ try {
     });
     const onlyDrag = JSON.parse(fiveEText) as Record<string, any>;
     onlyDrag.combat.conditions.find((one: { condition: string }) => one.condition === "grappled").dragged = {};
-    assert.equal(getCapabilityPackageInstallIssue(manifest(495) as never, onlyDrag), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(496) as never, onlyDrag), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(495) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(496) as never, onlyDrag), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(497) as never, onlyDrag), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(496) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Dragging: a grappler drags whoever they hold into each cell they leave at half speed, at full speed two sizes smaller; gated at 1.496.",
+    "Dragging: a grappler drags whoever they hold into each cell they leave at half speed, at full speed two sizes smaller; gated at 1.497.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

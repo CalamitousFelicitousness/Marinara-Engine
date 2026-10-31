@@ -1,5 +1,5 @@
 /**
- * A priced material (Capability API 1.789): an entry's `material`.
+ * A priced material (Capability API 1.790): an entry's `material`.
  *
  *   - Only items of its `items` or `tags` count, by their own cost: a cheaper pearl, a component
  *     pouch or a fake never stands in. A kept material is only looked at; a consumed one takes the
@@ -8,7 +8,7 @@
  *     bag as it is cast, so it is gone from the next turn's menu and written back to its stack.
  *   - A Game Master's `use` outside a fight is refused without it, and a consumed one is reported
  *     for the stacks it comes out of.
- *   - Checked at import, and the install gate asks for 1.789.
+ *   - Checked at import, and the install gate asks for 1.790.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -39,7 +39,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 789);
+  assert.ok(supportedCapabilityApi.minor >= 790);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -290,13 +290,13 @@ try {
     restartRequired: false,
   });
   const gate =
-    "A ruleset with an entry needing a priced material (material) requires schemaVersion 2 and capabilityApi 1.789 or newer";
-  assert.equal(getCapabilityPackageInstallIssue(manifest(788) as never, document()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(789) as never, document()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(788) as never, JSON.parse(fiveEText)), gate);
+    "A ruleset with an entry needing a priced material (material) requires schemaVersion 2 and capabilityApi 1.790 or newer";
+  assert.equal(getCapabilityPackageInstallIssue(manifest(789) as never, document()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(790) as never, document()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(789) as never, JSON.parse(fiveEText)), gate);
 
   console.log(
-    "Priced material 1.789: only what is worth enough counts, a fight offers and uses it up, a Game Master's use is refused without it, and the gate asks for 1.789.",
+    "Priced material 1.790: only what is worth enough counts, a fight offers and uses it up, a Game Master's use is refused without it, and the gate asks for 1.790.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

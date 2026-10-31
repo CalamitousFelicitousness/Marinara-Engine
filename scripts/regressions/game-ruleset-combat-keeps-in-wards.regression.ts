@@ -1,5 +1,5 @@
 /**
- * Zones that keep some kinds in and ward those outside (Capability API 1.457).
+ * Zones that keep some kinds in and ward those outside (Capability API 1.458).
  *
  *   - Magic Circle reversed against humanoids: the humanoid held inside has disadvantage attacking
  *     out of it and cannot frighten anybody outside; with both inside, or attacking in from outside,
@@ -35,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 457);
+  assert.ok(supportedCapabilityApi.minor >= 458);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -166,7 +166,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose zones keep some kinds in and ward those outside from them (keepsOut way out) requires schemaVersion 2 and capabilityApi 1.457 or newer";
+      "A ruleset whose zones keep some kinds in and ward those outside from them (keepsOut way out) requires schemaVersion 2 and capabilityApi 1.458 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -180,15 +180,15 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(456) as never, fiveE(reversed)), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(457) as never, fiveE(reversed)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(457) as never, fiveE(reversed)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(458) as never, fiveE(reversed)), gate);
     const holdsOnly = fiveE({ is: { types: ["humanoid"] }, way: "out" });
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(456) as never, holdsOnly), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(456) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(457) as never, holdsOnly), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(457) as never, fiveE()), gate);
   }
 
   console.log(
-    "Keeps in: Magic Circle reversed gives attacks out of it disadvantage and keeps its fear off those outside; gated at 1.457.",
+    "Keeps in: Magic Circle reversed gives attacks out of it disadvantage and keeps its fear off those outside; gated at 1.458.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

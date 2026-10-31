@@ -9,8 +9,8 @@
  *     a fixed few of is a point the story hands out too, and health heals many ways: both untouched.
  *   - Such a restore beside the rest a feature works at (Arcane Recovery on a Short rest) is that
  *     feature's use: its counter is paid, and once it is spent the restore is refused.
- *   - A list's `ritual` column (Capability API 1.806): a ticked row used with ritual="yes" pays no
- *     slot; an unticked one is refused; the column is checked at import and the gate asks for 1.806.
+ *   - A list's `ritual` column (Capability API 1.807): a ticked row used with ritual="yes" pays no
+ *     slot; an unticked one is refused; the column is checked at import and the gate asks for 1.807.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -38,7 +38,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 806);
+  assert.ok(supportedCapabilityApi.minor >= 807);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -216,7 +216,7 @@ try {
   assert.equal(notRitual.outcomes[0]!.reason, "not-ritual");
   assert.equal(value(notRitual, ilse, "slots_1"), 1);
 
-  // ── Only a sheet holding what the list's ritualNeeds names (1.808): Ritual Casting ──
+  // ── Only a sheet holding what the list's ritualNeeds names (1.809): Ritual Casting ──
   const needing = parsed(
     fiveE((doc) => {
       doc.sheet.lists.find((list: { id: string }) => list.id === "spells").ritualNeeds = ["spells/arcane-recovery"];
@@ -258,16 +258,16 @@ try {
     restartRequired: false,
   });
   const gate =
-    "A ruleset whose list rows may be used as rituals (a list's ritual) requires schemaVersion 2 and capabilityApi 1.806 or newer";
-  assert.equal(getCapabilityPackageInstallIssue(manifest(805) as never, fiveE()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(806) as never, fiveE()), gate);
+    "A ruleset whose list rows may be used as rituals (a list's ritual) requires schemaVersion 2 and capabilityApi 1.807 or newer";
+  assert.equal(getCapabilityPackageInstallIssue(manifest(806) as never, fiveE()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(807) as never, fiveE()), gate);
   const withNeeds = fiveE((doc) => {
     doc.sheet.lists.find((list: { id: string }) => list.id === "spells").ritualNeeds = ["spells/arcane-recovery"];
   });
   const needsGate =
-    "A ruleset whose rituals need an entry on the sheet (a list's ritualNeeds) requires schemaVersion 2 and capabilityApi 1.808 or newer";
-  assert.equal(getCapabilityPackageInstallIssue(manifest(807) as never, withNeeds), needsGate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(808) as never, withNeeds), needsGate);
+    "A ruleset whose rituals need an entry on the sheet (a list's ritualNeeds) requires schemaVersion 2 and capabilityApi 1.809 or newer";
+  assert.equal(getCapabilityPackageInstallIssue(manifest(808) as never, withNeeds), needsGate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(809) as never, withNeeds), needsGate);
 
   console.log(
     "Potions and rests: a healing item heals once, a rest-only pool needs its rest or its feature's use, and a ritual pays no slot.",

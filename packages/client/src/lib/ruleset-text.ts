@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// A ruleset's translation on screen (Capability API 1.810)
+// A ruleset's translation on screen (Capability API 1.811)
 //
 // A catalog ruleset may list a language pack per language, fetched in the Engine's language, and a
 // ruleset package file may carry `locales/<language>.json`, of which its import keeps that language:

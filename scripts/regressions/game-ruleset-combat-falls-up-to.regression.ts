@@ -1,5 +1,5 @@
 /**
- * A fall made safe only up to a height, and not while some conditions hold (Capability API 1.649):
+ * A fall made safe only up to a height, and not while some conditions hold (Capability API 1.650):
  * 5e's Cat's Grace.
  *
  *   - A shove off a 20-foot ledge does no harm to a holder safe up to 20 feet, and leaves them
@@ -42,7 +42,7 @@ const { rulesetWindowTargetOf } =
   await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 649);
+  assert.ok(supportedCapabilityApi.minor >= 650);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -188,7 +188,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a fall made safe only up to a height (fallsSafely.upTo) requires schemaVersion 2 and capabilityApi 1.649 or newer";
+      "A ruleset with a fall made safe only up to a height (fallsSafely.upTo) requires schemaVersion 2 and capabilityApi 1.650 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -202,11 +202,11 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(648) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(649) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(649) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(650) as never, document()), gate);
   }
 
-  console.log("Cat's Grace: a fall no higher than 20 feet does no harm unless incapacitated; gated at 1.649.");
+  console.log("Cat's Grace: a fall no higher than 20 feet does no harm unless incapacitated; gated at 1.650.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

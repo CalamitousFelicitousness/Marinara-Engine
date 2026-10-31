@@ -51,7 +51,7 @@ export function RulesetImportReviewModal({
   failure: string | null;
   /** Its catalogs and how many entries each holds (a package file's files included). */
   catalogs?: Array<{ label: string; count: number }>;
-  /** Language packs come with it (1.810): importing an installed version again keeps their translation. */
+  /** Language packs come with it (1.811): importing an installed version again keeps their translation. */
   translation?: boolean;
   onCancel: () => void;
   onConfirm: () => void;

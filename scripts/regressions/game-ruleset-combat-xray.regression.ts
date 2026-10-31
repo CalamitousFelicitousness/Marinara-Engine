@@ -1,5 +1,5 @@
 /**
- * A sense that sees through walls (Capability API 1.718): 5e's Ring of X-ray Vision.
+ * A sense that sees through walls (Capability API 1.719): 5e's Ring of X-ray Vision.
  *
  *   - Within its range a wall between keeps nothing from it; past its range the wall does.
  *   - Without it, the wall hides as before.
@@ -26,7 +26,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 718);
+  assert.ok(supportedCapabilityApi.minor >= 719);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -80,7 +80,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a sense that sees through walls (combat.senses[].throughWalls) requires schemaVersion 2 and capabilityApi 1.718 or newer";
+      "A ruleset with a sense that sees through walls (combat.senses[].throughWalls) requires schemaVersion 2 and capabilityApi 1.719 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -94,12 +94,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(717) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(718) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(718) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(719) as never, document()), gate);
   }
 
   console.log(
-    "X-ray vision: sees through a wall within 30 feet, not past it; without it the wall hides; gated at 1.718.",
+    "X-ray vision: sees through a wall within 30 feet, not past it; without it the wall hides; gated at 1.719.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

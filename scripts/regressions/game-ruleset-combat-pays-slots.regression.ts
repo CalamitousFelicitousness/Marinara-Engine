@@ -1,11 +1,11 @@
 /**
- * A worn item's charges paying for a spell, a charge a level (Capability API 1.571): a Rod of
+ * A worn item's charges paying for a spell, a charge a level (Capability API 1.572): a Rod of
  * Absorption's "convert energy in the rod into spell slots".
  *
  *   - `worn.paysSlots`: with no 3rd-level slot left, the bolt is offered paid out of the rod at 3rd
  *     level or higher, each a charge a level, and casting it spends them; with too few left, that
  *     way is gone.
- *   - Only pools its holder has some of, none past `paysSlotsMax` (Capability API 1.589): the Rod's
+ *   - Only pools its holder has some of, none past `paysSlotsMax` (Capability API 1.590): the Rod's
  *     "equal to or lower than your own spell slots, up to a maximum of 5th level".
  *   - Refusals and the install gates.
  */
@@ -44,7 +44,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 571);
+  assert.ok(supportedCapabilityApi.minor >= 572);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -269,7 +269,7 @@ try {
     assert.equal(after, undefined);
   }
 
-  // ── Only the holder's own pools, and none past the most (1.589) ──
+  // ── Only the holder's own pools, and none past the most (1.590) ──
   {
     const rodOf = (doc: Record<string, any>) => doc.catalogs.at(-1).entries[0].item;
     const offered = (most?: string) => {
@@ -305,7 +305,7 @@ try {
       /"paysSlotsMax" caps "paysSlots"/,
     );
     const gate =
-      "A ruleset with an item whose charges pay for slots up to a most (paysSlotsMax) requires schemaVersion 2 and capabilityApi 1.589 or newer";
+      "A ruleset with an item whose charges pay for slots up to a most (paysSlotsMax) requires schemaVersion 2 and capabilityApi 1.590 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -320,8 +320,8 @@ try {
       restartRequired: false,
     });
     const capped = document((doc) => (rodOf(doc).worn.paysSlotsMax = "slots_5"));
-    assert.equal(getCapabilityPackageInstallIssue(manifest(588) as never, capped), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(589) as never, capped), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(589) as never, capped), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(590) as never, capped), gate);
   }
 
   // ── Refusals ──
@@ -337,7 +337,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with an item whose charges pay for uses of a pool group (paysSlots) requires schemaVersion 2 and capabilityApi 1.571 or newer";
+      "A ruleset with an item whose charges pay for uses of a pool group (paysSlots) requires schemaVersion 2 and capabilityApi 1.572 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -351,13 +351,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(570) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(571) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(570) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(571) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(572) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(571) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Pays slots: a rod's charges pay for a bolt with no slot left, a charge a level, and run out, only at pools of the holder's own up to a most (gated at 1.589); gated at 1.571.",
+    "Pays slots: a rod's charges pay for a bolt with no slot left, a charge a level, and run out, only at pools of the holder's own up to a most (gated at 1.590); gated at 1.572.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

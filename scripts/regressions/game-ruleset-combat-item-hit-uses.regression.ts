@@ -1,5 +1,5 @@
 /**
- * Weapon hits with their own uses (Capability API 1.533).
+ * Weapon hits with their own uses (Capability API 1.534).
  *
  *   - An `attack.spends` entry may count its own `uses` in place of the item's charges, kept per
  *     spend and brought back by its `recharge`: a Rod of Lordly Might's properties, once a dawn each.
@@ -46,7 +46,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 533);
+  assert.ok(supportedCapabilityApi.minor >= 534);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -362,15 +362,15 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with a weapon hit spending its own uses, a save, a drain or only conditions (attack spends uses, save, drain) requires schemaVersion 2 and capabilityApi 1.533 or newer";
+      "A ruleset with a weapon hit spending its own uses, a save, a drain or only conditions (attack spends uses, save, drain) requires schemaVersion 2 and capabilityApi 1.534 or newer";
     const issue = (minor: number, doc: unknown, files?: unknown) =>
       getCapabilityPackageInstallIssue(manifest(minor) as never, doc, files as never);
     const plain = document((doc) => {
       doc.catalogs.pop();
     });
-    assert.notEqual(issue(532, plain), gate, "nothing of 1.533 left");
-    assert.equal(issue(532, document()), gate);
-    assert.notEqual(issue(533, document()), gate);
+    assert.notEqual(issue(533, plain), gate, "nothing of 1.534 left");
+    assert.equal(issue(533, document()), gate);
+    assert.notEqual(issue(534, document()), gate);
     assert.equal(
       issue(
         531,
@@ -381,14 +381,14 @@ try {
     );
     const charged = [{ label: "x", charges: 1, amount: { dice: "1d6" } }];
     assert.notEqual(
-      issue(532, plain, new Map([["extra.json", [{ id: "x", item: { attack: { spends: charged } } }]]])),
+      issue(533, plain, new Map([["extra.json", [{ id: "x", item: { attack: { spends: charged } } }]]])),
       gate,
       "a charge spent for an amount is 1.273's",
     );
   }
 
   console.log(
-    "Ruleset item hit uses: a weapon hit's properties counted on their own uses (Rod of Lordly Might, once a dawn each, kept on the stack and back on a long rest), Drain Life's save, 4d6 necrotic and half back, Paralyze's conditions alone with a minute's cap beside its save, Thunder on its wielder's clock; facts, refusals and the gate at 1.533.",
+    "Ruleset item hit uses: a weapon hit's properties counted on their own uses (Rod of Lordly Might, once a dawn each, kept on the stack and back on a long rest), Drain Life's save, 4d6 necrotic and half back, Paralyze's conditions alone with a minute's cap beside its save, Thunder on its wielder's clock; facts, refusals and the gate at 1.534.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

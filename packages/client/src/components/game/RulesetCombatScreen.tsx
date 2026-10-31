@@ -132,7 +132,7 @@ export function RulesetCombatScreen({
   }, [view.round, setRound]);
   useEffect(() => () => setRound(null), [setRound]);
 
-  // The budgets' names in the player's language (1.805), as the rest of the fight's words are.
+  // The budgets' names in the player's language (1.806), as the rest of the fight's words are.
   const text = useRulesetText();
   const marks = useMemo(() => rulesetBudgetMarks(definition, text), [definition, text]);
   const byId = new Map(view.combatants.map((combatant) => [combatant.id, combatant]));

@@ -51,7 +51,7 @@ export interface GameLootPlan {
 /**
  * The loot of one won fight. `tables` are the loot tables of the defeated opponents that carry one
  * (a ruleset fight's bestiary creatures); `defeated` is how many opponents fell, which the native tables
- * count by; `difficulty` is the game's; `carried` is what the defeated still had on them (1.794), each by
+ * count by; `difficulty` is the game's; `carried` is what the defeated still had on them (1.795), each by
  * its item reference, which drops as it is. Null when nothing drops.
  */
 export async function planGameVictoryLoot(

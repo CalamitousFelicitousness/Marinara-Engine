@@ -1,5 +1,5 @@
 /**
- * An item's use that takes longer than a fight lasts (`beforeFight`, Capability API 1.461 on any entry
+ * An item's use that takes longer than a fight lasts (`beforeFight`, Capability API 1.462 on any entry
  * an item use is built from): 5e's Oil of Slipperiness, "Applying the oil takes 10 minutes".
  *
  *   - Never on the fight menu, as its first use or as one of its further uses.

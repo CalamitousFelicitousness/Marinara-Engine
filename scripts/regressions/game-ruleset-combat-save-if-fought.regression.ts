@@ -1,5 +1,5 @@
 /**
- * A save rolled with advantage by a target being fought (Capability API 1.581): Charm Person.
+ * A save rolled with advantage by a target being fought (Capability API 1.582): Charm Person.
  *
  *   - `save.advantageIfFought`: a target on a side hostile to the caster's rolls twice and keeps the
  *     better; one on the caster's own side rolls once.
@@ -31,7 +31,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 581);
+  assert.ok(supportedCapabilityApi.minor >= 582);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -115,7 +115,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a save rolled with advantage by a target being fought (advantageIfFought) requires schemaVersion 2 and capabilityApi 1.581 or newer";
+      "A ruleset with a save rolled with advantage by a target being fought (advantageIfFought) requires schemaVersion 2 and capabilityApi 1.582 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -129,13 +129,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(580) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(581) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(580) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(581) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(582) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(581) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Save if fought: Charm Person's save is made with advantage by a foe, not by a companion; gated at 1.581.",
+    "Save if fought: Charm Person's save is made with advantage by a foe, not by a companion; gated at 1.582.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

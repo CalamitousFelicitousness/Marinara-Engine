@@ -1,5 +1,5 @@
 /**
- * Weapon strikes over an area, and a strike again (Capability API 1.427).
+ * Weapon strikes over an area, and a strike again (Capability API 1.428).
  *
  *   - Whirlwind Attack: the best melee weapon at every foe within 5 feet, a roll for each, never a
  *     friend beside them.
@@ -39,7 +39,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 427);
+  assert.ok(supportedCapabilityApi.minor >= 428);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -250,7 +250,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose entries strike with a weapon over an area (strikesWith with an area) or whose conditions or levels give a strike again near the first (strikesAgain) requires schemaVersion 2 and capabilityApi 1.427 or newer";
+      "A ruleset whose entries strike with a weapon over an area (strikesWith with an area) or whose conditions or levels give a strike again near the first (strikesAgain) requires schemaVersion 2 and capabilityApi 1.428 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -264,13 +264,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(426) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(427) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(426) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(427) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(428) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(427) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Area strikes: Whirlwind Attack strikes every foe within 5 feet with the best melee weapon, Volley every foe within 10 feet of a point as far as the bow carries; Horde Breaker strikes another near the first for nothing, once a turn; gated at 1.427.",
+    "Area strikes: Whirlwind Attack strikes every foe within 5 feet with the best melee weapon, Volley every foe within 10 feet of a point as far as the bow carries; Horde Breaker strikes another near the first for nothing, once a turn; gated at 1.428.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

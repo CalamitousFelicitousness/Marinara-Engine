@@ -1,5 +1,5 @@
 /**
- * Items drawn as they are used (Capability API 1.807, laptop v3 2026-10-26: a carried Longbow was never
+ * Items drawn as they are used (Capability API 1.808, laptop v3 2026-10-26: a carried Longbow was never
  * offered as an attack in a fight).
  *
  *   - `items.drawOnUse` names categories or tags. An item of one of them that takes slots is used while
@@ -12,7 +12,7 @@
  *     Longsword drawn past Shield and Shortsword left all three in hand by the next fight): what it
  *     replaces is put away, the fight says so in the line the row's draw says, the menu is read again,
  *     and the bag holds two in hand for the next fight. The turn's free interaction stays unspent.
- *   - A ruleset without it is unchanged. Checked at import, and the install gate asks for 1.807.
+ *   - A ruleset without it is unchanged. Checked at import, and the install gate asks for 1.808.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -55,7 +55,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 807);
+  assert.ok(supportedCapabilityApi.minor >= 808);
   const emberText = readFileSync(
     fileURLToPath(new URL("../../docs/examples/rulesets/ember-roads.json", import.meta.url)),
     "utf8",
@@ -452,11 +452,11 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset whose items are drawn as they are used (items.drawOnUse) requires schemaVersion 2 and capabilityApi 1.807 or newer";
+      "A ruleset whose items are drawn as they are used (items.drawOnUse) requires schemaVersion 2 and capabilityApi 1.808 or newer";
     const withIt = ember({ categories: ["weapon"] });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(806) as never, withIt), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(807) as never, withIt), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(806) as never, ember()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(807) as never, withIt), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(808) as never, withIt), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(807) as never, ember()), gate);
   }
 
   console.log(

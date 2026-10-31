@@ -1,5 +1,5 @@
 /**
- * Budgets that come back on every turn, not just the creature's own (Capability API 1.548).
+ * Budgets that come back on every turn, not just the creature's own (Capability API 1.549).
  *
  *   - A marilith's Reactive: its spent reaction is back after any combatant's turn ends, so it can
  *     react on two different turns in one round; a creature without the key stays spent.
@@ -30,7 +30,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 548);
+  assert.ok(supportedCapabilityApi.minor >= 549);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -118,7 +118,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a creature whose budgets come back every turn (refillsEveryTurn) requires schemaVersion 2 and capabilityApi 1.548 or newer";
+      "A ruleset with a creature whose budgets come back every turn (refillsEveryTurn) requires schemaVersion 2 and capabilityApi 1.549 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -132,12 +132,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(547) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(548) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(548) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(549) as never, fiveE()), gate);
   }
 
   console.log(
-    "Refills every turn: a marilith's spent reaction is back after each other turn ends, a brute's stays spent; an unknown budget is refused; gated at 1.548.",
+    "Refills every turn: a marilith's spent reaction is back after each other turn ends, a brute's stays spent; an unknown budget is refused; gated at 1.549.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

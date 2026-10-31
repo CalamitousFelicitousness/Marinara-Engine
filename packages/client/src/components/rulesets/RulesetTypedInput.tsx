@@ -22,7 +22,7 @@ export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
-/** How many of a text field's suggestions its holder picks (1.796), as the sheet reads now. */
+/** How many of a text field's suggestions its holder picks (1.797), as the sheet reads now. */
 export function rulesetPickCount(
   definition: RulesetDefinition,
   build: RulesetSheetBuild,
@@ -53,10 +53,10 @@ export function TypedInput({
   /** The id of the visible text that says the same thing. A disabled control cannot be focused, so
    *  a `title` alone never reaches a keyboard or a screen reader. */
   describedBy?: string;
-  /** How many of a text field's suggestions its holder picks (1.796), as the sheet reads now. */
+  /** How many of a text field's suggestions its holder picks (1.797), as the sheet reads now. */
   pick?: number;
 }) {
-  // A choice's words in the player's language (1.810); the value kept is the ruleset's own.
+  // A choice's words in the player's language (1.811); the value kept is the ruleset's own.
   const rt = useRulesetText();
   if (spec.type === "text" && spec.suggestions?.length)
     return (
@@ -172,8 +172,8 @@ export function TypedInput({
   return input;
 }
 
-/** A text field offering words to pick (1.795): a chip adds its word to what is written, and takes it
- *  out again. With a count to pick (1.796) it says how many, and offers no more once they are in
+/** A text field offering words to pick (1.796): a chip adds its word to what is written, and takes it
+ *  out again. With a count to pick (1.797) it says how many, and offers no more once they are in
  *  (laptop class builds 2026-10-24: a ranger's favored enemies showed no count); typing is never
  *  refused. */
 function SuggestedText({

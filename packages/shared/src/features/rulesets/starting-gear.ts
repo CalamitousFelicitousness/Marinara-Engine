@@ -161,7 +161,7 @@ export interface RulesetStartingGearBuilderContext {
   freeEdit?: boolean;
 }
 
-/** Whether a choice's option is offered to this sheet (1.660): one with no `offeredWhen`, or whose
+/** Whether a choice's option is offered to this sheet (1.661): one with no `offeredWhen`, or whose
  *  `offeredWhen` reads above zero. Every option is offered where there is no sheet to read. */
 export function rulesetStartingGearOptionOffered(
   definition: RulesetDefinition,
@@ -172,7 +172,7 @@ export function rulesetStartingGearOptionOffered(
 }
 
 /** The lines a selection takes, each with the key a pick names it by. An option not offered to the
- *  sheet is refused (1.660), and a choice none of whose options is offered takes nothing. */
+ *  sheet is refused (1.661), and a choice none of whose options is offered takes nothing. */
 function selectedLines(
   definition: RulesetDefinition,
   gear: RulesetStartingGear,

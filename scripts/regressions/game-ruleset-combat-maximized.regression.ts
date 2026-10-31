@@ -1,5 +1,5 @@
 /**
- * Damage and healing at their most (Capability API 1.414).
+ * Damage and healing at their most (Capability API 1.415).
  *
  *   - Overchannel: an alteration that maximizes a spell's damage, paid at 1st to 5th level only; its
  *     first use since its counter came back is free, each later one harms its user with 2d12 necrotic
@@ -38,7 +38,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 414);
+  assert.ok(supportedCapabilityApi.minor >= 415);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -279,7 +279,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose entries maximize damage or healing (maximizes, maxHeal) or harm their user (backlash) requires schemaVersion 2 and capabilityApi 1.414 or newer";
+      "A ruleset whose entries maximize damage or healing (maximizes, maxHeal) or harm their user (backlash) requires schemaVersion 2 and capabilityApi 1.415 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -293,13 +293,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(413) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(414) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(413) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(414) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(415) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(414) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Maximized: Overchannel's burst at its most, free once, then 2d12 a level and 1d12 a level more each time, 1st to 5th level only; Supreme Healing's 1d8 at 8; gated at 1.414.",
+    "Maximized: Overchannel's burst at its most, free once, then 2d12 a level and 1d12 a level more each time, 1st to 5th level only; Supreme Healing's 1d8 at 8; gated at 1.415.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

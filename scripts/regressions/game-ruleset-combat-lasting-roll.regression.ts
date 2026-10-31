@@ -1,5 +1,5 @@
 /**
- * An item's rolled call that lasts (Capability API 1.590): an Efreeti Bottle.
+ * An item's rolled call that lasts (Capability API 1.591): an Efreeti Bottle.
  *
  *   - `keepsRoll`: the first opening's roll is kept, and the same efreeti comes at the next ones.
  *   - `lifetimeUses: 3`: the fourth opening is the `pastLifetime` option, never rolled.
@@ -42,7 +42,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 590);
+  assert.ok(supportedCapabilityApi.minor >= 591);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -259,7 +259,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a rolled call that keeps its roll, counts its uses or spends its item (keepsRoll, lifetimeUses, spendsItem, an option's rounds) requires schemaVersion 2 and capabilityApi 1.590 or newer";
+      "A ruleset with a rolled call that keeps its roll, counts its uses or spends its item (keepsRoll, lifetimeUses, spendsItem, an option's rounds) requires schemaVersion 2 and capabilityApi 1.591 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -273,12 +273,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(589) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(590) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(590) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(591) as never, document()), gate);
   }
 
   console.log(
-    "Lasting roll: an Efreeti Bottle keeps its first roll, escapes at the fourth opening, attacks for 5 rounds, and is spent for good; kept on its stack; refusals; gated at 1.590.",
+    "Lasting roll: an Efreeti Bottle keeps its first roll, escapes at the fourth opening, attacks for 5 rounds, and is spent for good; kept on its stack; refusals; gated at 1.591.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

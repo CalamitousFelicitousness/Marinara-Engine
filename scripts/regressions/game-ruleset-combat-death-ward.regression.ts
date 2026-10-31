@@ -1,5 +1,5 @@
 /**
- * Hanging on that ends its condition, and wards off being slain outright (Capability API 1.595):
+ * Hanging on that ends its condition, and wards off being slain outright (Capability API 1.596):
  * 5e's Death Ward.
  *
  *   - `ends`: once it works, the condition it is on is over; the next blow that drops them drops them.
@@ -35,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 595);
+  assert.ok(supportedCapabilityApi.minor >= 596);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -217,7 +217,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with hanging on that ends its condition or wards off being slain outright (hangsOn ends, outright) requires schemaVersion 2 and capabilityApi 1.595 or newer";
+      "A ruleset with hanging on that ends its condition or wards off being slain outright (hangsOn ends, outright) requires schemaVersion 2 and capabilityApi 1.596 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -231,13 +231,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(594) as never, fiveE()), gate);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(594) as never, fiveE({ uses: 1, ends: true })), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(595) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(595) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(595) as never, fiveE({ uses: 1, ends: true })), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(596) as never, fiveE()), gate);
   }
 
   console.log(
-    "Death Ward: Power Word Kill and Divine Word undone once, the ward over; at 0 left at 1 and the ward over; gated at 1.595.",
+    "Death Ward: Power Word Kill and Divine Word undone once, the ward over; at 0 left at 1 and the ward over; gated at 1.596.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

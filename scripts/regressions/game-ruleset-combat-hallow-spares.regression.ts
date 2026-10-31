@@ -1,5 +1,5 @@
 /**
- * Kinds left out of a ward, and an inside set by a tag (Capability API 1.665): 5e's Hallow, "You can
+ * Kinds left out of a ward, and an inside set by a tag (Capability API 1.666): 5e's Hallow, "You can
  * exclude one or more of those types of creatures from this effect", and its extra effect on
  * "creatures that follow a specific deity or leader".
  *
@@ -36,7 +36,7 @@ process.env.DATA_DIR = dataDir;
 process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 665);
+  assert.ok(supportedCapabilityApi.minor >= 666);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -171,7 +171,7 @@ try {
   }
 
   console.log(
-    "Hallow spares: kinds left out of its ward as it was set up stay out of it, the rest kept out; its inside on a tag only; at 1.665.",
+    "Hallow spares: kinds left out of its ward as it was set up stay out of it, the rest kept out; its inside on a tag only; at 1.666.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

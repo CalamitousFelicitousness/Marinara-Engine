@@ -527,7 +527,7 @@ export interface SkillCheckResult {
    * ignored. Only a ruleset game sets them.
    */
   withAbility?: string;
-  /** What the check was made for (1.751), as its tag's `for=` said. */
+  /** What the check was made for (1.752), as its tag's `for=` said. */
   purpose?: string;
   bonusDice?: number;
   /**

@@ -1,5 +1,5 @@
 /**
- * Zones that keep some kinds out, or in (Capability API 1.451).
+ * Zones that keep some kinds out, or in (Capability API 1.452).
  *
  *   - Magic Circle against humanoids: one outside cannot walk into it, though a fiend may; their
  *     attacks at whoever stands inside have disadvantage; they cannot frighten anybody inside.
@@ -36,7 +36,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 451);
+  assert.ok(supportedCapabilityApi.minor >= 452);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -204,7 +204,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose zones keep some kinds out or in (keepsOut) requires schemaVersion 2 and capabilityApi 1.451 or newer";
+      "A ruleset whose zones keep some kinds out or in (keepsOut) requires schemaVersion 2 and capabilityApi 1.452 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -218,13 +218,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(450) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(451) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(450) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(451) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(452) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(451) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Keeps out: Magic Circle bars humanoids' steps in, gives their attacks into it disadvantage and keeps their fear off those inside; turned inward it holds one in; gated at 1.451.",
+    "Keeps out: Magic Circle bars humanoids' steps in, gives their attacks into it disadvantage and keeps their fear off those inside; turned inward it holds one in; gated at 1.452.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

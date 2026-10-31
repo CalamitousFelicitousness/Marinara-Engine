@@ -496,7 +496,7 @@ export const encounterBlueprintSchema = z
           surprised: z.boolean().optional().catch(undefined),
           // Where the story put them (2026-10-24); a ruleset fight reads it.
           start: z.enum(COMBAT_START_PLACES).optional().catch(undefined),
-          // What it set up before the fight, standing as it begins (1.461); a ruleset fight reads it.
+          // What it set up before the fight, standing as it begins (1.462); a ruleset fight reads it.
           standing: z
             .array(
               z
@@ -540,7 +540,7 @@ export const encounterBlueprintSchema = z
           aiHints: combatAiHintsSchema.optional(),
           // Caught unaware as the fight begins (1.237); a ruleset fight reads it, and any other fight checks such an opponent's morale first.
           surprised: z.boolean().optional().catch(undefined),
-          // What it set up before the fight, standing as it begins (1.461); a ruleset fight reads it.
+          // What it set up before the fight, standing as it begins (1.462); a ruleset fight reads it.
           standing: z
             .array(
               z
@@ -565,7 +565,7 @@ export const encounterBlueprintSchema = z
           inLair: z.boolean().optional().catch(undefined),
           // Where the Game Master starts it (2026-10-24); a ruleset fight reads it.
           start: z.enum(COMBAT_START_PLACES).optional().catch(undefined),
-          // What it has on it (1.794), the ruleset's items by name; a ruleset fight reads it.
+          // What it has on it (1.795), the ruleset's items by name; a ruleset fight reads it.
           carrying: z.array(z.string().min(1).max(200)).max(16).optional().catch(undefined),
           spellSlots: z.record(z.string().regex(/^[1-9]$/), z.number().int().min(0).max(100)).optional(),
           boss: combatBossSchema.optional(),
@@ -633,7 +633,7 @@ export interface EncounterSheetBrief {
  *  picked from, the names already written, and the ids a proposed stat block has to be written in. */
 export interface EncounterRulesetBrief {
   tiers: Array<{ id: string; label: string; worth?: number }>;
-  /** What a fight may be worth for this party (1.802), when the ruleset has a budget. */
+  /** What a fight may be worth for this party (1.803), when the ruleset has a budget. */
   budget?: RulesetEncounterBudget | null;
   /** The highest tier one enemy alone fits that budget at, a boss's included (laptop 2026-10-26:
    *  every invented boss was asked at CR 5 and brought down to CR 3). */
@@ -757,7 +757,7 @@ async function encounterSheetBrief(
 export async function encounterRulesetBrief(
   definition: RulesetDefinition,
   packageId: string | null,
-  /** The party's sheet cards and the game's difficulty, for the encounter budget (1.802). */
+  /** The party's sheet cards and the game's difficulty, for the encounter budget (1.803). */
   party?: { cards: unknown; difficulty: GameDifficulty },
   /** The story's latest words (the player's message, the Game Master's reply), for the bestiary
    *  creatures they name. */

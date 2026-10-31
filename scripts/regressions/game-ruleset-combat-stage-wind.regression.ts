@@ -1,5 +1,5 @@
 /**
- * A zone stage that shakes concentration and is a wind (Capability API 1.579): Storm of Vengeance,
+ * A zone stage that shakes concentration and is a wind (Capability API 1.580): Storm of Vengeance,
  * rounds 5-10.
  *
  *   - `breaksConcentration`: whoever starts a turn inside while the stage lasts rolls the
@@ -35,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 579);
+  assert.ok(supportedCapabilityApi.minor >= 580);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -149,7 +149,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a zone stage that breaks concentration or disperses fog (stages breaksConcentration, disperses) requires schemaVersion 2 and capabilityApi 1.579 or newer";
+      "A ruleset with a zone stage that breaks concentration or disperses fog (stages breaksConcentration, disperses) requires schemaVersion 2 and capabilityApi 1.580 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -163,17 +163,17 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(578) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(579) as never, fiveE()), gate);
     assert.equal(
-      getCapabilityPackageInstallIssue(manifest(578) as never, fiveE({ from: 2, label: "Gust", disperses: true })),
+      getCapabilityPackageInstallIssue(manifest(579) as never, fiveE({ from: 2, label: "Gust", disperses: true })),
       gate,
     );
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(579) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(578) as never, JSON.parse(fiveEText)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(580) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(579) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Stage wind: from its stage on, a storm blows fog away and shakes the concentration of whoever starts a turn inside; gated at 1.579.",
+    "Stage wind: from its stage on, a storm blows fog away and shakes the concentration of whoever starts a turn inside; gated at 1.580.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

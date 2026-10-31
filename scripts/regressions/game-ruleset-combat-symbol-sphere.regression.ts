@@ -1,5 +1,5 @@
 /**
- * A glyph that stays as something else once set off (Capability API 1.452).
+ * A glyph that stays as something else once set off (Capability API 1.453).
  *
  *   - Symbol: walked into, it goes off once and stays as a sphere of dim light for its own rounds,
  *     striking whoever enters it or ends a turn in it, and never goes off again; its rounds out, it
@@ -42,7 +42,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 452);
+  assert.ok(supportedCapabilityApi.minor >= 453);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -262,7 +262,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose zones stay as something else once set off (detonates becomes) requires schemaVersion 2 and capabilityApi 1.452 or newer";
+      "A ruleset whose zones stay as something else once set off (detonates becomes) requires schemaVersion 2 and capabilityApi 1.453 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -282,13 +282,13 @@ try {
     const withGlyph = fiveE((doc) => {
       doc.catalogs.push({ id: "spells", label: "Spells", feeds: ["spells"], entries: [glyph] });
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(451) as never, withSymbol), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(452) as never, withSymbol), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(451) as never, withGlyph), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(452) as never, withSymbol), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(453) as never, withSymbol), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(452) as never, withGlyph), gate);
   }
 
   console.log(
-    "Symbol sphere: set off, a glyph stays as a lit sphere striking whoever enters or ends a turn in it, then ends with its rounds; gated at 1.452.",
+    "Symbol sphere: set off, a glyph stays as a lit sphere striking whoever enters or ends a turn in it, then ends with its rounds; gated at 1.453.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

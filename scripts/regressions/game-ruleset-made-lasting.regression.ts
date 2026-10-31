@@ -1,5 +1,5 @@
 /**
- * What is made lasting a while before it vanishes (Capability API 1.759): 5e's Creation, "vegetable
+ * What is made lasting a while before it vanishes (Capability API 1.760): 5e's Creation, "vegetable
  * matter 1 day, stone or crystal 12 hours, precious metals 1 hour, gems 10 minutes, adamantine or
  * mithral 1 minute".
  *
@@ -48,7 +48,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 759);
+  assert.ok(supportedCapabilityApi.minor >= 760);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -316,7 +316,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with what is made lasting a while before it vanishes (makesItems.lasts) requires schemaVersion 2 and capabilityApi 1.759 or newer";
+      "A ruleset with what is made lasting a while before it vanishes (makesItems.lasts) requires schemaVersion 2 and capabilityApi 1.760 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -330,13 +330,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(758) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(759) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(758) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(759) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(760) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(759) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Made lasting: Creation's gems vanish after ten of its maker's turns, its vegetable matter a day later on the game's clock, each on a stack of its own; the Game Master's add lasts as it says; gated at 1.759.",
+    "Made lasting: Creation's gems vanish after ten of its maker's turns, its vegetable matter a day later on the game's clock, each on a stack of its own; the Game Master's add lasts as it says; gated at 1.760.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

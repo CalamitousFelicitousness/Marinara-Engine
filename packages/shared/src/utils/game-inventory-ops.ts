@@ -67,7 +67,7 @@ export const gameInventoryOpSchema = z.discriminatedUnion("op", [
       holder: holder.optional(),
       among: z.array(z.string().trim().max(GAME_INVENTORY_HOLDER_MAX_LENGTH)).min(1).max(20).optional(),
       log: z.boolean().optional(),
-      /** It vanishes after this many minutes of game time (Capability API 1.759), on stacks of its own:
+      /** It vanishes after this many minutes of game time (Capability API 1.760), on stacks of its own:
        *  5e's Creation. */
       lasts: z.number().int().min(1).max(GAME_INVENTORY_VANISHES_MAX_MINUTES).optional(),
     })
@@ -112,7 +112,7 @@ export const gameInventoryOpSchema = z.discriminatedUnion("op", [
   z.object({ op: z.enum(["equip", "unequip", "bind", "unbind"]), id: stackId }).strict(),
   /** One stack's switch turned on or off (Capability API 1.170): an item of one with a `toggle`. */
   z.object({ op: z.literal("switch"), id: stackId, on: z.boolean() }).strict(),
-  /** One stack turned into another of its forms (Capability API 1.574), 0 as it was made: an item of
+  /** One stack turned into another of its forms (Capability API 1.575), 0 as it was made: an item of
    *  one with `forms`. */
   z.object({ op: z.literal("form"), id: stackId, form: z.number().int().min(0).max(8) }).strict(),
 ]);

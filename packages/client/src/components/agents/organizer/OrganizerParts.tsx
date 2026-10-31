@@ -162,7 +162,7 @@ export function MenuButton({ entry, className }: { entry: OrganizerEntry; classN
 }
 
 /** A catalog entry's name and description as this language shows them: a ruleset's from its language
- *  pack's catalog listing (1.810) where there is one, else its manifest's. */
+ *  pack's catalog listing (1.811) where there is one, else its manifest's. */
 export function useShownEntry(entry: OrganizerEntry) {
   const { i18n } = useUiTranslation();
   return resolveCapabilityCatalogEntryDisplay(entry, i18n.resolvedLanguage ?? i18n.language);

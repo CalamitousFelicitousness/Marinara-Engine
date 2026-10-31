@@ -1559,6 +1559,47 @@ try {
     assert.equal((await sceneRow(noBlock.id)).structuredMemory, null, "a reply without the block stores null");
     ltmReplyBlock = true;
 
+    // A scene summarized again writes its block with the recap: a reply without one clears the old block,
+    // and the preparation record saved between the parts leaves a stored block alone.
+    const again = await createChat("LTM block replaced when the scene is summarized again");
+    await chats.patchMetadata(again.id, ltmListed);
+    await chats.updateMessageContent((await chats.listMessages(again.id))[0]!.id, "漢あ한𠀀😀".repeat(4000));
+    await memory.initialize(again.id);
+    const firstRow = await sceneRow(again.id);
+    assert(firstRow.structuredMemory?.startsWith("LTM_BLOCK_"));
+    // A changed chat variable outdates the recap, so Fix summarizes the scene again on the same row.
+    await db
+      .update(advancedMemoryRecords)
+      .set({ dependencies: JSON.stringify([{ id: "macro-variables", revision: "outdated" }]) })
+      .where(eq(advancedMemoryRecords.id, firstRow.id));
+    const firstRowDependencies = JSON.stringify([{ id: "macro-variables", revision: "outdated" }]);
+    let secondRequests = 0;
+    let blockDuringWork: string | null | undefined;
+    beforeSummary = async function readBetweenParts() {
+      // The second request follows the first part's saved preparation record, which sits on its own row.
+      if (++secondRequests === 2) {
+        const rows = await db.select().from(advancedMemoryRecords).where(eq(advancedMemoryRecords.chatId, again.id));
+        assert(
+          rows.some((row) => row.id === `${firstRow.id}-preparation` && row.summaryWork),
+          "the preparation record is saved on its own row",
+        );
+        const old = rows.find((row) => row.id === firstRow.id)!;
+        blockDuringWork = old.structuredMemory;
+        assert.equal(old.content, firstRow.content, "the old recap stays until the new one is written");
+      } else beforeSummary = readBetweenParts;
+    };
+    ltmReplyBlock = false;
+    await memory.initialize(again.id, { fixAll: true });
+    ltmReplyBlock = true;
+    beforeSummary = undefined;
+    assert.equal(blockDuringWork, firstRow.structuredMemory, "the preparation record leaves the stored block");
+    const secondRow = await sceneRow(again.id);
+    assert.equal(secondRow.id, firstRow.id, "the scene is summarized again on the same row");
+    assert.notEqual(secondRow.dependencies, firstRowDependencies, "the recap was rewritten");
+    assert.equal(secondRow.structuredMemory, null, "a reply without the block clears the old one with the recap");
+    const [clearedView] = (await createCapabilityPersistenceHost(db).listChatSummaries!(again.id)).advancedMemory;
+    assert.equal(clearedView?.memory, null, "packages read memory: null");
+
     const split = await createChat("LTM block from a scene summarized in parts");
     await chats.patchMetadata(split.id, ltmListed);
     const splitSource = await chats.listMessages(split.id);

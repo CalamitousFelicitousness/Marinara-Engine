@@ -1432,7 +1432,13 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     return fresh;
   }
 
-  async function put(ctx: Context, record: StoredRecord, options: AdvancedMemoryOperationOptions) {
+  /** `structuredMemory` is written in the same row update when given (null clears it); omitted, the stored block stays. */
+  async function put(
+    ctx: Context,
+    record: StoredRecord,
+    options: AdvancedMemoryOperationOptions,
+    structuredMemory?: string | null,
+  ) {
     const selected = record.messageIds
       .map((id) => ctx.messages.find((message) => message.id === id))
       .filter((message): message is AdvancedMemoryMessage => !!message);
@@ -1441,7 +1447,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     const asOf = { ...fresh, messages: fresh.messages.slice(0, end + 1) };
     if (!recordValid(asOf, record) || !dependenciesValid(record, await operationRecords(ctx), asOf))
       throw new Error("Memory sources or summary corrections changed during preparation; retry");
-    const row = recordRow(record);
+    const row = { ...recordRow(record), ...(structuredMemory !== undefined ? { structuredMemory } : {}) };
     const existingRow = (
       await db.select().from(advancedMemoryRecords).where(eq(advancedMemoryRecords.id, record.id))
     )[0];
@@ -3363,12 +3369,8 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
               }
             }
             candidate.sourceFingerprint = fingerprint(ctx, source, candidate.audienceCharacterIds);
-            await put(ctx, candidate, options);
-            // Stored untouched beside the recap; a reply without the block clears an older one.
-            await db
-              .update(advancedMemoryRecords)
-              .set({ structuredMemory: result.memory ?? null })
-              .where(eq(advancedMemoryRecords.id, candidate.id));
+            // The block is stored untouched in the recap's own write; a reply without it clears an older one.
+            await put(ctx, candidate, options, result.memory ?? null);
             if (work !== candidate) {
               await db.delete(advancedMemoryRecords).where(eq(advancedMemoryRecords.id, work.id));
               ctx.recordCache = ctx.recordCache!.filter((item) => item.id !== work.id);

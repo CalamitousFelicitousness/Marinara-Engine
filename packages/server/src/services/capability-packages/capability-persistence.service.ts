@@ -255,10 +255,30 @@ function mapChatSummaries(value: unknown, chatUpdatedAt?: string): Omit<Capabili
   };
 }
 
+/** The columns a package sees; vectors, work-in-progress replies and message lists are never loaded. */
+const advancedMemorySummaryColumns = {
+  id: advancedMemoryRecords.id,
+  sceneId: advancedMemoryRecords.sceneId,
+  title: advancedMemoryRecords.title,
+  content: advancedMemoryRecords.content,
+  timeline: advancedMemoryRecords.timeline,
+  startMessageId: advancedMemoryRecords.startMessageId,
+  endMessageId: advancedMemoryRecords.endMessageId,
+  audienceCharacterIds: advancedMemoryRecords.audienceCharacterIds,
+  sourceFingerprint: advancedMemoryRecords.sourceFingerprint,
+  structuredMemory: advancedMemoryRecords.structuredMemory,
+  createdAt: advancedMemoryRecords.createdAt,
+  updatedAt: advancedMemoryRecords.updatedAt,
+};
+type AdvancedMemorySummaryRow = Pick<
+  typeof advancedMemoryRecords.$inferSelect,
+  keyof typeof advancedMemorySummaryColumns
+>;
+
 /** Advanced Memory's enabled scene recaps; scaffolds and preparation work have no content yet. */
-function mapAdvancedMemory(rows: (typeof advancedMemoryRecords.$inferSelect)[]): CapabilityAdvancedMemorySummary[] {
+function mapAdvancedMemory(rows: AdvancedMemorySummaryRow[]): CapabilityAdvancedMemorySummary[] {
   return rows
-    .filter((row) => row.kind === "scene" && row.enabled === 1 && row.content.trim())
+    .filter((row) => row.content.trim())
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
     .map((row) => {
       let audience: unknown = [];
@@ -599,7 +619,16 @@ function createPersistenceSession(db: DB, assertPermission: PersistencePermissio
         .where(eq(chats.id, chatId))
         .limit(1);
       const records = rows[0]
-        ? await db.select().from(advancedMemoryRecords).where(eq(advancedMemoryRecords.chatId, chatId))
+        ? await db
+            .select(advancedMemorySummaryColumns)
+            .from(advancedMemoryRecords)
+            .where(
+              and(
+                eq(advancedMemoryRecords.chatId, chatId),
+                eq(advancedMemoryRecords.kind, "scene"),
+                eq(advancedMemoryRecords.enabled, 1),
+              ),
+            )
         : [];
       return { ...mapChatSummaries(rows[0]?.metadata, rows[0]?.updatedAt), advancedMemory: mapAdvancedMemory(records) };
     },

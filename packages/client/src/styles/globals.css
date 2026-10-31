@@ -3860,8 +3860,8 @@ body {
 }
 
 .mari-home-widget {
-  --mari-home-widget-hover-transform: translate3d(0, -0.18rem, 0) scale(1.15);
-  --mari-home-widget-hover-filter: brightness(1.55) saturate(1.45);
+  --mari-home-widget-hover-transform: translate3d(0, -0.18rem, 0) scale(1.015);
+  --mari-home-widget-hover-filter: brightness(1.055) saturate(1.045);
   --mari-home-widget-hover-glow: 0 0.7rem 1.8rem
     color-mix(in srgb, var(--home-module-accent, var(--marinara-app-accent-solid)) 22%, transparent);
   grid-column: span 1;
@@ -4006,7 +4006,7 @@ body {
 }
 
 [data-theme="light"] .mari-home-widget {
-  --mari-home-widget-hover-filter: brightness(1.12) saturate(1.35);
+  --mari-home-widget-hover-filter: brightness(1.012) saturate(1.035);
   --mari-home-widget-hover-glow: 0 0.7rem 1.8rem
     color-mix(in srgb, var(--home-module-accent, var(--marinara-app-accent-solid)) 16%, transparent);
 }

@@ -21154,7 +21154,7 @@ test("Home widgets lift and brighten on fine-pointer hover", async ({ page }, te
         return { scale: transform.a, filter: getComputedStyle(element).filter };
       }),
     )
-    .toMatchObject({ scale: 1.15 });
+    .toMatchObject({ scale: 1.015 });
   const hoveredStyle = await surface.evaluate((element) => getComputedStyle(element).filter);
   expect(hoveredStyle).not.toBe("none");
 

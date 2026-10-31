@@ -17,7 +17,7 @@ export const avatarCropSchema = z.union([
       srcHeight: z.number().finite().positive(),
     })
     .strict()
-    .refine((crop) => crop.srcX + crop.srcWidth <= 1.1 && crop.srcY + crop.srcHeight <= 1.1, {
+    .refine((crop) => crop.srcX + crop.srcWidth <= 1.001 && crop.srcY + crop.srcHeight <= 1.001, {
       message: "Avatar crop must stay inside the source image.",
     }),
   z

@@ -1718,8 +1718,8 @@ function isTrackerAvatarCrop(value: unknown): value is Record<string, unknown> {
     value.srcY >= 0 &&
     value.srcWidth > 0 &&
     value.srcHeight > 0 &&
-    value.srcX + value.srcWidth <= 1.1 &&
-    value.srcY + value.srcHeight <= 1.1;
+    value.srcX + value.srcWidth <= 1.001 &&
+    value.srcY + value.srcHeight <= 1.001;
   if (hasCurrentShape) return true;
 
   return (

@@ -344,7 +344,7 @@ try {
   // breaks ordering just as quietly.
   for (const version of [
     "1.0.0-01",
-    "1.0.0-1.7",
+    "1.0.0-1.007",
     "1.0.0-9007199254740993",
     "1.0.0-1.9007199254740993",
     // Ten digits, still under Number.MAX_SAFE_INTEGER: pins the nine-digit bound

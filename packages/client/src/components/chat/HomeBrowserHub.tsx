@@ -1569,7 +1569,7 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
     if (preview) {
       const left = event.clientX - preview.offsetX;
       const top = event.clientY - preview.offsetY;
-      preview.element.style.transform = `translate3d(${left}px, ${top}px, 0) rotate(0.75deg) scale(1.15)`;
+      preview.element.style.transform = `translate3d(${left}px, ${top}px, 0) rotate(0.75deg) scale(1.015)`;
     }
     const scrollContainer = event.currentTarget.closest<HTMLElement>('[data-component="HomeBrowserHub.Content"]');
     if (scrollContainer) {

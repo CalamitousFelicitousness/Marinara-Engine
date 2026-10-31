@@ -425,7 +425,7 @@ export const noodlePostImageCropSchema = z
     sourceHeight: z.number().int().min(1).max(65_535),
   })
   .strict()
-  .refine((crop) => crop.x + crop.width <= 1.0_001 && crop.y + crop.height <= 1.0_001, {
+  .refine((crop) => crop.x + crop.width <= 1.000_001 && crop.y + crop.height <= 1.000_001, {
     message: "Image crop must stay inside the source image.",
   });
 

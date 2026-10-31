@@ -73,7 +73,7 @@ export class AvatarPictureUnusableError extends Error {
 /** An sRGB channel value in linear light. */
 const LINEAR = Float32Array.from({ length: 256 }, (_, value) => {
   const v = value / 255;
-  return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.55) ** 2.4;
+  return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
 });
 /** Lab's cube-root curve, straight near black. */
 const labCurve = (t: number) => (t > 216 / 24389 ? Math.cbrt(t) : ((24389 / 27) * t + 16) / 116);

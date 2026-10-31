@@ -949,13 +949,6 @@ export function GameRulesetSheet({
                   ))}
                 </div>
               )}
-              {/* Outside a game nothing is worn yet, so armor class counts none (laptop class builds
-                  2026-10-24: a new Paladin's card read AC 10). */}
-              {items === undefined && (definition.items?.startingGear?.length ?? 0) > 0 && (
-                <p className="text-[0.6875rem] text-[var(--muted-foreground)]">
-                  {localizeUi("ui.rulesets.sheet.gearInGame")}
-                </p>
-              )}
 
               {/* Under their section headings where the ruleset gives them some; otherwise one grid, as always. */}
               {rulesetSectionGroups(definition, definition.sheet.abilities).map((group) => (

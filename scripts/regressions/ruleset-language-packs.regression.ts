@@ -284,6 +284,17 @@ try {
     [ID]: "stored",
   });
   assert.equal((await stringsIn("ru"))?.locale, "ru");
+  // A revised pack listed but not to be had: the one kept stays until a replacement is stored.
+  {
+    const revised = entryOf("1.0.0", { ru: { data: packOf("ru", { [english]: "Новые дороги" }) } });
+    offline = true;
+    assert.deepEqual(await capabilityPackageManager.setRulesetLanguage("ru", catalogOf(revised), download), {
+      [ID]: "failed",
+    });
+    offline = false;
+    assert.deepEqual(packsIn("1.0.0"), [`${ID}-1.0.0.ru.json`]);
+    assert.equal((await stringsIn("ru"))?.locale, "ru");
+  }
   // A language with no pack listed: English, and the old one removed.
   assert.deepEqual(await capabilityPackageManager.setRulesetLanguage("de", catalogOf(v1), download), {
     [ID]: "none",

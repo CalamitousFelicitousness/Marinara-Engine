@@ -339,8 +339,9 @@ export function DirectedCombatUI(props: Props) {
                     ? {
                         ruleset: {
                           view: fight,
-                          budgetLabel,
-                          defenseLabel,
+                          // Shown in the player's language, as on a board (the summary sent back stays the ruleset's own).
+                          budgetLabel: (id: string) => rulesetText(budgetLabel(id)),
+                          defenseLabel: rulesetText(defenseLabel),
                           busy,
                           onChoose: choose,
                           onFlee: () => send({ type: "flee" }),

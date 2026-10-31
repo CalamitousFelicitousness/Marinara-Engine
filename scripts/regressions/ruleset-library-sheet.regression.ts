@@ -39,6 +39,12 @@ const readSource = (path: string) => readFileSync(join(root, path), "utf8");
   const messages = JSON.parse(readSource("packages/client/src/localization/locales/en.json")) as Record<string, string>;
   for (const key of ["ui.rulesets.sheet.pools", "ui.rulesets.sheet.poolStartsEmpty", "ui.rulesets.sheet.gearInGame"])
     assert.ok(messages[key], `en.json is missing ${key}`);
+  // In a game the note is not shown: the party sheet and a card read without an item book are still
+  // in a game, where gear is worn.
+  assert.doesNotMatch(
+    readSource("packages/client/src/components/game/GameRulesetSheet.tsx"),
+    /ui\.rulesets\.sheet\.gearInGame/u,
+  );
 }
 
 // ── A stat line of short words ──

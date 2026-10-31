@@ -14314,6 +14314,16 @@ function verifyRulesetLocalePack(
   return read.strings;
 }
 
+/** Whether a kept pack's bytes still read as a translation in `locale`, whatever the catalog lists now. */
+function stillReadsAsPack(data: Buffer, locale: string, name: string): boolean {
+  try {
+    const document: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(data));
+    return readRulesetLocaleFile(document, locale, { name, pack: true }).ok;
+  } catch {
+    return false;
+  }
+}
+
 export type RulesetLocalePackOutcome = "stored" | "kept" | "none" | "failed";
 
 /**
@@ -14374,6 +14384,9 @@ async function syncRulesetLocalePack(
               installed.version,
             );
             outcome = "failed";
+            // The pack already kept in this language stays until a replacement is stored, while it
+            // still reads as a translation.
+            if (existing && stillReadsAsPack(existing, locale, name)) keep = file;
           }
         }
       }

@@ -112,12 +112,22 @@ export function CombatAiControls({
                     </option>
                   ))}
                   {party
-                    .filter((other) => other.id !== member.id && other.hp > 0)
+                    // The one it protects stays named while down, so the order shown is the order kept.
+                    .filter(
+                      (other) =>
+                        other.id !== member.id &&
+                        (other.hp > 0 ||
+                          (member.orders?.posture === "protect" && other.id === member.orders.protectId)),
+                    )
                     .map((other) => (
                       <option key={other.id} value={`protect:${other.id}`}>
                         {t("game.combat.ai.posture.protect", { name: other.name })}
                       </option>
                     ))}
+                  {member.orders?.posture === "protect" &&
+                    !party.some((other) => other.id === member.orders?.protectId) && (
+                      <option value={postureOf(member.orders)}>{postureLabel(member.orders)}</option>
+                    )}
                 </select>
                 {(["conserve", "heal", "spare"] as const).map((flag) => (
                   <label key={flag} className="flex items-center gap-1">

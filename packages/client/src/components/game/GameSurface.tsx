@@ -9465,7 +9465,10 @@ function GameSurfaceComponent({
       // Only an item the screen already knows has no use is simply said. One it cannot tell about yet
       // (the ruleset or its catalogs still loading) goes to the Engine, which always knows.
       const known = stack?.item ? inventoryItemBook?.itemOf(stack.item) : undefined;
-      if (!stack?.item || gameRuleset.status === "none" || (known && !known.entry.item?.use)) {
+      // An item whose only uses are its further ones (a Necklace of Prayer Beads' beads) has them spent
+      // by the Engine too.
+      const engineUse = !!known?.entry.item?.use || (more !== undefined && !!known?.entry.item?.moreUsesRolled);
+      if (!stack?.item || gameRuleset.status === "none" || (known && !engineUse)) {
         said();
         return;
       }

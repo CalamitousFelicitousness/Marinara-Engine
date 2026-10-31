@@ -309,6 +309,20 @@ const symbolExisting = splitCharacterDescription({
   personality: "...",
 });
 assert.equal(symbolExisting.after.personality, "...\n\nPersonality: brave and reckless.", "symbol-only text is kept");
+// ... but a bare <START> marker still counts as present, so no empty example block is added.
+const examples = '{{user}}: "Hi there, how are you?"\n{{char}}: "Fine, thanks for asking."';
+const startStub = splitCharacterDescription({
+  name: "Nora",
+  description: `Nora is a pilot.\n\n${examples}`,
+  mes_example: "<START>",
+});
+assert.equal(startStub.after.mes_example, `<START>\n${examples}`, "a <START> stub is replaced by the examples");
+const strayStart = splitCharacterDescription({
+  name: "Nora",
+  description: "Nora is a pilot.\n\nPersonality: brave and reckless.\n\n<START>",
+  mes_example: `<START>\n${examples}`,
+});
+assert.equal(strayStart.after.mes_example, `<START>\n${examples}`, "a stray <START> line is not appended");
 
 // 7. applyDescriptionSplit writes the top-level fields and the appearance/backstory extensions.
 const applied = applyDescriptionSplit(

@@ -1489,11 +1489,11 @@ function split(before: DescriptionSplitFields, name: string, opts: AssignOptions
   const duplicates: string[] = []; // text left out because the same words are already in the field
   let addedChars = 0;
   // Text with no letters or digits ("...", "♡") is compared by its symbols: an empty key would match anything.
-  const squash = (t: string) =>
-    t
-      .toLowerCase()
-      .replace(/<start>/g, "")
-      .replace(/[^\p{L}\p{N}]+/gu, "") || noSpace(t);
+  // A bare <START> marker keeps the empty key, so a stray one is not added as an empty example block.
+  const squash = (t: string) => {
+    const bare = t.toLowerCase().replace(/<start>/g, "");
+    return bare.replace(/[^\p{L}\p{N}]+/gu, "") || noSpace(bare);
+  };
   for (const field of MOVED_FIELDS) {
     let movedText = tidy(moved[field]);
     if (!movedText.trim()) continue;

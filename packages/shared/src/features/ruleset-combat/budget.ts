@@ -247,7 +247,13 @@ export function rulesetBudgetStandIns<
       return;
     }
     const lead = group.map((at) => enemies[at]!).find((one) => !!one.boss) ?? enemy;
-    const { creature: _creature, tier: _tier, boss: _boss, ...unit } = lead;
+    const { creature: _creature, tier: _tier, boss: _boss, ...rest } = lead;
+    // What its writer gave the one it stands in for is that one's, not the stand-in's (laptop handoff
+    // 2026-10-30: two Battle Priests came in for Knights and were saved with the Knights' Greatsword and
+    // Heavy Crossbow): its skills, its stat block, its strikes, its points and what it carried.
+    const unit = { ...rest };
+    for (const key of ["skills", "proposed", "attacks", "points", "adjust", "spellSlots", "carrying"])
+      delete (unit as Record<string, unknown>)[key];
     const label = best.entry.label;
     for (let at = 0; at < best.count; at++) {
       const n = (named.get(label) ?? 0) + 1;

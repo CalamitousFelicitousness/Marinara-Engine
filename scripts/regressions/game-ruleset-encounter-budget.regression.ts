@@ -391,6 +391,30 @@ try {
         ["e1-4", "Skeleton 4", "foes/skeleton", undefined],
       ],
     );
+    // What the lich was written with is the lich's, never the skeletons' (laptop handoff 2026-10-30:
+    // Battle Priests saved with the Knights' Greatsword and Heavy Crossbow).
+    const armed = rulesetBudgetStandIns(
+      definition,
+      bestiary,
+      [
+        {
+          id: "e1",
+          name: "Lich Morrow",
+          creature: "Lich",
+          skills: [{ name: "Finger of Death" }],
+          attacks: [{ name: "Finger of Death", spell: true }],
+          proposed: { tier: "cr_5" },
+          carrying: ["Staff of Power"],
+          points: 3,
+          temperament: "cunning",
+        },
+      ],
+      party,
+    );
+    for (const one of armed.enemies as Array<Record<string, unknown>>) {
+      for (const key of ["skills", "attacks", "proposed", "carrying", "points"]) assert.equal(one[key], undefined, key);
+      assert.equal(one.temperament, "cunning", "how it fights is still its writer's");
+    }
     assert.match(
       swapped.lines[0]!,
       /^Lich is far beyond this party \(worth 1800, against its High budget of 200\), so lesser ones of its kind come instead: 4 Skeleton\. Lich Morrow stays out of this fight/,

@@ -9,8 +9,9 @@ import {
   cleanTTSInputText,
   normalizeTTSCharacterName,
   resolveTTSNarratorVoice,
-  resolveTTSVoiceForSpeaker,
+  resolveTTSUtteranceVoice,
   splitTTSChunks,
+  type TTSVoicePersona,
   type TTSVoiceRequest,
 } from "./tts-dialogue";
 
@@ -36,6 +37,7 @@ export function buildExtractedRoleplayTTSVoiceRequests(
   fallbackSpeaker?: string | null,
   fallbackCharacterId?: string | null,
   resolveCharacterIdForSpeaker?: (speaker?: string | null) => string | null | undefined,
+  persona?: TTSVoicePersona | null,
 ): TTSVoiceRequest[] {
   const fallbackSpeakerKey = normalizeTTSCharacterName(fallbackSpeaker);
   const spokenSegments = config.dialogueOnly ? segments.filter((segment) => segment.kind === "dialogue") : segments;
@@ -60,8 +62,11 @@ export function buildExtractedRoleplayTTSVoiceRequests(
     // A configured character voice always wins. If per-character routing cannot
     // find one, let the enabled NPC pool provide a stable fallback for that
     // speaker, including known chat characters without an assignment.
-    const npcFallbackHint = !characterId || config.voiceMode === "per-character" ? { name: speaker ?? "" } : null;
-    const voice = resolveTTSVoiceForSpeaker(config, speaker, characterId, npcFallbackHint);
+    const npcFallbackHint =
+      !characterId || characterId === persona?.id || config.voiceMode === "per-character"
+        ? { name: speaker ?? "" }
+        : null;
+    const voice = resolveTTSUtteranceVoice(config, speaker, characterId, persona, npcFallbackHint);
     if (config.source === "elevenlabs" && !voice) return [];
 
     const chunks = splitTTSChunks(segment.text, config);

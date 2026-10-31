@@ -4,13 +4,13 @@
 // The voice is part of the path rather than the body, output format is pinned
 // in the query string, and responses come back gzipped.
 
+import { elevenLabsModelSupportsSpeed } from "@marinara-engine/shared";
 import { BaseTTSProvider } from "./base-tts-provider.js";
 import {
   buildElevenLabsTextInput,
   clampElevenLabsSpeed,
   elevenLabsApiRoot,
   elevenLabsHeaders,
-  elevenLabsModelSupportsSpeed,
   normalizeElevenLabsTtsModelId,
 } from "./tts-endpoints.js";
 import type { TTSSpeechInput, TTSProviderRequest } from "./tts-types.js";
@@ -27,7 +27,7 @@ export class ElevenLabsTTSProvider extends BaseTTSProvider {
   buildSpeechRequest(input: TTSSpeechInput): TTSProviderRequest {
     const model = this.resolveModel();
     const languageCode = this.cfg.elevenLabsLanguageCode?.trim();
-    // eleven_v3 rejects a speed setting; the others accept a narrow range.
+    // Eleven v3 and v4 reject a speed setting; the others accept a narrow range.
     const includeSpeed = elevenLabsModelSupportsSpeed(model);
 
     return {

@@ -45,41 +45,49 @@ async function preparePage(page: Page, chatId?: string) {
   );
 }
 
-test("personas share the existing voice selector and assignment shape", async ({ page, request }, testInfo) => {
+// Casting lives on the speaking connection, so a persona row is added in the connection editor.
+test("personas share the connection's voice casting and assignment shape", async ({ page, request }, testInfo) => {
   const name = `Voice identity ${testInfo.project.name}`;
   const persona = await create(request, "/characters/personas", { name });
   const character = await create(request, "/characters", { data: { name } });
-  const original = await (await request.get("/api/tts/config")).json();
-  let config = { ...original, enabled: true, source: "openai", voiceMode: "per-character", voiceAssignments: [] };
+  const connection = await create(request, "/connections", {
+    name: `Persona casting ${testInfo.project.name}`,
+    provider: "audio",
+    audioSource: "openai",
+    apiKey: "synthetic-test-key",
+    baseUrl: "https://audio-fixture.invalid/v1",
+    audioSettings: { voiceMode: "per-character" },
+  });
+  const storedAssignments = async () => {
+    const stored = (await (await request.get(`/api/connections/${connection.id}`)).json()).audioSettings;
+    return (typeof stored === "string" ? JSON.parse(stored) : stored)?.voiceAssignments;
+  };
   try {
-    await page.route("**/api/tts/config", async (route) => {
-      if (route.request().method() === "PUT") config = { ...config, ...route.request().postDataJSON() };
-      await route.fulfill({ json: config });
-    });
-    await page.route("**/api/tts/voices", (route) =>
+    await page.route("**/api/tts/voices**", (route) =>
       route.fulfill({ json: { voices: ["alloy"], fromProvider: false } }),
     );
     await preparePage(page);
-    await page.goto("/");
-    await clickTopbarPanel(page, "connections");
-    const card = page
-      .locator('[data-component="RightPanel"]')
-      .getByText("Text to Speech", { exact: true })
-      .locator("xpath=../../..");
-    await card.getByTitle("Expand").click();
-    await card.getByRole("button", { name: "Add voice", exact: true }).click();
-    await card.getByRole("button", { name: "Select character or persona", exact: true }).click();
+    const openCasting = async () => {
+      await page.goto("/");
+      await page.evaluate(async (id) => {
+        const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+        useUIStore.getState().openConnectionDetail(id);
+      }, connection.id);
+      await page.getByRole("button", { name: "Voice casting" }).click();
+    };
+    await openCasting();
+    await page.getByRole("button", { name: "Add a voice", exact: true }).click();
+    await page.getByRole("button", { name: "Select character or persona", exact: true }).click();
     const choices = page.getByTestId("tts-character-options");
     await expect(choices.getByRole("option", { name, exact: true })).toBeVisible();
     await choices.getByRole("option", { name: `${name} (Persona)`, exact: true }).click();
-    const voice = card.getByTestId(`tts-custom-voice-input-character-${persona.id}`);
+    const voice = page.getByTestId("audio-casting-voice");
     await voice.fill("persona-voice");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
     await expect
-      .poll(() => config.voiceAssignments)
+      .poll(storedAssignments)
       .toEqual([{ characterId: persona.id, characterName: name, voice: "persona-voice" }]);
-    await page.reload();
-    await clickTopbarPanel(page, "connections");
-    await card.getByTitle("Expand").click();
+    await openCasting();
     await expect(voice).toHaveValue("persona-voice");
     for (const theme of ["dark", "light"] as const) {
       await page.evaluate(async (theme) => {
@@ -91,6 +99,7 @@ test("personas share the existing voice selector and assignment shape", async ({
       await page.screenshot({ path: testInfo.outputPath(`persona-voice-${theme}.png`) });
     }
   } finally {
+    await request.delete(`/api/connections/${connection.id}`);
     await request.delete(`/api/characters/personas/${persona.id}`);
     await request.delete(`/api/characters/${character.id}`);
   }
@@ -174,30 +183,37 @@ for (const mode of ["conversation", "roleplay", "game"] as const) {
       let enabledForMode = true;
       let assigned = true;
       let cacheEpoch = 0;
-      await page.route("**/api/tts/config", (route) =>
+      await page.route("**/api/tts/effective-config**", (route) =>
         route.fulfill({
           json: {
-            ...original,
-            enabled: true,
-            source: "openai",
-            connectionId: "",
-            voiceMode: "per-character",
-            model: `persona-tts-${chat.id}-${cacheEpoch}`,
-            voice: "global-voice",
-            narratorVoiceEnabled: true,
-            narratorVoice: "narrator-voice",
-            voiceAssignments: [
-              ...(assigned ? [{ characterId: persona.id, characterName: personaName, voice: "persona-voice" }] : []),
-              { characterId: nextPersona.id, characterName: "Another Persona", voice: "other-persona-voice" },
-              { characterId: character.id, characterName, voice: "character-voice" },
-            ],
-            autoplayRP: mode === "roleplay" && enabledForMode,
-            autoplayConvo: mode === "conversation" && enabledForMode,
-            autoplayGame: mode === "game" && enabledForMode,
-            dialogueOnly: false,
-            progressivePlayback: false,
-            roleplaySpeakerExtractorEnabled: false,
-            dialoguePauseMs: 0,
+            resolvedConnectionId: null,
+            resolvedConnectionName: null,
+            resolvedSource: "openai",
+            origin: "legacy",
+            speechEnabled: true,
+            config: {
+              ...original,
+              enabled: true,
+              source: "openai",
+              connectionId: "",
+              voiceMode: "per-character",
+              model: `persona-tts-${chat.id}-${cacheEpoch}`,
+              voice: "global-voice",
+              narratorVoiceEnabled: true,
+              narratorVoice: "narrator-voice",
+              voiceAssignments: [
+                ...(assigned ? [{ characterId: persona.id, characterName: personaName, voice: "persona-voice" }] : []),
+                { characterId: nextPersona.id, characterName: "Another Persona", voice: "other-persona-voice" },
+                { characterId: character.id, characterName, voice: "character-voice" },
+              ],
+              autoplayRP: mode === "roleplay" && enabledForMode,
+              autoplayConvo: mode === "conversation" && enabledForMode,
+              autoplayGame: mode === "game" && enabledForMode,
+              dialogueOnly: false,
+              progressivePlayback: false,
+              roleplaySpeakerExtractorEnabled: false,
+              dialoguePauseMs: 0,
+            },
           },
         }),
       );

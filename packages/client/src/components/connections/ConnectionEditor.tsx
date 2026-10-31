@@ -2946,6 +2946,7 @@ export function ConnectionEditor() {
           {isAudioProvider && (
             <AudioSynthesisDefaults
               source={localAudioSource as AudioGenerationSource}
+              model={localModel}
               value={localAudioSettings}
               onChange={(next) => {
                 setLocalAudioSettings(next);

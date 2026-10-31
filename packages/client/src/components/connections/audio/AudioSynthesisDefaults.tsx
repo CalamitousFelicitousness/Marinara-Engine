@@ -22,6 +22,7 @@ import {
   TTS_SOURCE_DEFINITIONS,
   TTS_TIMEOUT_MS_MAX,
   TTS_TIMEOUT_MS_MIN,
+  elevenLabsModelSupportsSpeed,
   type AudioConnectionSettings,
   type AudioGenerationSource,
   type TTSAudioFormat,
@@ -35,6 +36,7 @@ const AUDIO_FORMATS = ["mp3", "wav", "pcm"] as const satisfies readonly TTSAudio
 
 export interface AudioSynthesisDefaultsProps {
   source: AudioGenerationSource;
+  model: string;
   value: AudioConnectionSettings;
   onChange: (next: AudioConnectionSettings) => void;
 }
@@ -49,6 +51,7 @@ function OptionalNumberRow({
   step,
   format,
   inheritLabel,
+  disabled = false,
   onChange,
 }: {
   label: string;
@@ -59,6 +62,7 @@ function OptionalNumberRow({
   step: number;
   format: (value: number) => string;
   inheritLabel: string;
+  disabled?: boolean;
   onChange: (next: number | undefined) => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
@@ -75,12 +79,13 @@ function OptionalNumberRow({
         max={max}
         step={step}
         value={active ? value : min}
+        disabled={disabled}
         onChange={(event) => onChange(Number(event.target.value))}
         className={cn("w-full accent-sky-400", !active && "opacity-50")}
       />
       <div className="flex items-center justify-between gap-2">
         <p className="text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">{help}</p>
-        {active && (
+        {active && !disabled && (
           <button
             type="button"
             onClick={() => onChange(undefined)}
@@ -94,10 +99,11 @@ function OptionalNumberRow({
   );
 }
 
-export function AudioSynthesisDefaults({ source, value, onChange }: AudioSynthesisDefaultsProps) {
+export function AudioSynthesisDefaults({ source, model, value, onChange }: AudioSynthesisDefaultsProps) {
   const { t: localizeUi } = useUiTranslation();
   const [expanded, setExpanded] = useState(false);
   const speed = audioSpeedRange(source);
+  const speedUnavailable = source === "elevenlabs" && !elevenLabsModelSupportsSpeed(model);
   const chunkMax = Math.min(TTS_CHUNK_CHARS_MAX, TTS_SOURCE_DEFINITIONS[source].maxInputChars);
   const patch = (next: Partial<AudioConnectionSettings>) => onChange({ ...value, ...next });
   const inherit = localizeUi("ui.connections.audiosynthesisdefaults.appSetting");
@@ -120,13 +126,18 @@ export function AudioSynthesisDefaults({ source, value, onChange }: AudioSynthes
         <div className="space-y-3 pt-1">
           <OptionalNumberRow
             label={localizeUi("ui.connections.audiosynthesisdefaults.speed")}
-            help={localizeUi("ui.connections.audiosynthesisdefaults.speedHelp")}
+            help={localizeUi(
+              speedUnavailable
+                ? "ui.connections.audiosynthesisdefaults.speedUnavailableHelp"
+                : "ui.connections.audiosynthesisdefaults.speedHelp",
+            )}
             value={value.speed}
             min={speed.min}
             max={speed.max}
             step={0.05}
             format={(current) => `${current.toFixed(2)}x`}
             inheritLabel={inherit}
+            disabled={speedUnavailable}
             onChange={(next) => patch({ speed: next })}
           />
 

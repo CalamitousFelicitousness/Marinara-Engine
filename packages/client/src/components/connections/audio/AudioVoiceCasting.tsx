@@ -15,7 +15,7 @@ import { useMemo, useState } from "react";
 import { ChevronDown, ChevronUp, Plus, UserRound, X } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import type { AudioConnectionSettings, AudioGenerationSource, TTSVoiceAssignment } from "@marinara-engine/shared";
-import { useCharacters } from "../../../hooks/use-characters";
+import { useCharacters, usePersonas } from "../../../hooks/use-characters";
 import { useTTSVoices } from "../../../hooks/use-tts";
 import { parseCharacterDisplayData } from "../../../lib/character-display";
 import { cn } from "../../../lib/utils";
@@ -48,6 +48,7 @@ export function AudioVoiceCasting({ connectionId, source, model, value, onChange
   const { t: localizeUi } = useUiTranslation();
   const [expanded, setExpanded] = useState(false);
   const { data: characters } = useCharacters();
+  const { data: personas } = usePersonas();
   const catalogScope = useMemo(() => ({ connectionId, model }), [connectionId, model]);
   const { data: voicesData, isFetching } = useTTSVoices(source, catalogScope, Boolean(connectionId) && expanded);
 
@@ -66,8 +67,9 @@ export function AudioVoiceCasting({ connectionId, source, model, value, onChange
     return source === "elevenlabs" ? ELEVENLABS_DEFAULT_VOICE_OPTIONS : [];
   }, [voicesData, source]);
 
+  // Personas share the cast: a persona row voices the user's own lines.
   const characterOptions = useMemo<CharacterOption[]>(() => {
-    return ((characters ?? []) as Array<{ id?: string; data?: unknown; comment?: string | null }>)
+    const characterCards = ((characters ?? []) as Array<{ id?: string; data?: unknown; comment?: string | null }>)
       .map((character) => {
         if (!character.id) return null;
         const info = parseCharacterDisplayData({ data: character.data, comment: character.comment });
@@ -77,9 +79,18 @@ export function AudioVoiceCasting({ connectionId, source, model, value, onChange
           label: info.comment ? `${info.name} (${info.comment})` : info.name,
         };
       })
-      .filter((option): option is CharacterOption => Boolean(option))
-      .sort((left, right) => left.name.localeCompare(right.name));
-  }, [characters]);
+      .filter((option): option is CharacterOption => Boolean(option));
+    const personaCards = (personas ?? [])
+      .filter((persona) => Boolean(persona.id))
+      .map((persona) => ({
+        id: persona.id,
+        name: persona.name,
+        label: localizeUi("tts.assignments.personaOption", {
+          name: persona.comment ? `${persona.name} (${persona.comment})` : persona.name,
+        }),
+      }));
+    return [...characterCards, ...personaCards].sort((left, right) => left.name.localeCompare(right.name));
+  }, [characters, personas, localizeUi]);
 
   const assignedCharacterIds = useMemo(
     () => new Set(assignments.map((assignment) => assignment.characterId).filter(Boolean)),

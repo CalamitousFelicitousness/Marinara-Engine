@@ -26,6 +26,7 @@ export const AUDIO_SOURCE_DISPLAY_ORDER: readonly AudioGenerationSource[] = [
 
 /** Shown before the live listing arrives, and whenever it cannot be reached. */
 export const ELEVENLABS_TTS_MODELS = [
+  "eleven_v4",
   "eleven_v3",
   "eleven_multilingual_v2",
   "eleven_flash_v2_5",

@@ -109,6 +109,8 @@ import {
   buildTTSVoiceRequests,
   filterTTSText,
   findTTSCharacterIdBySpeakerName,
+  getTTSPersonaVoice,
+  resolveTTSMessagePersona,
   withTTSVoiceRequestCacheKeys,
 } from "../../lib/tts-dialogue";
 import {
@@ -119,6 +121,7 @@ import {
   findLatestTTSAutoplayMessage,
   findSplitReplyEarlierParts,
   getTTSAutoplayRevision,
+  isTTSUserMessageReady,
   nextTTSAutoplayReadingId,
   shouldAutoplayGeneratedTTS,
   TTS_AUTOPLAY_MESSAGE_READY_EVENT,
@@ -3416,6 +3419,18 @@ const LocalChatArea = memo(function LocalChatArea({
   const startedTTSAutoplayRevisionsRef = useRef(new Set<string>());
   // One notice per outage, not one per message.
   const ttsAutoplayPauseNotifiedRef = useRef(false);
+  const ttsAutoplayTailRef = useRef<Promise<void>>(Promise.resolve());
+  const ttsAutoplayEpochRef = useRef(0);
+  const personaTTSControllersRef = useRef(new Set<AbortController>());
+  useEffect(() => {
+    const controllers = personaTTSControllersRef.current;
+    return () => {
+      ttsAutoplayEpochRef.current += 1;
+      for (const controller of controllers) controller.abort();
+      controllers.clear();
+      ttsAutoplayTailRef.current = Promise.resolve();
+    };
+  }, [activeChatId, chatMode, effectiveTts]);
   useEffect(() => {
     const handleGenerationError = (event: Event) => {
       const chatId = (event as CustomEvent<{ chatId?: string }>).detail?.chatId;
@@ -3425,27 +3440,27 @@ const LocalChatArea = memo(function LocalChatArea({
     window.addEventListener("marinara:generation-error", handleGenerationError);
     return () => window.removeEventListener("marinara:generation-error", handleGenerationError);
   }, []);
-  const resolveTTSCharacterId = useCallback(
-    (speaker?: string | null) => findTTSCharacterIdBySpeakerName(speaker, characterMap),
-    [characterMap],
-  );
-  const speakTTSAutoplayMessage = useCallback(
+  const runTTSAutoplayMessage = useCallback(
     async (
       lastMsg: TTSAutoplayMessage,
       targetChatId: string,
       generationAtStart: TTSGenerationSnapshot | null,
       earlierMessages: readonly TTSAutoplayMessage[] = [],
+      signal?: AbortSignal,
     ) => {
-      if (useChatStore.getState().activeChatId !== targetChatId) return;
+      if (signal?.aborted || useChatStore.getState().activeChatId !== targetChatId) return;
 
       const resolved = ttsConfigRef.current;
       if (!resolved?.speechEnabled) return;
       const cfg = resolved.config;
       const audioConnectionId = resolved.resolvedConnectionId;
 
+      const userMessage = lastMsg.role === "user";
       const mode = chatModeRef.current;
-      const shouldAutoplay = mode === "roleplay" ? cfg.autoplayRP : mode === "game" ? false : cfg.autoplayConvo;
+      const shouldAutoplay =
+        mode === "roleplay" ? cfg.autoplayRP : mode === "game" ? userMessage && cfg.autoplayGame : cfg.autoplayConvo;
       if (!shouldAutoplay) return;
+      if (userMessage && !getTTSPersonaVoice(cfg, resolveTTSMessagePersona(lastMsg, personaInfo))) return;
 
       const targetRevision = getTTSAutoplayRevision(lastMsg);
       if (!targetRevision) return;
@@ -3473,6 +3488,7 @@ const LocalChatArea = memo(function LocalChatArea({
       // Avatars hold their talking and moods for the voice until this reading ends, however it ends.
       const readingId = nextTTSAutoplayReadingId();
       const announceVoice = (pending: boolean) =>
+        !userMessage &&
         window.dispatchEvent(
           new CustomEvent<TTSAutoplayVoiceDetail>(TTS_AUTOPLAY_VOICE_EVENT, {
             detail: { chatId: targetChatId, messageId: lastMsg.id, readingId, pending },
@@ -3484,14 +3500,20 @@ const LocalChatArea = memo(function LocalChatArea({
           mode === "roleplay" &&
           (chatMeta.roleplayDisplayStyle ?? useUIStore.getState().roleplayDisplayStyle) === "visual-novel";
         const requestsFor = async (message: TTSAutoplayMessage) => {
-          const fallbackSpeaker =
-            message.role === "narrator"
+          const persona = resolveTTSMessagePersona(message, personaInfo);
+          const ownUserMessage = message.role === "user";
+          const fallbackSpeaker = ownUserMessage
+            ? persona?.name || "User"
+            : message.role === "narrator"
               ? "Narrator"
               : message.characterId
                 ? characterMap.get(message.characterId)?.name
                 : undefined;
+          const fallbackId = ownUserMessage ? persona?.id : message.characterId;
+          const resolveSpeakerId = (speaker?: string | null) =>
+            findTTSCharacterIdBySpeakerName(speaker, characterMap, persona);
           let requests;
-          if (mode === "roleplay" && cfg.roleplaySpeakerExtractorEnabled) {
+          if (mode === "roleplay" && cfg.roleplaySpeakerExtractorEnabled && !ownUserMessage) {
             try {
               const extracted = await extractRoleplayTTSSpeakers({
                 message: filterTTSText(message.content, cfg),
@@ -3505,29 +3527,22 @@ const LocalChatArea = memo(function LocalChatArea({
                 extracted.segments,
                 cfg,
                 fallbackSpeaker,
-                message.characterId,
-                resolveTTSCharacterId,
+                fallbackId,
+                resolveSpeakerId,
+                persona,
               );
             } catch (error) {
               console.warn("[TTS] Roleplay speaker extractor failed; using standard autoplay.", error);
-              requests = buildTTSVoiceRequests(
-                message.content,
-                cfg,
-                fallbackSpeaker,
-                message.characterId,
-                resolveTTSCharacterId,
-                { fastFirstChunk: cfg.progressivePlayback },
-              );
+              requests = buildTTSVoiceRequests(message.content, cfg, fallbackSpeaker, fallbackId, resolveSpeakerId, {
+                fastFirstChunk: cfg.progressivePlayback,
+                persona,
+              });
             }
           } else {
-            requests = buildTTSVoiceRequests(
-              message.content,
-              cfg,
-              fallbackSpeaker,
-              message.characterId,
-              resolveTTSCharacterId,
-              { fastFirstChunk: cfg.progressivePlayback },
-            );
+            requests = buildTTSVoiceRequests(message.content, cfg, fallbackSpeaker, fallbackId, resolveSpeakerId, {
+              fastFirstChunk: cfg.progressivePlayback,
+              persona,
+            });
           }
           return visualNovel ? withRoleplayTTSParagraphs(requests, message.content, cfg) : requests;
         };
@@ -3540,8 +3555,10 @@ const LocalChatArea = memo(function LocalChatArea({
         const currentGeneration = ttsGenerationRef.current;
         const currentMessage = findLatestTTSAutoplayMessage(messagesRef.current ?? []);
         if (
+          signal?.aborted ||
+          resolved !== ttsConfigRef.current ||
           useChatStore.getState().activeChatId !== targetChatId ||
-          (currentGeneration !== null && currentGeneration !== generationAtStart) ||
+          (!userMessage && currentGeneration !== null && currentGeneration !== generationAtStart) ||
           (currentMessage?.id === lastMsg.id && getTTSAutoplayRevision(currentMessage) !== targetRevision)
         )
           return;
@@ -3557,6 +3574,7 @@ const LocalChatArea = memo(function LocalChatArea({
           lastMsg.id,
           {
             chatId: targetChatId,
+            signal,
             progressive: cfg.progressivePlayback,
             concurrency: cfg.generationConcurrency,
             policy: resolveTTSSynthesisPolicy(cfg),
@@ -3572,15 +3590,65 @@ const LocalChatArea = memo(function LocalChatArea({
         announceVoice(false);
       }
     },
-    [
-      characterMap,
-      characterNames,
-      chat,
-      chatMeta.roleplayDisplayStyle,
-      personaInfo?.name,
-      resolveTTSCharacterId,
-      ttsLineVolume,
-    ],
+    [characterMap, characterNames, chat, chatMeta.roleplayDisplayStyle, personaInfo, ttsLineVolume],
+  );
+  // Readings run one after another, so a persona line finishes before the reply it prompted starts.
+  const speakTTSAutoplayMessage = useCallback(
+    (
+      message: TTSAutoplayMessage,
+      chatId: string,
+      generation: TTSGenerationSnapshot | null,
+      earlierMessages: readonly TTSAutoplayMessage[] = [],
+    ) => {
+      const epoch = ttsAutoplayEpochRef.current;
+      const resolved = ttsConfigRef.current;
+      const cfg = resolved?.config;
+      const userMessage = message.role === "user";
+      const mode = chatModeRef.current;
+      if (
+        useChatStore.getState().activeChatId !== chatId ||
+        (userMessage &&
+          (!isTTSUserMessageReady(message, mode) ||
+            !resolved?.speechEnabled ||
+            !cfg ||
+            !(mode === "game" ? cfg.autoplayGame : mode === "roleplay" ? cfg.autoplayRP : cfg.autoplayConvo) ||
+            !getTTSPersonaVoice(cfg, resolveTTSMessagePersona(message, personaInfo))))
+      )
+        return Promise.resolve();
+      const controller = userMessage ? new AbortController() : null;
+      const readingId = controller ? nextTTSAutoplayReadingId() : "";
+      let finished = false;
+      const finish = () => {
+        if (!controller || finished) return;
+        finished = true;
+        personaTTSControllersRef.current.delete(controller);
+        window.dispatchEvent(
+          new CustomEvent<TTSAutoplayVoiceDetail>(TTS_AUTOPLAY_VOICE_EVENT, {
+            detail: { chatId, messageId: message.id, readingId, pending: false },
+          }),
+        );
+      };
+      if (controller) {
+        personaTTSControllersRef.current.add(controller);
+        controller.signal.addEventListener("abort", finish, { once: true });
+        window.dispatchEvent(
+          new CustomEvent<TTSAutoplayVoiceDetail>(TTS_AUTOPLAY_VOICE_EVENT, {
+            detail: { chatId, messageId: message.id, readingId, pending: true },
+          }),
+        );
+      }
+      const queued = ttsAutoplayTailRef.current.then(async () => {
+        try {
+          if (epoch !== ttsAutoplayEpochRef.current || controller?.signal.aborted) return;
+          await runTTSAutoplayMessage(message, chatId, generation, earlierMessages, controller?.signal);
+        } finally {
+          finish();
+        }
+      });
+      ttsAutoplayTailRef.current = queued.catch((error) => console.warn("[TTS] Autoplay failed.", error));
+      return ttsAutoplayTailRef.current;
+    },
+    [personaInfo, runTTSAutoplayMessage],
   );
   useEffect(() => {
     const handleMessageReady = (event: Event) => {

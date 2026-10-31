@@ -201,6 +201,15 @@ const jsonBody = (body: string | FormData): Record<string, unknown> => {
   assert.equal(v3Body.model_id, "eleven_v3", "legacy model spellings are aliased");
   assert.deepEqual(v3Body.voice_settings, { stability: 0.5 }, "eleven_v3 takes no speed");
 
+  // Eleven v4 has no speed setting either.
+  for (const model of ["eleven_v4", "eleven_v4_turbo"]) {
+    const v4 = createTTSProvider(config({ source: "elevenlabs", model })).buildSpeechRequest({
+      text: "Hello.",
+      voice: "Rachel",
+    });
+    assert.deepEqual(jsonBody(v4.body).voice_settings, { stability: 0.5 }, `${model} takes no speed`);
+  }
+
   // Speed is clamped into the range ElevenLabs accepts.
   const fast = createTTSProvider(config({ source: "elevenlabs", speed: 4 })).buildSpeechRequest({
     text: "Hello.",

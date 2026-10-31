@@ -612,10 +612,10 @@ export function CharacterSelect({
         disabled: assignedCharacterIds.has(option.id) && option.id !== value,
       }))}
       disabled={options.length === 0}
-      placeholder={localizeUi("ui.panels.ttsconfigcard.selectCharacter")}
-      ariaLabel={localizeUi("ui.panels.ttsconfigcard.selectCharacter")}
-      searchPlaceholder={localizeUi("ui.panels.ttsconfigcard.searchCharacters")}
-      emptyText={localizeUi("ui.panels.ttsconfigcard.noMatchingCharacters")}
+      placeholder={localizeUi("tts.assignments.selectSpeaker")}
+      ariaLabel={localizeUi("tts.assignments.selectSpeaker")}
+      searchPlaceholder={localizeUi("tts.assignments.searchSpeakers")}
+      emptyText={localizeUi("tts.assignments.noMatchingSpeakers")}
       optionKind="character"
       testId="tts-character-options"
       compact

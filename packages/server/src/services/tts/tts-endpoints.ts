@@ -138,10 +138,6 @@ export function isNanoGptElevenLabsModel(model: string): boolean {
   return /^elevenlabs[-_]/i.test(model.trim());
 }
 
-export function elevenLabsModelSupportsSpeed(model: string): boolean {
-  return model.trim().toLowerCase() !== "eleven_v3";
-}
-
 export function clampElevenLabsSpeed(speed: number): number {
   return Math.min(1.2, Math.max(0.7, Number.isFinite(speed) ? speed : 1));
 }

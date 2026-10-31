@@ -134,9 +134,8 @@ music or a sound effect, so both models are required and never guessed; `duratio
 is sent for music only. NanoGPT audio goes through upstream's MP3 check like every source.
 
 Per-connection extra parameters for sound effects and music are gone with the speech-side
-generator; upstream's generator has no parameter bag. Upstream's persona voices, Eleven v4 speech
-and Game player-speaker voicing are not taken yet; they rely on app-level voice assignments, which
-this fork replaced with per-connection casting.
+generator; upstream's generator has no parameter bag. Persona voices and Eleven v4 speech are in
+"Personas take a voice from the speaking connection's cast".
 
 Patches to upstream files, all of which a merge can revert silently:
 
@@ -169,6 +168,43 @@ kind and pins), `tts/connection-role-flag-exclusivity.regression.ts`, and
 `tts/tts-audio-connection-ux.regression.ts`. Upstream's `generative-audio-client` lane asserts the
 three lane pins instead of `audioConnectionId`, and `startup-audio-migration-isolation` passes the
 fork's preset pass as a no-op.
+
+### Personas take a voice from the speaking connection's cast
+
+Upstream (#8370) stores a persona's voice as a row in `voiceAssignments`, keyed by the persona id,
+and reads it from the app-level TTS settings. The fork keeps casting on the audio connection, so a
+persona row lives in that connection's Voice casting, next to the characters
+(`connections/audio/AudioVoiceCasting.tsx` lists personas as "Name (Persona)"). The client code
+reads `voiceAssignments` from the effective config, so upstream's lookup works unchanged on the
+fork's cast.
+
+- **The user's own message is read only with a persona row.** `ChatArea` autoplays a newly sent
+  user message when the mode's auto-play is on and the message's persona (its `personaSnapshot`,
+  else the chat's persona) has a voice row; without one it stays quiet. Readings queue, so the
+  persona line ends before the reply starts. Before this, the merge's `notifyTTSUserMessageReady`
+  fired on every send and the fork's autoplay read the user's message in the default voice.
+- **A persona line inside a reply** ("You", "Player" or the persona's name) takes the persona's
+  row; a persona without one takes the shared voice, never a same-name character's row.
+  `resolveTTSUtteranceVoice` in `lib/tts-dialogue.ts` holds that rule once for both builders;
+  upstream repeats it in `buildTTSVoiceRequests` and the speaker extractor.
+- **Game narration voices player lines** only when the persona has a row, and holds its own voice
+  while a persona line from chat autoplay plays.
+- `buildTTSVoiceRequests` takes the persona in its options object (`{ fastFirstChunk, persona }`),
+  where upstream passes it as a sixth argument.
+
+Eleven v4: `eleven_v4` joins the ElevenLabs fallback model list
+(`connections/audio/audio-catalog.ts`), the provider asks upstream's shared
+`elevenLabsModelSupportsSpeed`, which leaves speed out for Eleven v3 and v4, and the Synthesis
+defaults Speed slider is off for those models with a note.
+
+Patches to files upstream also edits: `lib/tts-dialogue.ts`, `lib/tts-roleplay-speaker-extractor.ts`,
+`chat/ChatArea.tsx`, `chat/ChatMessage.tsx` and `game/GameNarration.tsx` carry upstream's persona
+code on the fork's effective config; take upstream's persona logic on a conflict and keep the
+fork's `resolved.config` / `resolvedConnectionId` reads. Proven by `tts-source-persistence` and
+`game-tts-emotion` (upstream's persona assertions, adapted to the options object),
+`tts/tts-provider-registry` (no speed for v4) and `e2e/persona-tts.e2e.ts`, which casts through
+the connection editor and mocks `/api/tts/effective-config` instead of upstream's TTS card and
+`/api/tts/config`.
 
 ### Launchers stop a running copy cleanly and take its place
 

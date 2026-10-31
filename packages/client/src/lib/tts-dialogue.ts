@@ -13,6 +13,7 @@ import {
   type TTSVoiceAssignment,
 } from "@marinara-engine/shared";
 import { DIALOGUE_QUOTE_CAPTURE_GROUP_PATTERN_SOURCE, stripSurroundingDialogueQuotes } from "./dialogue-quotes";
+import { parseMessageExtraRecord } from "./chat-message-extra";
 
 export interface TTSUtterance {
   text: string;
@@ -34,6 +35,38 @@ export interface TTSVoiceRequest {
 export interface CachedTTSVoiceRequest extends TTSVoiceRequest {
   cacheKey: string;
   cacheAliases?: string[];
+}
+
+export type TTSVoicePersona = { id?: string; name: string };
+
+/** Sent messages retain their original speaker after the chat changes personas. */
+export function resolveTTSMessagePersona(
+  message: { role: string; extra?: unknown },
+  fallbackPersona?: TTSVoicePersona | null,
+): TTSVoicePersona | null {
+  if (message.role === "user") {
+    const extra = parseMessageExtraRecord(message.extra);
+    if (Object.hasOwn(extra, "personaSnapshot")) {
+      const snapshot = extra.personaSnapshot;
+      if (snapshot && typeof snapshot === "object" && !Array.isArray(snapshot)) {
+        const { personaId, name } = snapshot as { personaId?: unknown; name?: unknown };
+        if (typeof personaId === "string" && personaId.trim()) {
+          return { id: personaId, name: typeof name === "string" ? name : "" };
+        }
+      }
+      return null;
+    }
+  }
+  return fallbackPersona ?? null;
+}
+
+/** A persona is spoken only when its own row is enabled by the existing voice mode. */
+export function getTTSPersonaVoice(
+  config: Pick<TTSConfig, "voiceMode" | "voiceAssignments">,
+  persona?: TTSVoicePersona | null,
+): string {
+  if (config.voiceMode !== "per-character" || !persona?.id) return "";
+  return getCharacterVoiceAssignment(config.voiceAssignments, persona.id).trim();
 }
 
 export function normalizeTTSCharacterName(value?: string | null): string {
@@ -59,8 +92,11 @@ export function normalizeTTSCharacterBaseName(value?: string | null): string {
 export function findTTSCharacterIdBySpeakerName(
   speaker: string | null | undefined,
   characters: Iterable<readonly [string, { name: string }]>,
+  persona?: TTSVoicePersona | null,
 ): string | null {
   const entries = [...characters];
+  if (persona?.id && !isTTSNarratorSpeaker(speaker) && !entries.some(([id]) => id === persona.id))
+    entries.push([persona.id, persona]);
   const normalizedSpeaker = normalizeTTSCharacterName(speaker);
   if (!normalizedSpeaker) return null;
 
@@ -69,6 +105,14 @@ export function findTTSCharacterIdBySpeakerName(
   );
   if (exactMatches.length === 1) return exactMatches[0]![0];
   if (exactMatches.length > 1) return null;
+
+  if (
+    persona?.id &&
+    ["you", "user", "player", "player character", "playername", "player name", "protagonist", "pc"].includes(
+      normalizedSpeaker,
+    )
+  )
+    return persona.id;
 
   const speakerBase = normalizeTTSCharacterBaseName(speaker);
   if (!speakerBase) return null;
@@ -79,6 +123,10 @@ export function findTTSCharacterIdBySpeakerName(
 export function isTTSNarratorSpeaker(value?: string | null): boolean {
   const normalized = normalizeTTSCharacterName(value);
   return normalized === "narrator" || normalized === "gm" || normalized === "game master" || normalized === "system";
+}
+
+export function isTTSPersonaSpeaker(speaker: string | null | undefined, persona?: TTSVoicePersona | null): boolean {
+  return Boolean(persona?.id && findTTSCharacterIdBySpeakerName(speaker, [], persona) === persona.id);
 }
 
 export type TTSNpcVoiceGender = "male" | "female" | "unknown";
@@ -523,13 +571,37 @@ export function splitTTSChunks(value: string, options: TTSReadOptions & { maxCha
     .flatMap((chunk) => splitCleanTTSInputIntoChunks(chunk, maxChars));
 }
 
+/**
+ * The persona's own row wins. A persona line without one takes the shared voice,
+ * never a character's row that only shares the persona's name.
+ */
+export function resolveTTSUtteranceVoice(
+  config: TTSConfig,
+  speaker: string | undefined,
+  characterId: string | null | undefined,
+  persona?: TTSVoicePersona | null,
+  npcHint?: TTSNpcVoiceHint | null,
+): string {
+  const personaVoice = persona?.id && persona.id === characterId ? getTTSPersonaVoice(config, persona) : "";
+  if (personaVoice) return personaVoice;
+  const personaSpeaker = Boolean(
+    persona?.id && (persona.id === characterId || (!characterId && isTTSPersonaSpeaker(speaker, persona))),
+  );
+  return resolveTTSVoiceForSpeaker(
+    personaSpeaker && characterId !== persona?.id ? { ...config, voiceMode: "single" } : config,
+    speaker,
+    characterId,
+    npcHint,
+  );
+}
+
 export function buildTTSVoiceRequests(
   text: string,
   config: TTSConfig,
   fallbackSpeaker?: string | null,
   fallbackCharacterId?: string | null,
   resolveCharacterIdForSpeaker?: (speaker?: string | null) => string | null | undefined,
-  options: { fastFirstChunk?: boolean } = {},
+  options: { fastFirstChunk?: boolean; persona?: TTSVoicePersona | null } = {},
 ): TTSVoiceRequest[] {
   const maxChars = resolveTTSChunkCharLimit(config);
   const normalized = filterTTSText(decodeEncodedSpeakerTags(text), config);
@@ -558,7 +630,7 @@ export function buildTTSVoiceRequests(
       ? (resolveCharacterIdForSpeaker?.(speaker) ??
         (speakerKey && speakerKey === fallbackSpeakerKey ? fallbackCharacterId : undefined))
       : fallbackCharacterId;
-    const voice = resolveTTSVoiceForSpeaker(config, speaker, resolvedCharacterId);
+    const voice = resolveTTSUtteranceVoice(config, speaker, resolvedCharacterId, options.persona);
     if (config.source === "elevenlabs" && !voice) return [];
 
     const split = splitTTSChunks(utterance.text, { ...config, maxChars });

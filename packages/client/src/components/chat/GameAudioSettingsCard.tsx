@@ -5,15 +5,21 @@
 // per lane, along with whether the game generates sound effects and music at
 // all: before this, those two were decided at creation and never again.
 //
-// The empty option tells the truth about what answers next. A game created
-// before the lanes split still carries one all-purpose pin, and that pin, not
-// the app default, is what an unpinned lane will reach.
+// Voice lists speech connections; sound effects and music list Music & Sound
+// Effects connections. The empty option tells the truth about what answers
+// next: a game created before the lanes split still carries one all-purpose
+// pin, and that pin, not the app default, is what an unpinned lane will reach.
 
 import { Volume2 } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import type { GameAudioPurpose } from "@marinara-engine/shared";
 import { AgentSettingsCard, AgentSettingsToggle } from "./AgentSettingsControls";
-import { audioConnectionSupportsPurpose, filterTTSConnections } from "../../lib/connection-filters";
+import {
+  audioConnectionSupportsPurpose,
+  filterAudioGenerationConnections,
+  filterTTSConnections,
+  matchesAudioGenerationConnectionId,
+} from "../../lib/connection-filters";
 
 export interface GameAudioSettingsConnection {
   id: string;
@@ -21,8 +27,14 @@ export interface GameAudioSettingsConnection {
   model?: string;
   provider?: string;
   audioSource?: string | null;
+  audioGenerationSource?: string | null;
+  audioGenerationLegacyConnectionId?: string | null;
   audioSoundEffects?: boolean | string;
   audioMusic?: boolean | string;
+  audioMusicEndpoint?: string | null;
+  audioSoundEffectsEndpoint?: string | null;
+  audioSoundEffectsModel?: string | null;
+  profileImportReviewRequired?: boolean | string;
 }
 
 export interface GameAudioSettingsCardProps {
@@ -44,7 +56,8 @@ export function GameAudioSettingsCard({
   onMusicEnabledChange,
 }: GameAudioSettingsCardProps) {
   const { t: localizeUi } = useUiTranslation();
-  const audioConnections = filterTTSConnections(connections);
+  const speechConnections = filterTTSConnections(connections);
+  const generationConnections = filterAudioGenerationConnections(connections);
   const legacyPin = typeof metadata.gameAudioConnectionId === "string" ? metadata.gameAudioConnectionId : "";
   // The one place a player can see the all-purpose pin a game may still carry.
   const emptyOptionLabel = legacyPin
@@ -56,13 +69,21 @@ export function GameAudioSettingsCard({
     label: string,
     purpose: GameAudioPurpose | null,
   ) => {
-    const value = typeof metadata[key] === "string" ? (metadata[key] as string) : "";
+    const pinned = typeof metadata[key] === "string" ? (metadata[key] as string) : "";
+    // A pin saved before the split names the speech row; the server follows it to its split.
+    const value =
+      purpose === null
+        ? pinned
+        : (generationConnections.find((connection) => matchesAudioGenerationConnectionId(connection, pinned))?.id ??
+          pinned);
     // A pinned connection stays listed even where it cannot generate, so the
     // pin can be seen and changed rather than silently disappearing.
-    const options = audioConnections.filter(
-      (connection) =>
-        purpose === null || audioConnectionSupportsPurpose(connection, purpose) || connection.id === value,
-    );
+    const options =
+      purpose === null
+        ? speechConnections
+        : generationConnections.filter(
+            (connection) => audioConnectionSupportsPurpose(connection, purpose) || connection.id === value,
+          );
     return (
       <label className="flex flex-col gap-1">
         <span className="text-[0.625rem] font-medium text-[var(--foreground)]">{label}</span>

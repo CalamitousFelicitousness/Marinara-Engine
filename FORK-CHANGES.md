@@ -80,56 +80,95 @@ Upstream never hits it: `tts-error-notice.ts` is a fork-only file, so upstream's
 has no edge into the localization subtree. The typeRoot is needed because `types` resolves through
 `typeRoots` when they are set, and pnpm links `vite` only into `packages/client/node_modules`.
 
-### Roleplay sound effects resolve audio the fork's way
+### Speech, sound effects, and music each pick their own engine
 
-`packages/server/src/routes/tts.routes.ts` exports upstream's `generateRoleplaySoundEffect`, rewritten
-onto this fork's audio resolution, and `scripts/regressions/roleplay-commands.regression.ts` stubs it
-to match.
+Speech runs on `audio` connections, as before. Music and sound effects run on upstream's
+`audio_generation` (Music & Sound Effects) connections through `generateAudioAsset` in
+`services/audio/generative-audio.service.ts`, which Game, Roleplay `/sound` and packages share. Two
+fork additions sit on top of upstream's stack: per-lane routing and NanoGPT.
 
-Upstream added the entry point in this sync against its own local `resolveAudioConfig`, which returns
-a flat `TTSConfig`, and its own `generateElevenLabsGameAudio`. This fork extracted the resolver into
-`services/tts/audio-config-resolution.ts`, where it returns `AudioConfigResolution` with the config
-nested under `cfg`, and renamed the generator to `generateGameAudio` with a trailing `connectionId`
-for the outbound rate limit. Upstream's gate
-(`source !== "elevenlabs" || elevenLabsGameSoundEffects !== true || !apiKey`) is exactly what
-`gameAudioEnabled` plus `canBuildGameAudioRequest` already express here, so the translation keeps the
-meaning and drops the hardcoded source.
+Each lane resolves down its own chain. `resolveGenerativeAudioConfig(db, requestedId, kind)` takes
+the requested connection first, then that lane's own default and fallback (`defaultForSfx`,
+`fallbackForSfx`, `defaultForMusic`, `fallbackForMusic`), then upstream's shared Music & Sound
+Effects pair. A lane nobody pointed anywhere behaves exactly as upstream does. Speech resolves the
+audio default and fallback in `services/tts/audio-config-resolution.ts` and has no lane pair.
 
-The lane asserted the shared generation call had exactly three arguments, standing in for "no caller's
-signal reaches the shared work". The fork's call passes five, so that invariant is now asserted
-directly: no argument is an `AbortSignal`.
+- **The lane flags live on generation rows.** `connection-role-flags.ts` scopes the sfx and music
+  pairs to the `audio_generation` category, so a speech connection cannot hold one, and a row that
+  becomes a speech connection releases them. The one exclusivity helper in that file serves every
+  default/fallback pair; `connections.storage.ts` calls it instead of repeating the sweep per pair.
+- **`POST /api/tts/game-audio` resolves by `kind`**, so a request without a connection id reaches
+  its lane's engine. A provider 429 answers 429 with `code: "rate_limited"`, and generation waits
+  for the connection's requests-per-minute slot before the provider deadline starts.
+- **`GET /api/audio/config?kind=`** answers for one lane. The setup wizard previews the sfx and
+  music lanes from it, and `GameSurface` gates generation on it (`useGameAudioLaneReadiness` in
+  `hooks/use-tts.ts`). `GET /api/tts/effective-config` and `/effective-request` are speech-only.
+- **A game pins one connection per lane.** `GameSetupConfig` has `voiceConnectionId`,
+  `sfxConnectionId` and `musicConnectionId`, stored as `gameVoiceConnectionId`,
+  `gameSfxConnectionId` and `gameMusicConnectionId`. The names end in `ConnectionId` because the
+  dangling-reference sweep matches that shape at any depth. `audioConnectionId` still covers every
+  lane a game does not pin, new wizard runs never write it, and a share file written before the
+  split fills all three lanes on import. On import the sfx and music lanes resolve only Music &
+  Sound Effects connections, and a speech id saved before the split lands on the connection it was
+  split into (`resolveGameSetupImport` in `lib/game-setup-share.ts`); the server follows such a pin
+  the same way.
+- **A running game can be repointed** from the Game Audio card in the chat settings drawer
+  (`components/chat/GameAudioSettingsCard.tsx`), which also owns the two generation switches. The
+  wizard's audio card is `components/game/GameAudioSetupSection.tsx`.
+- **The speech editor only does speech.** It has no game audio switches and never saves
+  `audioSoundEffects` or `audioMusic`; its parameter section edits speech parameters only.
 
-### Music and sound effects stay on the fork's audio lanes
+Upstream's split migration runs at startup (after the fork's preset pass), after a speech connection
+is saved, and lazily, as upstream wires it. The fork's copy also carries a row's lane flags to the
+connection it creates and releases them on the speech row, and it splits a NanoGPT row whose
+parameters name a music or sound-effect model (`audioParameters.music.model`,
+`audioParameters.sfx.model`), using those as the new row's model and sound-effect model.
 
-Upstream moved music and sound effects onto a new `audio_generation` provider (`generateAudioAsset`
-in `services/audio/generative-audio.service.ts`) and splits every music- or sound-effect-capable
-`audio` row into one with `migrateGenerativeAudioConnections`, switching `audioMusic` and
-`audioSoundEffects` off on the original. Here those switches feed the sound-effect and music lanes
-("Voice, sound effects, and music each pick their own engine"), so the split never runs: `app.ts`
-does not register its startup phase, `connections.routes.ts` does not call it after a save, and
-`resolveGenerativeAudioConfig` does not call it lazily. The migration module stays unreferenced.
+NanoGPT is a fourth `GENERATIVE_AUDIO_SOURCES` entry. `generateNanoGptAudio` in
+`generative-audio-providers.ts` submits to `{api}/v1/audio/speech` with a Bearer key, takes inline
+audio when the model answers with it, and otherwise polls `{api}/tts/status` with an `x-api-key`
+header until it gets an `audioUrl` or `audioUrls[0]`, then downloads that without credentials.
+These shapes were recorded from the live API on 2026-08-29, not taken from its docs: run ids are a
+UUID or 32 bare hex and the audio host varies per run, so neither is validated. The model picks
+music or a sound effect, so both models are required and never guessed; `duration` is seconds and
+is sent for music only. NanoGPT audio goes through upstream's MP3 check like every source.
 
-Game and Roleplay audio keep the fork's path: `/tts/game-audio` and `generateRoleplaySoundEffect`
-resolve through `resolveAudioConfig` and `generateGameAudio`, not `generateAudioAsset`. Upstream's
-`audio_generation` connections still work for what calls them directly, `/api/audio` and the
-connection test, and have their own default pair in Connections > Defaults beside the fork's lanes.
+Per-connection extra parameters for sound effects and music are gone with the speech-side
+generator; upstream's generator has no parameter bag. Upstream's persona voices, Eleven v4 speech
+and Game player-speaker voicing are not taken yet; they rely on app-level voice assignments, which
+this fork replaced with per-connection casting.
 
-Upstream kept the name `filterAudioGenerationConnections` but now returns `audio_generation` rows;
-`filterTTSConnections` has the fork's old meaning, so every fork caller uses it. Upstream's persona
-voices, Eleven v4 speech and Game player-speaker voicing are not taken yet; they rely on the TTS
-card's Source picker or on app-level voice assignments, which this fork replaced with per-connection
-casting. `connection-role-flags.ts` gains the `audio_generation` category so an `audio_generation`
-default does not evict the language default.
+Patches to upstream files, all of which a merge can revert silently:
 
-Upstream lanes that test the split or `generateAudioAsset` behind the Game and Roleplay routes are
-not carried: `generative-audio-client`, `generative-audio-connections`,
-`generative-audio-migration-failure`, `startup-audio-migration-isolation` and
-`compatible-game-audio`. `tts-source-persistence` and `game-tts-emotion` keep the fork's versions,
-without upstream's persona-voice and Eleven v4 cases.
+- `services/audio/generative-audio.service.ts`, `generative-audio-providers.ts`,
+  `routes/audio.routes.ts`: the lane argument, request pacing, NanoGPT, and `kind` on `/config`.
+- `services/connections/generative-audio-connection-migration.ts`: lane flags and NanoGPT rows.
+- `services/storage/connections.storage.ts`, `connection-role-flags.ts`, `db/schema/connections.ts`,
+  `shared/src/schemas/connection.schema.ts`, `shared/src/types/connection.ts`: the four lane flag
+  columns (no `STORAGE_VERSION` bump: they default to `"false"`), the shared exclusivity helper,
+  NanoGPT in `GENERATIVE_AUDIO_SOURCES` and `audioConnectionSupportsGeneration`. **On a conflict
+  inside `create()` or `update()`, take upstream verbatim outside the exclusivity blocks and
+  re-express upstream's change as a helper argument or a new `RoleFlagPair`.**
+- `routes/tts.routes.ts`: `/game-audio` reads `debugMode`, keeps the 429 mapping, and
+  `generateRoleplaySoundEffect` is upstream's. The rest of the file is the fork's speech code.
+- `app.ts`, `routes/connections.routes.ts`: the migration's call sites, as upstream has them.
+- `client/src/components/panels/ConnectionsPanel.tsx`: the Sound effects and Music rows list Music &
+  Sound Effects connections that can serve the lane, plus any that still hold the flag so it can be
+  cleared, and an empty row names the connection type that would fill it.
+- `client/src/components/connections/ConnectionEditor.tsx`: the Music & Sound Effects editor's model
+  field is labelled Music model (upstream's label, which the fork's wrapper had dropped), NanoGPT
+  has its own sound-effect model help, and speech rows never save the generation switches.
+- `client/src/components/game/GameSurface.tsx`, `GameSetupWizard.tsx`, `chat/ChatSettingsDrawer.tsx`,
+  `lib/connection-filters.ts`, `lib/game-setup-share.ts`, `hooks/use-tts.ts`: lane pins and lane
+  readiness. `GameSurface`'s `/tts/game-audio` call is pinned as source text by
+  `open-issues.regression.ts`.
 
-Patches `app.ts`, `connections.routes.ts`, `generative-audio.service.ts`, `connection-role-flags.ts`,
-`ConnectionEditor.tsx`, `ConnectionsPanel.tsx`, `GameSetupWizard.tsx`, `GameSurface.tsx` and
-`combat-styles.tsx` (the classic combat surface receives `audioConnectionId` for the Game's speech pin).
+Proven by `generative-audio-lanes.regression.ts` (lane order, NanoGPT's recorded shapes, the
+migration's lane flags and NanoGPT rows), `tts/tts-audio-purpose-routing.regression.ts` (routes by
+kind and pins), `tts/connection-role-flag-exclusivity.regression.ts`, and
+`tts/tts-audio-connection-ux.regression.ts`. Upstream's `generative-audio-client` lane asserts the
+three lane pins instead of `audioConnectionId`, and `startup-audio-migration-isolation` passes the
+fork's preset pass as a no-op.
 
 ### Launchers stop a running copy cleanly and take its place
 
@@ -442,98 +481,6 @@ on `RemoteModel`), `routes/tts.routes.ts` (carrying lane and pricing through), `
 `SAVED_MODEL_EXTRA_FIELDS`). Upstream saves a connection's model list and answers from it until
 Refresh; a field missing from that list is dropped after the first fetch with nothing failing. The
 readers themselves are fork-owned modules so a merge has one small surface to reconcile.
-
-### NanoGPT generates sound effects and music, through a job
-
-Game audio was ElevenLabs only, in three `cfg.source !== "elevenlabs"` guards and one generator.
-NanoGPT can serve both lanes, and the reason it could not was the response mode: every TTS provider
-here returns bytes synchronously, and `buildSpeechRequest` had no way to say "this answered with a
-ticket".
-
-`TTSProviderRequest.job?: TTSJobResolution` says it. The resolution is pure like the request it
-rides on, so `services/tts/job-resolution.ts` performs no I/O of its own: the caller passes its
-`send`, keeping one outbound helper, one deadline and one abort chain, which is the invariant
-`tts-types.ts` exists to state. That is also what lets the polling loop be asserted without a server.
-
-Whether a submission answers with a job is a property of the **model**, not the backend. NanoGPT
-returns audio inline for a speech model and 202 with a run id for a music model, on the same
-endpoint, so the job is detected from the response content type and never declared in config. The
-submission body is therefore never consumed to find out which arrived.
-
-`audioParameters` from the per-purpose parameters work carries the whole configuration, so this adds
-no schema field, no column, and no `STORAGE_VERSION` bump. NanoGPT picks the lane by model id, and a
-model id is exactly the vendor knob that bag was built for. `AUDIO_PARAMETER_SETS` gains a NanoGPT
-music and sound-effect set so `model` and `duration` render as fields rather than raw JSON.
-
-Verified against the live API on 2026-08-29 rather than its docs, which omit the parameter and
-contradict it in prose. Three shape differences are pinned by the regression because assuming any of
-them would have shipped a parser that works for music and fails for sound effects:
-
-- run ids are a dashed UUID for one model and 32 bare hex for another, so the format is never
-  validated;
-- the finished audio is served from a host that varies per run, so it is never pinned;
-- a sound-effect status carries `audioUrls[]` beside `audioUrl`.
-
-Three storage hosts have now been seen across three models (`am.runware.ai`, a CloudFront domain,
-`v3b.fal.media`), and a completed body may carry fields the resolver does not read, such as
-`terminal`. `supported_parameters` in the model listing under-reports rather than describes:
-Stable Audio 3 Small SFX declares an empty object and still honored `duration: 7` to the frame. So
-the listing beats the docs but only behaviour is authoritative, and the catalog's duration bounds
-are a usable range rather than a claim about any one model.
-
-`duration` is seconds where ElevenLabs counts milliseconds, and the backend clamps rather than
-refusing: 99999 returned exactly 300.000s on ACE-Step. An unset model is a `TTSConfigurationError`,
-never a guessed vendor id, because a wrong guess silently bills the wrong engine.
-
-`applyAudioParameters` no longer warns when a parameter's value is identical to what the request
-computed. NanoGPT reads the model out of the same bag it later merges, so every game request would
-otherwise have logged an override that changed nothing.
-
-Patches to upstream files: `routes/tts.routes.ts` (three guards generalized to
-`ttsSourceSupportsGameAudio`, the generator renamed from `generateElevenLabsGameAudio` and given the
-job branch) and `shared/src/constants/tts-sources.ts` (the two NanoGPT capability flags).
-
-Proven by `scripts/regressions/tts/tts-nanogpt-game-audio.regression.ts`, which pins both verified
-response shapes, the auth-header change between submit and poll, repeated polling on pending, and
-the failure path.
-
-### An empty sound-effects or music lane says what would fill it
-
-The Defaults card offers Sound effects and Music rows unconditionally, but only ElevenLabs declares
-`supportsGameSoundEffects` or `supportsGameMusic`. On any other engine both lanes filter to empty
-with every connection healthy, and the row read as broken rather than inapplicable. The filter
-already reasoned about the populated-then-emptied case (a stale default stays visible so it can be
-cleared) and never about the never-populated one.
-
-`ttsSourceNamesForGameAudio(purpose)` in `constants/tts-sources.ts` derives the naming from
-`TTS_SOURCE_DEFINITIONS`, so a source that gains the capability is named without touching copy.
-`ConnectionDefaultPair` takes an optional `emptyHint` rendered only when the lane has no
-connections.
-
-NanoGPT can serve both lanes, and the reason it does not yet is the response mode rather than any
-missing parameter. Probed against the live API on 2026-08-29, because the docs are incomplete here
-and wrong in one place:
-
-- 27 music models and 4 sound-effect models, all under `category: audio_music` with
-  `capabilities.text_to_music`. There is no `text_to_sfx`, so a sound effect is a model choice
-  (`mirelo-ai/sfx1.6/text-to-audio`, `fal-ai/stable-audio-3/small/sfx/text-to-audio`), not a lane.
-- `GET /api/v1/audio-models` carries per-model `supported_parameters` with `min_duration` and
-  `max_duration` (1 to 300s on ACE-Step, 1 to 60s on Mirelo SFX). `duration` is honored: a request
-  for 99999 clamped to exactly 300.000s of audio. No doc page documents this parameter and
-  `music-generation` says the opposite, that duration "may be influenced by the prompt".
-- The call is asynchronous. `POST /api/v1/audio/speech` answers `202 {status, runId, cost}` with a
-  `Bearer` key, then `GET /api/tts/status?runId=&model=` with an `x-api-key` header answers
-  `{status, audioUrl}`. The auth header differs between the two.
-
-That last point is the actual work. Every TTS provider here returns bytes synchronously, so
-`buildSpeechRequest` cannot express submit-poll-fetch; NanoGPT needs a second response mode in the
-provider contract. The rest is mapping: `input` rather than `prompt` (what `contentKey()` exists
-for) and `duration` seconds rather than `music_length_ms`. `tts.routes.ts:1014` already excludes
-NanoGPT for the related ElevenLabs-proxy case, on the same 202 behaviour.
-
-Proven by `scripts/regressions/tts/tts-audio-connection-ux.regression.ts`. With one supporting
-source the values alone cannot separate a derivation from a literal, so the lane also pins the
-derivation's source shape.
 
 ### Profile import marker coverage beyond upstream's lane
 
@@ -1613,8 +1560,8 @@ format 7 on both sides. Upstream moved to pnpm 12 and native Zod 4.
 
 - **Speech connection Source (#7848).** Not taken; speech resolves its engine through the audio
   connection defaults. See "A TTS engine is a saved connection, not a settings page".
-- **Music and sound effects (`audio_generation`).** Present beside the fork's lanes; see "Music and
-  sound effects stay on the fork's audio lanes".
+- **Music and sound effects (`audio_generation`).** Taken, with the fork's lanes and NanoGPT on top;
+  see "Speech, sound effects, and music each pick their own engine".
 - **Token limits outside presets, stock preset (`04ed6eaa4`, `0751ef760`).** Applied to the fork's own
   parameter path: `presetGenerationParameterValues` never supplies `maxTokens` or a context limit,
   and the stock Universal preset supplies no parameters in the live route, dry run, parameter
@@ -2726,130 +2673,6 @@ Proven by `scripts/regressions/tts/tts-audio-parameters.regression.ts`,
 Deferred: a managed parameter registry in app settings, the audio twin of
 `managedCustomParameters`. The catalog plus free rows covers the need today. Kokoro and AllTalk get
 catalog sets once their request surfaces are verified; nothing else changes when they do.
-
-### Voice, sound effects, and music each pick their own engine
-
-One audio connection answered for everything. The `defaultForAgents` flag is scoped by provider, so
-`provider === "audio"` had exactly one default slot, and a game's `audioConnectionId` was documented
-as covering "speech, game sound effects, and music" at once. Anyone running a local voice engine and
-wanting ElevenLabs music had to choose which one to give up.
-
-Audio now has three routing lanes: speech, sound effects, and music. Each resolves down its own
-chain, an explicitly requested connection, then that lane's own default and fallback, then the base
-audio pair, then the app-level settings, so a lane nobody has pointed anywhere behaves exactly as it
-did. Setting the Music default to a second ElevenLabs account changes what scores a scene and
-nothing else.
-
-Capability stopped being a source name. `cfg.source !== "elevenlabs"` answered two different
-questions at once, may this backend do it and do we have code that does it, and the same literal was
-repeated in the game surface, the setup wizard, the connection editor, and the audio fields.
-`TTS_SOURCE_DEFINITIONS` now carries `supportsGameSoundEffects` and `supportsGameMusic`, the route
-keeps a separate dispatch guard naming the only generator that exists, and every client surface asks
-the table. Adding a second music engine is a data row plus a generator rather than a grep.
-
-Behavior changes worth knowing:
-
-- **A purpose default outranks the base audio default for its own lane**, and only for that lane.
-  Nothing changes until a purpose default or fallback is set, because the purpose chain falls
-  through to the pair that already answered.
-- **`gameAudioEnabled` is the one answer to whether an engine may generate**: the source supports
-  the purpose and the connection opted in. A missing API key is deliberately not folded in, since
-  that is a configuration error with its own message rather than a statement about the engine.
-  `speechEnabled` stays a speech gate; game audio has never consulted it and still does not, because
-  silencing narration is not a reason to stop scoring a scene.
-- **`POST /api/tts/game-audio` resolves by `kind`**, so a caller that sends no connection id reaches
-  the engine that lane was pointed at rather than the one that speaks. Its 400 for an incapable
-  connection lost the "ElevenLabs" wording, and a capable source with no generator gets a distinct
-  message.
-- **`GET /api/tts/effective-config` takes `?purpose=`** and answers with `purpose` and
-  `gameAudioEnabled` beside the existing fields. A speech request sends no parameter, so its URL is
-  unchanged, and `TTSResolutionOrigin` grew `purpose_default` and `purpose_fallback` additively.
-- **A game pins one connection per lane.** `GameSetupConfig` gained `voiceConnectionId`,
-  `sfxConnectionId`, and `musicConnectionId`, stored as `gameVoiceConnectionId`,
-  `gameSfxConnectionId`, and `gameMusicConnectionId`. The names end in `ConnectionId` because the
-  dangling-reference sweep matches that shape at any depth, which is the whole reason the pins need
-  no cleanup code. `audioConnectionId` still covers every lane a purpose pin does not name, so
-  existing games are untouched, and a setup config or shared file written before the split fills all
-  three lanes on import.
-- **New wizard runs never write `audioConnectionId`.** A share exported now and imported into a
-  build without the per-lane fields loses its audio pin and falls back to the defaults. Writing the
-  old key as well would re-merge the lanes for every game created from now on, which is the worse
-  failure.
-- **The setup wizard previews from the server's own answer** per lane rather than from a copy of its
-  resolution order. The one exception is the case the old screen already handled: when nothing
-  answers but a capable connection exists, the preview names it and the wizard pins it, because
-  neither the server nor `GameSurface` picks a first row on its own.
-- **A running game can be repointed.** The wizard chose engines once and nothing could change them
-  afterwards, and the sound effect and music switches were written at creation and never editable.
-  A Game Audio card in the chat settings drawer owns all five.
-- **Generated game audio is cached on disk by prompt hash**, independent of the connection, and a
-  context track that already exists is never regenerated. Pointing music at a different engine
-  therefore replays what the previous one composed until the asset is deleted in the Game Assets
-  panel. Left as is: re-composing every existing track on an engine switch spends real money for a
-  result nobody asked for.
-
-The exclusivity sweep was generalized rather than copied. Granting a role flag has to clear it on
-every other row competing in the same category, and that logic existed four times in
-`connections.storage.ts`, once per (side, code path), with the flag name spelled in three places
-each. Six pairs would have meant six copies, so it is one parameterized helper in
-`services/storage/connection-role-flags.ts` and the existing pairs call it too.
-
-Patches to upstream files, all of which a merge can revert silently:
-
-- `packages/server/src/services/storage/connections.storage.ts`: **the merge-cost centre.** The four
-  `defaultForAgents`/`fallbackForAgents` exclusivity blocks are collapsed onto
-  `enforceRoleFlagExclusivity`, and `defaultCategoryForProvider` moved to
-  `services/storage/connection-role-flags.ts` and is imported back. **On a conflict inside
-  `create()` or `update()`, take upstream verbatim outside the exclusivity blocks, and re-express
-  any change upstream made inside one as a helper argument or a new `RoleFlagPair` rather than
-  restoring the block.** `connection-role-flag-exclusivity.regression.ts` pins each block's
-  observable behaviour, provider scoping for media categories, pool checking for language, the
-  exempt row on a same-category provider change, and pair mutual exclusion, so a mis-merge fails
-  loudly instead of silently dropping a default.
-- `packages/server/src/db/schema/connections.ts`, `packages/shared/src/schemas/connection.schema.ts`,
-  `packages/shared/src/types/connection.ts`: the four `default_for_*`/`fallback_for_*` columns. No
-  `STORAGE_VERSION` bump: additive columns with a `notNull().default("false")` normalize to the
-  default on every row written before they existed.
-- `packages/server/src/routes/tts.routes.ts`: the game-audio gate reads the resolution's capability
-  answer, the request `kind` names the lane, and `ttsQuerySchema` takes a purpose. The upstream-owned
-  source-text pins in this file are outside those ranges.
-- `packages/server/src/routes/game.routes.ts`, `packages/shared/src/types/game.ts`: the three setup
-  fields and their chat-metadata writes; the initial-setup snapshot records the voice pin for its
-  single audio row.
-- `packages/shared/src/constants/tts-sources.ts`, `packages/shared/src/types/tts.ts`,
-  `packages/shared/src/index.ts`: capability columns, `toTTSSourceId`, the origin union, and the two
-  response fields.
-- `packages/client/src/components/game/GameSurface.tsx`: three pins instead of one resolved id, and
-  the surface no longer resolves speech at all, since narration and combat resolve the prop they are
-  given. Its `/tts/game-audio` call is pinned as source text by `open-issues.regression.ts`; only
-  the variable inside the body changed.
-- `packages/client/src/components/panels/ConnectionsPanel.tsx`: two more default pairs and the
-  option lists behind them. The pair component itself needed no change.
-- `packages/client/src/components/game/GameSetupWizard.tsx`: the audio card became
-  `components/game/GameAudioSetupSection.tsx`. **On a conflict, keep the component call and port
-  upstream's intent into that file.**
-- `packages/client/src/components/chat/ChatSettingsDrawer.tsx`: one memo and one mount for
-  `components/chat/GameAudioSettingsCard.tsx`.
-- `packages/client/src/components/connections/ConnectionEditor.tsx`,
-  `components/connections/audio/AudioSourceFields.tsx`, `lib/connection-filters.ts`,
-  `lib/connection-transfer.ts`, `lib/game-setup-share.ts`, `hooks/use-tts.ts`,
-  `hooks/use-connections.ts`: capability reads the shared table, the new flags travel with an
-  export, and the effective-config hook takes a purpose. `useEffectiveTTSConfig` is now the speech
-  lane of `useEffectiveAudioConfig`, so its call sites are unchanged.
-
-Renaming the audio defaults row to Voice and rewording the section description left two English keys
-unused; `ko.json` and `zh-Hans.json` carried translations of them, which `check-locales.mjs` rejects,
-so those entries are removed with the English ones. The wizard's single-select copy retired four more
-the same way.
-
-Proven by `scripts/regressions/tts/tts-audio-purpose-routing.regression.ts`,
-`connection-role-flag-exclusivity.regression.ts`, and the extended
-`tts-audio-connection-ux.regression.ts` and `tts-shared-contract.regression.ts`.
-
-Deferred: a game-audio provider registry. The capability table gates which sources may generate, but
-the generator itself is still ElevenLabs-specific in the route, so a second capable backend needs its
-own generator before its table flags can turn on. Ambience is the obvious fourth purpose whenever
-something generates it; nothing does today.
 
 ### Speaker tags have one grammar, and it is well-formed markup
 

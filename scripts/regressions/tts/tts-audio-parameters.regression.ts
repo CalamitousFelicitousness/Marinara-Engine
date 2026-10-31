@@ -14,10 +14,6 @@ import assert from "node:assert/strict";
 import { logger } from "../../../packages/server/src/lib/logger.ts";
 import { applyAudioParameters } from "../../../packages/server/src/services/tts/audio-parameter-merge.ts";
 import { createTTSProvider } from "../../../packages/server/src/services/tts/provider-registry.ts";
-import {
-  buildElevenLabsGameAudioRequest,
-  ELEVENLABS_CONTEXT_MUSIC_LENGTH_MS,
-} from "../../../packages/server/src/services/tts/elevenlabs.provider.ts";
 import { ttsConfigSchema, type TTSConfig } from "../../../packages/shared/src/types/tts.js";
 
 const config = (overrides: Partial<TTSConfig> = {}): TTSConfig =>
@@ -205,7 +201,7 @@ const speech = (parameters: Record<string, unknown>) => ({ audioParameters: { sp
   );
 }
 
-// ── Lanes do not leak into each other ──
+// ── Stored sound-effect and music parameters never reach speech ──
 {
   const cfg = config({
     source: "elevenlabs",
@@ -221,66 +217,6 @@ const speech = (parameters: Record<string, unknown>) => ({ audioParameters: { sp
   assert.equal(spoken.prompt_influence, undefined, "a sound effect knob never reaches speech");
   assert.equal(spoken.force_instrumental, undefined, "a music knob never reaches speech");
 
-  const effect = jsonBody(buildElevenLabsGameAudioRequest(cfg, { kind: "sfx", prompt: "a door" }).body);
-  assert.equal(effect.prompt_influence, 0.8, "the sfx lane answers for a sound effect");
-  assert.equal(effect.voice_settings, undefined, "a speech knob never reaches a sound effect");
-
-  const track = jsonBody(buildElevenLabsGameAudioRequest(cfg, { kind: "music", prompt: "a market" }).body);
-  assert.equal(track.force_instrumental, false, "the music lane answers for a track");
-  assert.equal(track.prompt_influence, undefined, "the sfx lane does not answer for music");
-}
-
-// ── The game-audio builder keeps its endpoints and its defaults ──
-{
-  // Resolution always fills baseUrl from the row or the source definition, so a
-  // config reaching the builder never carries another source's default.
-  const plain = config({ source: "elevenlabs", baseUrl: "https://api.elevenlabs.io" });
-
-  const effect = buildElevenLabsGameAudioRequest(plain, { kind: "sfx", prompt: "a door" });
-  assert.equal(effect.url, "https://api.elevenlabs.io/v1/sound-generation", "sound effects have their own endpoint");
-  assert.equal(effect.headers["xi-api-key"], "secret-key", "the key travels in the ElevenLabs header");
-  assert.equal(effect.decodeCompressedResponse, true, "ElevenLabs answers gzipped");
-  assert.deepEqual(jsonBody(effect.body), { text: "a door", prompt_influence: 0.3 });
-
-  const track = buildElevenLabsGameAudioRequest(plain, { kind: "music", prompt: "a market" });
-  assert.equal(track.url, "https://api.elevenlabs.io/v1/music", "music has its own endpoint");
-  assert.deepEqual(jsonBody(track.body), {
-    prompt: "a market",
-    music_length_ms: ELEVENLABS_CONTEXT_MUSIC_LENGTH_MS,
-    force_instrumental: true,
-  });
-
-  // A context track owns its length; the default only covers a scene that names none.
-  const timed = buildElevenLabsGameAudioRequest(plain, { kind: "music", prompt: "a market", lengthMs: 45_000 });
-  assert.equal(jsonBody(timed.body).music_length_ms, 45_000, "the scene's length reaches the request");
-
-  // Overriding it is allowed, because a user who typed it means it, but the
-  // scene computed that value so the override has to be visible.
-  const { result: overridden, warnings } = withCapturedWarnings(() =>
-    buildElevenLabsGameAudioRequest(
-      config({ source: "elevenlabs", audioParameters: { music: { music_length_ms: 10_000 } } }),
-      { kind: "music", prompt: "a market", lengthMs: 45_000 },
-    ),
-  );
-  assert.equal(jsonBody(overridden.body).music_length_ms, 10_000, "a parameter outranks the computed length");
-  assert.ok(
-    warnings.some((line) => line.includes("music_length_ms")),
-    "overriding the scene's own length must be reported",
-  );
-
-  // The prompt is the content here, so it is the protected key.
-  const kept = buildElevenLabsGameAudioRequest(
-    config({ source: "elevenlabs", audioParameters: { music: { prompt: "not this" } } }),
-    { kind: "music", prompt: "a market" },
-  );
-  assert.equal(jsonBody(kept.body).prompt, "a market", "a parameter may not replace what to compose");
-
-  // A proxied base URL still reaches the same paths.
-  const proxied = buildElevenLabsGameAudioRequest(config({ source: "elevenlabs", baseUrl: "https://proxy.test/v1" }), {
-    kind: "sfx",
-    prompt: "a door",
-  });
-  assert.equal(proxied.url, "https://proxy.test/v1/sound-generation", "the configured endpoint is honoured");
 }
 
 console.info("TTS audio parameters regression passed.");

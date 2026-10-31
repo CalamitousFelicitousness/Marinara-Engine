@@ -115,18 +115,19 @@ const sound = runInNewContext(
     addAbortListener,
     Promise,
     Symbol,
-    createAppSettingsStorage: () => ({}),
-    createConnectionsStorage: () => ({}),
-    resolveAudioConfig: async () => ({
-      cfg: { source: "elevenlabs", apiKey: "fixture-key" },
-      gameAudioEnabled: true,
-      resolvedConnectionId: "fixture-connection",
+    GENERATIVE_AUDIO_DEFAULTS,
+    resolveGenerativeAudioConfig: async () => ({
+      source: "elevenlabs",
+      ...GENERATIVE_AUDIO_DEFAULTS.elevenlabs,
+      model: "music_v1",
+      legacyId: "fixture",
+      soundEffects: true,
+      apiKey: "fixture-key",
     }),
-    canBuildGameAudioRequest: () => true,
-    normalizeGameAudioPrompt: (prompt: string) => prompt.trim(),
     logDebugOverride: () => {},
-    gameAudioGenerationLocks: sharedAudio,
-    generateGameAudio: (...args: unknown[]) => {
+    isDebugAgentsEnabled: () => false,
+    locks: sharedAudio,
+    compose: (...args: unknown[]) => {
       audioRequests.push(args);
       return upstreamAudio;
     },
@@ -138,10 +139,9 @@ const firstWait = sound(null as never, "Shared cue", null, false, firstSound.sig
 const secondWait = sound(null as never, "Shared cue", null, false, secondSound.signal);
 await nextTurn();
 assert.equal(audioRequests.length, 1, "identical cues share a single generation");
-assert.ok(
-  !audioRequests[0]?.some((arg) => arg instanceof AbortSignal),
-  "the shared provider work must not receive a caller's signal",
-);
+assert.equal(audioRequests[0]?.length, 4);
+assert.deepEqual(audioRequests[0]?.slice(1), ["sfx", "Shared cue", undefined]);
+assert(!audioRequests[0]?.includes(firstSound.signal), "shared provider work never receives the caller's signal");
 const gameWait = sharedAudio.get("sfx\0shared cue");
 assert.ok(gameWait, "Game audio joins the same pending generation");
 const cancelledWait = assert.rejects(firstWait, { name: "AbortError" });

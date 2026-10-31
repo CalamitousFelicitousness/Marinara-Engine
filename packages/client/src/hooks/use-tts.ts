@@ -4,7 +4,7 @@
 import { useQuery, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api-client";
 import type {
-  AudioPurpose,
+  GameAudioPurpose,
   TTSConfig,
   TTSEffectiveConfigResponse,
   TTSModelsResponse,
@@ -19,8 +19,9 @@ export const ttsKeys = {
   /** Everything TTS. Connection mutations invalidate this: they change catalogs and resolution. */
   all: ["tts"] as const,
   config: ["tts", "config"] as const,
-  effectiveConfig: (purpose: AudioPurpose, scope: string) => ["tts", "effective-config", purpose, scope] as const,
-  effectiveRequest: (purpose: AudioPurpose, scope: string) => ["tts", "effective-request", purpose, scope] as const,
+  effectiveConfig: (scope: string) => ["tts", "effective-config", scope] as const,
+  effectiveRequest: (scope: string) => ["tts", "effective-request", scope] as const,
+  gameAudioLane: (purpose: GameAudioPurpose, scope: string) => ["tts", "game-audio-lane", purpose, scope] as const,
   voices: (source: TTSSource, scope: string) => ["tts", "voices", source, scope] as const,
   models: (source: TTSSource, scope: string) => ["tts", "models", source, scope] as const,
 };
@@ -65,35 +66,49 @@ export function useTTSConfig() {
 }
 
 /**
- * Which engine answers for one purpose, and with which settings: app-level
+ * Which engine a speak request reaches, and with which settings: app-level
  * settings merged with the connection that resolved.
  *
- * Omit connectionId for the category chain, which is what an unattended request
+ * Omit connectionId for the default chain, which is what an unattended request
  * reaches. Pass one to ask about a specific connection; the empty string is the
  * sentinel for the app-level settings alone.
- *
- * Purposes are separate cache entries because they resolve to different
- * connections. A speech request sends no purpose parameter, so its URL is the
- * one the server has always answered.
  */
-export function useEffectiveAudioConfig(purpose: AudioPurpose, connectionId?: string) {
+export function useEffectiveTTSConfig(connectionId?: string) {
   const scoped = connectionId !== undefined;
   return useQuery({
-    queryKey: ttsKeys.effectiveConfig(purpose, scoped ? connectionId : "auto"),
-    queryFn: () => {
-      const params = new URLSearchParams();
-      if (scoped) params.set("connectionId", connectionId);
-      if (purpose !== "speech") params.set("purpose", purpose);
-      const query = params.toString();
-      return api.get<TTSEffectiveConfigResponse>(`/tts/effective-config${query ? `?${query}` : ""}`);
-    },
+    queryKey: ttsKeys.effectiveConfig(scoped ? connectionId : "auto"),
+    queryFn: () =>
+      api.get<TTSEffectiveConfigResponse>(
+        `/tts/effective-config${scoped ? `?${new URLSearchParams({ connectionId })}` : ""}`,
+      ),
     staleTime: 60_000,
   });
 }
 
-/** What a speak request would use. The speech lane of {@link useEffectiveAudioConfig}. */
-export function useEffectiveTTSConfig(connectionId?: string) {
-  return useEffectiveAudioConfig("speech", connectionId);
+export interface GameAudioLaneReadiness {
+  /** The Music & Sound Effects connection that answers for this lane, or null when none does. */
+  connectionId: string | null;
+  /** Whether that connection may generate for this lane and holds a usable key. */
+  enabled: boolean;
+}
+
+/**
+ * Which Music & Sound Effects connection a sound-effect or music request would reach.
+ * Pass a pinned id to ask about it; one saved before the split resolves to its split.
+ */
+export function useGameAudioLaneReadiness(purpose: GameAudioPurpose, connectionId?: string | null) {
+  return useQuery({
+    queryKey: ttsKeys.gameAudioLane(purpose, connectionId || "auto"),
+    queryFn: async (): Promise<GameAudioLaneReadiness> => {
+      const params = new URLSearchParams({ kind: purpose });
+      if (connectionId) params.set("audioConnectionId", connectionId);
+      const answer = await api.get<{ connectionId: string | null; music: boolean; soundEffects: boolean }>(
+        `/audio/config?${params}`,
+      );
+      return { connectionId: answer.connectionId, enabled: purpose === "music" ? answer.music : answer.soundEffects };
+    },
+    staleTime: 60_000,
+  });
 }
 
 /** The request body a lane would send, built and not sent, with the key masked. */
@@ -102,7 +117,6 @@ export interface TTSEffectiveRequestResponse {
   headers: Record<string, string>;
   body: unknown;
   multipart: boolean;
-  purpose: AudioPurpose;
   resolvedConnectionId: string | null;
   resolvedConnectionName: string | null;
   resolvedSource: TTSSource;
@@ -113,14 +127,11 @@ export interface TTSEffectiveRequestResponse {
  * it describes the SAVED row: an unsaved parameter is not in it yet, and the
  * editor says so rather than showing a stale body as though it were current.
  */
-export function useEffectiveAudioRequest(purpose: AudioPurpose, connectionId: string, enabled: boolean) {
+export function useEffectiveAudioRequest(connectionId: string, enabled: boolean) {
   return useQuery({
-    queryKey: ttsKeys.effectiveRequest(purpose, connectionId),
-    queryFn: () => {
-      const params = new URLSearchParams({ connectionId });
-      if (purpose !== "speech") params.set("purpose", purpose);
-      return api.get<TTSEffectiveRequestResponse>(`/tts/effective-request?${params.toString()}`);
-    },
+    queryKey: ttsKeys.effectiveRequest(connectionId),
+    queryFn: () =>
+      api.get<TTSEffectiveRequestResponse>(`/tts/effective-request?${new URLSearchParams({ connectionId })}`),
     enabled: enabled && Boolean(connectionId),
     staleTime: 0,
   });

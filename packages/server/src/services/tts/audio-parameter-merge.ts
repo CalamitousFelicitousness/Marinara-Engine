@@ -2,8 +2,8 @@
 // Audio Parameter Merge
 // ──────────────────────────────────────────────
 // Folding a connection's stored parameters into a request an engine already
-// built. Every outbound audio request passes through here: speech from the five
-// providers, sound effects and music from the ElevenLabs game-audio builder.
+// built. Every outbound speech request passes through here, from the five
+// providers.
 //
 // The app cannot know any backend's schema, so this validates nothing about the
 // keys. What it does own is the one thing a stored value must never be allowed

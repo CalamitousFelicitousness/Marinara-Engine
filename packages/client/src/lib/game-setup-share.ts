@@ -1,4 +1,5 @@
 import { partialInput } from "@marinara-engine/shared";
+import { filterAudioGenerationConnections, matchesAudioGenerationConnectionId } from "./connection-filters";
 import {
   worldGeneratorReads,
   gameWorldSchema,
@@ -715,15 +716,22 @@ export function resolveGameSetupImport(
     snapshots?.voice ?? snapshots?.audio,
     context.connections,
   );
-  const sfxConnectionId = resolveConnectionId(
+  // Sound effects and music resolve only Music & Sound Effects connections; a
+  // speech id saved before the split lands on the connection it was split into.
+  const generationConnections = filterAudioGenerationConnections(context.connections);
+  const resolveGenerationLane = (
+    savedId: string | undefined,
+    snapshot: GameInitialSetupConnectionSnapshot | null | undefined,
+  ) =>
+    generationConnections.find((connection) => matchesAudioGenerationConnectionId(connection, savedId))?.id ??
+    resolveConnectionId(savedId, snapshot, generationConnections);
+  const sfxConnectionId = resolveGenerationLane(
     sourceConfig.sfxConnectionId ?? sourceConfig.audioConnectionId,
     snapshots?.sfx ?? snapshots?.audio,
-    context.connections,
   );
-  const musicConnectionId = resolveConnectionId(
+  const musicConnectionId = resolveGenerationLane(
     sourceConfig.musicConnectionId ?? sourceConfig.audioConnectionId,
     snapshots?.music ?? snapshots?.audio,
-    context.connections,
   );
   if ((sourceConfig.sceneConnectionId || snapshots?.scene) && !sceneConnectionId) {
     warnings.push(`${describeSavedResource(snapshots?.scene?.name, "The saved scene connection")} is unavailable.`);

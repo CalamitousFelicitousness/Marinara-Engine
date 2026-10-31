@@ -7,7 +7,7 @@ import { sanitizeApiError } from "../llm/base-provider.js";
 import { privateErrorLogFields } from "../../lib/logger.js";
 
 export interface GenerativeAudioProviderConfig {
-  source: "elevenlabs" | "sunoapi" | "custom";
+  source: "elevenlabs" | "sunoapi" | "nanogpt" | "custom";
   baseUrl: string;
   apiKey: string;
   model: string;
@@ -40,15 +40,17 @@ const PROVIDER_ERROR_CODES = new Set([
   "too_many_concurrent_requests",
 ]);
 
+const PROVIDER_LABELS = { elevenlabs: "ElevenLabs", sunoapi: "SunoAPI", nanogpt: "NanoGPT" } as const;
+
 export class AudioGenerationProviderError extends Error {
   readonly [privateErrorLogFields]: { type: string; status: number };
   constructor(
-    source: "elevenlabs" | "sunoapi",
+    source: "elevenlabs" | "sunoapi" | "nanogpt",
     readonly providerStatus: number,
     readonly reason?: string,
     readonly providerCode?: string,
   ) {
-    super(`${source === "elevenlabs" ? "ElevenLabs" : "SunoAPI"} audio request returned HTTP ${providerStatus}`);
+    super(`${PROVIDER_LABELS[source]} audio request returned HTTP ${providerStatus}`);
     this[privateErrorLogFields] = { type: "AudioGenerationProviderError", status: providerStatus };
   }
 }
@@ -56,7 +58,7 @@ export class AudioGenerationProviderError extends Error {
 /** Read only a small JSON error envelope; never expose raw bodies or echoed connection secrets. */
 async function providerRejection(
   response: Response,
-  config: GenerativeAudioProviderConfig & { source: "elevenlabs" | "sunoapi" },
+  config: GenerativeAudioProviderConfig & { source: "elevenlabs" | "sunoapi" | "nanogpt" },
   signal: AbortSignal,
 ): Promise<AudioGenerationProviderError> {
   const fallback = () => new AudioGenerationProviderError(config.source, response.status);
@@ -196,6 +198,8 @@ export async function generateAudioBytes(
     );
   }
 
+  if (config.source === "nanogpt") return generateNanoGptAudio(config, kind, prompt, options, signal);
+
   const source = config.source;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -296,5 +300,92 @@ export async function generateAudioBytes(
     if (!["PENDING", "TEXT_SUCCESS", "FIRST_SUCCESS"].includes(status ?? ""))
       throw new Error("SunoAPI audio task failed or returned an unsupported status");
     await delay(1500, undefined, { signal });
+  }
+}
+
+const NANOGPT_POLL_INTERVAL_MS = 2_000;
+const NANOGPT_FAILED_STATUS = /^(failed|error|cancell?ed)$/i;
+
+function nanoGptString(payload: unknown, key: string): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const value = (payload as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+/**
+ * Shapes recorded from the live API (2026-08-29), not its docs:
+ *   POST {api}/v1/audio/speech  Bearer     -> audio bytes, or 202 {status, runId}
+ *   GET  {api}/tts/status       x-api-key  -> {status, audioUrl | audioUrls[]}
+ * Run ids are a UUID or 32 bare hex and the audio host varies per run, so neither is validated.
+ * The model picks music or a sound effect; `duration` is seconds and the backend clamps it.
+ */
+async function generateNanoGptAudio(
+  config: GenerativeAudioProviderConfig,
+  kind: "sfx" | "music",
+  prompt: string,
+  options: GenerateAudioBytesOptions,
+  signal: AbortSignal,
+): Promise<Buffer> {
+  const model = (kind === "music" ? config.model : config.soundEffectsModel)?.trim();
+  if (!model) throw new Error(`Set a NanoGPT ${kind === "music" ? "music" : "sound-effects"} model`);
+  const base = new URL(config.baseUrl);
+  if (base.username || base.password || base.search || base.hash)
+    throw new Error("Use an audio API base without credentials or query parameters");
+  const root = base.href.replace(/\/+$/, "").replace(/\/v\d+$/, "");
+  const call = async (
+    url: string,
+    init: { method: "GET" | "POST"; headers: Record<string, string>; body?: string },
+  ) => {
+    signal.throwIfAborted();
+    const response = await safeFetch(url, {
+      ...init,
+      signal,
+      policy: { ...PUBLIC_HTTPS, allowedOrigins: [base.origin], maxRedirects: 0 },
+      maxResponseBytes: MAX_AUDIO_BYTES,
+      decodeCompressedResponse: true,
+    });
+    if (!response.ok) throw await providerRejection(response, { ...config, source: "nanogpt" }, signal);
+    return response;
+  };
+  const submitted = await call(`${root}/v1/audio/speech`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${config.apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model,
+      input: prompt,
+      ...(kind === "music" ? { duration: Math.max(1, Math.round((options.lengthMs ?? 120_000) / 1000)) } : {}),
+    }),
+  });
+  if (!/json/i.test(submitted.headers.get("content-type") ?? "")) {
+    return mp3(new Uint8Array(await submitted.arrayBuffer()));
+  }
+  const runId = nanoGptString(await submitted.json(), "runId");
+  if (!runId) throw new Error("NanoGPT did not accept the audio generation task");
+  const statusUrl = `${root}/tts/status?runId=${encodeURIComponent(runId)}&model=${encodeURIComponent(model)}`;
+  while (true) {
+    const status: unknown = await (
+      await call(statusUrl, { method: "GET", headers: { "x-api-key": config.apiKey } })
+    ).json();
+    const audioUrls = status && typeof status === "object" ? (status as { audioUrls?: unknown }).audioUrls : undefined;
+    const url =
+      nanoGptString(status, "audioUrl") ??
+      (Array.isArray(audioUrls) && typeof audioUrls[0] === "string" && audioUrls[0].trim() ? audioUrls[0] : null);
+    if (url) {
+      const downloadUrl = new URL(url);
+      if (downloadUrl.username || downloadUrl.password)
+        throw new Error("NanoGPT audio download URL contains credentials");
+      const response = await safeFetch(downloadUrl, {
+        signal,
+        policy: PUBLIC_HTTPS,
+        maxResponseBytes: MAX_AUDIO_BYTES,
+        decodeCompressedResponse: true,
+      });
+      if (!response.ok) throw new Error(`NanoGPT audio download returned HTTP ${response.status}`);
+      return mp3(new Uint8Array(await response.arrayBuffer()));
+    }
+    const state = nanoGptString(status, "status");
+    if ((state && NANOGPT_FAILED_STATUS.test(state)) || nanoGptString(status, "error"))
+      throw new Error("NanoGPT audio task failed");
+    await delay(NANOGPT_POLL_INTERVAL_MS, undefined, { signal });
   }
 }

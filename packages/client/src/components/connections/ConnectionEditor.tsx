@@ -159,7 +159,6 @@ import {
   type ImageDefaultsService,
   type ImageGenerationDefaultsProfile,
   toTTSSourceId,
-  ttsSourceSupportsGameAudio,
   type ImageGenerationQuality,
   type ImageStyleProfileSettings,
   type VideoDefaultsService,
@@ -1019,16 +1018,8 @@ export function ConnectionEditor() {
           : null,
       audioSoundEffectsModel: isGenerativeAudioProvider ? localAudioSoundEffectsModel.trim() || null : null,
       audioVoice: isAudioProvider ? localAudioVoice || null : null,
-      audioSoundEffects: isGenerativeAudioProvider
-        ? localAudioSoundEffects
-        : isAudioProvider && ttsSourceSupportsGameAudio(toTTSSourceId(localAudioSource), "sfx")
-          ? localAudioSoundEffects
-          : false,
-      audioMusic: isGenerativeAudioProvider
-        ? localAudioMusic
-        : isAudioProvider && ttsSourceSupportsGameAudio(toTTSSourceId(localAudioSource), "music")
-          ? localAudioMusic
-          : false,
+      audioSoundEffects: isGenerativeAudioProvider ? localAudioSoundEffects : false,
+      audioMusic: isGenerativeAudioProvider ? localAudioMusic : false,
       audioSettings: isAudioProvider ? localAudioSettings : null,
       audioMusicEndpoint:
         isGenerativeAudioProvider && localAudioGenerationSource === "custom"
@@ -1309,16 +1300,8 @@ export function ConnectionEditor() {
           : null,
       audioSoundEffectsModel: isGenerativeAudioProvider ? localAudioSoundEffectsModel.trim() || null : null,
       audioVoice: isAudioProvider ? localAudioVoice || null : null,
-      audioSoundEffects: isGenerativeAudioProvider
-        ? localAudioSoundEffects
-        : isAudioProvider && ttsSourceSupportsGameAudio(toTTSSourceId(localAudioSource), "sfx")
-          ? localAudioSoundEffects
-          : false,
-      audioMusic: isGenerativeAudioProvider
-        ? localAudioMusic
-        : isAudioProvider && ttsSourceSupportsGameAudio(toTTSSourceId(localAudioSource), "music")
-          ? localAudioMusic
-          : false,
+      audioSoundEffects: isGenerativeAudioProvider ? localAudioSoundEffects : false,
+      audioMusic: isGenerativeAudioProvider ? localAudioMusic : false,
       audioSettings: isAudioProvider ? localAudioSettings : null,
       audioMusicEndpoint:
         isGenerativeAudioProvider && localAudioGenerationSource === "custom"
@@ -2789,16 +2772,6 @@ export function ConnectionEditor() {
                   setLocalAudioVoice(next);
                   markDirty();
                 }}
-                soundEffects={localAudioSoundEffects}
-                onSoundEffectsChange={(checked) => {
-                  setLocalAudioSoundEffects(checked);
-                  markDirty();
-                }}
-                music={localAudioMusic}
-                onMusicChange={(checked) => {
-                  setLocalAudioMusic(checked);
-                  markDirty();
-                }}
                 dirty={dirty}
                 onEnsureSaved={handleEnsureSaved}
               />
@@ -2882,13 +2855,19 @@ export function ConnectionEditor() {
                     markDirty();
                   }}
                   placeholder={
-                    GENERATIVE_AUDIO_DEFAULTS[localAudioGenerationSource].soundEffectsModel ||
-                    t("connections.audioGeneration.sameModel")
+                    localAudioGenerationSource === "nanogpt"
+                      ? t("connections.audioGeneration.nanoGptSfxModelPlaceholder")
+                      : GENERATIVE_AUDIO_DEFAULTS[localAudioGenerationSource].soundEffectsModel ||
+                        t("connections.audioGeneration.sameModel")
                   }
                   className="w-full rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm ring-1 ring-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
                 />
                 <span className="block text-xs leading-relaxed text-[var(--muted-foreground)]">
-                  {t("connections.audioGeneration.sfxModelHelp")}
+                  {t(
+                    localAudioGenerationSource === "nanogpt"
+                      ? "connections.audioGeneration.nanoGptSfxModelHelp"
+                      : "connections.audioGeneration.sfxModelHelp",
+                  )}
                 </span>
               </label>
               {localAudioGenerationSource === "custom" && (
@@ -2979,8 +2958,6 @@ export function ConnectionEditor() {
             <AudioParameterSection
               connectionId={connectionDetailId ?? ""}
               source={toTTSSourceId(localAudioSource)}
-              soundEffects={localAudioSoundEffects}
-              music={localAudioMusic}
               value={localAudioSettings.audioParameters}
               onChange={(next) => {
                 setLocalAudioSettings({ ...localAudioSettings, audioParameters: next });
@@ -3006,9 +2983,17 @@ export function ConnectionEditor() {
           {/* ── Model Selection (audio picks its model beside its source) ── */}
           {!isAudioProvider && (
             <FieldGroup
-              label={localizeUi("ui.connections.connectioneditor.model")}
+              label={
+                isGenerativeAudioProvider
+                  ? t("connections.audioGeneration.musicModel")
+                  : localizeUi("ui.connections.connectioneditor.model")
+              }
               icon={<Server size="0.875rem" className="text-sky-400" />}
-              help={localizeUi("ui.connections.connectioneditor.theSpecificAiModelToUseYouCanPick")}
+              help={
+                isGenerativeAudioProvider
+                  ? t("connections.audioGeneration.musicModelHelp")
+                  : localizeUi("ui.connections.connectioneditor.theSpecificAiModelToUseYouCanPick")
+              }
             >
               {/* Standard model dropdown + manual input (used for all providers including image_generation) */}
               <div ref={modelDropdownRef} className={cn("relative min-w-0", showModelDropdown && "z-50")}>

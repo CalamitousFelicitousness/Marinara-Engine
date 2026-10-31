@@ -12,11 +12,6 @@ import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ttsConfigSchema } from "../../../packages/shared/src/types/tts.js";
-import {
-  TTS_SOURCE_DEFINITIONS,
-  TTS_SOURCE_IDS,
-  ttsSourceNamesForGameAudio,
-} from "../../../packages/shared/src/constants/tts-sources.js";
 import { withTTSVoiceRequestCacheKeys } from "../../../packages/client/src/lib/tts-dialogue.ts";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -87,18 +82,14 @@ for (const [file, path] of [
     assert.match(source, /audioConnectionId:/u, `${file}: and synthesizes through it`);
   }
 
-  // Purposes are separate cache entries, or one lane's answer is served to
-  // another and the split is invisible at runtime.
+  // Each generation lane is its own cache entry, or one lane's answer is served
+  // to the other and the split is invisible at runtime.
   assert.match(
     hook,
-    /effectiveConfig: \(purpose: AudioPurpose, scope: string\)/u,
-    "the effective config cache key must carry the purpose",
+    /gameAudioLane: \(purpose: GameAudioPurpose, scope: string\)/u,
+    "the lane readiness cache key must carry the lane",
   );
-  assert.match(
-    hook,
-    /useEffectiveAudioConfig\("speech", connectionId\)/u,
-    "useEffectiveTTSConfig must stay the speech lane of the general hook",
-  );
+  assert.match(hook, /\/audio\/config\?/u, "lane readiness asks the generation service");
 
   // The pin per lane is the game's own, else the all-purpose pin. One helper
   // decides that, because the wizard and the drawer write what this reads.
@@ -139,17 +130,12 @@ for (const [file, path] of [
     "music generation must send the music pin",
   );
 
-  // Capability is one server answer now: the source supports the purpose and the
-  // connection opted in. Recomputing either half here would drift from the gate
-  // the route applies.
+  // Capability is one server answer: the lane's engine supports it, opted in,
+  // and has a key. Recomputing any of it here would drift from the route's gate.
+  assert.match(surface, /sfxLane\?\.enabled === true/u, "sound effects gate on their own lane's answer");
   assert.match(
     surface,
-    /effectiveSfxAudio\?\.gameAudioEnabled === true/u,
-    "sound effects gate on the sound effect lane's capability answer",
-  );
-  assert.match(
-    surface,
-    /effectiveMusicAudio\?\.gameAudioEnabled === true/u,
+    /musicLane\?\.enabled === true/u,
     "and music on its own, so one lane's engine cannot decide for the other",
   );
   assert.doesNotMatch(
@@ -242,8 +228,12 @@ for (const [file, path] of [
 
   // Preview and pin come from one function, so what the screen promises is what
   // the game stores.
-  assert.match(wizard, /previewGameAudioLane\(audioConnections, "sfx"/u, "the sound effect lane is previewed");
-  assert.match(wizard, /previewGameAudioLane\(audioConnections, "music"/u, "and the music lane");
+  assert.match(
+    wizard,
+    /previewGameAudioLane\(\s*generationAudioConnections,\s*"sfx"/u,
+    "the sound effect lane is previewed from generation connections",
+  );
+  assert.match(wizard, /previewGameAudioLane\(\s*generationAudioConnections,\s*"music"/u, "and the music lane");
   const section = readSource("packages/client/src/components/game/GameAudioSetupSection.tsx");
   assert.match(
     section,
@@ -310,51 +300,43 @@ for (const [file, path] of [
   // does. "None" would describe a silence that never happens.
   const catalogText = readSource("packages/client/src/localization/locales/en.json");
   const catalog = JSON.parse(catalogText) as Record<string, string>;
-  const purposeEmptyLabel = catalog["ui.panels.connectiondefaultssection.useTheFallbackThenTheVoiceDefaults"];
+  const purposeEmptyLabel =
+    catalog["ui.panels.connectiondefaultssection.useTheFallbackThenTheMusicAndSoundEffectsDefaults"];
   assert.ok(purposeEmptyLabel, "the purpose pairs need an empty-option label");
   assert.match(purposeEmptyLabel, /fallback/iu, "which names the fallback");
-  assert.match(purposeEmptyLabel, /Voice/u, "and then the lane it falls through to");
+  assert.match(purposeEmptyLabel, /Music & Sound Effects/u, "and then the pair it falls through to");
   assert.match(
     panel,
-    /ui\.panels\.connectiondefaultssection\.useTheFallbackThenTheVoiceDefaults/u,
+    /ui\.panels\.connectiondefaultssection\.useTheFallbackThenTheMusicAndSoundEffectsDefaults/u,
     "and the panel must render it",
+  );
+  assert.match(
+    panel,
+    /const sfxConnections = useMemo\(\s*\(\) =>\s*generativeAudioConnections\.filter/u,
+    "the lanes list Music & Sound Effects connections, not speech ones",
   );
 }
 
 // ── Capability is asked, never spelled out ──
-// The same fact reached five files as `=== "elevenlabs"`. It is one table now,
-// and a copy that drifts would offer a switch the server refuses to honor.
+// Music and sound effects live on Music & Sound Effects connections, and the
+// pickers ask the same shared rule the server's gate does.
 {
   const editor = readSource("packages/client/src/components/connections/ConnectionEditor.tsx");
   const fields = readSource("packages/client/src/components/connections/audio/AudioSourceFields.tsx");
   const filters = readSource("packages/client/src/lib/connection-filters.ts");
 
   assert.match(
-    editor,
-    /ttsSourceSupportsGameAudio\(toTTSSourceId\(localAudioSource\), "sfx"\)/u,
-    "the editor must ask the table before storing a sound effect opt-in",
-  );
-  assert.doesNotMatch(
-    editor,
-    /localAudioSource === "elevenlabs"/u,
-    "and must not decide capability by naming a backend",
-  );
-  assert.match(fields, /ttsSourceSupportsGameAudio\(source, "sfx"\)/u, "the switches follow the table");
-  assert.match(fields, /ttsSourceSupportsGameAudio\(source, "music"\)/u, "for both purposes");
-  assert.match(
     filters,
-    /ttsSourceSupportsGameAudio\(toTTSSourceId\(connection\.audioSource\)/u,
-    "and so do the pickers",
+    /connection\.provider === "audio_generation" && audioConnectionSupportsGeneration\(connection, purpose\)/u,
+    "the pickers ask the shared generation rule",
   );
-
-  // Scoped to the capability switches: the source literal near the voice
-  // controls is a synthesis-settings rule and legitimately stays.
-  const switchBlock = fields.slice(fields.indexOf("gameSoundEffects"));
-  assert.doesNotMatch(
-    switchBlock,
-    /source === "elevenlabs"/u,
-    "the game audio switches must not be gated on a source literal",
+  assert.match(
+    editor,
+    /audioSoundEffects: isGenerativeAudioProvider \? localAudioSoundEffects : false,/u,
+    "a speech connection never stores a sound effect switch",
   );
+  assert.match(editor, /audioMusic: isGenerativeAudioProvider \? localAudioMusic : false,/u, "nor a music one");
+  assert.doesNotMatch(fields, /gameSoundEffects|gameMusic/u, "the speech editor offers no game audio switches");
 }
 
 // ── The editor owns the engine, the card owns playback ──
@@ -509,19 +491,19 @@ for (const [file, path] of [
   const section = readSource("packages/client/src/components/connections/audio/AudioParameterSection.tsx");
   assert.match(
     section,
-    /ttsSourceSupportsGameAudio\(source, candidate\)/u,
-    "lanes come from the shared capability table",
+    /<AudioParameterEditor source=\{source\} purpose="speech"/u,
+    "a speech connection edits its speech parameters",
   );
   for (const id of ["elevenlabs", "openai", "pockettts", "xai", "nanogpt"]) {
     assert.doesNotMatch(section, new RegExp(`=== "${id}"`, "u"), `the section must not name ${id} directly`);
   }
 
-  // A lane cleared to nothing is removed, not stored as an empty object: the
+  // A record cleared to nothing is removed, not stored as an empty object: the
   // difference between inheriting and pinning an answer nobody chose.
   assert.match(
     section,
-    /if \(Object\.keys\(next\)\.length === 0\) delete map\[active\];/u,
-    "an emptied lane stops being stored",
+    /if \(Object\.keys\(next\)\.length === 0\) delete map\.speech;/u,
+    "an emptied record stops being stored",
   );
 
   const paramEditor = readSource("packages/client/src/components/connections/audio/AudioParameterEditor.tsx");
@@ -539,37 +521,17 @@ for (const [file, path] of [
 
 // ── An empty game-audio lane says what would fill it ──
 {
-  // Derived from the definitions, never written down: a source that gains the
-  // capability must be named by the hint without anyone editing the copy.
-  for (const purpose of ["sfx", "music"] as const) {
-    const expected = TTS_SOURCE_IDS.filter((id) =>
-      purpose === "sfx"
-        ? TTS_SOURCE_DEFINITIONS[id].supportsGameSoundEffects
-        : TTS_SOURCE_DEFINITIONS[id].supportsGameMusic,
-    ).map((id) => TTS_SOURCE_DEFINITIONS[id].name);
-    assert.deepEqual(
-      ttsSourceNamesForGameAudio(purpose),
-      expected,
-      `${purpose}: the hint must name exactly the sources whose definition claims the capability`,
-    );
-    assert.ok(expected.length > 0, `${purpose}: some source must serve it, or the lane is unreachable`);
-  }
-
-  // With one supporting source the values alone cannot tell a derivation from
-  // a literal, so pin the derivation itself.
-  const sources = readSource("packages/shared/src/constants/tts-sources.ts");
-  assert.match(
-    sources,
-    /ttsSourceNamesForGameAudio[\s\S]{0,200}TTS_SOURCE_IDS\.filter\(\(id\) => ttsSourceSupportsGameAudio\(id, purpose\)\)/u,
-    "the hint must derive its source list from the definitions, never list names",
-  );
   const panel = readSource("packages/client/src/components/panels/ConnectionsPanel.tsx");
-  for (const purpose of ["sfx", "music"]) {
-    assert.ok(
-      panel.includes(`emptyHint={gameAudioHint("${purpose}")}`),
-      `the ${purpose} row must explain an empty picker`,
-    );
-  }
+  assert.match(
+    panel,
+    /needsAValue1ConnectionWithThisSwitchedOn[\s\S]{0,120}connections\.audioGeneration\.category/u,
+    "the hint names the Music & Sound Effects connection type",
+  );
+  assert.equal(
+    (panel.match(/emptyHint=\{gameAudioHint\}/gu) ?? []).length,
+    2,
+    "both game audio rows explain an empty picker",
+  );
   assert.match(
     panel,
     /\{emptyHint && !hasConnections && \(/u,

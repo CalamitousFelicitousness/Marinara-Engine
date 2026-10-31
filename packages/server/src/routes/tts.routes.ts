@@ -4,10 +4,6 @@
 import type { FastifyInstance } from "fastify";
 import type { DB } from "../db/connection.js";
 import { z } from "zod";
-import { createHash, randomUUID } from "crypto";
-import { addAbortListener } from "node:events";
-import { access, mkdir, readdir, rename, unlink, writeFile } from "fs/promises";
-import { join } from "path";
 import {
   ttsConfigSchema,
   ttsSourceProfileFromConfig,
@@ -16,7 +12,6 @@ import {
   setCharacterVoiceAssignment,
   TTS_VOICE_MAX_LENGTH,
   normalizeMusicEnemyTier,
-  AUDIO_PURPOSES,
   GAME_AUDIO_PURPOSES,
   TTS_SETTINGS_KEY,
   TTS_API_KEY_MASK,
@@ -27,7 +22,6 @@ import {
   TTS_TIMEOUT_MS_MAX,
   TTS_TIMEOUT_MS_MIN,
   type TTSSource,
-  ttsSourceSupportsGameAudio,
   parseAudioConnectionSettings,
   type AudioConnectionSettings,
   type TTSConfig,
@@ -45,12 +39,11 @@ import { getChatGenerationTimeoutMs } from "../config/runtime-config.js";
 import { safeFetch } from "../utils/security.js";
 import { ttsUrlPolicy } from "../services/tts/url-policy.js";
 import { createTTSProvider } from "../services/tts/provider-registry.js";
-import { buildGameAudioRequest, canBuildGameAudioRequest } from "../services/tts/game-audio-request.js";
-import { isJobResponse, resolveTTSJobAudio } from "../services/tts/job-resolution.js";
-import { readTTSRateLimit, TTSRateLimitError } from "../services/tts/tts-rate-limit.js";
-import { buildTTSRequestPreview, TTS_PREVIEW_GAME_PROMPT, TTS_PREVIEW_TEXT } from "../services/tts/request-preview.js";
-import type { TTSProviderRequest } from "../services/tts/tts-types.js";
+import { readTTSRateLimit } from "../services/tts/tts-rate-limit.js";
+import { buildTTSRequestPreview, TTS_PREVIEW_TEXT } from "../services/tts/request-preview.js";
 import { reserveOutboundSlot } from "../services/connections/outbound-request-pacer.js";
+import { AudioGenerationProviderError } from "../services/audio/generative-audio-providers.js";
+import { AudioGenerationConfigurationError, generateAudioAsset } from "../services/audio/generative-audio.service.js";
 import {
   buildElevenLabsTextInput,
   buildOfficialPocketTtsForm,
@@ -98,7 +91,6 @@ export {
   resolveTTSAudioResponseContentType,
 } from "../services/audio/audio-content-type.js";
 import { logger, logDebugOverride } from "../lib/logger.js";
-import { buildAssetManifest, GAME_ASSETS_DIR } from "../services/game/asset-manifest.service.js";
 import { createLLMProvider } from "../services/llm/provider-registry.js";
 import { resolveBaseUrl } from "../services/generation/connection-base-url.js";
 import { resolveStoredChatOptions, resolveStoredMaxTokens } from "../services/generation/generation-parameters.js";
@@ -179,9 +171,6 @@ const NANOGPT_ELEVENLABS_VOICES = [
   "Will",
 ];
 const MAX_TTS_AUDIO_BYTES = 20 * 1024 * 1024;
-const MAX_GAME_AUDIO_BYTES = 60 * 1024 * 1024;
-const gameAudioGenerationLocks = new Map<string, Promise<{ tag: string; path: string; cached: boolean }>>();
-let gameAssetManifestRebuildTimer: ReturnType<typeof setTimeout> | null = null;
 
 const speakSchema = z.object({
   text: z.string().min(1).max(4096),
@@ -194,8 +183,6 @@ const speakSchema = z.object({
 
 const ttsQuerySchema = z.object({
   connectionId: z.string().max(120).optional(),
-  /** Routing lane to answer for. Absent means speech. */
-  purpose: z.enum(AUDIO_PURPOSES).optional(),
   /** Ask about this model instead of the saved one. Voices are per model where a source publishes them. */
   model: z.string().max(200).optional(),
 });
@@ -245,150 +232,10 @@ const gameAudioSchema = z.object({
     .optional(),
 });
 
-const AUDIO_FILE_PATTERN = /.(mp3|wav|ogg|m4a|flac)$/i;
-
 type VoiceOption = NonNullable<TTSVoicesResponse["voiceOptions"]>[number];
 type ModelOption = TTSModelsResponse["models"][number];
 
-function normalizeGameAudioPrompt(prompt: string): string {
-  return prompt.trim().replace(/\s+/g, " ");
-}
-
-function scheduleGameAssetManifestRebuild(): void {
-  if (gameAssetManifestRebuildTimer) clearTimeout(gameAssetManifestRebuildTimer);
-  gameAssetManifestRebuildTimer = setTimeout(() => {
-    gameAssetManifestRebuildTimer = null;
-    try {
-      buildAssetManifest();
-    } catch (error) {
-      logger.error(error, "Failed to rebuild the game asset manifest after generating audio");
-    }
-  }, 500);
-  gameAssetManifestRebuildTimer.unref();
-}
-
-type GameAudioContext = { axis: "area" | "tier"; key: string; lengthMs?: number };
-
-async function generateGameAudio(
-  cfg: TTSConfig,
-  kind: "sfx" | "music",
-  prompt: string,
-  context?: GameAudioContext,
-  /** Resolved audio connection, for its outbound rate limit. Absent on the legacy blob path. */
-  connectionId?: string | null,
-): Promise<{ tag: string; path: string; cached: boolean }> {
-  const normalizedPrompt = normalizeGameAudioPrompt(prompt);
-  const hash = createHash("sha256").update(`${kind}\0${normalizedPrompt.toLowerCase()}`).digest("hex");
-  let category: string;
-  let fileName: string;
-  let tag: string;
-  if (context) {
-    // Context tracks (#5161) land in the scoreable library keyed by area/tier
-    // and generate ONCE per key: ANY existing audio file under the key —
-    // generated earlier or dropped in by the user as a replacement — means
-    // the key is covered, regardless of how today's prompt is worded.
-    category = `music/${context.axis}/${context.key}`;
-    const existing = (await readdir(join(GAME_ASSETS_DIR, "music", context.axis, context.key)).catch(() => [])).filter(
-      // Dotfiles never enter the manifest; counting one as coverage would
-      // permanently block generation for the key.
-      (name) => !name.startsWith(".") && AUDIO_FILE_PATTERN.test(name),
-    );
-    const coveredBy = existing[0];
-    if (coveredBy) {
-      return {
-        tag: `music:${context.axis}:${context.key}:${coveredBy.replace(/\.[^.]+$/, "")}`,
-        path: `${category}/${coveredBy}`,
-        cached: true,
-      };
-    }
-    fileName = `generated-${hash.slice(0, 16)}.mp3`;
-    tag = `music:${context.axis}:${context.key}:${fileName.replace(/\.mp3$/, "")}`;
-  } else {
-    category = kind === "sfx" ? "sfx" : "music";
-    fileName = `${hash}.mp3`;
-    tag = `${category}:generated:${hash}`;
-    category = `${category}/generated`;
-  }
-  const relativePath = `${category}/${fileName}`;
-  const targetDirectory = join(GAME_ASSETS_DIR, category);
-  const targetPath = join(GAME_ASSETS_DIR, relativePath);
-
-  try {
-    await access(targetPath);
-    return { tag, path: relativePath, cached: true };
-  } catch {
-    // Generate below.
-  }
-
-  // Longer compositions take the provider longer to render; give context
-  // tracks the headroom a 2-minute piece needs.
-  const timeoutMs = context ? 300_000 : 180_000;
-  const request = buildGameAudioRequest(cfg, {
-    kind,
-    prompt: normalizedPrompt,
-    ...(context?.lengthMs !== undefined ? { lengthMs: context.lengthMs } : {}),
-  });
-  // Paced before the deadline starts, so waiting for a slot never eats the
-  // budget the composition itself needs.
-  if (connectionId) {
-    const slot = reserveOutboundSlot(connectionId);
-    if (slot) await slot;
-  }
-  // One deadline over the whole exchange. An async backend spends most of it
-  // queued rather than transferring, so bounding each call separately would let
-  // a slow job run unbounded.
-  const deadline = AbortSignal.timeout(timeoutMs);
-  const send = (outbound: TTSProviderRequest, method: "GET" | "POST") =>
-    safeFetch(outbound.url, {
-      method,
-      headers: outbound.headers,
-      ...(method === "POST" ? { body: outbound.body } : {}),
-      signal: deadline,
-      policy: {
-        allowLocal: false,
-        allowedProtocols: ["https:"],
-      },
-      maxResponseBytes: MAX_GAME_AUDIO_BYTES,
-      decodeCompressedResponse: outbound.decodeCompressedResponse,
-    });
-
-  let response = await send(request, "POST");
-  if (!response.ok) {
-    const detail = readProviderErrorDetail(await response.text().catch(() => ""));
-    const limited = readTTSRateLimit(response);
-    if (limited) {
-      throw new TTSRateLimitError(detail || `${cfg.source} is rate limiting this connection`, limited.retryAfterMs);
-    }
-    throw new Error(detail || `${cfg.source} returned ${response.status}`);
-  }
-  // A job answers JSON where audio would be bytes, so the submission body is
-  // never consumed to find out which arrived.
-  if (request.job && isJobResponse(response)) {
-    response = await resolveTTSJobAudio(response, request.job, send, { signal: deadline, label: cfg.source });
-    if (!response.ok) {
-      throw new Error(`${cfg.source} could not deliver the finished ${kind}`);
-    }
-  }
-
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  if (!resolveTTSAudioResponseContentType(response.headers.get("content-type"), bytes)) {
-    throw new Error(`${cfg.source} returned a non-audio response`);
-  }
-
-  await mkdir(targetDirectory, { recursive: true });
-  const temporaryPath = join(targetDirectory, `.${hash}.${randomUUID()}.tmp`);
-  try {
-    await writeFile(temporaryPath, bytes);
-    await rename(temporaryPath, targetPath);
-  } catch (error) {
-    await unlink(temporaryPath).catch(() => {});
-    throw error;
-  }
-  scheduleGameAssetManifestRebuild();
-  return { tag, path: relativePath, cached: false };
-}
-
-/** Host command entry point using the same connection, cache, and file validation as Game audio. */
+/** Host command entry point using the same lanes, cache, and file validation as Game audio. */
 export async function generateRoleplaySoundEffect(
   db: DB,
   prompt: string,
@@ -396,42 +243,7 @@ export async function generateRoleplaySoundEffect(
   debugMode: boolean,
   signal?: AbortSignal,
 ) {
-  signal?.throwIfAborted();
-  const { cfg, gameAudioEnabled, resolvedConnectionId } = await resolveAudioConfig(
-    createAppSettingsStorage(db),
-    createConnectionsStorage(db),
-    connectionId,
-    "sfx",
-  );
-  signal?.throwIfAborted();
-  if (gameAudioEnabled !== true || !canBuildGameAudioRequest(cfg, "sfx"))
-    throw new Error("Choose an audio connection with sound effect generation enabled.");
-  const normalized = normalizeGameAudioPrompt(prompt);
-  logDebugOverride(debugMode, "[debug/roleplay/sound] Prompt sent to audio provider:\n%s", normalized);
-  const key = `sfx\0${normalized.toLowerCase()}`;
-  let generation = gameAudioGenerationLocks.get(key);
-  if (!generation) {
-    // Shared Game/Roleplay work finishes for other waiters and the audio cache.
-    generation = generateGameAudio(cfg, "sfx", normalized, undefined, resolvedConnectionId).finally(() =>
-      gameAudioGenerationLocks.delete(key),
-    );
-    gameAudioGenerationLocks.set(key, generation);
-  }
-  let abortListener: ReturnType<typeof addAbortListener> | undefined;
-  try {
-    const result = signal
-      ? await Promise.race([
-          generation,
-          new Promise<never>((_, reject) => {
-            abortListener = addAbortListener(signal, () => reject(signal.reason));
-          }),
-        ])
-      : await generation;
-    signal?.throwIfAborted();
-    return result;
-  } finally {
-    abortListener?.[Symbol.dispose]();
-  }
+  return generateAudioAsset(db, { kind: "sfx", prompt, audioConnectionId: connectionId, debugMode, signal });
 }
 
 // ── Helpers ─────────────────────────────────────
@@ -1340,8 +1152,8 @@ export async function ttsRoutes(app: FastifyInstance) {
    * which is what an unattended autoplay will reach.
    */
   app.get("/effective-config", async (req) => {
-    const { connectionId, purpose } = ttsQuerySchema.parse(req.query ?? {});
-    const resolution = await resolveAudioConfig(storage, connections, connectionId, purpose ?? "speech");
+    const { connectionId } = ttsQuerySchema.parse(req.query ?? {});
+    const resolution = await resolveAudioConfig(storage, connections, connectionId);
     return {
       config: maskTTSConfigForResponse(resolution.cfg),
       resolvedConnectionId: resolution.resolvedConnectionId,
@@ -1349,49 +1161,36 @@ export async function ttsRoutes(app: FastifyInstance) {
       resolvedSource: resolution.resolvedSource,
       origin: resolution.origin,
       speechEnabled: resolution.speechEnabled,
-      purpose: resolution.purpose,
-      gameAudioEnabled: resolution.gameAudioEnabled,
     } satisfies TTSEffectiveConfigResponse;
   });
 
   /**
    * GET /api/tts/effective-request
-   * The request body this connection would send for a lane, built and not sent.
+   * The speech request body this connection would send, built and not sent.
    *
    * Extra parameters are free-form because no backend's schema is knowable here,
    * so this is how a user confirms one landed and landed in the right shape. It
    * is only possible because providers do no I/O.
    */
-  app.get("/effective-request", async (req, reply) => {
-    const { connectionId, purpose } = ttsQuerySchema.parse(req.query ?? {});
-    const lane = purpose ?? "speech";
+  app.get("/effective-request", async (req) => {
+    const { connectionId } = ttsQuerySchema.parse(req.query ?? {});
     const { cfg, resolvedConnectionId, resolvedConnectionName, resolvedSource } = await resolveAudioConfig(
       storage,
       connections,
       connectionId,
-      lane,
     );
 
-    let request: TTSProviderRequest;
-    if (lane === "speech") {
-      // The probe is a network call, so a preview uses whatever mode was already
-      // learned and otherwise the registry's default. It changes the endpoint
-      // path, never the parameters this screen exists to show.
-      const provider = createTTSProvider(cfg, { pocketTtsMode: await cachedPocketTtsApiMode(cfg) });
-      request = provider.buildSpeechRequest({
-        text: TTS_PREVIEW_TEXT,
-        voice: resolveTTSRequestVoice(cfg.voice, undefined),
-      });
-    } else {
-      if (!ttsSourceSupportsGameAudio(cfg.source, lane)) {
-        return reply.status(400).send({ error: `No game ${lane} generator exists for source "${cfg.source}"` });
-      }
-      request = buildGameAudioRequest(cfg, { kind: lane, prompt: TTS_PREVIEW_GAME_PROMPT });
-    }
+    // The probe is a network call, so a preview uses whatever mode was already
+    // learned and otherwise the registry's default. It changes the endpoint
+    // path, never the parameters this screen exists to show.
+    const provider = createTTSProvider(cfg, { pocketTtsMode: await cachedPocketTtsApiMode(cfg) });
+    const request = provider.buildSpeechRequest({
+      text: TTS_PREVIEW_TEXT,
+      voice: resolveTTSRequestVoice(cfg.voice, undefined),
+    });
 
     return {
       ...buildTTSRequestPreview(request, cfg.apiKey),
-      purpose: lane,
       resolvedConnectionId,
       resolvedConnectionName,
       resolvedSource,
@@ -1564,7 +1363,7 @@ export async function ttsRoutes(app: FastifyInstance) {
    * Generates and caches scene-specific Game Mode music or sound effects.
    */
   app.post("/game-audio", async (req, reply) => {
-    const { kind, prompt, audioConnectionId, context } = gameAudioSchema.parse(req.body);
+    const { kind, prompt, audioConnectionId, context, debugMode } = gameAudioSchema.parse(req.body);
     if (context && kind !== "music") {
       return reply.status(400).send({ error: "Context tracks are music only" });
     }
@@ -1586,52 +1385,21 @@ export async function ttsRoutes(app: FastifyInstance) {
     }
     // kind names the lane, so a caller that sends no connection id still reaches
     // the engine this purpose was pointed at rather than the one that speaks.
-    const { cfg, gameAudioEnabled, resolvedConnectionId } = await resolveAudioConfig(
-      storage,
-      connections,
-      audioConnectionId,
-      kind,
-    );
-    if (gameAudioEnabled !== true) {
-      return reply
-        .status(400)
-        .send({ error: `Game ${kind} generation is not enabled for the resolved audio connection` });
-    }
-    if (!ttsSourceSupportsGameAudio(cfg.source, kind)) {
-      // TTS_SOURCE_DEFINITIONS decides which sources MAY generate;
-      // buildGameAudioRequest decides which one actually builds. This rejects
-      // the request before the lock and the cache key are computed for nothing.
-      return reply.status(400).send({ error: `No game ${kind} generator exists for source "${cfg.source}"` });
-    }
-    if (!canBuildGameAudioRequest(cfg, kind)) {
-      return reply.status(400).send({ error: `The ${cfg.source} API key is not configured` });
-    }
-
-    const normalizedPrompt = normalizeGameAudioPrompt(prompt);
-    // Context generations lock on their KEY: two turns racing the same area
-    // must collapse into one composition even when their prompts differ.
-    const lockKey = context ? `context\0${context.axis}\0${context.key}` : `${kind}\0${normalizedPrompt.toLowerCase()}`;
-    let generation = gameAudioGenerationLocks.get(lockKey);
-    if (!generation) {
-      generation = generateGameAudio(cfg, kind, normalizedPrompt, context, resolvedConnectionId).finally(() => {
-        gameAudioGenerationLocks.delete(lockKey);
-      });
-      gameAudioGenerationLocks.set(lockKey, generation);
-    }
     try {
-      return await generation;
+      return await generateAudioAsset(app.db, { kind, prompt, audioConnectionId, context, debugMode });
     } catch (error) {
-      if (error instanceof TTSRateLimitError) {
-        // Not a failure of the request, so it is answered as the pause it is.
-        logger.warn("ElevenLabs is rate limiting game %s generation", kind);
+      if (error instanceof AudioGenerationConfigurationError) {
+        return reply.status(error.statusCode).send({ error: error.message });
+      }
+      if (error instanceof AudioGenerationProviderError && error.providerStatus === 429) {
+        logger.warn("Game %s generation is being rate limited", kind);
         return reply.status(429).send({
-          error: `ElevenLabs is rate limiting game ${kind} generation`,
+          error: `Game ${kind} generation is being rate limited`,
           detail: error.message,
           code: "rate_limited",
-          ...(error.retryAfterMs !== undefined ? { retryAfterMs: error.retryAfterMs } : {}),
         });
       }
-      logger.error(error, "ElevenLabs game %s generation failed", kind);
+      logger.error(error, "Game %s audio generation failed", kind);
       return reply.status(502).send({
         error: `Game ${kind} audio generation failed`,
         detail: error instanceof Error ? error.message : "Unknown provider error",

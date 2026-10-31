@@ -17,7 +17,6 @@ import type { TTSProviderRequest } from "./tts-types.js";
 
 /** Stand-in content, so a preview needs no message and generates no audio. */
 export const TTS_PREVIEW_TEXT = "Sample line.";
-export const TTS_PREVIEW_GAME_PROMPT = "sample prompt";
 
 export interface TTSRequestPreview {
   url: string;

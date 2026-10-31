@@ -16,17 +16,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Check, Loader2, Play, RefreshCw, Square } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { toast } from "sonner";
-import {
-  TTS_SOURCE_DEFINITIONS,
-  TTS_SOURCES_WITH_MODEL_LISTING,
-  ttsSourceSupportsGameAudio,
-} from "@marinara-engine/shared";
+import { TTS_SOURCE_DEFINITIONS, TTS_SOURCES_WITH_MODEL_LISTING } from "@marinara-engine/shared";
 import type { AudioGenerationSource } from "@marinara-engine/shared";
 import { useTTSModels, useTTSVoices } from "../../../hooks/use-tts";
 import { formatAudioRate } from "../../../lib/model-cost";
 import { ttsService } from "../../../lib/tts-service";
 import { cn } from "../../../lib/utils";
-import { SettingsSwitch } from "../../panels/settings/SettingControls";
 import { AUDIO_SOURCE_DISPLAY_ORDER, fallbackModelIds } from "./audio-catalog";
 import {
   addSavedVoiceOption,
@@ -52,10 +47,6 @@ export interface AudioSourceFieldsProps {
   onModelChange: (value: string) => void;
   voice: string;
   onVoiceChange: (value: string) => void;
-  soundEffects: boolean;
-  onSoundEffectsChange: (value: boolean) => void;
-  music: boolean;
-  onMusicChange: (value: boolean) => void;
   /** True while identity fields differ from the saved row. */
   dirty: boolean;
   /** Saves the row if needed, so a catalog request describes what the server has. */
@@ -73,20 +64,12 @@ export function AudioSourceFields({
   onModelChange,
   voice,
   onVoiceChange,
-  soundEffects,
-  onSoundEffectsChange,
-  music,
-  onMusicChange,
   dirty,
   onEnsureSaved,
 }: AudioSourceFieldsProps) {
   const { t: localizeUi } = useUiTranslation();
   const definition = TTS_SOURCE_DEFINITIONS[source];
   const endpointOverridden = Boolean(baseUrl) && baseUrl !== definition.defaultBaseUrl;
-  // Which switches this backend can honor. Naming a source here instead would
-  // put the answer in a second place from the gate that enforces it.
-  const supportsSoundEffects = ttsSourceSupportsGameAudio(source, "sfx");
-  const supportsMusic = ttsSourceSupportsGameAudio(source, "music");
   const [endpointOpen, setEndpointOpen] = useState(endpointOverridden);
   const [previewing, setPreviewing] = useState(false);
 
@@ -370,35 +353,6 @@ export function AudioSourceFields({
           ? localizeUi("ui.connections.audioconnectionsettings.stopTest")
           : localizeUi("ui.connections.audioconnectionsettings.testVoice")}
       </button>
-
-      {supportsSoundEffects || supportsMusic ? (
-        <div className="space-y-2">
-          {supportsSoundEffects ? (
-            <SettingsSwitch
-              label={localizeUi("ui.connections.connectioneditor.gameSoundEffects")}
-              description={localizeUi(
-                "ui.connections.connectioneditor.letGameModeGenerateSoundEffectsWithThisConnection",
-              )}
-              checked={soundEffects}
-              onChange={onSoundEffectsChange}
-            />
-          ) : null}
-          {supportsMusic ? (
-            <SettingsSwitch
-              label={localizeUi("ui.connections.connectioneditor.gameMusic")}
-              description={localizeUi("ui.connections.connectioneditor.letGameModeGenerateMusicWithThisConnection")}
-              checked={music}
-              onChange={onMusicChange}
-            />
-          ) : null}
-        </div>
-      ) : (
-        <p className="rounded-xl bg-[var(--secondary)]/40 px-3 py-2 text-[0.625rem] text-[var(--muted-foreground)] ring-1 ring-[var(--border)]">
-          {localizeUi("ui.connections.connectioneditor.value1CantGenerateSoundEffectsOrMusic", {
-            value1: definition.name,
-          })}
-        </p>
-      )}
     </div>
   );
 }

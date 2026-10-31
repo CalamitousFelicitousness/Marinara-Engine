@@ -2,8 +2,9 @@
 // Game Setup: audio routing
 // ──────────────────────────────────────────────
 // Which connection a game speaks with, which one makes its sound effects, and
-// which one scores it. Each lane is pinned on its own; an unpinned lane follows
-// the app-level chain for that purpose.
+// which one scores it. Voice picks a speech connection; sound effects and music
+// pick Music & Sound Effects connections. Each lane is pinned on its own; an
+// unpinned lane follows the app-level chain for that purpose.
 //
 // "Use the default" is previewed from the server's own answer rather than from
 // a copy of its resolution order, with one exception: when nothing answers for
@@ -12,8 +13,8 @@
 
 import { Music, Mic, Volume2 } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
-import type { AudioPurpose, GameAudioPurpose, TTSEffectiveConfigResponse } from "@marinara-engine/shared";
-import { audioConnectionSupportsPurpose } from "../../lib/connection-filters";
+import type { AudioPurpose, GameAudioPurpose } from "@marinara-engine/shared";
+import { audioConnectionSupportsPurpose, matchesAudioGenerationConnectionId } from "../../lib/connection-filters";
 import { cn } from "../../lib/utils";
 import { SettingsSwitchTrack } from "../panels/settings/SettingControls";
 
@@ -23,8 +24,20 @@ export interface GameAudioSetupConnection {
   model?: string;
   provider?: string;
   audioSource?: string | null;
+  audioGenerationSource?: string | null;
+  audioGenerationLegacyConnectionId?: string | null;
   audioSoundEffects?: boolean | string;
   audioMusic?: boolean | string;
+  audioMusicEndpoint?: string | null;
+  audioSoundEffectsEndpoint?: string | null;
+  audioSoundEffectsModel?: string | null;
+}
+
+/** The server's answer for an unpinned lane: who answers, and whether it can run. */
+export interface GameAudioLaneAnswer {
+  connectionId: string | null;
+  connectionName?: string | null;
+  usable: boolean;
 }
 
 export interface GameAudioLanePreview {
@@ -50,13 +63,18 @@ export function previewGameAudioLane(
   connections: readonly GameAudioSetupConnection[],
   purpose: AudioPurpose,
   explicitId: string | null,
-  serverAnswer: TTSEffectiveConfigResponse | undefined,
+  serverAnswer: GameAudioLaneAnswer | undefined,
 ): GameAudioLanePreview {
   const supports = (connection: GameAudioSetupConnection) =>
     purpose === "speech" ? true : audioConnectionSupportsPurpose(connection, purpose as GameAudioPurpose);
 
   if (explicitId) {
-    const picked = connections.find((connection) => connection.id === explicitId) ?? null;
+    const picked =
+      connections.find((connection) =>
+        purpose === "speech"
+          ? connection.id === explicitId
+          : matchesAudioGenerationConnectionId(connection, explicitId),
+      ) ?? null;
     return {
       connectionName: picked?.name ?? null,
       canGenerate: picked ? supports(picked) : false,
@@ -64,14 +82,12 @@ export function previewGameAudioLane(
     };
   }
 
-  const answered = serverAnswer?.resolvedConnectionId
-    ? (connections.find((connection) => connection.id === serverAnswer.resolvedConnectionId) ?? null)
+  const answered = serverAnswer?.connectionId
+    ? (connections.find((connection) => connection.id === serverAnswer.connectionId) ?? null)
     : null;
-  const answerUsable =
-    purpose === "speech" ? Boolean(serverAnswer?.resolvedConnectionId) : serverAnswer?.gameAudioEnabled === true;
-  if (answerUsable) {
+  if (serverAnswer?.usable) {
     return {
-      connectionName: answered?.name ?? serverAnswer?.resolvedConnectionName ?? null,
+      connectionName: answered?.name ?? serverAnswer.connectionName ?? null,
       canGenerate: true,
       pinnedId: null,
     };
@@ -80,7 +96,7 @@ export function previewGameAudioLane(
   const capable = connections.find(supports) ?? null;
   if (capable) return { connectionName: capable.name, canGenerate: true, pinnedId: capable.id };
   return {
-    connectionName: answered?.name ?? serverAnswer?.resolvedConnectionName ?? null,
+    connectionName: answered?.name ?? serverAnswer?.connectionName ?? null,
     canGenerate: false,
     pinnedId: null,
   };
@@ -167,7 +183,8 @@ function GameAudioToggle({ label, description, checked, disabled, className, onT
 }
 
 export interface GameAudioSetupSectionProps {
-  connections: readonly GameAudioSetupConnection[];
+  speechConnections: readonly GameAudioSetupConnection[];
+  generationConnections: readonly GameAudioSetupConnection[];
   voiceConnectionId: string | null;
   onVoiceConnectionChange: (id: string | null) => void;
   sfxConnectionId: string | null;
@@ -184,7 +201,8 @@ export interface GameAudioSetupSectionProps {
 }
 
 export function GameAudioSetupSection({
-  connections,
+  speechConnections,
+  generationConnections,
   voiceConnectionId,
   onVoiceConnectionChange,
   sfxConnectionId,
@@ -204,7 +222,7 @@ export function GameAudioSetupSection({
   // A connection that cannot generate for a lane is not offered there, but one
   // already pinned stays listed so the pin can be seen and changed.
   const optionsFor = (purpose: GameAudioPurpose, selectedId: string | null) =>
-    connections.filter(
+    generationConnections.filter(
       (connection) => audioConnectionSupportsPurpose(connection, purpose) || connection.id === selectedId,
     );
 
@@ -232,7 +250,7 @@ export function GameAudioSetupSection({
         label={localizeUi("ui.game.gamesetupwizard.voiceConnection")}
         emptyLabel={localizeUi("ui.game.gamesetupwizard.useTheDefaultVoiceConnection")}
         value={voiceConnectionId}
-        options={connections}
+        options={speechConnections}
         preview={voicePreview}
         incapableNote={null}
         onChange={onVoiceConnectionChange}
@@ -284,7 +302,7 @@ export function GameAudioSetupSection({
         onToggle={() => onEnableGameMusicChange(!enableGameMusic)}
       />
 
-      {connections.length === 0 ? (
+      {speechConnections.length === 0 && generationConnections.length === 0 ? (
         <p className="mt-2 text-[0.55rem] text-amber-700 dark:text-amber-400/80">
           {localizeUi("ui.game.gamesetupwizard.noAudioConnectionsFoundAddOneInSettings")}
         </p>

@@ -207,7 +207,7 @@ import {
   type RulesetCombatSeeds,
 } from "../../lib/ruleset-combat-bridge";
 import { useSceneAnalysis } from "../../hooks/use-scene-analysis";
-import { useEffectiveAudioConfig } from "../../hooks/use-tts";
+import { useGameAudioLaneReadiness } from "../../hooks/use-tts";
 import { useSidecarStore } from "../../stores/sidecar.store";
 import { parsePartyDialogue } from "../../lib/party-dialogue-parser";
 import { dispatchSpotifySceneTrackChange } from "../../lib/spotify-playback-events";
@@ -2555,16 +2555,13 @@ function GameSurfaceComponent({
   const gameVoiceConnectionId = effectiveGameAudioPin(chatMeta, "speech");
   const gameSfxConnectionId = effectiveGameAudioPin(chatMeta, "sfx");
   const gameMusicConnectionId = effectiveGameAudioPin(chatMeta, "music");
-  const { data: effectiveSfxAudio } = useEffectiveAudioConfig("sfx", gameSfxConnectionId);
-  const { data: effectiveMusicAudio } = useEffectiveAudioConfig("music", gameMusicConnectionId);
-  // gameAudioEnabled already means "this engine supports the purpose and this
-  // connection opted in", so the surface does not repeat either half.
-  const generateGameSoundEffects =
-    effectiveSfxAudio?.gameAudioEnabled === true && chatMeta.gameAudioSoundEffectsEnabled !== false;
+  const { data: sfxLane } = useGameAudioLaneReadiness("sfx", gameSfxConnectionId);
+  const { data: musicLane } = useGameAudioLaneReadiness("music", gameMusicConnectionId);
+  // enabled already means "this engine supports the lane, opted in, and has a key",
+  // so the surface does not repeat any of it.
+  const generateGameSoundEffects = sfxLane?.enabled === true && chatMeta.gameAudioSoundEffectsEnabled !== false;
   const generateGameMusic =
-    effectiveMusicAudio?.gameAudioEnabled === true &&
-    chatMeta.gameAudioMusicEnabled !== false &&
-    !useMusicDjPlayerMusic;
+    musicLane?.enabled === true && chatMeta.gameAudioMusicEnabled !== false && !useMusicDjPlayerMusic;
   const sceneVideosQuery = useQuery({
     queryKey: ["game", "scene-videos", activeChatId],
     queryFn: () => api.get<{ videos: GeneratedSceneVideo[] }>(`/game/scene-videos/${activeChatId}`),

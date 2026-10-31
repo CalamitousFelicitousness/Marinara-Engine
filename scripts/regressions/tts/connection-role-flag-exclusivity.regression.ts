@@ -75,6 +75,17 @@ try {
       ...extra,
     } as never))!;
 
+  const makeGeneration = async (name: string, extra: Record<string, unknown> = {}) =>
+    (await connections.create({
+      name,
+      provider: "audio_generation",
+      apiKey: `${name}-key`,
+      baseUrl: "",
+      model: "",
+      audioGenerationSource: "elevenlabs",
+      ...extra,
+    } as never))!;
+
   const make = async (name: string, provider: string, extra: Record<string, unknown> = {}) =>
     (await connections.create({ name, provider, apiKey: "", baseUrl: "", model: "", ...extra } as never))!;
 
@@ -167,9 +178,9 @@ try {
     );
   }
 
-  // ── Purpose pairs are unique among audio connections ──
-  const sfxA = await makeAudio("Sfx A", { defaultForSfx: true });
-  const sfxB = await makeAudio("Sfx B", { defaultForSfx: true });
+  // ── Purpose pairs are unique among Music & Sound Effects connections ──
+  const sfxA = await makeGeneration("Sfx A", { defaultForSfx: true });
+  const sfxB = await makeGeneration("Sfx B", { defaultForSfx: true });
   {
     assert.equal((await flagsOf(sfxB.id)).defaultForSfx, "true", "the newest sfx default holds the flag");
     assert.equal((await flagsOf(sfxA.id)).defaultForSfx, "false", "the previous sfx default is evicted");
@@ -206,21 +217,29 @@ try {
     assert.equal(flags.defaultForMusic, "true", "while the music lane is untouched");
   }
 
-  // ── Purpose flags belong to audio connections only ──
+  // ── Purpose flags belong to Music & Sound Effects connections only ──
   {
+    const speech = await makeAudio("Speech", { defaultForSfx: true, defaultForMusic: true });
+    const speechFlags = await flagsOf(speech.id);
+    assert.equal(speechFlags.defaultForSfx, "false", "a speech connection cannot claim the sound effect lane");
+    assert.equal(speechFlags.defaultForMusic, "false", "a speech connection cannot claim the music lane");
     const notAudio = await make("Language", "openai", { defaultForSfx: true, fallbackForMusic: true } as never);
     const flags = await flagsOf(notAudio.id);
     assert.equal(flags.defaultForSfx, "false", "a language connection cannot claim the sound effect lane");
     assert.equal(flags.fallbackForMusic, "false", "a language connection cannot claim the music lane");
   }
 
-  // ── Leaving the audio category releases every purpose flag ──
+  // ── Leaving the generation category releases every purpose flag ──
   {
-    const leaver = await makeAudio("Leaver", { defaultForSfx: true, defaultForMusic: true });
-    await connections.update(leaver.id, { provider: "openai" } as never);
+    const leaver = await makeGeneration("Leaver", { defaultForSfx: true, defaultForMusic: true });
+    await connections.update(leaver.id, { provider: "audio" } as never);
     const flags = await flagsOf(leaver.id);
-    assert.equal(flags.defaultForSfx, "false", "a row that stops being audio cannot answer for sound effects");
-    assert.equal(flags.defaultForMusic, "false", "a row that stops being audio cannot answer for music");
+    assert.equal(
+      flags.defaultForSfx,
+      "false",
+      "a row that becomes a speech connection cannot answer for sound effects",
+    );
+    assert.equal(flags.defaultForMusic, "false", "a row that becomes a speech connection cannot answer for music");
     assert.equal(flags.fallbackForSfx, "false", "including the fallback sides");
     assert.equal(flags.fallbackForMusic, "false", "including the fallback sides");
   }
@@ -229,9 +248,9 @@ try {
   // Fresh rows, because a getter that read the wrong column would still find
   // something as long as some row held any purpose flag.
   {
-    const sfxDefaultRow = await makeAudio("Getter Sfx Default", { defaultForSfx: true });
-    const musicDefaultRow = await makeAudio("Getter Music Default", { defaultForMusic: true });
-    const sfxFallbackRow = await makeAudio("Getter Sfx Fallback", { fallbackForSfx: true });
+    const sfxDefaultRow = await makeGeneration("Getter Sfx Default", { defaultForSfx: true });
+    const musicDefaultRow = await makeGeneration("Getter Music Default", { defaultForMusic: true });
+    const sfxFallbackRow = await makeGeneration("Getter Sfx Fallback", { fallbackForSfx: true });
     assert.equal(
       (await connections.getDefaultForAudioPurpose("sfx"))?.id,
       sfxDefaultRow.id,
@@ -256,7 +275,7 @@ try {
 
   // ── A copy is a new connection, not a second holder of the same roles ──
   {
-    const original = await makeAudio("Original", {
+    const original = await makeGeneration("Original", {
       defaultForAgents: true,
       defaultForSfx: true,
       fallbackForMusic: true,
@@ -279,7 +298,7 @@ try {
 
   // ── A quarantined import never answers as a default ──
   {
-    const quarantined = await makeAudio("Quarantined", { defaultForMusic: true });
+    const quarantined = await makeGeneration("Quarantined", { defaultForMusic: true });
     await db
       .update(schemaModule.apiConnections)
       .set({ profileImportReviewRequired: "true" })

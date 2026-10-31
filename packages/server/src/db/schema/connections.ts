@@ -117,13 +117,13 @@ export const apiConnections = fileTable("api_connections", {
   audioMusic: text("audio_music").notNull().default("false"),
   /** Synthesis settings owned by this audio connection (JSON). Absent fields inherit the app-level TTS settings. */
   audioSettings: text("audio_settings"),
-  /** Audio connections: preferred engine for game sound effects (only one allowed). */
+  /** Music & sound effects connections: preferred engine for game sound effects (only one allowed). */
   defaultForSfx: text("default_for_sfx").notNull().default("false"),
-  /** Audio connections: sound effect engine used when no sfx default exists. */
+  /** Music & sound effects connections: sound effect engine used when no sfx default exists. */
   fallbackForSfx: text("fallback_for_sfx").notNull().default("false"),
-  /** Audio connections: preferred engine for game music (only one allowed). */
+  /** Music & sound effects connections: preferred engine for game music (only one allowed). */
   defaultForMusic: text("default_for_music").notNull().default("false"),
-  /** Audio connections: music engine used when no music default exists. */
+  /** Music & sound effects connections: music engine used when no music default exists. */
   fallbackForMusic: text("fallback_for_music").notNull().default("false"),
   audioMusicEndpoint: text("audio_music_endpoint"),
   audioSoundEffectsEndpoint: text("audio_sound_effects_endpoint"),

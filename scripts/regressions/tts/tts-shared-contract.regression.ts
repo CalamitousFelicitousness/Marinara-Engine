@@ -35,7 +35,6 @@ import {
   TTS_SOURCE_DEFINITIONS,
   TTS_SOURCE_IDS,
   TTS_SOURCES_WITH_MODEL_LISTING,
-  ttsSourceSupportsGameAudio,
 } from "../../../packages/shared/src/constants/tts-sources.js";
 import { AUDIO_PURPOSES, GAME_AUDIO_PURPOSES } from "../../../packages/shared/src/constants/audio-purposes.js";
 import {
@@ -146,8 +145,6 @@ for (const id of TTS_SOURCE_IDS) {
       "maxInputChars",
       "name",
       "recommendedChunkChars",
-      "supportsGameMusic",
-      "supportsGameSoundEffects",
     ],
     `${id}: definition shape must stay free of URL-policy fields`,
   );
@@ -155,45 +152,6 @@ for (const id of TTS_SOURCE_IDS) {
     ["fixed", "editable"].includes(TTS_SOURCE_DEFINITIONS[id].baseUrlMode),
     `${id}: baseUrlMode must name a presentation mode`,
   );
-  assert.equal(
-    typeof TTS_SOURCE_DEFINITIONS[id].supportsGameSoundEffects,
-    "boolean",
-    `${id}: game sound effect capability must be stated, not inferred`,
-  );
-  assert.equal(
-    typeof TTS_SOURCE_DEFINITIONS[id].supportsGameMusic,
-    "boolean",
-    `${id}: game music capability must be stated, not inferred`,
-  );
-  assert.equal(
-    ttsSourceSupportsGameAudio(id, "sfx"),
-    TTS_SOURCE_DEFINITIONS[id].supportsGameSoundEffects,
-    `${id}: the sfx helper must read the table`,
-  );
-  assert.equal(
-    ttsSourceSupportsGameAudio(id, "music"),
-    TTS_SOURCE_DEFINITIONS[id].supportsGameMusic,
-    `${id}: the music helper must read the table`,
-  );
-}
-// The one backend with a generator. A source flagged capable without one turns
-// the route's dispatch guard into the real gate, which is the arrangement the
-// table exists to replace.
-assert.equal(TTS_SOURCE_DEFINITIONS.elevenlabs.supportsGameSoundEffects, true, "ElevenLabs generates sound effects");
-assert.equal(TTS_SOURCE_DEFINITIONS.elevenlabs.supportsGameMusic, true, "ElevenLabs composes music");
-// ElevenLabs being the only capable source makes a helper hardcoded to it agree
-// with the table on every current row. Flipping a second source proves the
-// helper is reading the table rather than naming a backend.
-{
-  const restore = TTS_SOURCE_DEFINITIONS.openai.supportsGameMusic;
-  TTS_SOURCE_DEFINITIONS.openai.supportsGameMusic = true;
-  assert.equal(
-    ttsSourceSupportsGameAudio("openai", "music"),
-    true,
-    "capability must follow the table, not a source id",
-  );
-  assert.equal(ttsSourceSupportsGameAudio("openai", "sfx"), false, "each purpose must read its own column");
-  TTS_SOURCE_DEFINITIONS.openai.supportsGameMusic = restore;
 }
 // baseUrlMode decides whether the editor offers an address field. If the policy
 // layer ever reads it, "fixed" silently acquires a second meaning of "exempt",
@@ -383,10 +341,10 @@ assert.doesNotMatch(routeSource, /const TTS_SOURCE_DEFAULTS/u, "the server must 
 assert.doesNotMatch(routeSource, /const TTS_SOURCES\b/u, "the server must not re-declare the source list");
 assert.match(routeSource, /TTS_SOURCE_DEFINITIONS/u, "the server reads the shared definitions");
 
-// ── Game audio asks the table which sources may generate ──
-// The gate and the generator are different questions. Answering both with one
-// source literal is what made "capable" and "implemented" the same fact, so the
-// gate must read the table even while ElevenLabs is the only generator.
+// ── Game audio delegates to the generation connections ──
+// Music and sound effects resolve Music & Sound Effects connections, whose
+// capability is the shared audioConnectionSupportsGeneration answer, so the
+// route neither spells a source literal nor consults the speech source table.
 assert.equal(GAME_AUDIO_PURPOSES.length, 2, "game audio serves exactly the sfx and music purposes");
 assert.match(
   routeSource,
@@ -405,8 +363,14 @@ assert.match(
   );
   assert.match(
     gameAudioRoute,
-    /ttsSourceSupportsGameAudio|gameAudioEnabled/u,
-    "the gate must read the shared capability answer",
+    /generateAudioAsset\(app\.db, \{ kind,/u,
+    "the route must hand the lane to the generation service",
+  );
+  const serviceSource = readSource("packages/server/src/services/audio/generative-audio.service.ts");
+  assert.match(
+    serviceSource,
+    /audioConnectionSupportsGeneration\(row, "music"\)/u,
+    "the generation gate must read the shared capability answer",
   );
 }
 
@@ -548,7 +512,7 @@ for (const [file, source] of [
   // Scoping is what stops a music knob being offered while editing speech.
   const speechSets = audioParameterSetsFor("openai", "speech").map((set) => set.id);
   assert.ok(speechSets.includes("chatterbox"), "the OpenAI-compatible lane offers Chatterbox");
-  assert.deepEqual(audioParameterSetsFor("openai", "music"), [], "no music set exists for an OpenAI-compatible row");
+  assert.deepEqual(audioParameterSetsFor("elevenlabs", "music"), [], "speech connections carry no music parameters");
   assert.deepEqual(
     audioParameterSetsFor("elevenlabs", "speech").map((set) => set.id),
     ["elevenlabs-voice"],

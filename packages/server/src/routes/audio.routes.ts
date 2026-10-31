@@ -40,11 +40,11 @@ const audioFailureCodes = [
 
 export async function audioRoutes(app: FastifyInstance) {
   app.get("/config", async (req, reply) => {
-    const { audioConnectionId } = z
-      .object({ audioConnectionId: z.string().trim().max(200).optional() })
+    const { audioConnectionId, kind } = z
+      .object({ audioConnectionId: z.string().trim().max(200).optional(), kind: z.enum(["music", "sfx"]).optional() })
       .parse(req.query);
     try {
-      return await resolveGenerativeAudioReadiness(app.db, audioConnectionId);
+      return await resolveGenerativeAudioReadiness(app.db, audioConnectionId, kind);
     } catch (error) {
       if (!(error instanceof AudioGenerationConfigurationError)) throw error;
       if (error.statusCode === 409) return reply.status(409).send({ error: error.message });

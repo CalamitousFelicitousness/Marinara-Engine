@@ -1,100 +1,48 @@
 // ──────────────────────────────────────────────
 // Engine parameters
 // ──────────────────────────────────────────────
-// The lane picker, the editor, and the proof.
-//
-// Parameters are per lane because an engine asked to speak and the same engine
-// asked to score a scene take different keys. Only the lanes this connection can
-// actually serve are offered, which its capability switches decide.
+// The editor and the proof, for the speech request.
 //
 // The preview is the point of the section: parameters are free-form by
 // necessity, so the only honest answer to "did that land" is the request itself.
 // It describes the SAVED row, so it says so while there are unsaved edits rather
 // than showing a stale body as though it were current.
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { ChevronDown, ChevronUp, RefreshCw, SlidersHorizontal } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
-import {
-  AUDIO_PURPOSES,
-  isGameAudioPurpose,
-  ttsSourceSupportsGameAudio,
-  type AudioParameterMap,
-  type AudioParameterRecord,
-  type AudioPurpose,
-  type TTSSourceId,
-} from "@marinara-engine/shared";
-import { useEffectiveAudioRequest, useTTSModels } from "../../../hooks/use-tts";
-import { formatAudioRate } from "../../../lib/model-cost";
+import type { AudioParameterMap, AudioParameterRecord, TTSSourceId } from "@marinara-engine/shared";
+import { useEffectiveAudioRequest } from "../../../hooks/use-tts";
 import { cn } from "../../../lib/utils";
 import { AudioParameterEditor } from "./AudioParameterEditor";
 
 export interface AudioParameterSectionProps {
   connectionId: string;
   source: TTSSourceId;
-  /** The connection's own capability switches, which decide the lanes on offer. */
-  soundEffects: boolean;
-  music: boolean;
   value: AudioParameterMap | undefined;
   onChange: (next: AudioParameterMap) => void;
   /** True while the editor holds changes the server has not seen. */
   dirty: boolean;
 }
 
-const PURPOSE_LABEL_KEYS: Record<AudioPurpose, string> = {
-  speech: "ui.connections.audioparametereditor.voice",
-  sfx: "ui.connections.audioparametereditor.soundEffects",
-  music: "ui.connections.audioparametereditor.music",
-};
-
-export function AudioParameterSection({
-  connectionId,
-  source,
-  soundEffects,
-  music,
-  value,
-  onChange,
-  dirty,
-}: AudioParameterSectionProps) {
+export function AudioParameterSection({ connectionId, source, value, onChange, dirty }: AudioParameterSectionProps) {
   const { t: localizeUi } = useUiTranslation();
   const [expanded, setExpanded] = useState(false);
-  const [purpose, setPurpose] = useState<AudioPurpose>("speech");
   const [previewOpen, setPreviewOpen] = useState(false);
-
-  // A lane is offered when this backend can serve it and this connection opted
-  // in. Reading the switches rather than the source alone keeps the tabs in step
-  // with what the editor above actually has turned on.
-  const lanes = AUDIO_PURPOSES.filter((candidate) => {
-    if (!isGameAudioPurpose(candidate)) return true;
-    if (!ttsSourceSupportsGameAudio(source, candidate)) return false;
-    return candidate === "sfx" ? soundEffects : music;
-  });
-  const active = lanes.includes(purpose) ? purpose : "speech";
 
   const {
     data: preview,
     isFetching,
     refetch,
-  } = useEffectiveAudioRequest(active, connectionId, previewOpen && expanded && !dirty);
+  } = useEffectiveAudioRequest(connectionId, previewOpen && expanded && !dirty);
 
-  const record: AudioParameterRecord = value?.[active] ?? {};
-
-  // The generator lanes pick their engine by model id rather than by route, so
-  // the price of this lane is the price of whatever model its parameters name.
-  const catalogScope = useMemo(() => ({ connectionId }), [connectionId]);
-  const { data: catalog } = useTTSModels(source, catalogScope, expanded && isGameAudioPurpose(active));
-  const modelRate = useMemo(() => {
-    const named = typeof record.model === "string" ? record.model.trim() : "";
-    if (!named || catalog?.source !== source) return null;
-    const pricing = catalog.models.find((entry) => entry.id === named)?.pricing;
-    return pricing ? formatAudioRate(pricing, localizeUi) : null;
-  }, [catalog, source, record.model, localizeUi]);
+  const record: AudioParameterRecord = value?.speech ?? {};
   const setRecord = (next: AudioParameterRecord) => {
     const map: AudioParameterMap = { ...(value ?? {}) };
-    // An emptied lane is removed rather than stored as {}, so a connection
+    // An emptied record is removed rather than stored as {}, so a connection
     // nobody parameterized keeps inheriting instead of pinning an empty answer.
-    if (Object.keys(next).length === 0) delete map[active];
-    else map[active] = next;
+    if (Object.keys(next).length === 0) delete map.speech;
+    else map.speech = next;
     onChange(map);
   };
 
@@ -118,34 +66,7 @@ export function AudioParameterSection({
             {localizeUi("ui.connections.audioparametereditor.description")}
           </p>
 
-          {lanes.length > 1 && (
-            <div className="flex gap-1">
-              {lanes.map((lane) => (
-                <button
-                  key={lane}
-                  type="button"
-                  onClick={() => setPurpose(lane)}
-                  aria-pressed={active === lane}
-                  className={cn(
-                    "rounded-md px-2 py-1 text-[0.625rem] font-medium transition-colors",
-                    active === lane
-                      ? "bg-[var(--primary)]/15 text-[var(--foreground)]"
-                      : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]",
-                  )}
-                >
-                  {localizeUi(PURPOSE_LABEL_KEYS[lane])}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <AudioParameterEditor source={source} purpose={active} value={record} onChange={setRecord} />
-
-          {modelRate && (
-            <p className="text-[0.625rem] text-sky-400">
-              {localizeUi("ui.connections.modelcost.rateLabel")} {modelRate}
-            </p>
-          )}
+          <AudioParameterEditor source={source} purpose="speech" value={record} onChange={setRecord} />
 
           <div className="border-t border-[var(--border)] pt-2">
             <button

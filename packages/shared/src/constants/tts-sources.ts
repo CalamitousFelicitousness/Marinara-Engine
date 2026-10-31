@@ -19,8 +19,6 @@
 // forced response formats, auth header shape, gzip decoding) is deliberately
 // absent: it varies by model, not by source, and lives in the server providers.
 
-import type { GameAudioPurpose } from "./audio-purposes.js";
-
 /**
  * NanoGPT speech models, shown before the live /audio-models listing arrives
  * and whenever it cannot be reached. Their catalog moves, so the model field
@@ -66,14 +64,6 @@ export interface TTSSourceDefinition {
    * policy is source-blind.
    */
   baseUrlMode: "fixed" | "editable";
-  /**
-   * Whether /tts/game-audio may render sound effects with this backend. A gate,
-   * not a dispatch: the generator itself is source-specific and lives in the
-   * route, so a source turning this on needs its own generator first.
-   */
-  supportsGameSoundEffects: boolean;
-  /** Whether /tts/game-audio may compose music with this backend. Same gate rule. */
-  supportsGameMusic: boolean;
 }
 
 export const TTS_SOURCE_DEFINITIONS: Record<TTSSourceId, TTSSourceDefinition> = {
@@ -88,8 +78,6 @@ export const TTS_SOURCE_DEFINITIONS: Record<TTSSourceId, TTSSourceDefinition> = 
     // Doubles as the lane for every OpenAI-compatible engine, local ones included,
     // so the address is the setting that matters here.
     baseUrlMode: "editable",
-    supportsGameSoundEffects: false,
-    supportsGameMusic: false,
   },
   elevenlabs: {
     id: "elevenlabs",
@@ -100,8 +88,6 @@ export const TTS_SOURCE_DEFINITIONS: Record<TTSSourceId, TTSSourceDefinition> = 
     maxInputChars: 4096,
     recommendedChunkChars: 900,
     baseUrlMode: "fixed",
-    supportsGameSoundEffects: true,
-    supportsGameMusic: true,
   },
   nanogpt: {
     id: "nanogpt",
@@ -122,8 +108,6 @@ export const TTS_SOURCE_DEFINITIONS: Record<TTSSourceId, TTSSourceDefinition> = 
     // Both lanes are model choices on the same speech endpoint rather than
     // routes of their own, and both answer asynchronously. The connection names
     // the model through its per-purpose audio parameters.
-    supportsGameSoundEffects: true,
-    supportsGameMusic: true,
   },
   pockettts: {
     id: "pockettts",
@@ -135,8 +119,6 @@ export const TTS_SOURCE_DEFINITIONS: Record<TTSSourceId, TTSSourceDefinition> = 
     recommendedChunkChars: 900,
     // Self-hosted: the port varies per install.
     baseUrlMode: "editable",
-    supportsGameSoundEffects: false,
-    supportsGameMusic: false,
   },
   xai: {
     id: "xai",
@@ -147,8 +129,6 @@ export const TTS_SOURCE_DEFINITIONS: Record<TTSSourceId, TTSSourceDefinition> = 
     maxInputChars: 4096,
     recommendedChunkChars: 900,
     baseUrlMode: "fixed",
-    supportsGameSoundEffects: false,
-    supportsGameMusic: false,
   },
 };
 
@@ -164,21 +144,4 @@ export function ttsSourceMaxInputChars(source: TTSSourceId): number {
  */
 export function toTTSSourceId(value: unknown): TTSSourceId {
   return typeof value === "string" && value in TTS_SOURCE_DEFINITIONS ? (value as TTSSourceId) : "elevenlabs";
-}
-
-/** Whether a source may generate one of the game-audio purposes. */
-export function ttsSourceSupportsGameAudio(source: TTSSourceId, purpose: GameAudioPurpose): boolean {
-  const definition = TTS_SOURCE_DEFINITIONS[source];
-  return purpose === "sfx" ? definition.supportsGameSoundEffects : definition.supportsGameMusic;
-}
-
-/**
- * Product names of the sources that can generate a purpose, for the empty state
- * of a picker that has nothing to offer. Derived rather than written down, so a
- * source that gains the capability is named without touching the copy.
- */
-export function ttsSourceNamesForGameAudio(purpose: GameAudioPurpose): string[] {
-  return TTS_SOURCE_IDS.filter((id) => ttsSourceSupportsGameAudio(id, purpose)).map(
-    (id) => TTS_SOURCE_DEFINITIONS[id].name,
-  );
 }

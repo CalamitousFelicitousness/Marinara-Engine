@@ -13,9 +13,14 @@ import {
 import type { DB } from "../../db/connection.js";
 import { isDebugAgentsEnabled } from "../../config/runtime-config.js";
 import { logger, logDebugOverride } from "../../lib/logger.js";
+import {
+  legacyGenerationSupport,
+  migrateGenerativeAudioConnections,
+} from "../connections/generative-audio-connection-migration.js";
 import { buildAssetManifest, GAME_ASSETS_DIR } from "../game/asset-manifest.service.js";
 import { createAppSettingsStorage } from "../storage/app-settings.storage.js";
 import { createConnectionsStorage } from "../storage/connections.storage.js";
+import { reserveOutboundSlot } from "../connections/outbound-request-pacer.js";
 import {
   generateAudioBytes,
   validateSunoMusicCallback,
@@ -31,6 +36,7 @@ type ResolvedConfig = GenerativeAudioProviderConfig & {
   soundEffects: boolean;
   legacyId: string | null;
 };
+const warnedOptionalMigrationFailures = new WeakSet<DB>();
 
 export class AudioGenerationConfigurationError extends Error {
   constructor(
@@ -41,8 +47,15 @@ export class AudioGenerationConfigurationError extends Error {
   }
 }
 
-/** Imported endpoints are never promoted here; migration skips quarantined rows. */
-export async function resolveGenerativeAudioConfig(db: DB, requestedId?: string | null): Promise<ResolvedConfig> {
+/**
+ * Imported endpoints are never promoted here; migration skips quarantined rows.
+ * With `kind`, that lane's own default and fallback outrank the shared pair.
+ */
+export async function resolveGenerativeAudioConfig(
+  db: DB,
+  requestedId?: string | null,
+  kind?: "music" | "sfx",
+): Promise<ResolvedConfig> {
   const connections = createConnectionsStorage(db);
   let row;
   if (requestedId) {
@@ -51,6 +64,14 @@ export async function resolveGenerativeAudioConfig(db: DB, requestedId?: string 
       candidate?.provider === "audio_generation"
         ? candidate
         : await connections.getAudioGenerationForLegacyConnection(requestedId);
+    if (
+      !row &&
+      candidate?.provider === "audio" &&
+      (legacyGenerationSupport(candidate, "music") || legacyGenerationSupport(candidate, "sfx"))
+    ) {
+      await migrateGenerativeAudioConnections(db);
+      row = await connections.getAudioGenerationForLegacyConnection(requestedId);
+    }
     if (!row) {
       if (candidate?.provider === "audio") {
         throw new AudioGenerationConfigurationError(
@@ -63,7 +84,25 @@ export async function resolveGenerativeAudioConfig(db: DB, requestedId?: string 
       );
     }
   } else {
-    row = (await connections.getDefaultForAudioGeneration()) ?? (await connections.getFallbackForAudioGeneration());
+    const lane = async () =>
+      (kind && (await connections.getDefaultForAudioPurpose(kind))) ||
+      (kind && (await connections.getFallbackForAudioPurpose(kind))) ||
+      (await connections.getDefaultForAudioGeneration()) ||
+      (await connections.getFallbackForAudioGeneration());
+    row = await lane();
+    if (!row) {
+      // Legacy/import fixtures can reach this bridge without the startup split.
+      // Configured connections never pay for a migration transaction per cue.
+      try {
+        await migrateGenerativeAudioConnections(db);
+      } catch (error) {
+        if (!warnedOptionalMigrationFailures.has(db)) {
+          warnedOptionalMigrationFailures.add(db);
+          logger.warn(error, "[migration] Deferring the optional unconfigured music and sound-effect split");
+        }
+      }
+      row = await lane();
+    }
     if (!row) {
       // Preserve the old explicit-source failure until the user chooses a new
       // independent generation default. Never borrow another connection's key.
@@ -110,8 +149,8 @@ const locks = new Map<string, Promise<GeneratedAudioAsset>>();
 const testPublicationTails = new Map<string, Promise<GeneratedAudioAsset>>();
 
 /** Report each usable capability independently; checking readiness never calls a provider. */
-export async function resolveGenerativeAudioReadiness(db: DB, requestedId?: string | null) {
-  const config = await resolveGenerativeAudioConfig(db, requestedId);
+export async function resolveGenerativeAudioReadiness(db: DB, requestedId?: string | null, kind?: "music" | "sfx") {
+  const config = await resolveGenerativeAudioConfig(db, requestedId, kind);
   const authorized = config.source === "custom" || Boolean(config.apiKey);
   let music = config.music && authorized;
   const soundEffects = config.soundEffects && authorized;
@@ -204,6 +243,9 @@ async function compose(
       /* compose below */
     }
   }
+  // Paced before the provider deadline starts, so waiting for a slot never eats the composition's budget.
+  const slot = reserveOutboundSlot(config.id);
+  if (slot) await slot;
   const bytes = await generateAudioBytes(config, kind, prompt, {
     lengthMs: context?.lengthMs ?? (context ? 120_000 : 5_000),
   });
@@ -245,7 +287,7 @@ export async function generateAudioAsset(
   },
 ): Promise<GeneratedAudioAsset> {
   request.signal?.throwIfAborted();
-  const config = await resolveGenerativeAudioConfig(db, request.audioConnectionId);
+  const config = await resolveGenerativeAudioConfig(db, request.audioConnectionId, request.kind);
   request.signal?.throwIfAborted();
   if (!(request.kind === "music" ? config.music : config.soundEffects)) {
     throw new AudioGenerationConfigurationError(

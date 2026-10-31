@@ -1,5 +1,6 @@
 import { partialInput } from "@marinara-engine/shared";
 import { resolveDecisionConnection } from "../services/decision/decision-connection.js";
+import { migrateGenerativeAudioConnections } from "../services/connections/generative-audio-connection-migration.js";
 import { validateSunoMusicCallback } from "../services/audio/generative-audio-providers.js";
 import { askNoulQuestions } from "../services/decision/system-one.client.js";
 import { connectionChatTarget, probeDecisionSlot } from "../services/decision/sidecar-decision.backend.js";
@@ -497,6 +498,14 @@ function knownStabilityImageModels() {
 
 export async function connectionsRoutes(app: FastifyInstance) {
   const storage = createConnectionsStorage(app.db);
+  const migrateLegacyAudio = async (provider?: string) => {
+    if (provider !== "audio") return;
+    try {
+      await migrateGenerativeAudioConnections(app.db);
+    } catch (error) {
+      logger.warn(error, "[migration] Connection saved; deferring its optional music and sound-effect split");
+    }
+  };
   const maskConnection = <T extends { apiKeyEncrypted?: unknown; managementTokenEncrypted?: unknown } | null>(
     conn: T,
   ): T =>
@@ -561,6 +570,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
     if (validationError) return reply.status(400).send({ error: validationError });
     return withLongTermMemoryEmbeddingChange(app.db, reply, async () => {
       const created = await storage.create(input);
+      await migrateLegacyAudio(created?.provider);
       resetMemoryRecallVectorizerCache();
       return maskConnection(created ? await storage.getById(created.id) : null);
     });
@@ -575,6 +585,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
     if (validationError) return reply.status(400).send({ error: validationError });
     return withLongTermMemoryEmbeddingChange(app.db, reply, async () => {
       const updated = await storage.update(req.params.id, data);
+      await migrateLegacyAudio(updated?.provider);
       resetMemoryRecallVectorizerCache();
       return maskConnection(updated ? await storage.getById(updated.id) : null);
     });

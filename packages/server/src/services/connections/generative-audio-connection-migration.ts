@@ -1,4 +1,10 @@
-import { audioConnectionSupportsGeneration, TTS_SETTINGS_KEY, ttsConfigSchema } from "@marinara-engine/shared";
+import {
+  audioConnectionSupportsGeneration,
+  GENERATIVE_AUDIO_DEFAULTS,
+  parseAudioConnectionSettings,
+  TTS_SETTINGS_KEY,
+  ttsConfigSchema,
+} from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
 import { eq } from "../../db/file-query.js";
 import { apiConnections, appSettings } from "../../db/schema/index.js";
@@ -15,6 +21,25 @@ function warnInvalidConfig(db: DB, failure: "json" | "schema", issues?: Array<{ 
     { settingsKey: TTS_SETTINGS_KEY, failure, ...(issues ? { issues } : {}) },
     "[migration] Legacy TTS settings are unreadable; deferring their music and sound-effect split",
   );
+}
+
+const PURPOSE_FLAGS = ["defaultForSfx", "fallbackForSfx", "defaultForMusic", "fallbackForMusic"] as const;
+
+type LegacyAudioRow = Parameters<typeof audioConnectionSupportsGeneration>[0] & {
+  audioSource?: string | null;
+  audioSettings?: string | null;
+};
+
+/** NanoGPT audio rows name each lane's model in their parameters; their row model is a speech model. */
+function nanoGptLaneModel(row: LegacyAudioRow, kind: "music" | "sfx"): string {
+  const model = parseAudioConnectionSettings(row.audioSettings).audioParameters?.[kind]?.model;
+  return typeof model === "string" ? model.trim() : "";
+}
+
+export function legacyGenerationSupport(row: LegacyAudioRow, kind: "music" | "sfx"): boolean {
+  if (row.audioSource !== "nanogpt") return audioConnectionSupportsGeneration(row, kind);
+  const enabled = kind === "music" ? row.audioMusic : row.audioSoundEffects;
+  return (enabled === true || enabled === "true") && Boolean(nanoGptLaneModel(row, kind));
 }
 
 /** Split only enabled legacy generation settings. Speech rows, voices and old profile IDs survive. */
@@ -52,17 +77,25 @@ export async function migrateGenerativeAudioConnections(db: DB): Promise<void> {
         row.profileImportReviewRequired !== "true" &&
         row.fallbackForAgents === "true",
     );
+    const heldPurposeFlags = new Set(
+      PURPOSE_FLAGS.filter((flag) =>
+        rows.some(
+          (row) =>
+            row.provider === "audio_generation" && row.profileImportReviewRequired !== "true" && row[flag] === "true",
+        ),
+      ),
+    );
     const hasLegacyFallback = rows.some(
       (row) =>
         row.provider === "audio" &&
         row.profileImportReviewRequired !== "true" &&
         row.fallbackForAgents === "true" &&
-        (audioConnectionSupportsGeneration(row, "music") || audioConnectionSupportsGeneration(row, "sfx")),
+        (legacyGenerationSupport(row, "music") || legacyGenerationSupport(row, "sfx")),
     );
     for (const row of rows) {
       if (row.provider !== "audio" || row.profileImportReviewRequired === "true") continue;
-      const music = audioConnectionSupportsGeneration(row, "music");
-      const sfx = audioConnectionSupportsGeneration(row, "sfx");
+      const music = legacyGenerationSupport(row, "music");
+      const sfx = legacyGenerationSupport(row, "sfx");
       if (!music && !sfx) continue;
       const existing = rows.find(
         (candidate) =>
@@ -73,10 +106,15 @@ export async function migrateGenerativeAudioConnections(db: DB): Promise<void> {
         // Match the old generation resolver's address/model fallback, including a
         // custom endpoint stored in the source profile rather than the row.
         const source = row.audioSource ?? "elevenlabs";
+        const nanogpt = source === "nanogpt";
         const connectionProfile = chosenId === row.id ? cfg : cfg?.connectionProfiles[row.id];
         const sourceProfile =
           source === cfg?.source && !chosenId ? cfg : cfg?.sourceProfiles[source as "openai" | "elevenlabs"];
-        const defaultBase = source === "openai" ? "https://api.openai.com/v1" : "https://api.elevenlabs.io";
+        const defaultBase = nanogpt
+          ? GENERATIVE_AUDIO_DEFAULTS.nanogpt.baseUrl
+          : source === "openai"
+            ? "https://api.openai.com/v1"
+            : "https://api.elevenlabs.io";
         const baseUrl = row.baseUrl || (connectionProfile ? defaultBase : sourceProfile?.baseUrl || defaultBase);
         const becomesDefault = !hasDefault && (chosenId ? row.id === chosenId : row.defaultForAgents === "true");
         const becomesFallback =
@@ -86,20 +124,29 @@ export async function migrateGenerativeAudioConnections(db: DB): Promise<void> {
           id: newId(),
           name: `${row.name} — Music & Sound Effects`,
           provider: "audio_generation",
-          audioGenerationSource: row.audioSource === "openai" ? "custom" : "elevenlabs",
+          audioGenerationSource: nanogpt ? "nanogpt" : row.audioSource === "openai" ? "custom" : "elevenlabs",
           audioGenerationLegacyConnectionId: row.id,
           audioSource: null,
           audioVoice: null,
           baseUrl,
-          model:
-            source === "elevenlabs"
+          model: nanogpt
+            ? nanoGptLaneModel(row, "music")
+            : source === "elevenlabs"
               ? "music_v1"
               : row.model || (connectionProfile ? "tts-1" : sourceProfile?.model || "tts-1"),
-          audioSoundEffectsModel: source === "elevenlabs" ? "eleven_text_to_sound_v2" : null,
+          audioSoundEffectsModel: nanogpt
+            ? nanoGptLaneModel(row, "sfx") || null
+            : source === "elevenlabs"
+              ? "eleven_text_to_sound_v2"
+              : null,
           audioMusic: String(music),
           audioSoundEffects: String(sfx),
           defaultForAgents: String(becomesDefault),
           fallbackForAgents: String(becomesFallback),
+          // The sound-effect and music lanes move with the engine that served them.
+          ...Object.fromEntries(
+            PURPOSE_FLAGS.map((flag) => [flag, String(row[flag] === "true" && !heldPurposeFlags.has(flag))]),
+          ),
           isDefault: "false",
           fallbackForMain: "false",
           useForRandom: "false",
@@ -108,6 +155,7 @@ export async function migrateGenerativeAudioConnections(db: DB): Promise<void> {
           updatedAt: timestamp,
         });
         hasDefault ||= becomesDefault;
+        for (const flag of PURPOSE_FLAGS) if (row[flag] === "true") heldPurposeFlags.add(flag);
         hasFallback ||= becomesFallback;
         created++;
       }
@@ -115,7 +163,11 @@ export async function migrateGenerativeAudioConnections(db: DB): Promise<void> {
       // the next boot cannot recreate a connection the user deliberately removed.
       await tx
         .update(apiConnections)
-        .set({ audioMusic: "false", audioSoundEffects: "false" })
+        .set({
+          audioMusic: "false",
+          audioSoundEffects: "false",
+          ...Object.fromEntries(PURPOSE_FLAGS.map((flag) => [flag, "false"])),
+        })
         .where(eq(apiConnections.id, row.id));
     }
 

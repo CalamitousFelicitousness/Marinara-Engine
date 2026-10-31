@@ -3,10 +3,10 @@
 // ──────────────────────────────────────────────
 // Reading a provider's "slow down" answer off a response.
 //
-// /speak and /game-audio used to flatten every non-ok status to 502, which threw
+// /speak used to flatten every non-ok status to 502, which threw
 // away both the fact that it was a rate limit and the Retry-After the provider
 // sent. The client then retried on its own fixed backoff, which is the wrong
-// wait by construction. Now the routes answer 429 with the delay, and the client
+// wait by construction. Now /speak answers 429 with the delay, and the client
 // honours it.
 //
 // Statuses match isRateLimitError on the LLM side so both paths agree on what

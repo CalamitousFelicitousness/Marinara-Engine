@@ -28,6 +28,7 @@ import { createLibraryFoldersStorage } from "./services/storage/library-folders.
 import { migrateCharacterExtendedDescriptionsToLorebooks } from "./services/lorebook/extended-descriptions-migration.js";
 import { migrateLegacyChatParameters } from "./services/generation/legacy-chat-parameter-migration.js";
 import { migrateTtsSettingsToAudioConnection } from "./services/connections/tts-audio-connection-migration.js";
+import { migrateGenerativeAudioConnections } from "./services/connections/generative-audio-connection-migration.js";
 import { migrateTtsSourceProfilesToAudioConnections } from "./services/connections/tts-audio-connection-migration-v2.js";
 import { migrateTripoConnectionsToApiKey } from "./services/avatars/generation/tripo-key.js";
 import { migrateLegacyDefaultAgentPrompts } from "./services/agents/default-prompt-migration.js";
@@ -267,6 +268,12 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
     await startup.phase("migrate.tts-audio-presets", () => migrateTtsSourceProfilesToAudioConnections(db));
   } catch (error) {
     app.log.warn(error, "TTS audio-connection presets did not complete; they will retry next startup");
+  }
+  try {
+    // After the presets pass, so a music or sound-effect switch it seeds is split here too.
+    await startup.phase("migrate.generative-audio", () => migrateGenerativeAudioConnections(db));
+  } catch (error) {
+    app.log.warn(error, "Generative audio-connection migration did not complete; it will retry next startup");
   }
   try {
     await startup.phase("migrate.tripo-key", () => migrateTripoConnectionsToApiKey(db));

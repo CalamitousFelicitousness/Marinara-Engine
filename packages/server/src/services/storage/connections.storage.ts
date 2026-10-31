@@ -39,7 +39,7 @@ function withDecryptedKey<T extends { id: string; apiKeyEncrypted: string; maxRe
   return { ...row, apiKey: decryptApiKey(row.apiKeyEncrypted) };
 }
 
-/** The audio connection holding one purpose role flag, quarantined imports excluded. */
+/** The music & sound effects connection holding one purpose role flag, quarantined imports excluded. */
 async function findAudioConnectionByRoleFlag(db: DB, field: RoleFlagField) {
   const rows = await db
     .select()
@@ -47,7 +47,7 @@ async function findAudioConnectionByRoleFlag(db: DB, field: RoleFlagField) {
     .where(
       and(
         eq(apiConnections[field], "true"),
-        eq(apiConnections.provider, "audio"),
+        eq(apiConnections.provider, "audio_generation"),
         ne(apiConnections.profileImportReviewRequired, "true"),
       ),
     );
@@ -309,12 +309,12 @@ export function createConnectionsStorage(db: DB) {
       return withDecryptedKey(row);
     },
 
-    /** Audio connection preferred for one game-audio purpose (with decrypted key). */
+    /** Generation connection preferred for one game-audio purpose (with decrypted key). */
     async getDefaultForAudioPurpose(purpose: GameAudioPurpose) {
       return findAudioConnectionByRoleFlag(db, AUDIO_PURPOSE_ROLE_PAIRS[purpose].defaultField);
     },
 
-    /** Audio connection used for one game-audio purpose when it has no default. */
+    /** Generation connection used for one game-audio purpose when it has no default. */
     async getFallbackForAudioPurpose(purpose: GameAudioPurpose) {
       return findAudioConnectionByRoleFlag(db, AUDIO_PURPOSE_ROLE_PAIRS[purpose].fallbackField);
     },
@@ -435,10 +435,10 @@ export function createConnectionsStorage(db: DB) {
         audioSoundEffects: String(input.audioSoundEffects ?? false),
         audioMusic: String(input.audioMusic ?? false),
         audioSettings: input.audioSettings ? JSON.stringify(input.audioSettings) : null,
-        defaultForSfx: String(providerCategory === "audio" && (input.defaultForSfx ?? false)),
-        fallbackForSfx: String(providerCategory === "audio" && (input.fallbackForSfx ?? false)),
-        defaultForMusic: String(providerCategory === "audio" && (input.defaultForMusic ?? false)),
-        fallbackForMusic: String(providerCategory === "audio" && (input.fallbackForMusic ?? false)),
+        defaultForSfx: String(providerCategory === "audio_generation" && (input.defaultForSfx ?? false)),
+        fallbackForSfx: String(providerCategory === "audio_generation" && (input.fallbackForSfx ?? false)),
+        defaultForMusic: String(providerCategory === "audio_generation" && (input.defaultForMusic ?? false)),
+        fallbackForMusic: String(providerCategory === "audio_generation" && (input.fallbackForMusic ?? false)),
         audioMusicEndpoint: input.audioMusicEndpoint ?? null,
         audioSoundEffectsEndpoint: input.audioSoundEffectsEndpoint ?? null,
         audioGenerationFormat: input.audioGenerationFormat ?? "binary",
@@ -483,8 +483,8 @@ export function createConnectionsStorage(db: DB) {
             }),
           );
         }
-        // Game audio purposes compete only among audio connections.
-        if (providerCategory === "audio") {
+        // Sound-effect and music lanes compete only among generation connections.
+        if (providerCategory === "audio_generation") {
           for (const grant of [
             { pair: SFX_ROLE_PAIR, side: "default" as const, granted: input.defaultForSfx },
             { pair: SFX_ROLE_PAIR, side: "fallback" as const, granted: input.fallbackForSfx },
@@ -497,7 +497,7 @@ export function createConnectionsStorage(db: DB) {
               await enforceRoleFlagExclusivity(tx, {
                 pair: grant.pair,
                 side: grant.side,
-                category: "audio",
+                category: "audio_generation",
                 exceptId: null,
               }),
             );
@@ -690,10 +690,10 @@ export function createConnectionsStorage(db: DB) {
       if (data.fallbackForMusic !== undefined) {
         updateFields.fallbackForMusic = String(data.fallbackForMusic);
       }
-      // A row leaving the audio category cannot answer for a game audio purpose,
+      // A row leaving the generation category cannot answer for a game audio purpose,
       // and unlike the agents pair these flags have no other category to compete
       // in, so they are released rather than carried across.
-      if (data.provider !== undefined && effectiveProviderCategory !== "audio") {
+      if (data.provider !== undefined && effectiveProviderCategory !== "audio_generation") {
         updateFields.defaultForSfx = "false";
         updateFields.fallbackForSfx = "false";
         updateFields.defaultForMusic = "false";
@@ -764,9 +764,9 @@ export function createConnectionsStorage(db: DB) {
           );
         }
         // Purpose flags never need the exceptId form: a provider change either
-        // stays inside audio, where uniqueness already holds, or leaves it, and
+        // stays inside generation, where uniqueness already holds, or leaves it, and
         // the mapping above already released them.
-        if (effectiveProviderCategory === "audio") {
+        if (effectiveProviderCategory === "audio_generation") {
           for (const grant of [
             { pair: SFX_ROLE_PAIR, side: "default" as const, granted: data.defaultForSfx },
             { pair: SFX_ROLE_PAIR, side: "fallback" as const, granted: data.fallbackForSfx },
@@ -779,7 +779,7 @@ export function createConnectionsStorage(db: DB) {
               await enforceRoleFlagExclusivity(tx, {
                 pair: grant.pair,
                 side: grant.side,
-                category: "audio",
+                category: "audio_generation",
                 exceptId: null,
               }),
             );

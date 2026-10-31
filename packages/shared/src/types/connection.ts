@@ -61,7 +61,7 @@ export const AUDIO_GENERATION_SOURCES = TTS_SOURCE_IDS;
 export type AudioGenerationSource = (typeof AUDIO_GENERATION_SOURCES)[number];
 
 /** Music and sound effects are independent of the character's speech connection. */
-export const GENERATIVE_AUDIO_SOURCES = ["elevenlabs", "sunoapi", "custom"] as const;
+export const GENERATIVE_AUDIO_SOURCES = ["elevenlabs", "sunoapi", "nanogpt", "custom"] as const;
 export type GenerativeAudioSource = (typeof GENERATIVE_AUDIO_SOURCES)[number];
 
 export const GENERATIVE_AUDIO_DEFAULTS = {
@@ -71,6 +71,8 @@ export const GENERATIVE_AUDIO_DEFAULTS = {
     soundEffectsModel: "eleven_text_to_sound_v2",
   },
   sunoapi: { baseUrl: "https://apibox.erweima.ai", model: "V6", soundEffectsModel: "V6" },
+  // NanoGPT picks music or a sound effect by model id; vendor ids change without notice, so none is assumed.
+  nanogpt: { baseUrl: "https://nano-gpt.com/api/v1", model: "", soundEffectsModel: "" },
   custom: { baseUrl: "", model: "", soundEffectsModel: "" },
 } as const;
 
@@ -83,6 +85,8 @@ export function audioConnectionSupportsGeneration(
     audioSoundEffects?: boolean | string;
     audioMusicEndpoint?: string | null;
     audioSoundEffectsEndpoint?: string | null;
+    model?: string | null;
+    audioSoundEffectsModel?: string | null;
   },
   kind: "music" | "sfx",
 ): boolean {
@@ -92,6 +96,9 @@ export function audioConnectionSupportsGeneration(
   return (
     source === "elevenlabs" ||
     source === "sunoapi" ||
+    // An audio row's NanoGPT model is a speech model, so only a generation row qualifies.
+    (connection.audioGenerationSource === "nanogpt" &&
+      Boolean((kind === "music" ? connection.model : connection.audioSoundEffectsModel)?.trim())) ||
     ((source === "openai" || source === "custom") &&
       Boolean((kind === "music" ? connection.audioMusicEndpoint : connection.audioSoundEffectsEndpoint)?.trim()))
   );

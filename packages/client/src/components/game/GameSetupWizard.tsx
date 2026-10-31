@@ -134,11 +134,15 @@ import {
   resolveGameSetupImport,
 } from "../../lib/game-setup-share";
 import { downloadJsonFile, sanitizeExportFilenamePart } from "../../lib/download-json";
-import { filterTTSConnections, filterLanguageGenerationConnections } from "../../lib/connection-filters";
+import {
+  filterAudioGenerationConnections,
+  filterTTSConnections,
+  filterLanguageGenerationConnections,
+} from "../../lib/connection-filters";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { CapabilityElement } from "../capabilities/CapabilityElement";
 import { GameAudioSetupSection, previewGameAudioLane } from "./GameAudioSetupSection";
-import { useEffectiveAudioConfig } from "../../hooks/use-tts";
+import { useEffectiveTTSConfig, useGameAudioLaneReadiness } from "../../hooks/use-tts";
 
 import { NewGameExperienceChooser } from "./NewGameExperienceChooser";
 import { LegacyExperienceSetupDialog } from "./LegacyExperienceSetupDialog";
@@ -870,25 +874,48 @@ export function GameSetupWizard({
   // Quarantined (review-required) imports are refused by the server's
   // resolution, so they must not be offered or previewed here either.
   const audioConnections = useMemo(() => filterTTSConnections(connections), [connections]);
+  const generationAudioConnections = useMemo(() => filterAudioGenerationConnections(connections), [connections]);
   const preferredImageConnectionId = useMemo(() => getPreferredConnectionId(imageConnections), [imageConnections]);
   // "Use the default" is the server's own answer per lane. Where it answers with
   // nothing usable and a capable connection exists, the preview names that
   // connection and buildSetupConfig PINS it, because neither the server nor
   // GameSurface picks "first audio row" on its own.
-  const { data: defaultVoiceAnswer } = useEffectiveAudioConfig("speech");
-  const { data: defaultSfxAnswer } = useEffectiveAudioConfig("sfx");
-  const { data: defaultMusicAnswer } = useEffectiveAudioConfig("music");
+  const { data: defaultVoiceAnswer } = useEffectiveTTSConfig();
+  const { data: defaultSfxAnswer } = useGameAudioLaneReadiness("sfx");
+  const { data: defaultMusicAnswer } = useGameAudioLaneReadiness("music");
   const voicePreview = useMemo(
-    () => previewGameAudioLane(audioConnections, "speech", voiceConnectionId, defaultVoiceAnswer),
+    () =>
+      previewGameAudioLane(
+        audioConnections,
+        "speech",
+        voiceConnectionId,
+        defaultVoiceAnswer && {
+          connectionId: defaultVoiceAnswer.resolvedConnectionId,
+          connectionName: defaultVoiceAnswer.resolvedConnectionName,
+          usable: Boolean(defaultVoiceAnswer.resolvedConnectionId),
+        },
+      ),
     [audioConnections, voiceConnectionId, defaultVoiceAnswer],
   );
   const sfxPreview = useMemo(
-    () => previewGameAudioLane(audioConnections, "sfx", sfxConnectionId, defaultSfxAnswer),
-    [audioConnections, sfxConnectionId, defaultSfxAnswer],
+    () =>
+      previewGameAudioLane(
+        generationAudioConnections,
+        "sfx",
+        sfxConnectionId,
+        defaultSfxAnswer && { connectionId: defaultSfxAnswer.connectionId, usable: defaultSfxAnswer.enabled },
+      ),
+    [generationAudioConnections, sfxConnectionId, defaultSfxAnswer],
   );
   const musicPreview = useMemo(
-    () => previewGameAudioLane(audioConnections, "music", musicConnectionId, defaultMusicAnswer),
-    [audioConnections, musicConnectionId, defaultMusicAnswer],
+    () =>
+      previewGameAudioLane(
+        generationAudioConnections,
+        "music",
+        musicConnectionId,
+        defaultMusicAnswer && { connectionId: defaultMusicAnswer.connectionId, usable: defaultMusicAnswer.enabled },
+      ),
+    [generationAudioConnections, musicConnectionId, defaultMusicAnswer],
   );
   const promptPresets = useMemo(
     () =>
@@ -3309,7 +3336,8 @@ export function GameSetupWizard({
 
                     {/* Game Audio */}
                     <GameAudioSetupSection
-                      connections={audioConnections}
+                      speechConnections={audioConnections}
+                      generationConnections={generationAudioConnections}
                       voiceConnectionId={voiceConnectionId}
                       onVoiceConnectionChange={setVoiceConnectionId}
                       sfxConnectionId={sfxConnectionId}

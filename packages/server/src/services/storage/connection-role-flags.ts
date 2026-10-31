@@ -12,7 +12,7 @@
 // equality; every language provider competes as a single pool, which is why
 // that branch inspects rows instead of naming a provider.
 //
-// The audio purpose pairs (sfx, music) only ever compete inside the audio
+// The audio purpose pairs (sfx, music) only ever compete inside the audio_generation
 // category. The agents pair is category-polymorphic: it is the language agent
 // default, the image default, the video default, the base audio default, the
 // music and sound-effect generation default, and the decision-model default. A decision connection never takes the fallback side.
@@ -48,9 +48,9 @@ export interface RoleFlagPair {
 
 /** Language agents, image generation, video generation, the base audio lane, and decision models. */
 export const AGENTS_ROLE_PAIR: RoleFlagPair = { defaultField: "defaultForAgents", fallbackField: "fallbackForAgents" };
-/** Game sound effects. Audio connections only. */
+/** Game sound effects. Music & sound effects connections only. */
 export const SFX_ROLE_PAIR: RoleFlagPair = { defaultField: "defaultForSfx", fallbackField: "fallbackForSfx" };
-/** Game music. Audio connections only. */
+/** Game music. Music & sound effects connections only. */
 export const MUSIC_ROLE_PAIR: RoleFlagPair = { defaultField: "defaultForMusic", fallbackField: "fallbackForMusic" };
 
 /** Audio purposes that own a flag pair; speech uses the base agents pair. */

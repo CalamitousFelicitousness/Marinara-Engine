@@ -54,9 +54,7 @@ import {
   getDefaultAgentPrompt,
   isAgentConfigDeleted,
   isRetiredBuiltInAgentId,
-  ttsSourceNamesForGameAudio,
   type ConnectionFolder,
-  type GameAudioPurpose,
   type SidecarSpeechModelId,
   type SidecarSpeechRuntimeDiagnostics,
   isChatProvider,
@@ -1179,30 +1177,28 @@ function ConnectionDefaultsSection({ connectionsList }: { connectionsList: Conne
   // its stale default can be seen and cleared.
   const sfxConnections = useMemo(
     () =>
-      audioConnections.filter(
+      generativeAudioConnections.filter(
         (connection) =>
           audioConnectionSupportsPurpose(connection, "sfx") ||
           isEnabledConnectionRole(connection.defaultForSfx) ||
           isEnabledConnectionRole(connection.fallbackForSfx),
       ),
-    [audioConnections],
+    [generativeAudioConnections],
   );
   const musicConnections = useMemo(
     () =>
-      audioConnections.filter(
+      generativeAudioConnections.filter(
         (connection) =>
           audioConnectionSupportsPurpose(connection, "music") ||
           isEnabledConnectionRole(connection.defaultForMusic) ||
           isEnabledConnectionRole(connection.fallbackForMusic),
       ),
-    [audioConnections],
+    [generativeAudioConnections],
   );
-  // Only some backends generate game audio at all, so these two lanes can be
-  // empty with every connection healthy. Name the sources that would fill them.
-  const gameAudioHint = (purpose: GameAudioPurpose) =>
-    localizeUi("ui.panels.connectiondefaultssection.needsAValue1ConnectionWithThisSwitchedOn", {
-      value1: ttsSourceNamesForGameAudio(purpose).join(localizeUi("ui.panels.connectiondefaultssection.orSeparator")),
-    });
+  // A lane stays empty until a Music & Sound Effects connection switches that capability on.
+  const gameAudioHint = localizeUi("ui.panels.connectiondefaultssection.needsAValue1ConnectionWithThisSwitchedOn", {
+    value1: localizeUi("connections.audioGeneration.category"),
+  });
 
   return (
     <section
@@ -1308,9 +1304,11 @@ function ConnectionDefaultsSection({ connectionsList }: { connectionsList: Conne
             connections={sfxConnections}
             primaryField="defaultForSfx"
             fallbackField="fallbackForSfx"
-            primaryEmptyLabel={localizeUi("ui.panels.connectiondefaultssection.useTheFallbackThenTheVoiceDefaults")}
+            primaryEmptyLabel={localizeUi(
+              "ui.panels.connectiondefaultssection.useTheFallbackThenTheMusicAndSoundEffectsDefaults",
+            )}
             fallbackModelLabel={localizeUi("ui.panels.connectiondefaultssection.audioGeneration")}
-            emptyHint={gameAudioHint("sfx")}
+            emptyHint={gameAudioHint}
           />
           <ConnectionDefaultPair
             title={localizeUi("ui.panels.connectiondefaultssection.music")}
@@ -1318,9 +1316,11 @@ function ConnectionDefaultsSection({ connectionsList }: { connectionsList: Conne
             connections={musicConnections}
             primaryField="defaultForMusic"
             fallbackField="fallbackForMusic"
-            primaryEmptyLabel={localizeUi("ui.panels.connectiondefaultssection.useTheFallbackThenTheVoiceDefaults")}
+            primaryEmptyLabel={localizeUi(
+              "ui.panels.connectiondefaultssection.useTheFallbackThenTheMusicAndSoundEffectsDefaults",
+            )}
             fallbackModelLabel={localizeUi("ui.panels.connectiondefaultssection.audioGeneration")}
-            emptyHint={gameAudioHint("music")}
+            emptyHint={gameAudioHint}
           />
           <EmbeddingDefaultControl connections={languageConnections} />
           <DecisionDefaultControl />

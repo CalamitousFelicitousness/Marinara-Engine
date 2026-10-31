@@ -196,7 +196,7 @@ import { useCharacters, usePersonas, useCharacterGroups, type SpriteInfo } from 
 import { lorebookKeys, useLorebooks, useEntriesAcrossLorebooks } from "../../hooks/use-lorebooks";
 import { useDefaultPreset, usePresetFull, usePresets } from "../../hooks/use-presets";
 import { useConnections } from "../../hooks/use-connections";
-import { GameAudioSettingsCard } from "./GameAudioSettingsCard";
+import { GameAudioSettingsCard, type GameAudioSettingsConnection } from "./GameAudioSettingsCard";
 import { useKnowledgeSources, useUploadKnowledgeSource } from "../../hooks/use-knowledge-sources";
 import { useGenerate } from "../../hooks/use-generate";
 import {
@@ -1219,13 +1219,6 @@ export function ChatSettingsDrawer({
   const imageConnectionsList = useMemo(
     () => connectionRows.filter((c) => c.provider === "image_generation"),
     [connectionRows],
-  );
-  const audioConnectionsList = useMemo(
-    () =>
-      filterTTSConnections(
-        (connections as Array<{ id: string; name: string; model?: string; provider?: string }>) ?? [],
-      ),
-    [connections],
   );
   const videoConnectionsList = useMemo(
     () => connectionRows.filter((c) => c.provider === "video_generation"),
@@ -8844,7 +8837,7 @@ export function ChatSettingsDrawer({
 
                   {isGame && (
                     <GameAudioSettingsCard
-                      connections={audioConnectionsList}
+                      connections={(connections as GameAudioSettingsConnection[] | undefined) ?? []}
                       metadata={metadata as Record<string, unknown>}
                       onPinChange={(key, id) => updateMeta.mutate({ id: chat.id, [key]: id })}
                       onSoundEffectsEnabledChange={(enabled) =>

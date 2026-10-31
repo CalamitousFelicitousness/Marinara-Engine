@@ -1,7 +1,6 @@
 import {
   LOCAL_SIDECAR_CONNECTION_ID,
-  toTTSSourceId,
-  ttsSourceSupportsGameAudio,
+  audioConnectionSupportsGeneration,
   type GameAudioPurpose,
   hasPlanUsageWindows,
   isChatProvider,
@@ -102,17 +101,14 @@ export function filterAudioGenerationConnections<
 }
 
 /**
- * Whether an audio connection may generate for a game purpose: its backend can
- * do it at all, and this connection opted in. The same two terms the server
- * answers with, so a picker never offers a row the route would refuse.
+ * Whether a Music & Sound Effects connection may generate for a game purpose.
+ * The server gates on the same shared answer, so a picker never offers a row it would refuse.
  */
 export function audioConnectionSupportsPurpose(
-  connection: { provider?: unknown; audioSource?: unknown; audioSoundEffects?: unknown; audioMusic?: unknown },
+  connection: { provider?: unknown } & Parameters<typeof audioConnectionSupportsGeneration>[0],
   purpose: GameAudioPurpose,
 ): boolean {
-  if (connection.provider !== "audio") return false;
-  if (!ttsSourceSupportsGameAudio(toTTSSourceId(connection.audioSource), purpose)) return false;
-  return isConnectionFlagTrue(purpose === "sfx" ? connection.audioSoundEffects : connection.audioMusic);
+  return connection.provider === "audio_generation" && audioConnectionSupportsGeneration(connection, purpose);
 }
 
 /** A migrated legacy Game pick still names the original speech row. */

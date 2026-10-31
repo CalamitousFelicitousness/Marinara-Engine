@@ -1509,7 +1509,7 @@ const capabilityPackageManifestBaseSchema = z
 // 1.391: `persistence.listChatSummaries(chatId).advancedMemory`: Advanced Memory's scene summaries with the
 //        `memory` block from `long-term-memory:runtime.summaryMemoryInstruction()`, stored untouched.
 // 1.392-1.790: the 5e work (Ruleset Engine capabilities and combat AI), held until 5e lands; each
-//        minor's keys are documented in docs/extending/writing-rulesets.md.
+//        minor's keys are documented in docs/extending/writing-rulesets.md and the ruleset-*.md pages beside it.
 // 1.791: what a ruleset's weights are counted in (`items.carry.unit`), said after every weight shown.
 // 1.792: a damage change only on a blow carrying given damage types (`onTypes`), and one that spends
 //        its condition once it adds (`spentOnUse`).

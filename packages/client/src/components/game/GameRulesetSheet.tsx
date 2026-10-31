@@ -732,11 +732,28 @@ export function GameRulesetSheet({
           for (const offer of offers) {
             const key = `${rest}/${offer.name}`;
             // A count the player set stays, no more than is spent now; the Engine's pick fills the rest.
+            // A new pick joins only while it fits what the feature gives back (`upTo` levels, `count`
+            // pools); counts that no longer fit fall back to the Engine's own pick.
             const before = current[key]?.counts ?? {};
-            const counts: Record<string, number> = {};
+            const levelOf = new Map(offer.pools.map((pool) => [pool.key, pool.level]));
+            let counts: Record<string, number> = {};
             for (const pool of offer.pools)
               if (before[pool.key] !== undefined) counts[pool.key] = Math.min(before[pool.key]!, pool.spent);
-            for (const pick of offer.picks) counts[pick.pool] ??= pick.count;
+            const levels = (of: Record<string, number>) =>
+              Object.entries(of).reduce((sum, [pool, n]) => sum + (levelOf.get(pool) ?? 0) * n, 0);
+            const pools = (of: Record<string, number>) => Object.values(of).reduce((sum, n) => sum + n, 0);
+            const fits = (of: Record<string, number>) =>
+              levels(of) <= offer.upTo && (offer.count === undefined || pools(of) <= offer.count);
+            if (!fits(counts)) counts = Object.fromEntries(offer.picks.map((pick) => [pick.pool, pick.count]));
+            else
+              for (const pick of offer.picks) {
+                if (counts[pick.pool] !== undefined) continue;
+                for (let n = pick.count; n > 0; n--)
+                  if (fits({ ...counts, [pick.pool]: n })) {
+                    counts[pick.pool] = n;
+                    break;
+                  }
+              }
             next[key] = { on: current[key]?.on ?? false, counts };
           }
         }

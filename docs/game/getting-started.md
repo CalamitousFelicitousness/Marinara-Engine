@@ -55,22 +55,9 @@ Overworld RPG is still being finished. Until it is ready, its card is greyed out
 
 ### Choosing rules
 
-**Rules** only appears when at least one ruleset is installed, and only for a new game. It is separate from **Combat Preference**: one decides how checks and character sheets work, the other decides how battles are shown.
+**Rules** only appears when at least one ruleset is installed, and only for a new game. **Marinara's own rules** is the default: the built-in d20 checks and the six-attribute sheet. A ruleset, such as **5e (SRD 5.1)**, replaces those with a tabletop system's own checks and character sheet, and may fight battles by its own rules too. The wizard shows what each ruleset covers and what its battles will do. The ruleset is fixed once the game is created.
 
-- **Marinara's own rules** is the default: the built-in d20 checks and the six-attribute sheet.
-- A ruleset, such as **5e (SRD 5.1)**, shows a short summary of what it covers, and one line saying what battles will do. A ruleset that resolves its own fights says so. One that only lends the sheet says that battles run on Marinara's combat with the sheet's own health, energy and abilities. One that does neither says that battles run on Marinara's combat and names the **Combat Preference** you picked.
-
-When the ruleset resolves its own fights, the battle screen is that ruleset's: the menu is your character's own attacks and abilities, each saying what it spends out of the ruleset's own action economy and pools; the panel below shows the turn order, the round, everybody's conditions by the ruleset's own names, and what is left of each budget; and the log prints the real arithmetic, such as "Juno attacks Rust jackal with Road axe: 8 (5 + 3) + 3 = 11 against Guard 6, a hit." Every action is written to the character sheet the moment it lands, so closing the tab mid-fight loses nothing and the Game Master is told afterwards that the numbers are already settled. If that ruleset also says what one square of a battlefield is worth in its own distance, your **Combat Preference** decides how the fight is shown: **Classic** plays it without positions, and **Tactical** plays it on a board where you walk, measure reach and range in the ruleset's own unit, and aim a shape at a square. See [Combat](combat.md#games-whose-ruleset-resolves-its-own-fights). A ruleset that says nothing about distance keeps the preference and does not use it.
-
-The ruleset is set when the game is created and stays with that game. It cannot be changed or added later.
-
-Some rulesets offer **layers**: named variants such as Low magic or Hard winter, shown as toggles under the ruleset with a line saying what each one does. A layer can make the difficulties harsher, narrow a choice on the character sheet, leave some ready-made entries out of the sheet editor's picker, and give the Game Master extra instructions, including for the world it builds at setup. Some layers rule each other out, and the wizard disables the one you cannot have. Layers are fixed once the game starts, exactly like the ruleset itself, and a sheet that already uses something a layer takes away keeps it.
-
-Rulesets come from two places. Official ones are installed from **Agent Organizer**, where they are marked **Rules**. Community ones are imported from a file or from an author's GitHub repository, and are filed under where they came from, such as `local/ember-roads` or `alice/v20`. Importing uses the same **Allow custom Agent imports** switch as imported agents. While that switch is off, imported rulesets are left out of new games, and games that already use one keep working. A game on an imported ruleset always plays on the exact version it was created on. To write your own, see [Writing Game Mode Rulesets](../extending/writing-rulesets.md).
-
-After you pick a ruleset, the **Party** step lists your persona and party members below the pickers and says who **Has a sheet** for it and who **Starts on a blank sheet**. A sheet is added under **Stats** in the character or persona editor (see [Ruleset sheets](../characters/colors-and-stats.md#ruleset-sheets)). The game takes a copy of each sheet when the world is generated. Nothing you change in the game goes back to the character or persona. A member without a sheet gets a blank one with every value at the ruleset's default; world generation never makes up scores.
-
-A shared setup file remembers its ruleset. If you import one and do not have that ruleset, or have an older version of it, the wizard tells you which ruleset it was and the game uses Marinara's own rules unless you install it and pick it.
+See [Playing with a Ruleset](rulesets.md) for getting a ruleset, its layers, party sheets, and what changes in play.
 
 ### Choosing a setting kit
 

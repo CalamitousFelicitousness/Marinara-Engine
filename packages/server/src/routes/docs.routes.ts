@@ -116,7 +116,9 @@ const DOC_ORDER: Record<string, string[]> = {
   ],
   game: [
     "getting-started.md",
+    "rulesets.md",
     "combat.md",
+    "fighting-on-a-ruleset.md",
     "party-and-npcs.md",
     "sessions-and-saves.md",
     "map-time-weather.md",

@@ -5751,7 +5751,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 promptInventoryStacks.flatMap((stack) =>
                   [stack.item, stack.truly].flatMap((ref) => {
                     const known = ref ? promptItemBook.itemOf(ref) : undefined;
-                    return known ? [[known.item, rulesetItemPromptFacts(known.facts)]] : [];
+                    return known ? [[known.item, rulesetItemPromptFacts(known.facts, known.summary)]] : [];
                   }),
                 ),
               )

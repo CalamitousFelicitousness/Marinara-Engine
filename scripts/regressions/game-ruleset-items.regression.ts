@@ -754,6 +754,19 @@ try {
       rulesetItemPromptFacts(wordedBook.itemOf("outfitter/waystone")!.facts),
       "Gear, Storied; Lit; costs 2 cakes; carried: +1 on checks (Sway), resists burn",
     );
+    // An item with rules of its own is read from them; one with none carries its description, cut at
+    // a sentence (playtest 2026-10-31: a family-named Arrow of Slaying got made-up effects).
+    const waystone = wordedBook.itemOf("outfitter/waystone")!;
+    assert.equal(rulesetItemPromptFacts(waystone.facts, "A stone that glows."), rulesetItemPromptFacts(waystone.facts));
+    const plain = { ...waystone.facts, carried: undefined };
+    const family =
+      "The name of a family of arrows, not one arrow. Give an arrow of one kind instead, such as one for dragons. " +
+      "x".repeat(400);
+    assert.equal(
+      rulesetItemPromptFacts(plain, family),
+      "Gear, Storied; Lit; costs 2 cakes; The name of a family of arrows, not one arrow. Give an arrow of one kind instead, such as one for dragons.",
+    );
+    assert.equal(rulesetItemPromptFacts(plain, "  "), "Gear, Storied; Lit; costs 2 cakes");
     assert.ok(!wordedBook.itemOf("outfitter/arrows")!.facts.stats.some((stat) => stat.id === "lit"));
     // A layer that hides an entry takes it out of names and the picker, not out of what is held.
     const layered = parsedOrThrow(

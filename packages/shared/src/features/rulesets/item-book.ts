@@ -1634,9 +1634,24 @@ export function rulesetItemCatalogIds(definition: RulesetDefinition): string[] {
   return (definition.catalogs ?? []).filter((catalog) => catalog.holds === "items").map((catalog) => catalog.id);
 }
 
+/** Most of an item's description the Game Master reads, cut at a sentence where one ends in time. */
+const PROMPT_SUMMARY_LIMIT = 320;
+
+/** An item's description for the Game Master, short: whole sentences up to the limit. */
+function promptSummary(summary: string): string {
+  const text = summary.replace(/\s+/g, " ").trim();
+  if (text.length <= PROMPT_SUMMARY_LIMIT) return text;
+  const cut = text.slice(0, PROMPT_SUMMARY_LIMIT);
+  const end = cut.lastIndexOf(". ");
+  return end > PROMPT_SUMMARY_LIMIT / 4 ? cut.slice(0, end + 1) : `${cut.trimEnd()}…`;
+}
+
 /** An item's facts as one line for the Game Master: category, rarity and tags, then the stats the
- *  ruleset shows it, such as "Weapon, Common, Thrown; Damage 1d6, Reach close". */
-export function rulesetItemPromptFacts(facts: RulesetItemFacts): string {
+ *  ruleset shows it, such as "Weapon, Common, Thrown; Damage 1d6, Reach close". An item with no rules
+ *  of its own (no attack, use, toggle or effects) also carries its description, so the Game Master
+ *  reads what it is instead of making it up (playtest 2026-10-31: a family-named Arrow of Slaying
+ *  became one for "wyverns"). */
+export function rulesetItemPromptFacts(facts: RulesetItemFacts, summary?: string): string {
   const kind = [facts.category, facts.rarity, ...facts.tags].filter(Boolean).join(", ");
   const stats = facts.stats
     .filter((stat) => stat.promptVisible)
@@ -1658,6 +1673,9 @@ export function rulesetItemPromptFacts(facts: RulesetItemFacts): string {
     facts.attack ? rulesetItemAttackText(facts.attack) : "",
     facts.use ? rulesetItemUseText(facts.use) : "",
     facts.toggle ? `${facts.toggle.label} turned on or off (${facts.toggle.budget})` : "",
+    summary?.trim() && !facts.attack && !facts.use && !facts.toggle && !effects.length && !needs.length
+      ? promptSummary(summary)
+      : "",
   ]
     .filter(Boolean)
     .join("; ");

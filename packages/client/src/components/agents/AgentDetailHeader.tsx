@@ -40,17 +40,24 @@ export function AgentDetailHeader({
       className={cn(
         "mari-editor-header",
         hasBanner &&
-          "relative isolate aspect-[16/7] h-auto! max-h-[260px] content-between! border-b-0! bg-transparent! p-4! transition-[max-height] duration-300 motion-reduce:transition-none sm:aspect-[16/5]",
+          "relative isolate aspect-[16/7] w-full h-auto! max-h-[260px] content-between! border-b-0! bg-transparent! p-4! transition-[max-height] duration-300 motion-reduce:transition-none sm:aspect-[16/5]",
         compact && hasBanner && "max-h-[4.5rem] flex-nowrap! py-3!",
       )}
     >
       {hasBanner && storeEntry && (
         <>
-          <StoreBanner
-            entry={storeEntry}
-            sizes="100vw"
-            className="absolute inset-0 -z-10 h-full w-full rounded-none! shadow-none!"
-          />
+          <div className="@container absolute inset-0 -z-10">
+            {/* The tall header's max-h-[260px] at aspect 16/5 (16/7 below sm) caps it at 832px (594px) wide; past that, centre the
+                artwork at that width and fade its sides, the fade growing from 0 with the spare width (100cqw - 100%) up to 15%. */}
+            <StoreBanner
+              entry={storeEntry}
+              sizes="100vw"
+              className={cn(
+                "mx-auto h-full w-full rounded-none! shadow-none! [--fade:clamp(0px,100cqw_-_100%,15%)] [mask-image:linear-gradient(to_right,transparent,black_var(--fade),black_calc(100%_-_var(--fade)),transparent)] transition-[max-width] duration-300 motion-reduce:transition-none",
+                tall ? "max-w-[832px] max-sm:max-w-[594px]" : "max-w-full",
+              )}
+            />
+          </div>
           <div className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 h-2/3 bg-gradient-to-t from-[var(--marinara-editor-bg,var(--background))] to-transparent" />
         </>
       )}

@@ -283,8 +283,7 @@ same keys for a d20 system:
   - `skills`: which of your skills the two check effects, and any modifier to checks that names no
     skills of its own, are about. All of them when it is left out, and naming it with neither beside
     it is refused. A fight's contests roll the fight's own checks, not skills, so something narrowed
-    to skills never reaches one; a check outside a fight on one of those skills reads it (see Checks
-    outside a fight, below). Capability API 1.53.
+    to skills never reaches one; a check outside a fight on one of those skills reads it (see [Checks outside a fight](ruleset-items.md#checks-outside-a-fight)). Capability API 1.53.
   - `whileSourceInSight`: what counts only while whoever applied it is in the holder's line of
     sight. `true` gates the whole condition; a list of its own effects gates only those and leaves
     the rest standing, which is what a fright that stops you walking any nearer whether or not you
@@ -541,8 +540,7 @@ same keys for a d20 system:
   Without this block a character at zero is simply down, and healing brings them back.
 - `damageTypes`: optional. The types your system has, matched without case.
 - `damageKinds`: required when `health` names a wound track, and refused when it names a pool,
-  because only a mark carries a kind and a pool of points has nowhere to keep one (see Wound tracks
-  above). It says which of the track's `kinds` a blow marks and how many boxes it ticks. `default` is what
+  because only a mark carries a kind and a pool of points has nowhere to keep one (see [Wound tracks](ruleset-sheets.md#wound-tracks-health-that-is-a-track-not-a-number)). It says which of the track's `kinds` a blow marks and how many boxes it ticks. `default` is what
   anything unmapped lands as, including a blow that carries no type at all, and `byType` maps your
   own `damageTypes` onto kinds, with its keys matched without case as the types themselves are, so
   `"Fire"` and `"fire"` are one key and naming both is refused. `marks` has no default because the
@@ -1118,7 +1116,7 @@ as a `sheet`, takes `health`, `defense`, `initiativeModifier`, `speed`, `abiliti
   entry whose `mechanics.qualities` names one (Capability API 1.101). `conditionImmunities` names your
   own conditions, or a track your `combat.levels` read (Capability API 1.115).
 - `tier`: which rung of `combat.threat` it belongs to.
-- `loot` (Capability API 1.63): the id of the loot table a won fight rolls for it (see Loot, above).
+- `loot` (Capability API 1.63): the id of the loot table a won fight rolls for it (see [Loot](ruleset-items.md#loot)).
 - `inventory` (Capability API 1.795): what it may have on it as a fight begins, up to 16 lines. Each line names one of your items (`item`, as `<catalog>/<entry>`) or one of your loot tables (`table`), with `chance` (in a hundred, default 100) and `count` (a number or dice, default 1; a table is rolled that many times). It uses what it can in the fight: a creature with a `sheet` uses its items as a party member does, and a plain stat block uses an item whose `use` is used up in the using and reads nothing of its user (a potion, an oil). What it has left drops when it is beaten, beside its `loot`; one that runs off takes it along. The Game Master may give an opponent its own instead (`carrying` in the encounter), which takes the place of these lines.
 - `traits`: short name and text pairs the Game Master is shown. They are never resolved, so
   anything with numbers in it belongs in an action.

@@ -1165,4 +1165,4 @@ The picker shows this block as one line. Who reads the rest depends on which blo
 
 The vocabulary is closed, so a key or a value that is not in the list above is refused instead of being quietly ignored.
 
-`cost` is also what the Game Master's `use` command pays, outside battle, which is the next section.
+`cost` is also what the Game Master's `use` command pays, outside battle: see [The `use` command](ruleset-catalogs.md#the-use-command-letting-the-game-master-spend-a-price-you-wrote).

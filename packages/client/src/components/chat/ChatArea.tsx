@@ -93,6 +93,7 @@ import { useAgentStore, EMPTY_AGENT_TYPES } from "../../stores/agent.store";
 import { isBuiltInTrackerAgentType, resolveTrackerRerunTypes } from "../../lib/tracker-agents";
 import { Modal } from "../ui/Modal";
 import { useEncounter } from "../../hooks/use-encounter";
+import { useRoleplayHtmlArtifact } from "../../hooks/use-roleplay-commands";
 import { useScene } from "../../hooks/use-scene";
 import { useEncounterStore } from "../../stores/encounter.store";
 import { useTranslationStore } from "../../stores/translation.store";
@@ -1124,6 +1125,20 @@ const LocalChatArea = memo(function LocalChatArea({
     if (illustratorPromptReviewSubmitting) return;
     setIllustratorPromptReview(null);
   }, [illustratorPromptReviewSubmitting]);
+
+  const makeHtmlArtifact = useRoleplayHtmlArtifact().mutateAsync;
+  const handleHtml = useCallback(
+    async (prompt?: string) => {
+      if (!activeChatId || !prompt) return;
+      const toastId = toast.loading(localizeUi("ui.chat.chatarea.makingHtmlArtifact"));
+      try {
+        await makeHtmlArtifact({ chatId: activeChatId, prompt });
+      } finally {
+        toast.dismiss(toastId);
+      }
+    },
+    [activeChatId, makeHtmlArtifact, localizeUi],
+  );
 
   const handleIllustrateWithAgent = useCallback(
     async (agentType: string) => {
@@ -4388,6 +4403,7 @@ const LocalChatArea = memo(function LocalChatArea({
           onOpenScheduleEditor={handleOpenScheduleEditor}
           onIllustrate={handleIllustrate}
           onIllustrateWithAgent={handleIllustrateWithAgent}
+          onHtml={handleHtml}
           onGenerateBackground={handleGenerateRoleplayBackground}
           // The Gallery's Video button makes a clip of the latest reply, like /video. The Gallery waits for it (its
           // busy state blocks a second click) and shows any error.

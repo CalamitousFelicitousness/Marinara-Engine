@@ -220,6 +220,12 @@ import {
 } from "../services/storage/chats.storage.js";
 import { updateInterruptedPromptHistory } from "../services/generation/roleplay-interrupt-context.js";
 import {
+  HTML_ARTIFACT_LIMIT_ERROR,
+  HTML_ARTIFACT_LIMIT_PER_REPLY,
+  resolveHtmlArtifactMaxParallelJobs,
+  runHtmlArtifactCommand,
+} from "../services/generation/html-artifact.js";
+import {
   commitSpatialOwnerTurn,
   findAppliedSpatialOwnerTurn,
   SpatialOwnerTurnError,
@@ -432,6 +438,7 @@ import { resolveGalleryImagePath } from "../services/image/gallery-image-path.js
 import { isSentSelfieAttachment } from "../services/generation/prompt-attachments.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import { gameTtsEmotionIndicatorsEnabled } from "../services/tts-emotion-guidance.js";
+import { createAgentConcurrencyLimiter } from "../services/agents/agent-concurrency.js";
 import { getCustomAgentImportPolicy } from "../services/agents/custom-agent-import-policy.service.js";
 import { buildLorebookSemanticEmbeddingsById, warmLorebookEntryEmbeddings } from "../services/lorebook/embeddings.js";
 import { applyRegexScriptsToPromptMessages } from "../services/regex/regex-application.js";
@@ -519,6 +526,7 @@ import { executeToolCalls } from "../services/tools/tool-executor.js";
 import { createAgentPipeline, type ResolvedAgent, type AgentInjection } from "../services/agents/agent-pipeline.js";
 import { DATA_DIR } from "../utils/data-dir.js";
 import {
+  buildAgentReferenceContextBlock,
   effectiveAgentPromptTemplate,
   executeAgent,
   normalizeAgentContextSize,
@@ -9754,6 +9762,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
 
           // ── Parse and strip hidden character commands ──
           let roleplayHadCommands = false;
+          let replyHtmlArtifacts = 0;
           const currentRoleplayMedia: RoleplayCommand[] = [];
           if (chatMode === "roleplay" && !input.impersonate) {
             const parsed = parseRoleplayCommands(fullResponse);
@@ -9815,8 +9824,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       ? "spotify"
                       : null;
               if (requiredAgent && !resolvedAgents.some((agent) => agent.type === requiredAgent)) continue;
-              if (command.type === "illustrate" && chatMeta.roleplayIllustrateInline === true) {
-                // Saved like a whisper's place, so edits keep the images next to the same text.
+              // A defined intro stays exactly as the card set it.
+              if (command.type === "html" && definedIntro?.mode === "defined") continue;
+              if (command.type === "html" && ++replyHtmlArtifacts > HTML_ARTIFACT_LIMIT_PER_REPLY)
+                activity.error = HTML_ARTIFACT_LIMIT_ERROR;
+              if (
+                command.type === "html" ||
+                (command.type === "illustrate" && chatMeta.roleplayIllustrateInline === true)
+              ) {
+                // Saved like a whisper's place, so edits keep the result next to the same text.
                 activity.contentOffset = parsed.positions.get(activity) ?? parsed.content.length;
                 roleplayInlinePrefixes.set(activity, parsed.content.slice(0, activity.contentOffset));
               }
@@ -9827,7 +9843,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 command.type === "video" ||
                 command.type === "combat" ||
                 command.type === "music" ||
-                command.type === "sound"
+                command.type === "sound" ||
+                (command.type === "html" && !activity.error)
               )
                 currentRoleplayMedia.push(command);
             }
@@ -12794,7 +12811,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             }
             agentContext.memory._expressionTargetIds = [...generatedExpressionTargetIds];
           }
-          if (hasPostProcessingAgents) {
+          if (hasPostProcessingAgents || roleplayMediaRequests.some(({ command }) => command.type === "html")) {
             sendSseEvent(reply, { type: "agent_start", data: { phase: "post_generation" } });
           }
 
@@ -13088,9 +13105,37 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // Persist agent runs to DB + handle game state updates
           const roleplayMediaTargets = new Map<AgentResult, (typeof roleplayMediaRequests)[number]>();
           let combatRequested = chatMeta.encounterActive === true;
+          // Each artifact needs no other's result, so they share the connection's Max Parallel Agent Jobs, which is 1
+          // on a local model that serves one request at a time.
+          let limitHtmlArtifact: ReturnType<typeof createAgentConcurrencyLimiter> | undefined;
           for (const request of roleplayMediaRequests) {
             if (agentSignal.aborted) break;
             const { command } = request;
+            if (command.type === "html") {
+              const { activityIndex } = request;
+              if (activityIndex === undefined) continue;
+              limitHtmlArtifact ??= createAgentConcurrencyLimiter(
+                await resolveHtmlArtifactMaxParallelJobs(app.db, conn.id),
+              );
+              const artifactRun = limitHtmlArtifact(async () => {
+                const error = await runHtmlArtifactCommand({
+                  db: app.db,
+                  messageId: request.messageId,
+                  swipeIndex: request.swipeIndex,
+                  activityIndex,
+                  request: command.prompt,
+                  chatConnectionId: conn.id,
+                  referenceContext: buildAgentReferenceContextBlock(postAgentContext),
+                  debugLog,
+                  signal: agentSignal,
+                });
+                sendSseEvent(reply, { type: "roleplay_artifact", data: { messageId: request.messageId } });
+                if (error && !agentSignal.aborted)
+                  sendSseEvent(reply, { type: "roleplay_command_error", data: { error } });
+              });
+              pendingRoleplayMedia.push(artifactRun);
+              continue;
+            }
             if (command.type === "sound") {
               pendingRoleplayMedia.push(
                 (async () => {

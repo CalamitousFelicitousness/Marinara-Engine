@@ -499,9 +499,10 @@ function collectNames(cardName: string, text: string): Set<string> {
   };
   const lead = (cardName.split(/[|\-–—:(\[,!?♡]/)[0] ?? "").trim();
   for (const word of lead.split(/\s+/).slice(0, 3)) if (/^\p{Lu}/u.test(word)) add(word);
-  // The line prefix skips no newlines: a blank-line run would be rescanned from each of its lines.
+  // The line prefix skips no newlines: a blank-line run would be rescanned from each of its lines. The padding
+  // after the separator is one whitespace run, not two around the optional "**", which backtrack quadratically.
   const nameRe =
-    /^(?:[^\S\n]|[>*•+\-[{])*(?:\*\*)?(?:full\s+)?name(?:\s+and\s+age)?\**\s*[:=(]\s*\**\s*["“]?([^\n"“”(),;\]]{1,60})/gim;
+    /^(?:[^\S\n]|[>*•+\-[{])*(?:\*\*)?(?:full\s+)?name(?:\s+and\s+age)?\**\s*[:=(]\s*(?:\*+\s*)?["“]?([^\n"“”(),;\]]{1,60})/gim;
   for (const m of text.matchAll(nameRe)) for (const word of m[1]!.split(/\s+/).slice(0, 4)) add(word);
   const wppRe = /\b[Cc]haracter\(\s*"?([^"),]{1,40})/g;
   for (const m of text.matchAll(wppRe)) for (const word of m[1]!.split(/\s+/)) add(word);
@@ -672,8 +673,7 @@ type Tok =
   | { type: "text"; bullet: boolean; indent: number; speaker: string | null; quoted: boolean; value?: string };
 
 const RE_STRUCTURAL = /^(?:-{3,}|\*{3,}|_{3,}|={3,}|[[\]{}()]{1,3}|>|\]\s*\}|\}\s*\]|\)\s*\])$/;
-const LABEL_BODY = String.raw`(?:${MACRO}|\([^()]{0,40}\)|[^:=()\[\]{}"“”*\n])+?`;
-const RE_PLAIN = new RegExp(String.raw`^(${LABEL_BODY})\s*[:=]\s*([\s\S]*)$`);
+const RE_LABEL_PART = new RegExp(String.raw`${MACRO}|\([^()]{0,40}\)|[^:=()\[\]{}"“”*\n]`, "y");
 const RE_WPP = new RegExp(String.raw`^((?:${MACRO_OWN}\s*)?[A-Za-z][\w'’/&\- ]{0,40}?)(\s*)(${WPP_OPEN})`);
 const RE_MACROS = new RegExp(MACRO, "g");
 
@@ -683,6 +683,22 @@ interface Inline {
   wpp?: boolean;
   spaced?: boolean;
   unclosed?: boolean;
+}
+
+/** A "Label: value" line, read like `/^((?:{{macro}}|\([^()]{0,40}\)|[^:=()[\]{}"“”*\n])+?)\s*[:=]\s*([\s\S]*)$/`,
+ *  which rescans the whitespace before the separator from every label end; null when it is not one. */
+function plainInline(core: string): Inline | null {
+  let gap = 0; // end of the whitespace run checked last; a label ending inside it meets the same separator
+  for (let i = 0; ;) {
+    RE_LABEL_PART.lastIndex = i;
+    if (!RE_LABEL_PART.test(core)) return null;
+    i = RE_LABEL_PART.lastIndex;
+    if (gap >= i) continue;
+    gap = i;
+    while (/\s/.test(core[gap] ?? "")) gap++;
+    if (core[gap] === ":" || core[gap] === "=")
+      return { label: core.slice(0, i), value: core.slice(gap + 1).trimStart() };
+  }
 }
 
 function parseInline(core: string): Inline | null {
@@ -709,11 +725,15 @@ function parseInline(core: string): Inline | null {
       };
     }
   }
-  if ((m = core.match(RE_PLAIN))) {
-    if (/^\/\//.test(m[2]!)) return null;
-    return { label: m[1]!, value: m[2]! };
-  }
-  return null;
+  const plain = plainInline(core);
+  return plain && !plain.value.startsWith("//") ? plain : null;
+}
+
+/** `text` without its trailing run of `chars`, which an unanchored `/[chars]+$/` rescans from each of its characters. */
+function trimTail(text: string, chars: RegExp): string {
+  let end = text.length;
+  while (end > 0 && chars.test(text[end - 1]!)) end--;
+  return text.slice(0, end);
 }
 
 /** A heading label between a leading and a trailing whitespace / `lead` or `trail` run / whitespace, read the way a
@@ -778,15 +798,25 @@ function bracketOpen(s: string): string | null {
   return body.trim() || body.at(-1)!;
 }
 
+/** The label of a "</tag>" or "[Title]" line, read like `/^open\s*([^bad]{1,max}?)\s*close$/`, whose whitespace
+ *  runs around the lazy label backtrack cubically; null when it is not one. */
+function enclosedLabel(s: string, open: string, close: string, max: number, bad: RegExp): string | null {
+  if (s.length <= open.length + close.length || !s.startsWith(open) || !s.endsWith(close)) return null;
+  const body = s.slice(open.length, -close.length);
+  const label = body.trim() || body.at(-1)!;
+  return bad.test(body) || label.length > max ? null : label;
+}
+
 function tokenize(text: string, ctx: Ctx): Tok {
   const trimmed = text.trim();
   const indent = text.length - text.trimStart().length;
   if (!trimmed) return { type: "blank" };
   if (RE_STRUCTURAL.test(trimmed)) return { type: "structural" };
   let m: RegExpMatchArray | null;
-  if ((m = trimmed.match(/^<!--\s*([\s\S]*?)\s*-->$/))) {
-    if (/^end\b/i.test(m[1]!)) return { type: "end-section" };
-    return { type: "heading", level: 1, label: m[1]!.replace(/^start\s+of\s+/i, "") };
+  if (trimmed.length >= 7 && trimmed.startsWith("<!--") && trimmed.endsWith("-->")) {
+    const note = trimmed.slice(4, -3).trim(); // `/^<!--\s*([\s\S]*?)\s*-->$/` backtracks cubically on padding
+    if (/^end\b/i.test(note)) return { type: "end-section" };
+    return { type: "heading", level: 1, label: note.replace(/^start\s+of\s+/i, "") };
   }
   let s = trimmed;
   let quote = false;
@@ -795,7 +825,8 @@ function tokenize(text: string, ctx: Ctx): Tok {
     s = s.slice(m[0].length);
   }
   if (/^<start>$/i.test(s)) return { type: "start" };
-  if ((m = s.match(/^<\/\s*([^<>]{1,60}?)\s*>$/))) return { type: "xml-close", tag: m[1]! };
+  const closeTag = enclosedLabel(s, "</", ">", 60, /[<>]/);
+  if (closeTag !== null) return { type: "xml-close", tag: closeTag };
   if ((m = s.match(/^<\s*([A-Za-z{][^<>]{0,60}?)\s*>$/)) && !/^start$/i.test(m[1]!))
     return { type: "xml-open", tag: m[1]! };
   // Heading closers ("## Title ##", "== Title ==", "[[ = Title = ]]") are trimmed in code: a lazy label before
@@ -814,8 +845,8 @@ function tokenize(text: string, ctx: Ctx): Tok {
   const bold = boldHeading(s);
   if (bold !== null) return { type: "heading", level: 5, label: bold };
   if ((m = s.match(/^`([^`]{1,40})`$/))) return { type: "heading", level: 5, label: m[1]! };
-  if ((m = s.match(/^\[\s*([^[\]:]{1,60}?)\s*\]$/)) && isShortTitle(m[1]!))
-    return { type: "heading", level: 5, label: m[1]! };
+  const title = enclosedLabel(s, "[", "]", 60, /[[\]:]/);
+  if (title !== null && isShortTitle(title)) return { type: "heading", level: 5, label: title };
   const bracket = bracketOpen(s);
   if (bracket !== null && wordCount(bracket) <= 7) return { type: "heading", level: 5, label: bracket, bracket: true };
   if ((m = s.match(/^\d{1,2}[.)]\s+([^:.!?]{1,40})$/)) && isShortTitle(m[1]!) && /^\p{Lu}/u.test(m[1]!)) {
@@ -854,7 +885,7 @@ function tokenize(text: string, ctx: Ctx): Tok {
   }
   if (inline && labelLooksValid(inline.label)) {
     const norm = normLabel(inline.label, ctx.names);
-    const value = inline.value.replace(/^[\s\]})]+|[\s\]});]+$/g, "");
+    const value = trimTail(inline.value.replace(/^[\s\]})]+/, ""), /[\s\]});]/);
     const res = resolveLabel(norm, value);
     const known = Boolean(res.field) || res.kind === "title";
     const dialogue = /^["“*]/.test(value) || DIALOGUE_SPEAKERS.has(norm);
@@ -1358,7 +1389,7 @@ function skipReason(name: string, before: DescriptionSplitFields, force: boolean
     return "the card looks like a narrator, game, world or multi-character card";
   const nameValues = new Set<string>();
   for (const m of before.description.matchAll(
-    /^(?:[^\S\n]|[>*•+\-[{])*(?:\*\*)?(?:full\s+)?name(?:\s+and\s+age)?\**\s*[:=(]\s*\**\s*["“]?([^\n"“”(),;\]]{1,40})/gim,
+    /^(?:[^\S\n]|[>*•+\-[{])*(?:\*\*)?(?:full\s+)?name(?:\s+and\s+age)?\**\s*[:=(]\s*(?:\*+\s*)?["“]?([^\n"“”(),;\]]{1,40})/gim,
   )) {
     nameValues.add(m[1]!.trim().toLowerCase().split(/\s+/)[0]!);
   }

@@ -9,8 +9,8 @@
 //  - narrator / multi-character cards are skipped unless forced, empty descriptions are skipped
 //  - existing field text is appended to, not duplicated, and applyDescriptionSplit writes the extension fields
 //  - symbol-only text ("...", "♡") is not dropped as already present
-//  - crafted long lines (heading markers, tabs, blank lines, a tab-filled name, bracket macros, unclosed quotes)
-//    finish quickly
+//  - crafted long lines (heading markers, tabs, blank lines, a tab-filled name, bracket macros, unclosed quotes,
+//    padded labels) finish quickly
 import assert from "node:assert/strict";
 import {
   applyDescriptionSplit,
@@ -338,6 +338,9 @@ assert.equal(applied.extensions?.talkativeness, 0.5, "other extensions are kept"
 const crafted = [
   ...["=", "#", "\t", "!", "** ", "\n"].map((c) => c.repeat(20000) + "x"),
   "[" + "{{a}}".repeat(40) + "x", // a bracket heading's macros
+  ...["<", "</", "[", "<!--"].map((c) => c + " ".repeat(20000) + "x"), // a label's padding before ":", ">", "]", "-->"
+  "Personality: " + ";".repeat(20000) + "x", // a value's trailing-punctuation trim
+  "Name: " + "\n".repeat(20000), // the name scan's padding after "Name:"
   'Mia is a quiet girl who lives in the old town.\nx "' + "a ".repeat(20000), // an unclosed quote
   'Mia is a quiet girl.\n{{char}}: x "' + "a ".repeat(20000),
 ];

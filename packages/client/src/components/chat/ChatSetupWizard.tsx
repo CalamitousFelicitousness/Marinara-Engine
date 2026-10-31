@@ -59,7 +59,11 @@ import { characterMatchesSearch, getCharacterTitle, parseCharacterDisplayData } 
 import { buildCharacterIdentityGroups } from "../../lib/character-identity-groups";
 import { addSilentGreetingSwipes } from "../../lib/message-swipes";
 import { ChoiceSelectionModal } from "../presets/ChoiceSelectionModal";
-import { CharacterOnboardingModal, type OnboardingCardTarget } from "../characters/CharacterOnboardingModal";
+import {
+  CharacterOnboardingModal,
+  type OnboardingCardTarget,
+  type OnboardingPersonaTemplate,
+} from "../characters/CharacterOnboardingModal";
 import { ActiveChatBackgroundPicker } from "../panels/settings/BackgroundPicker";
 import {
   type CardOnboarding,
@@ -67,6 +71,8 @@ import {
   canBuildPersona,
   getRelevantCardVariables,
   readCardOnboarding,
+  resolveOnboardingGreeting,
+  shouldFillGreetingFromPersona,
   CONVERSATION_COMMAND_AGENT_IDS,
   CONVERSATION_COMMAND_KEYS,
   DEFAULT_CONVERSATION_PROMPT,
@@ -129,6 +135,7 @@ import { AdvancedMemorySettings } from "./AdvancedMemorySettings";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { useLocalizedUiText } from "../../localization/use-localized-ui-text";
 import { MultiplayerPrepareButton } from "../../features/multiplayer/MultiplayerPrepareButton";
+import { ChatProfileBuilder } from "./ChatProfileBuilder";
 
 // ─── Step definitions ─────────────────────────
 
@@ -297,6 +304,7 @@ const WIZARD_PANEL_CLASS = cn(
 );
 
 const WIZARD_FIELD_LABEL = "text-[0.6875rem] font-medium uppercase tracking-wider text-[var(--muted-foreground)]";
+const NEW_PROFILE_OPTION = "__new-profile__";
 const WIZARD_INPUT_CLASS =
   "w-full min-w-0 truncate rounded-lg bg-[var(--secondary)] px-3 py-2 pr-8 text-xs text-[var(--foreground)] outline-none ring-1 ring-[var(--border)] transition-shadow placeholder:text-[var(--muted-foreground)] focus:ring-[var(--primary)]/40";
 const WIZARD_NUMBER_INPUT_CLASS =
@@ -2316,6 +2324,10 @@ function RoleplaySetupWizard({
     return flag;
   });
   const [shortcutPresetId, setShortcutPresetId] = useState<string>("");
+  // The quick-setup picker only shows the profile's starting persona; nothing is written until
+  // the user picks one here (their pick then wins) or Apply & Start applies the profile.
+  const [shortcutPersonaPicked, setShortcutPersonaPicked] = useState(false);
+  const [profileBuilder, setProfileBuilder] = useState<"edit" | "new" | null>(null);
 
   const updateChat = useUpdateChat();
   const updateMeta = useUpdateChatMetadata();
@@ -2348,9 +2360,15 @@ function RoleplaySetupWizard({
   const activeChatMode = ((chat as unknown as { mode?: ChatMode }).mode ?? "roleplay") as ChatMode;
   const { data: chatPresetsData } = useChatPresets(chatPresetMode);
   const chatPresetList = useMemo(() => (chatPresetsData ?? []) as ChatPreset[], [chatPresetsData]);
+  const shortcutPreset = chatPresetList.find((preset) => preset.id === shortcutPresetId) ?? null;
   const applyChatPreset = useApplyChatPreset();
 
   const personas = useMemo(() => allPersonas ?? [], [allPersonas]);
+  const shortcutProfilePersonaId = useMemo(() => {
+    if (shortcutPersonaPicked) return null;
+    const personaId = chatPresetList.find((preset) => preset.id === shortcutPresetId)?.settings.personaId;
+    return personaId && personas.some((persona) => persona.id === personaId) ? personaId : null;
+  }, [shortcutPersonaPicked, chatPresetList, shortcutPresetId, personas]);
   const characters = useMemo(
     () =>
       (allCharacters ?? []) as Array<{ id: string; data: string; comment?: string | null; avatarPath: string | null }>,
@@ -2391,6 +2409,23 @@ function RoleplaySetupWizard({
   const metadata = useMemo(() => {
     return readChatMetadata(chat);
   }, [chat]);
+  // What the greeting fill reads when the wizard finishes. Refs, not closure
+  // values: the greetings are written after awaits, and the persona or variables
+  // may have changed while those ran.
+  const chatPersonaIdRef = useRef(chat.personaId);
+  const chatVariablesRef = useRef<unknown>(metadata.macroVariables);
+  useEffect(() => {
+    chatPersonaIdRef.current = chat.personaId;
+    chatVariablesRef.current = metadata.macroVariables;
+  }, [chat.personaId, metadata.macroVariables]);
+  // The persona the player created from a card's template, and the character
+  // answers saved with it. Set by the questions window, never persisted: it lives
+  // only as long as this wizard.
+  const createdPersonaRef = useRef<{
+    template: OnboardingPersonaTemplate;
+    personaId: string;
+    characterAnswers: Record<string, string>;
+  } | null>(null);
   const [customizeParameters, setCustomizeParameters] = useState(() =>
     hasChatParameterChoices(metadata.chatParameters, metadata.chatParameterOverrides),
   );
@@ -2638,8 +2673,36 @@ function RoleplaySetupWizard({
       if (!char) return;
       try {
         const parsed = typeof char.data === "string" ? JSON.parse(char.data) : char.data;
-        const firstMes = (parsed as { first_mes?: string }).first_mes;
-        const altGreetings = (parsed as { alternate_greetings?: string[] }).alternate_greetings ?? [];
+        let firstMes = (parsed as { first_mes?: string }).first_mes;
+        let altGreetings = (parsed as { alternate_greetings?: string[] }).alternate_greetings ?? [];
+        // Only the card whose template made the player's persona, and only while
+        // the chat still uses that persona: otherwise the greeting is written as is.
+        const created = createdPersonaRef.current;
+        if (
+          created &&
+          shouldFillGreetingFromPersona(
+            { cardId: created.template.cardId, personaId: created.personaId },
+            charId,
+            chatPersonaIdRef.current,
+          )
+        ) {
+          const stored = chatVariablesRef.current;
+          const chatVariables = Object.fromEntries(
+            Object.entries(stored && typeof stored === "object" && !Array.isArray(stored) ? stored : {}).filter(
+              (entry): entry is [string, string] => typeof entry[1] === "string",
+            ),
+          );
+          const characterAnswers = { ...chatVariables, ...created.characterAnswers };
+          const fill = (text: string) =>
+            resolveOnboardingGreeting(
+              created.template.onboarding,
+              created.template.personaAnswers,
+              text,
+              characterAnswers,
+            );
+          if (firstMes) firstMes = fill(firstMes);
+          altGreetings = altGreetings.map((greeting) => (typeof greeting === "string" ? fill(greeting) : greeting));
+        }
         if (firstMes) {
           const msg = await createMessage.mutateAsync({ role: "assistant", content: firstMes, characterId: charId });
           if (msg?.id && altGreetings.length > 0) {
@@ -2797,10 +2860,17 @@ function RoleplaySetupWizard({
       return;
     }
     let profileApplied = false;
+    // The persona picked in this step wins over the profile's starting persona.
+    const pickedPersonaId = chat.personaId;
+    const pickedPersonaCharacterId = chat.personaCharacterId;
     try {
       setShortcutApplying(true);
-      await applyChatPreset.mutateAsync({ presetId: shortcutPresetId, chatId: chat.id });
+      const applied = await applyChatPreset.mutateAsync({ presetId: shortcutPresetId, chatId: chat.id });
       profileApplied = true;
+      if (shortcutPersonaPicked && applied && applied.personaId !== pickedPersonaId) {
+        if (pickedPersonaCharacterId) setPersonaCharacter(pickedPersonaCharacterId);
+        else if (pickedPersonaId) setPersona(pickedPersonaId);
+      }
     } catch {
       /* fall through — still close the wizard */
     } finally {
@@ -2809,7 +2879,18 @@ function RoleplaySetupWizard({
       setShortcutApplying(false);
       onFinish();
     }
-  }, [shortcutPresetId, chat.id, applyChatPreset, onFinish, seedInitialGreetingsIfEmpty]);
+  }, [
+    shortcutPresetId,
+    shortcutPersonaPicked,
+    chat.id,
+    chat.personaId,
+    chat.personaCharacterId,
+    applyChatPreset,
+    setPersona,
+    setPersonaCharacter,
+    onFinish,
+    seedInitialGreetingsIfEmpty,
+  ]);
 
   // Search state for character & lorebook pickers
   const [charSearch, setCharSearch] = useState("");
@@ -2951,7 +3032,21 @@ function RoleplaySetupWizard({
   // fails, the window is closed and the template choice cleared: the persona
   // already exists, so a second Create would duplicate it.
   const finishOnboarding = useCallback(
-    async (personaId: string | null, cardVariables: Record<string, string>) => {
+    async (
+      personaId: string | null,
+      cardVariables: Record<string, string>,
+      template: OnboardingPersonaTemplate | null,
+    ) => {
+      // Kept for the greetings written at the end. Replaced on every Create, so a
+      // second persona never fills greetings with the first one's answers. Back and
+      // Next reopens the window for the card questions alone, which creates nothing:
+      // the persona made earlier still stands, only the character answers changed.
+      const created = createdPersonaRef.current;
+      createdPersonaRef.current = personaId
+        ? template
+          ? { template, personaId, characterAnswers: cardVariables }
+          : null
+        : created && { ...created, characterAnswers: cardVariables };
       // Chat variables go in their OWN request: `PATCH /chats/:id/metadata`
       // rejects `macroVariables` alongside any other key, and they are a
       // metadata write while `personaId` is a chat-column write.
@@ -3925,21 +4020,47 @@ function RoleplaySetupWizard({
     <div className="space-y-4">
       <div className="space-y-1.5">
         <label className={WIZARD_FIELD_LABEL}>{localizeUi("chat.settingsProfile.label")}</label>
-        <select
-          value={shortcutPresetId}
-          onChange={(event) => setShortcutPresetId(event.target.value)}
-          aria-label={localizeUi("chat.settingsProfile.label")}
-          className={WIZARD_INPUT_CLASS}
-        >
-          {chatPresetList.length === 0 && (
-            <option value="">{localizeUi("ui.characters.characterlibraryview.loading")}</option>
+        <div className="flex items-center gap-2">
+          <select
+            value={shortcutPresetId}
+            onChange={(event) => {
+              if (event.target.value === NEW_PROFILE_OPTION) return setProfileBuilder("new");
+              setShortcutPresetId(event.target.value);
+            }}
+            aria-label={localizeUi("chat.settingsProfile.label")}
+            className={WIZARD_INPUT_CLASS}
+          >
+            {chatPresetList.length === 0 && (
+              <option value="">{localizeUi("ui.characters.characterlibraryview.loading")}</option>
+            )}
+            {chatPresetList.length > 0 && (
+              <option value={NEW_PROFILE_OPTION}>{localizeUi("chat.settingsProfile.builder.newOption")}</option>
+            )}
+            {chatPresetList.map((preset) => (
+              <option key={preset.id} value={preset.id}>
+                {preset.isDefault ? localizeUi("ui.noodle.noodlehome.default") : preset.name}
+              </option>
+            ))}
+          </select>
+          {shortcutPreset && !shortcutPreset.isDefault && (
+            <button
+              type="button"
+              onClick={() => setProfileBuilder("edit")}
+              title={localizeUi("chat.settingsProfile.builder.editHint")}
+              className="min-h-9 shrink-0 rounded-lg px-3 text-xs font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+            >
+              {localizeUi("chat.settingsProfile.builder.edit")}
+            </button>
           )}
-          {chatPresetList.map((preset) => (
-            <option key={preset.id} value={preset.id}>
-              {preset.isDefault ? localizeUi("ui.noodle.noodlehome.default") : preset.name}
-            </option>
-          ))}
-        </select>
+        </div>
+        <ChatProfileBuilder
+          open={profileBuilder !== null}
+          onClose={() => setProfileBuilder(null)}
+          mode={chatPresetMode}
+          profile={profileBuilder === "edit" ? shortcutPreset : null}
+          saveOnly
+          onSaved={(saved) => setShortcutPresetId(saved.id)}
+        />
       </div>
 
       <div className="space-y-1.5">
@@ -3949,15 +4070,17 @@ function RoleplaySetupWizard({
           characters={characters}
           characterGroups={(allCharacterGroups ?? []) as CharacterGroup[]}
           showCharacterIdentities={showCharacterIdentities}
-          value={chat.personaId ?? null}
-          characterValue={chat.personaCharacterId ?? null}
+          value={shortcutProfilePersonaId ?? chat.personaId ?? null}
+          characterValue={shortcutProfilePersonaId ? null : (chat.personaCharacterId ?? null)}
           // A persona picked here replaces "Create your persona", as in the step picker.
           onChange={(personaId) => {
             setOnboardingCharacterId(null);
+            setShortcutPersonaPicked(true);
             setPersona(personaId);
           }}
           onCharacterChange={(characterId) => {
             setOnboardingCharacterId(null);
+            setShortcutPersonaPicked(true);
             setPersonaCharacter(characterId);
           }}
         />
@@ -4015,7 +4138,11 @@ function RoleplaySetupWizard({
           participantNames={participantNames}
           persona={
             onboardingCharacter
-              ? { characterName: onboardingCharacter.name, onboarding: onboardingCharacter.onboarding }
+              ? {
+                  characterId: onboardingCharacter.character.id,
+                  characterName: onboardingCharacter.name,
+                  onboarding: onboardingCharacter.onboarding,
+                }
               : null
           }
           playerName={knownPlayerName}

@@ -45,6 +45,7 @@ import {
   resolveGameSetupArtStylePrompt,
   resolveChatPersonaCandidate,
   resolveMacros,
+  seededUnitRandom,
   resolveAgentPromptTemplate,
   resolveDefaultAgentPromptTemplateId,
   testPrimaryKeys,
@@ -3389,6 +3390,36 @@ const cases: RegressionCase[] = [
         assert.equal(value >= 1 && value <= 5, true);
       }
       assert.equal(resolveMacros("{{roll:2d0}}", context), "0");
+      // The roll macro reads the shared NdM grammar: a bare die and a flat modifier roll too.
+      for (let index = 0; index < 25; index += 1) {
+        const bare = Number(resolveMacros("{{roll:d20}}", context));
+        assert.equal(Number.isInteger(bare) && bare >= 1 && bare <= 20, true);
+        const plus = Number(resolveMacros("{{roll:1d8+3}}", context));
+        assert.equal(Number.isInteger(plus) && plus >= 4 && plus <= 11, true);
+        const minus = Number(resolveMacros("{{roll:2d4-1}}", context));
+        assert.equal(Number.isInteger(minus) && minus >= 1 && minus <= 7, true);
+      }
+      // A total the dice could push past the exact integers stays literal; a low end never can.
+      assert.equal(resolveMacros("{{roll:1d6+9007199254740991}}", context), "{{roll:1d6+9007199254740991}}");
+      assert.equal(resolveMacros("{{roll:1000d1000000+9007198254740991}}", context).startsWith("{{roll:"), false);
+      assert.equal(
+        resolveMacros("{{roll:1000d1000000+9007198254740992}}", context),
+        "{{roll:1000d1000000+9007198254740992}}",
+      );
+      const low = Number(resolveMacros("{{roll:1d6-9007199254740991}}", context));
+      assert.equal(Number.isSafeInteger(low) && low >= -9007199254740990 && low <= -9007199254740985, true);
+    },
+  },
+  {
+    name: "a seeded roll macro throws the same faces it did before the shared roller",
+    run() {
+      const context = { user: "Mari", char: "Dottore", characters: ["Dottore"], variables: {} };
+      // Each die is keyed on the macro text and its place, exactly as the macro's own loop keyed it.
+      const face = (index: number) => Math.floor(seededUnitRandom(`message-a:{{roll:3d6}}:${index}`) * 6) + 1;
+      assert.equal(
+        resolveMacros("{{roll:3d6}}", context, { randomSeed: "message-a" }),
+        String(face(0) + face(1) + face(2)),
+      );
     },
   },
   {
@@ -9596,7 +9627,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
           scenario: "CHARACTER_SCENARIO",
           first_mes: "",
           mes_example: "CHARACTER_EXAMPLE_DIALOGUE",
-          creator_notes: "",
+          creator_notes: "CREATOR_NOTES_NEVER_SENT",
           system_prompt: "CHARACTER_SYSTEM_PROMPT",
           post_history_instructions: "",
           tags: [],
@@ -9692,6 +9723,20 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       const explicitCharacterFieldText = explicitCharacterField.messages.map((message) => message.content).join("\n");
       assert.equal(explicitCharacterFieldText.match(/CHARACTER_EXAMPLE_DIALOGUE/g)?.length, 1);
       assert.match(explicitCharacterFieldText, /<mes_example>/);
+
+      // #8582: creator notes are never sent, even by a marker (an imported preset) that names the field, in any format.
+      for (const wrapFormat of ["xml", "markdown", "none"] as const) {
+        const named = await assemble(wrapFormat, "absent", ["description", "creator_notes", "scenario"]);
+        const namedText = named.messages.map((message) => message.content).join("\n");
+        assert.equal(namedText.includes("CREATOR_NOTES_NEVER_SENT"), false, `${wrapFormat}: no creator notes`);
+        assert.equal(namedText.includes("creator_notes"), false, `${wrapFormat}: no creator notes section`);
+        assert.match(namedText, /CHARACTER_SCENARIO/, `${wrapFormat}: the other named fields still are`);
+        const defaults = await assemble(wrapFormat, "absent");
+        assert.equal(
+          defaults.messages.some((message) => message.content.includes("CREATOR_NOTES_NEVER_SENT")),
+          false,
+        );
+      }
 
       const explicitMarker = await assemble("xml", "enabled");
       const explicitPromptText = explicitMarker.messages.map((message) => message.content).join("\n");

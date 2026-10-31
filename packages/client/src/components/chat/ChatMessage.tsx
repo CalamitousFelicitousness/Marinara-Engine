@@ -10,6 +10,7 @@ import {
   normalizeAvatarCrop,
   getRoleplayWhispers,
   getRoleplayCommandActivity,
+  getRoleplayArtifacts,
   getRoleplayCommandContentOffset,
   replaceSpeakerSpans,
   speakerBodyFromMatch,
@@ -25,6 +26,7 @@ import { MessageReplyPreview, ReplyToMessageButton } from "./MessageReplyPreview
 import {
   RoleplayCommandResults,
   RoleplayDiceRoll,
+  RoleplayArtifact,
   RoleplayWhisper,
   replaceRoleplayCommandMarkers,
 } from "./RoleplayCommandResults";
@@ -105,6 +107,8 @@ import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { chatKeys, rememberRecentMessageContentEdit } from "../../hooks/use-chats";
 import { useShallow } from "zustand/react/shallow";
 import { createMessageMacroResolver } from "../../lib/chat-macros";
+import { readChatVariables } from "../../lib/state-editor/chat-variables-editor-source";
+import { HIGHLIGHT_CLASS, highlightAnswerValues } from "../../lib/onboarding-preview-highlight";
 import { useApplyRegex } from "../../hooks/use-apply-regex";
 import { getDefaultChatTextColor, useUIStore } from "../../stores/ui.store";
 import { useChatStore } from "../../stores/chat.store";
@@ -1081,6 +1085,7 @@ function RoleplayThinkingDisclosure({
   const contentId = useId();
   const startedAtRef = useRef(Date.now());
   const [expanded, setExpanded] = useState(isStreaming || keepExpanded);
+  const [copied, setCopied] = useState(false);
   const [liveDurationMs, setLiveDurationMs] = useState(0);
   const [capturedReasoningDurationMs, setCapturedReasoningDurationMs] = useState<number | null>(null);
 
@@ -1115,26 +1120,46 @@ function RoleplayThinkingDisclosure({
       data-message-thinking-inline
       className="mb-2 overflow-hidden rounded-md border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-panel-text)]"
     >
-      <button
-        type="button"
-        aria-expanded={expanded}
-        aria-controls={expanded ? contentId : undefined}
-        title={t(expanded ? "chat.message.thoughts.collapse" : "chat.message.thoughts.expand")}
-        onClick={() => setExpanded((value) => !value)}
-        className="flex w-full items-center gap-2 px-2.5 py-2 text-left text-[0.75rem] font-medium text-[var(--marinara-chat-chrome-text)] transition-colors hover:bg-[var(--marinara-chat-chrome-button-bg-hover)]"
-      >
-        <Brain
-          size="0.875rem"
-          aria-hidden="true"
-          className={cn("shrink-0", isStreaming && !outputStarted && "animate-pulse")}
-        />
-        <span className="min-w-0 flex-1">{durationLabel}</span>
-        <ChevronRight
-          size="0.875rem"
-          aria-hidden="true"
-          className={cn("shrink-0 transition-transform", expanded && "rotate-90")}
-        />
-      </button>
+      <div className="flex items-center">
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-controls={expanded ? contentId : undefined}
+          title={t(expanded ? "chat.message.thoughts.collapse" : "chat.message.thoughts.expand")}
+          onClick={() => setExpanded((value) => !value)}
+          className="flex min-h-11 min-w-0 flex-1 items-center gap-2 px-2.5 py-2 text-left text-[0.75rem] font-medium text-[var(--marinara-chat-chrome-text)] transition-colors hover:bg-[var(--marinara-chat-chrome-button-bg-hover)]"
+        >
+          <Brain
+            size="0.875rem"
+            aria-hidden="true"
+            className={cn("shrink-0", isStreaming && !outputStarted && "animate-pulse")}
+          />
+          <span className="min-w-0 flex-1">{durationLabel}</span>
+          <ChevronRight
+            size="0.875rem"
+            aria-hidden="true"
+            className={cn("shrink-0 transition-transform", expanded && "rotate-90")}
+          />
+        </button>
+        {!summaryUnavailable && thinking && (
+          <button
+            type="button"
+            onClick={async () => {
+              if (!(await copyToClipboard(thinking))) {
+                toast.error(t("chat.message.thoughts.copyFailed"));
+                return;
+              }
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            }}
+            aria-label={t(copied ? "chat.message.thoughts.copied" : "chat.message.thoughts.copy")}
+            title={t(copied ? "chat.message.thoughts.copied" : "chat.message.thoughts.copy")}
+            className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center text-[var(--marinara-chat-chrome-text)] hover:bg-[var(--marinara-chat-chrome-button-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--marinara-chat-chrome-focus-ring)]"
+          >
+            {copied ? <Check size="0.875rem" aria-hidden="true" /> : <Copy size="0.875rem" aria-hidden="true" />}
+          </button>
+        )}
+      </div>
       {expanded && (
         <div
           id={contentId}
@@ -1813,17 +1838,58 @@ function renderContent(
   );
 }
 
+/**
+ * Mark the runs of already-resolved text that the player's answers filled in.
+ * Walks the rendered React tree like `colorNamesInNodes`, so no markup is put
+ * into the text itself (a `<mark>` string would flip HTML detection).
+ */
+function highlightAnswersInNodes(nodes: ReactNode, values: readonly string[], template: string): ReactNode {
+  const processString = (str: string, nodeIdx: number): ReactNode => {
+    const segments = highlightAnswerValues(str, values, template);
+    if (!segments.some((segment) => segment.yours)) return str;
+    return segments.map((segment, i) =>
+      segment.yours ? (
+        <mark key={`answer-${nodeIdx}-${i}`} className={HIGHLIGHT_CLASS}>
+          {segment.text}
+        </mark>
+      ) : (
+        segment.text
+      ),
+    );
+  };
+
+  const processNode = (node: ReactNode, idx: number): ReactNode => {
+    if (typeof node === "string") return processString(node, idx);
+    if (!node || typeof node !== "object" || !("props" in node)) return node;
+    const element = node as React.ReactElement;
+    const props = element.props as Record<string, unknown>;
+    if (props.children === undefined) return element;
+    const children = Array.isArray(props.children)
+      ? props.children.map((child: ReactNode, i: number) => processNode(child, i))
+      : processNode(props.children as ReactNode, 0);
+    return cloneElement(element, {}, children);
+  };
+
+  return Array.isArray(nodes) ? nodes.map((node, i) => processNode(node, i)) : processNode(nodes, 0);
+}
+
 export function RoleplayMessagePreview({
   content,
   dialogueColor,
   className,
   selfCharacterId,
+  answerValues,
+  answerTemplate = "",
 }: {
   content: string;
   dialogueColor?: string;
   className?: string;
   /** Character the previewed greeting belongs to — resolves card://self refs. */
   selfCharacterId?: string | null;
+  /** The player's answers inside `content`, to mark. Keep the array stable between renders. */
+  answerValues?: readonly string[];
+  /** The raw text `content` was resolved from, so the card author's own words are never marked. */
+  answerTemplate?: string;
 }) {
   const previewId = useId();
   const { chatFontColor, defaultDialogueColor, theme, textStrokeWidth, textStrokeColor, boldDialogue, quoteFormat } =
@@ -1851,33 +1917,38 @@ export function RoleplayMessagePreview({
     }),
     [chatFontColor, textStrokeColor, textStrokeWidth],
   );
-  const renderedContent = useMemo(
-    () =>
-      renderContent(
-        content,
-        resolvedDialogueColor,
-        undefined,
-        boldDialogue,
-        htmlScopeClass,
-        quoteFormat,
-        selfCharacterId,
-        undefined, // galleryIndex
-        undefined, // nameColorMap
-        undefined, // textShadowStr
-        !!dialogueColor,
-        remoteImages,
-      ),
-    [
-      boldDialogue,
+  const renderedContent = useMemo(() => {
+    const rendered = renderContent(
       content,
-      dialogueColor,
+      resolvedDialogueColor,
+      undefined,
+      boldDialogue,
       htmlScopeClass,
       quoteFormat,
-      remoteImages,
-      resolvedDialogueColor,
       selfCharacterId,
-    ],
-  );
+      undefined, // galleryIndex
+      undefined, // nameColorMap
+      undefined, // textShadowStr
+      !!dialogueColor,
+      remoteImages,
+    );
+    // An HTML-path greeting is one sanitized HTML string with no React text nodes, so it shows the resolved
+    // text without highlights.
+    return answerValues && answerValues.length > 0
+      ? highlightAnswersInNodes(rendered, answerValues, answerTemplate)
+      : rendered;
+  }, [
+    answerTemplate,
+    answerValues,
+    boldDialogue,
+    content,
+    dialogueColor,
+    htmlScopeClass,
+    quoteFormat,
+    remoteImages,
+    resolvedDialogueColor,
+    selfCharacterId,
+  ]);
 
   return (
     <div
@@ -2727,6 +2798,9 @@ export const ChatMessage = memo(function ChatMessage({
     [activeChatMetadata],
   );
   const scopedRegexMode = useMemo(() => parseChatMetadata(activeChatMetadata).scopedRegexMode, [activeChatMetadata]);
+  // The chat's variables, so {{name}} in a message shows what the model reads. Memoized on the raw
+  // metadata: a new object every render would rebuild every message's display text.
+  const chatVariables = useMemo(() => readChatVariables(activeChatMetadata), [activeChatMetadata]);
   // Roleplay can show a private note to one character; it stays private only when each character replies alone.
   const noteSharing = useMemo<MessageNoteSharing | undefined>(() => {
     if (!isRoleplay || !chatCharacterIds?.length) return undefined;
@@ -2812,6 +2886,7 @@ export const ChatMessage = memo(function ChatMessage({
     (content: string) => {
       const macroContext = {
         variables: presetVariables,
+        chatVariables,
         userName,
         persona: {
           name: userName,
@@ -2847,6 +2922,7 @@ export const ChatMessage = memo(function ChatMessage({
       applyToAIOutput,
       scopedRegexMode,
       presetVariables,
+      chatVariables,
       message.characterId,
       charName,
       isSystem,
@@ -3156,6 +3232,14 @@ export const ChatMessage = memo(function ChatMessage({
             while (fullText[offset] === "\n" || fullText[offset] === "\r") offset++;
             return [{ kind: "illustration" as const, index, images, offset }];
           }),
+          // Visual Novel keeps only the marker for now: its paragraphs have no room for a free-form block.
+          ...(visualNovel || isUser
+            ? []
+            : getRoleplayArtifacts(extra).map(({ activity, index, artifact }) => {
+                let offset = getRoleplayCommandContentOffset(fullText, activity);
+                while (fullText[offset] === "\n" || fullText[offset] === "\r") offset++;
+                return { kind: "artifact" as const, index, html: artifact.html, offset };
+              })),
         ].sort((a, b) => a.offset - b.offset || a.index - b.index)
       : [];
     let paragraphStart = 0;
@@ -3258,6 +3342,12 @@ export const ChatMessage = memo(function ChatMessage({
         >
           {command.images.map(({ attachment, index }) => renderRoleplayImageAttachment(attachment, index, false))}
         </div>
+      ) : command.kind === "artifact" ? (
+        <RoleplayArtifact
+          key={`artifact-${message.id}-${message.activeSwipeIndex}-${command.index}`}
+          html={command.html}
+          scopeClass={`${htmlScopeClass}-artifact-${message.activeSwipeIndex}-${command.index}`}
+        />
       ) : command.kind === "whisper" ? (
         <RoleplayWhisper
           // The original command text identifies the whisper, so an open editor never saves over a replacement.
@@ -3284,6 +3374,7 @@ export const ChatMessage = memo(function ChatMessage({
       ),
     [
       rollToneMode,
+      htmlScopeClass,
       message.chatId,
       message.id,
       message.activeSwipeIndex,

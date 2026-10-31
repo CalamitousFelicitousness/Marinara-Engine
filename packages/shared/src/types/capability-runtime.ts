@@ -385,6 +385,29 @@ export interface CapabilityGameStateRecord {
   presentCharacterIds: string[];
 }
 
+/** Capability API 1.391: one enabled, completed Advanced Memory scene summary. Read-only copy. */
+export interface CapabilityAdvancedMemorySummary {
+  id: string;
+  /** Older chats can hold several copies of one scene; they share this id. */
+  sceneId: string;
+  kind: "scene";
+  title: string;
+  /** The recap as stored, hand edits included. */
+  content: string;
+  timeline: string | null;
+  startMessageId: string;
+  endMessageId: string;
+  /** Characters with access to the scene; the narrator is not listed. */
+  audienceCharacterIds: string[];
+  sourceFingerprint: string;
+  updatedAt: string;
+  /**
+   * The "memory" string the summary reply returned for `long-term-memory:runtime.summaryMemoryInstruction()`,
+   * untouched; the Engine never parses it. Null without a block, after a hand edit, and on older records.
+   */
+  memory: string | null;
+}
+
 /** Capability API 1.387: a chat's stored summaries, as the Engine reads them from the chat. Read-only copies. */
 export interface CapabilityChatSummaries {
   /** Conversation day summaries by day ("DD.MM.YYYY"). */
@@ -395,6 +418,8 @@ export interface CapabilityChatSummaries {
   rolling: ChatSummaryEntry[];
   /** Game: the summary of each previous session. */
   gameSessions: SessionSummary[];
+  /** Capability API 1.391: Advanced Memory's enabled, completed scene summaries, in the order they were written. */
+  advancedMemory: CapabilityAdvancedMemorySummary[];
 }
 
 export type CapabilityRoleplayEventAudience = "public" | "user-only" | { characterIds: string[] };
@@ -455,6 +480,13 @@ export interface CapabilityPersistenceHost extends CapabilityPersistenceSession 
   ): Promise<void>;
   /** Capability API 1.341. Adds messages, each with its first swipe, as the Engine's batch write does. Requires `chat-write`. */
   appendMessages?(chatId: string, messages: CapabilityAppendMessageInput[]): Promise<CapabilityMessageRecord[]>;
+  /**
+   * Capability API 1.389. Hides or shows messages of one chat from the AI, as the Engine's summary does. Requires
+   * `chat-write`. Resolves the ids whose flag this call actually changed, so the package can record what it owns.
+   * Ids not in the chat are ignored. A message whose visibility the user set by hand (`extra.visibilityManual`) is
+   * never changed and is not returned.
+   */
+  setMessagesHiddenFromAI?(chatId: string, messageIds: string[], hidden: boolean): Promise<string[]>;
   /** Capability API 1.341. A durable note from a conversation to its connected roleplay. Requires `chat-write`. */
   createChatNote?(sourceChatId: string, targetChatId: string, content: string, anchorMessageId?: string): Promise<void>;
   /** Capability API 1.341. A one-time influence from a conversation to its connected roleplay. Requires `chat-write`. */

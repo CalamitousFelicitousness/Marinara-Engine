@@ -88,7 +88,9 @@ type ConversationSurfaceProps = {
   onDeleteOtherSwipes: () => void;
   onDeleteMore: () => void;
   onCloseDeleteDialog: () => void;
-  onBulkDelete: () => void;
+  onBulkDelete?: () => void;
+  onExportSelected?: () => void;
+  multiSelectHint?: string;
   onCancelMultiSelect: () => void;
   onUnselectAllMessages: () => void;
   onSelectAllAboveSelection: () => void;
@@ -162,6 +164,8 @@ export function ChatConversationSurface({
   onDeleteMore,
   onCloseDeleteDialog,
   onBulkDelete,
+  onExportSelected,
+  multiSelectHint,
   onCancelMultiSelect,
   onUnselectAllMessages,
   onSelectAllAboveSelection,
@@ -271,6 +275,8 @@ export function ChatConversationSurface({
         onDeleteMore={onDeleteMore}
         onCloseDeleteDialog={onCloseDeleteDialog}
         onBulkDelete={onBulkDelete}
+        onExportSelected={onExportSelected}
+        multiSelectHint={multiSelectHint}
         onCancelMultiSelect={onCancelMultiSelect}
         onUnselectAllMessages={onUnselectAllMessages}
         onSelectAllAboveSelection={onSelectAllAboveSelection}

@@ -66,7 +66,6 @@ import {
   Radar,
   Save,
   FileText,
-  FilePlus2,
   FolderOpen,
   Folder,
   Upload,
@@ -149,8 +148,10 @@ import {
   isConversationCommandToggleOn,
 } from "@marinara-engine/shared";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
-import { showAlertDialog, showChoiceDialog, showConfirmDialog, showPromptDialog } from "../../lib/app-dialogs";
+import { showAlertDialog, showChoiceDialog, showConfirmDialog } from "../../lib/app-dialogs";
+import { saveIntoProfileSettings } from "../../lib/chat-preset-apply";
 import { HelpTooltip } from "../ui/HelpTooltip";
+import { ChatProfileBuilder } from "./ChatProfileBuilder";
 import { MacroTextarea } from "../ui/MacroTextarea";
 import { Modal } from "../ui/Modal";
 import { DraftNumberInput } from "../ui/DraftNumberInput";
@@ -245,7 +246,8 @@ import {
   type ActiveLorebookView,
 } from "../../lib/chat-lorebooks";
 import { getConnectedChatDisplayName, parseChatMetadata } from "../../lib/chat-display";
-import { getChatCharacterIds } from "../../lib/chat-macros";
+import { getChatCharacterIds, resolveGreetingPreview } from "../../lib/chat-macros";
+import { cardAnswerValues } from "../../lib/onboarding-preview-highlight";
 import { getTouchReorderDropIndex } from "../../lib/touch-reorder";
 import {
   getAgentRunIntervalMeta,
@@ -273,7 +275,6 @@ import { useTouchFolderDrag } from "../../hooks/use-touch-folder-drag";
 import {
   useChatPresets,
   useSaveChatPresetSettings,
-  useDuplicateChatPreset,
   useUpdateChatPreset,
   useDeleteChatPreset,
   useApplyChatPreset,
@@ -460,6 +461,8 @@ interface ChatSettingsDrawerProps {
     // R2: the reply checkup's links to Max output tokens and the lorebook token budget.
     | "advanced-parameters"
     | "lorebooks"
+    // The agents panel's "In this chat" rows: opens Agents at that agent's menu.
+    | `agent:${string}`
     | null;
   /**
    * Chat Branches, Search, Active Context, Gallery and the drawers in `ChatSettingsTools`. Regular chats
@@ -2783,6 +2786,18 @@ export function ChatSettingsDrawer({
       if (secondFrame) window.cancelAnimationFrame(secondFrame);
     };
   }, [focusAgentMenu, pendingAgentMenuTargetId]);
+
+  const initialAgentId = initialSection?.startsWith("agent:") ? initialSection.slice("agent:".length) : null;
+  useEffect(() => {
+    if (!open || !initialAgentId) return;
+    const frame = window.requestAnimationFrame(() => {
+      panelRef.current
+        ?.querySelector(`[data-chat-settings-section="${chatMode}-agents"]`)
+        ?.scrollIntoView({ block: "start" });
+      scrollToAgentMenu(getAgentSettingsMenuId(chat.id, initialAgentId));
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [chat.id, chatMode, initialAgentId, open, scrollToAgentMenu]);
   const gameAgentFeatureCount =
     (metadata.enableAgents ? 1 : 0) +
     (gameLorebookKeeperEnabled ? 1 : 0) +
@@ -3041,13 +3056,33 @@ export function ChatSettingsDrawer({
   }, [spriteLayoutSubjects]);
 
   // ── First message confirm state ──
-  const [firstMesConfirm, setFirstMesConfirm] = useState<{
+  type FirstMesConfirm = {
     charId: string;
     charName: string;
     dialogueColor?: string;
     greetings: CharacterGreeting[];
     selectedIndex: number;
+  };
+  const [firstMesConfirm, setFirstMesConfirm] = useState<FirstMesConfirm | null>(null);
+  // A card just added to this chat. Its questions (if it has any) come before its
+  // greeting, so the greeting waits here until the chat reports the card and the
+  // answers the server seeded for it.
+  const [pendingAddedCard, setPendingAddedCard] = useState<{
+    charId: string;
+    greeting: FirstMesConfirm | null;
   } | null>(null);
+  // The player's answers to this card's questions, read live from the chat so the
+  // dialog shows what was just saved once the chat refreshes. Marked in the previews.
+  const greetingAnswerValues = useMemo(
+    () =>
+      firstMesConfirm
+        ? cardAnswerValues(
+            onboardingByCharacterId.get(firstMesConfirm.charId)?.onboarding.cardVariables ?? [],
+            chatMacroVariables,
+          )
+        : [],
+    [chatMacroVariables, firstMesConfirm, onboardingByCharacterId],
+  );
   const greetingDialogRef = useRef<HTMLDivElement | null>(null);
   useDialogFocusScope(firstMesConfirm !== null, greetingDialogRef);
 
@@ -3177,6 +3212,7 @@ export function ChatSettingsDrawer({
         },
       );
       clearRemovedCharacterMetadata(charId);
+      setPendingAddedCard((pending) => (pending?.charId === charId ? null : pending));
     } else {
       current.push(charId);
       updateChat.mutate(
@@ -3189,15 +3225,14 @@ export function ChatSettingsDrawer({
             const char = characters.find((c) => c.id === charId);
             if (!char) return;
             const { greetings, dialogueColor } = readCharacterGreetings(char.data);
-            if (greetings.length > 0) {
-              setFirstMesConfirm({
-                charId,
-                charName: charName(char),
-                dialogueColor,
-                greetings,
-                selectedIndex: 0,
-              });
-            }
+            // The card's questions (if any) open first; the effect below then shows the greeting.
+            setPendingAddedCard({
+              charId,
+              greeting:
+                greetings.length > 0
+                  ? { charId, charName: charName(char), dialogueColor, greetings, selectedIndex: 0 }
+                  : null,
+            });
           },
         },
       );
@@ -4154,7 +4189,32 @@ export function ChatSettingsDrawer({
   }, [onboardingQuestionsCharacterId, onboardingQuestionsTarget]);
   useEffect(() => {
     setOnboardingQuestionsCharacterId(null);
+    setPendingAddedCard(null);
   }, [chat.id]);
+  // A card added to this chat: wait until the chat itself lists it. That is when
+  // `chat` carries both the new roster and the answers the server seeded for the
+  // card, so the questions window opens on them (it reads them once, on mount) and
+  // the stale-id effect above doesn't close it for a card it can't see yet. The
+  // card list is already loaded here (the card was picked from it), so whether it
+  // has questions is known without waiting on anything else.
+  useEffect(() => {
+    if (!pendingAddedCard || !chatCharIds.includes(pendingAddedCard.charId)) return;
+    if (onboardingCardQuestionsById.has(pendingAddedCard.charId)) {
+      setOnboardingQuestionsCharacterId(pendingAddedCard.charId);
+      return;
+    }
+    if (pendingAddedCard.greeting) setFirstMesConfirm(pendingAddedCard.greeting);
+    setPendingAddedCard(null);
+  }, [chatCharIds, onboardingCardQuestionsById, pendingAddedCard]);
+  // The questions window is done (saved or backed out): the added card's greeting is next.
+  const continueAddedCardGreeting = useCallback(
+    (charId: string | null) => {
+      if (!pendingAddedCard || pendingAddedCard.charId !== charId) return;
+      if (pendingAddedCard.greeting) setFirstMesConfirm(pendingAddedCard.greeting);
+      setPendingAddedCard(null);
+    },
+    [pendingAddedCard],
+  );
   /**
    * Save the answers from an isolated character-questions window (#7797). The
    * merge is the wizard's own, so untouched questions carry their default value
@@ -4173,10 +4233,15 @@ export function ChatSettingsDrawer({
           return;
         }
       }
+      continueAddedCardGreeting(onboardingQuestionsCharacterId);
       setOnboardingQuestionsCharacterId(null);
     },
-    [chat.id, localizeUi, updateMeta],
+    [chat.id, continueAddedCardGreeting, localizeUi, onboardingQuestionsCharacterId, updateMeta],
   );
+  const handleOnboardingQuestionsBack = useCallback(() => {
+    continueAddedCardGreeting(onboardingQuestionsCharacterId);
+    setOnboardingQuestionsCharacterId(null);
+  }, [continueAddedCardGreeting, onboardingQuestionsCharacterId]);
   const [pendingToolIds, setPendingToolIds] = useState<string[]>([]);
   const [charSearch, setCharSearch] = useState("");
   const [lbSearch, setLbSearch] = useState("");
@@ -4327,7 +4392,6 @@ export function ChatSettingsDrawer({
   const presetMode = chatMode;
   const { data: chatPresets } = useChatPresets(presetMode);
   const saveChatPreset = useSaveChatPresetSettings();
-  const duplicateChatPreset = useDuplicateChatPreset();
   const renameChatPreset = useUpdateChatPreset();
   const deleteChatPreset = useDeleteChatPreset();
   const applyChatPreset = useApplyChatPreset();
@@ -4886,7 +4950,7 @@ export function ChatSettingsDrawer({
   const handleSaveIntoPreset = async () => {
     if (!selectedChatPreset || selectedChatPreset.isDefault) return;
     const profileId = selectedChatPreset.id;
-    const settings = snapshotCurrentPresetSettings();
+    const settings = saveIntoProfileSettings(snapshotCurrentPresetSettings(), selectedChatPreset.settings);
     // Count from a fresh list so chats changed in another window are included. One try without
     // retries, so a failing list falls back to the loaded one at once.
     const chatList = await api.get<Chat[]>("/chats").catch(() => allChats ?? []);
@@ -4949,33 +5013,19 @@ export function ChatSettingsDrawer({
     setRenamingPreset(false);
   };
 
-  const handleSaveAsPreset = async () => {
-    if (!selectedChatPreset) return;
-    const baseName = await showPromptDialog({
-      title: localizeUi("chat.settingsProfile.dialog.createTitle"),
-      message: localizeUi("chat.settingsProfile.dialog.newName"),
-      defaultValue: `${selectedChatPreset.name} Copy`,
-      confirmLabel: localizeUi("ui.modals.createcharactermodal.create"),
-    });
-    if (!baseName?.trim()) return;
-    const trimmed = baseName.trim().slice(0, 120);
-    duplicateChatPreset.mutate(
-      { id: selectedChatPreset.id, name: trimmed },
-      {
-        onSuccess: (created) => {
-          if (!created) return;
-          // Save the current chat settings into the new profile, then apply it
-          // (which records appliedChatPresetId on the chat so the dropdown follows).
-          saveChatPreset.mutate(
-            { id: created.id, settings: snapshotCurrentPresetSettings() },
-            {
-              onSuccess: () => applyChatPreset.mutate({ presetId: created.id, chatId: chat.id }),
-            },
-          );
-        },
-      },
-    );
-  };
+  // "New" starts the builder from this chat's settings, persona and lorebooks (the old "Save as").
+  const [profileBuilder, setProfileBuilder] = useState<"edit" | "new" | null>(null);
+  const newProfileSettings = useMemo(
+    (): ChatPresetSettings =>
+      profileBuilder === "new"
+        ? {
+            ...snapshotCurrentPresetSettings(),
+            ...(chat.personaId ? { personaId: chat.personaId } : {}),
+            ...(activeLorebookIds.length ? { lorebookIds: [...activeLorebookIds] } : {}),
+          }
+        : {},
+    [profileBuilder, snapshotCurrentPresetSettings, chat.personaId, activeLorebookIds],
+  );
 
   const handleDeletePreset = async () => {
     if (!selectedChatPreset || selectedChatPreset.isDefault) return;
@@ -5664,6 +5714,14 @@ export function ChatSettingsDrawer({
                 className="hidden"
                 onChange={handleImportFile}
               />
+              <ChatProfileBuilder
+                open={profileBuilder !== null}
+                onClose={() => setProfileBuilder(null)}
+                mode={chatMode}
+                profile={profileBuilder === "edit" ? selectedChatPreset : null}
+                initialSettings={newProfileSettings}
+                currentChatId={chat.id}
+              />
               {/* Dropdown / rename input + help */}
               <div className="flex items-center gap-2">
                 {renamingPreset ? (
@@ -5704,6 +5762,28 @@ export function ChatSettingsDrawer({
                     ))}
                   </select>
                 )}
+                <button
+                  type="button"
+                  onClick={() => setProfileBuilder("edit")}
+                  disabled={!selectedChatPreset || selectedChatPreset.isDefault}
+                  title={
+                    selectedChatPreset?.isDefault
+                      ? localizeUi("chat.settingsProfile.default.cannotSave")
+                      : localizeUi("chat.settingsProfile.builder.editHint")
+                  }
+                  className="shrink-0 rounded-md px-2 py-1.5 text-xs font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {localizeUi("chat.settingsProfile.builder.edit")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setProfileBuilder("new")}
+                  title={localizeUi("chat.settingsProfile.builder.newHint")}
+                  className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+                >
+                  <Plus size="0.75rem" aria-hidden />
+                  {localizeUi("chat.settingsProfile.builder.new")}
+                </button>
                 <button
                   onClick={handleToggleDefaultPreset}
                   disabled={!selectedChatPreset || selectedChatPreset.isActive || setActiveChatPreset.isPending}
@@ -5767,14 +5847,6 @@ export function ChatSettingsDrawer({
                   className="flex-1 flex items-center justify-center rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Pencil size="0.875rem" />
-                </button>
-                <button
-                  onClick={handleSaveAsPreset}
-                  disabled={!selectedChatPreset}
-                  title={localizeUi("chat.settingsProfile.action.saveAs")}
-                  className="flex-1 flex items-center justify-center rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <FilePlus2 size="0.875rem" />
                 </button>
                 <span className="mx-1 h-4 w-px shrink-0 bg-[var(--border)]" aria-hidden />
                 <button
@@ -5848,7 +5920,12 @@ export function ChatSettingsDrawer({
               count={branchCount}
               help={localizeUi("chat.settings.branchesHelp")}
             >
-              <ChatBranchesPanel activeChatId={chat.id} activeChatName={chat.name} groupId={chat.groupId ?? null} />
+              <ChatBranchesPanel
+                activeChatId={chat.id}
+                activeChatName={chat.name}
+                groupId={chat.groupId ?? null}
+                allowRangeExport={!isGame}
+              />
             </Section>
           )}
 
@@ -8380,6 +8457,7 @@ export function ChatSettingsDrawer({
           {modeSettingsSurfaces.agentSettingsSurface === "generation" && (
             <Section
               id={`${chatMode}-agents`}
+              forceOpen={initialAgentId !== null}
               style={{ order: CHAT_SETTINGS_ORDER.agents }}
               label={localizeUi("navigation.topbar.agents")}
               icon={<Sparkles size="0.875rem" />}
@@ -10857,7 +10935,7 @@ export function ChatSettingsDrawer({
           initialAnswers={chatMacroVariables}
           withPersona={false}
           chatFloatingPanel
-          onBack={() => setOnboardingQuestionsCharacterId(null)}
+          onBack={handleOnboardingQuestionsBack}
           onCreated={handleOnboardingAnswersSaved}
         />
       )}
@@ -11225,6 +11303,20 @@ export function ChatSettingsDrawer({
               <div className="mt-3 max-h-[min(50dvh,22rem)] space-y-2 overflow-y-auto pr-1">
                 {firstMesConfirm.greetings.map((greeting, index) => {
                   const selected = index === firstMesConfirm.selectedIndex;
+                  const greetingCard = characters.find((c) => c.id === firstMesConfirm.charId);
+                  // Resolved before the cut, so the cut can't split a {{tag}}.
+                  const preview = greetingCard
+                    ? resolveGreetingPreview(greeting.text, {
+                        character: greetingCard,
+                        chat,
+                        characters,
+                        personas,
+                        chatVariables: chatMacroVariables,
+                      })
+                    : {
+                        text: greeting.text.slice(0, 500),
+                        cut: greeting.text.length > 500,
+                      };
                   return (
                     <button
                       key={`${greeting.alternateIndex ?? "first"}:${greeting.text.slice(0, 32)}`}
@@ -11259,15 +11351,15 @@ export function ChatSettingsDrawer({
                       </span>
                       <RoleplayMessagePreview
                         content={
-                          greeting.text.length > 500
-                            ? localizeUi("ui.chat.chatsettingsdrawer.value1_30f5501", {
-                                value1: greeting.text.slice(0, 500),
-                              })
-                            : greeting.text
+                          preview.cut
+                            ? localizeUi("ui.chat.chatsettingsdrawer.value1_30f5501", { value1: preview.text })
+                            : preview.text
                         }
                         dialogueColor={firstMesConfirm.dialogueColor}
                         className="mt-1 text-[0.6875rem] leading-relaxed"
                         selfCharacterId={firstMesConfirm.charId}
+                        answerValues={greetingAnswerValues}
+                        answerTemplate={greeting.text}
                       />
                     </button>
                   );

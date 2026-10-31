@@ -28,6 +28,7 @@
     "ruleset-catalog-refresh.regression.ts",
     "ruleset-combat-bridge-client.regression.ts",
     "ruleset-combat-screen-client.regression.ts",
+    "ruleset-combat-aiming.regression.ts",
     "ruleset-dice-pool-client.regression.ts",
     "ruleset-layers-client.regression.ts",
     "nanogpt-usage-meter-gate.regression.ts",
@@ -36,6 +37,7 @@
     "package-audio-player.regression.ts",
     "onboarding-preview-highlight.regression.ts",
     "state-editor.regression.ts",
+    "preset-section-tokens.regression.ts",
     "marinara-host-namespace.regression.ts"
   ]
 }

@@ -1581,6 +1581,23 @@ and `packages/client/src/localization/locales/en.json`.
 
 Covered by `scripts/regressions/chat-branch-preview.regression.ts`.
 
+### Sync with upstream, 2026-10-31
+
+1026 upstream commits, merge base `8e8f14636`, through `04e328e06`. v2.5.1 and storage format 8 on
+both sides. 57 overlapping files, 9 conflicts; `GameSetupWizard.tsx` conflicted only on upstream
+re-indentation.
+
+- **Split description on import (#8543).** Taken beside the fork's import overwrite: every import path
+  passes both `overwriteId` and `splitDescription`, and the split is saved as a version of the
+  overwritten character as well as a new one.
+- **Export macros.** Upstream's `groupScenarioOverrideText` on the export context is not taken;
+  `buildChatMacroContext` derives it.
+- **Speech timeout tip.** Upstream's "No audio after 60 s" troubleshooting line names the
+  request-timeout fields the fork dropped at #7711, so it is not taken. Both docs take upstream's
+  **Agents > Agent Organizer** path.
+- **Branch drawer.** Upstream's range export joins the drawer; branches still sort through
+  `orderBranches`, so `compareChatsByActivityDesc` stays out.
+
 ### Sync with upstream, 2026-10-30, second merge
 
 31 upstream commits, merge base `98ae0c8f9`, through `8e8f14636`. Still v2.5.1; storage format 7 to 8

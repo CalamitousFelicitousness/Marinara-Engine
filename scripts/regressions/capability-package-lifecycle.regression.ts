@@ -104,7 +104,7 @@ try {
   const legacyManifest = capabilityPackageManifestSchema.parse(installedPackage("legacy", ["agent"]).manifest);
   assert.equal(legacyManifest.schemaVersion, 1, "Existing manifest v1 packages must remain readable");
   assert.equal(getCapabilityApiCompatibilityIssue(legacyManifest), null);
-  assert.deepEqual(supportedCapabilityApi, { major: 1, minor: 388 });
+  assert.deepEqual(supportedCapabilityApi, { major: 1, minor: 813 });
 
   const manifestV2 = capabilityPackageManifestSchema.parse({
     ...legacyManifest,
@@ -140,11 +140,11 @@ try {
   });
   assert.match(
     getCapabilityApiCompatibilityIssue(unsupportedMajorManifest) ?? "",
-    /requires capability API 2\.0; this Engine supports 1\.388/,
+    /requires capability API 2\.0; this Engine supports 1\.813/,
   );
   const currentMinorManifest = capabilityPackageManifestSchema.parse({
     ...manifestV2,
-    capabilityApi: { major: 1, minor: 388 },
+    capabilityApi: { major: 1, minor: 813 },
   });
   assert.equal(getCapabilityApiCompatibilityIssue(currentMinorManifest), null);
   assert.equal(
@@ -204,10 +204,38 @@ try {
     [382, "symbol-pool fights"],
     [383, "health on a plain track"],
     [384, "saved gallery image animation"],
+    [779, "a ruleset's weight unit"],
+    [780, "damage changes by damage type"],
+    [781, "package-bound reference lorebooks"],
+    [782, "independent browser audio players"],
+    [783, "symbol-pool fights"],
+    [784, "health on a plain track"],
+    [785, "attack ability choices"],
+    [786, "sheet migrations that set a column"],
+    [787, "what a creature has on it"],
+    [788, "text field suggestions"],
+    [789, "how many text suggestions to pick"],
+    [790, "calls kept on the sheet"],
+    [791, "rows steps that count their rows"],
+    [792, "a sheet bonus to hit on attack rows"],
+    [793, "a pool's tally column"],
+    [794, "spotting fakes"],
+    [795, "an encounter budget"],
+    [796, "rests that clear temporary points"],
+    [797, "signature actions at a turn's start"],
+    [799, "rituals that cost no slot"],
+    [800, "weapons drawn on use"],
+    [801, "rituals only for those who may"],
+    [802, "rests only so often"],
+    [803, "a ruleset's language packs"],
+    [804, "ammunition's bonus to hit"],
     [385, "shared gallery image saving"],
     [386, "Home browser openConnection and raw generation debug logging"],
     [387, "chat summaries"],
     [388, "host-only services"],
+    [389, "hide messages from the AI"],
+    [390, "let the Engine draw an agent page header"],
+    [391, "Advanced Memory scene summaries and the memory block"],
   ];
   for (const [minor, label] of supportedMinors) {
     assert.equal(
@@ -220,11 +248,11 @@ try {
   }
   const unsupportedMinorManifest = capabilityPackageManifestSchema.parse({
     ...manifestV2,
-    capabilityApi: { major: 1, minor: 389 },
+    capabilityApi: { major: 1, minor: supportedCapabilityApi.minor + 1 },
   });
-  assert.match(
+  assert.equal(
     getCapabilityApiCompatibilityIssue(unsupportedMinorManifest) ?? "",
-    /requires capability API 1\.389; this Engine supports 1\.388/,
+    `Package requires capability API 1.${supportedCapabilityApi.minor + 1}; this Engine supports 1.${supportedCapabilityApi.minor}`,
   );
   const startupManifest = {
     ...currentMinorManifest,
@@ -809,7 +837,8 @@ try {
   // otherwise land second and overwrite requestedCatalogUrl. Overlay behaviour
   // has its own coverage in capability-preview-overlay.regression.ts.
   const normalizedCatalog = await capabilityPackageManager.catalog(async (url) => {
-    requestedCatalogUrl = url;
+    // The store.json sidecar beside the catalog is fetched too; pin only the catalog.
+    if (String(url).endsWith("/catalog.json")) requestedCatalogUrl = url;
     return new Response(
       JSON.stringify({
         schemaVersion: 1,

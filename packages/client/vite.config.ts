@@ -101,6 +101,14 @@ function manualChunks(id: string) {
   // invents, rather than weight on the game tag parser's chunk, which takes the rest of the shared code.
   if (/\/shared\/(?:dist|src)\/features\/rulesets\/(?:item-book|invented-items)\.(?:js|ts)$/u.test(id))
     return "ruleset-items";
+  // The ruleset format itself grows with every Capability API minor, so it is its own chunk rather
+  // than weight on the world's.
+  if (/\/shared\/(?:dist|src)\/schemas\/ruleset\.schema\.(?:js|ts)$/u.test(id)) return "ruleset-schema";
+  // So are a ruleset fight's rules (the encounter, its options, the board and who sees whom), which grow
+  // with every combat key a ruleset can declare. They share the item book's chunk, since each imports
+  // the other and two chunks would load in a cycle.
+  if (/\/shared\/(?:dist|src)\/features\/ruleset-combat\/(?!resolve\.)[^/]+\.(?:js|ts)$/u.test(id))
+    return "ruleset-items";
   // The Experience file reader is its own chunk too, rather than weight on the game world's chunk.
   if (/\/shared\/(?:dist|src)\/features\/world\/experience-file\.(?:js|ts)$/u.test(id)) return "experience-file";
   // So is the world a game is set in (its kit, places, people, history and story), which grows with
@@ -110,6 +118,10 @@ function manualChunks(id: string) {
   // with every part of a sheet a ruleset can describe.
   if (/\/shared\/(?:dist|src)\/features\/rulesets\/(?:sheet-builder|sheet-math)\.(?:js|ts)$/u.test(id))
     return "ruleset-sheet-rules";
+  // So is the description splitter, whose label vocabulary is large and only needed on import and in the
+  // character editor, rather than weight on the game tag parser's chunk.
+  if (/\/shared\/(?:dist|src)\/utils\/character-description-split\.(?:js|ts)$/u.test(id))
+    return "character-description-split";
   // The ruleset sheet grows with every part of a sheet a ruleset can describe, and the art the game draws
   // from board, icon and portrait packs is shared by several screens: each is its own chunk rather than
   // weight on GameSurface's budget.

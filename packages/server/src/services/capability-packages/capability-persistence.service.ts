@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
+  type CapabilityAdvancedMemorySummary,
   type CapabilityCharacterStatusResult,
   type CapabilityCharacterStatusUpdate,
   type CapabilityChatActivityUpdate,
@@ -29,6 +30,7 @@ import { FileUniqueConstraintError } from "../../db/file-schema.js";
 import { engineEventOwner } from "./capability-roleplay-events.service.js";
 import { ensureTimestampAfter } from "../import/import-timestamps.js";
 import {
+  advancedMemoryRecords,
   chats,
   capabilityDocuments,
   gameStateSnapshots,
@@ -236,7 +238,7 @@ function readGameSession(session: Record<string, unknown>, index: number, chatUp
  * The summaries a chat keeps in its metadata; whatever is missing or malformed reads as empty.
  * Undated entries take the chat's own update time, so repeated reads return the same values.
  */
-function mapChatSummaries(value: unknown, chatUpdatedAt?: string): CapabilityChatSummaries {
+function mapChatSummaries(value: unknown, chatUpdatedAt?: string): Omit<CapabilityChatSummaries, "advancedMemory"> {
   const metadata = parseMetadata(value) ?? {};
   const sessions = Array.isArray(metadata.gamePreviousSessionSummaries) ? metadata.gamePreviousSessionSummaries : [];
   return {
@@ -251,6 +253,57 @@ function mapChatSummaries(value: unknown, chatUpdatedAt?: string): CapabilityCha
       return typeof session?.summary === "string" ? [readGameSession(session, index, chatUpdatedAt)] : [];
     }),
   };
+}
+
+/** The columns a package sees; vectors, work-in-progress replies and message lists are never loaded. */
+const advancedMemorySummaryColumns = {
+  id: advancedMemoryRecords.id,
+  sceneId: advancedMemoryRecords.sceneId,
+  title: advancedMemoryRecords.title,
+  content: advancedMemoryRecords.content,
+  timeline: advancedMemoryRecords.timeline,
+  startMessageId: advancedMemoryRecords.startMessageId,
+  endMessageId: advancedMemoryRecords.endMessageId,
+  audienceCharacterIds: advancedMemoryRecords.audienceCharacterIds,
+  sourceFingerprint: advancedMemoryRecords.sourceFingerprint,
+  structuredMemory: advancedMemoryRecords.structuredMemory,
+  createdAt: advancedMemoryRecords.createdAt,
+  updatedAt: advancedMemoryRecords.updatedAt,
+};
+type AdvancedMemorySummaryRow = Pick<
+  typeof advancedMemoryRecords.$inferSelect,
+  keyof typeof advancedMemorySummaryColumns
+>;
+
+/** The query keeps enabled scene rows; scaffolds and preparation work have no content yet. */
+function mapAdvancedMemory(rows: AdvancedMemorySummaryRow[]): CapabilityAdvancedMemorySummary[] {
+  return rows
+    .filter((row) => row.content.trim())
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
+    .map((row) => {
+      let audience: unknown = [];
+      try {
+        audience = JSON.parse(row.audienceCharacterIds);
+      } catch {
+        audience = [];
+      }
+      return {
+        id: row.id,
+        sceneId: row.sceneId,
+        kind: "scene",
+        title: row.title,
+        content: row.content,
+        timeline: row.timeline ?? null,
+        startMessageId: row.startMessageId,
+        endMessageId: row.endMessageId,
+        audienceCharacterIds: Array.isArray(audience)
+          ? audience.filter((id): id is string => typeof id === "string")
+          : [],
+        sourceFingerprint: row.sourceFingerprint,
+        updatedAt: row.updatedAt,
+        memory: typeof row.structuredMemory === "string" ? row.structuredMemory : null,
+      };
+    });
 }
 
 function parsePresentCharacterIds(value: unknown): string[] {
@@ -565,7 +618,19 @@ function createPersistenceSession(db: DB, assertPermission: PersistencePermissio
         .from(chats)
         .where(eq(chats.id, chatId))
         .limit(1);
-      return mapChatSummaries(rows[0]?.metadata, rows[0]?.updatedAt);
+      const records = rows[0]
+        ? await db
+            .select(advancedMemorySummaryColumns)
+            .from(advancedMemoryRecords)
+            .where(
+              and(
+                eq(advancedMemoryRecords.chatId, chatId),
+                eq(advancedMemoryRecords.kind, "scene"),
+                eq(advancedMemoryRecords.enabled, 1),
+              ),
+            )
+        : [];
+      return { ...mapChatSummaries(rows[0]?.metadata, rows[0]?.updatedAt), advancedMemory: mapAdvancedMemory(records) };
     },
     async getGameState(chatId) {
       assertPermission("chat-read");
@@ -794,6 +859,24 @@ export function createCapabilityPersistenceHost(db: DB, permissions?: readonly s
         const row = byId.get(id);
         return row ? [mapMessage(row)] : [];
       });
+    },
+    async setMessagesHiddenFromAI(chatId, messageIds, hidden) {
+      assertPermission("chat-write");
+      if (!(await hostChats().getById(chatId))) throw new Error(`Chat ${chatId} was not found.`);
+      // An automatic writer leaves a message the user hid or showed by hand alone, like Advanced Memory (#7192).
+      // ponytail: read outside the patch queues, so a hand-set choice made during this call can be overwritten; a
+      // skip-manual option inside bulkSetHiddenFromAI's transaction closes it.
+      const manual = new Set(
+        (await hostChats().listMessages(chatId))
+          .filter((message) => parseExtra(message.extra).visibilityManual === true)
+          .map((message) => message.id),
+      );
+      // No extra fields: a package never marks a message's visibility as the user's choice.
+      return hostChats().bulkSetHiddenFromAI(
+        chatId,
+        messageIds.filter((id) => !manual.has(id)),
+        hidden,
+      );
     },
     async createChatNote(sourceChatId, targetChatId, content, anchorMessageId) {
       assertPermission("chat-write");

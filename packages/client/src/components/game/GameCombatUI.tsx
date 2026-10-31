@@ -1864,7 +1864,10 @@ export function GameCombatUI({
         />
       )}
       <CombatAiControls
-        party={party}
+        // In a shared room's ruleset fight only the viewer's own are offered, as on a board.
+        party={
+          rulesetFight?.view.yours ? party.filter((member) => rulesetFight.view.yours!.includes(member.id)) : party
+        }
         defaultController="ai"
         // A ruleset fight has no queued orders and lets anybody be handed over at any point, so the
         // only thing that locks the toggle is a step already on its way to the server.

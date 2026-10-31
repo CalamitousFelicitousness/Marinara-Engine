@@ -731,10 +731,13 @@ export function GameRulesetSheet({
         for (const [rest, offers] of pairs) {
           for (const offer of offers) {
             const key = `${rest}/${offer.name}`;
-            next[key] = {
-              on: current[key]?.on ?? false,
-              counts: Object.fromEntries(offer.picks.map((pick) => [pick.pool, pick.count])),
-            };
+            // A count the player set stays, no more than is spent now; the Engine's pick fills the rest.
+            const before = current[key]?.counts ?? {};
+            const counts: Record<string, number> = {};
+            for (const pool of offer.pools)
+              if (before[pool.key] !== undefined) counts[pool.key] = Math.min(before[pool.key]!, pool.spent);
+            for (const pick of offer.picks) counts[pick.pool] ??= pick.count;
+            next[key] = { on: current[key]?.on ?? false, counts };
           }
         }
         return next;

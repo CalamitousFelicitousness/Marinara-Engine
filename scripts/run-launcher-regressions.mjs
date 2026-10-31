@@ -3,12 +3,15 @@
 // (for example on a child process that never exits) then fails within minutes and is named in the log,
 // instead of silently using up the whole CI job.
 import { spawn, spawnSync } from "node:child_process";
+import { constants } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 // Each one takes about 10 s or less on the slowest CI runner (macOS Intel).
 const TIMEOUT_MS = 120_000;
+// A stopped script gets this long to run its own cleanup (it may have started processes in other groups).
+const STOP_GRACE_MS = 5_000;
 const SCRIPTS = [
   "scripts/regressions/pnpm-runner.regression.mjs",
   "scripts/regressions/launcher/env.regression.mjs",
@@ -21,25 +24,37 @@ const SCRIPTS = [
 ];
 
 let current = null;
+let currentExited = Promise.resolve();
 
-// The script gets its own process group, so a stop or a timeout reaches everything it started.
-function stopCurrent(signal) {
-  if (!current?.pid || current.exitCode !== null || current.signalCode !== null) return;
-  if (process.platform === "win32") {
-    spawnSync("taskkill.exe", ["/pid", String(current.pid), "/T", "/F"], { stdio: "ignore" });
-    return;
-  }
+function signalCurrentGroup(signal) {
   try {
     process.kill(-current.pid, signal);
   } catch (err) {
-    if (err?.code !== "ESRCH") throw err;
+    // ESRCH: the group is already gone. EPERM: macOS can report it for a group whose members all exited.
+    if (err?.code !== "ESRCH" && err?.code !== "EPERM") throw err;
   }
 }
 
+// The script runs in its own process group. It is asked to stop first, so it can clean up what it started
+// in other groups, and is killed with its group if it is still running after the grace period.
+function stopCurrent() {
+  if (!current?.pid || current.exitCode !== null || current.signalCode !== null) return currentExited;
+  if (process.platform === "win32") {
+    spawnSync("taskkill.exe", ["/pid", String(current.pid), "/T", "/F"], { stdio: "ignore" });
+    return currentExited;
+  }
+  signalCurrentGroup("SIGTERM");
+  const escalation = setTimeout(() => signalCurrentGroup("SIGKILL"), STOP_GRACE_MS);
+  return currentExited.finally(() => clearTimeout(escalation));
+}
+
+let interrupted = false;
 for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
-  process.on(signal, () => {
-    stopCurrent("SIGKILL");
-    process.exit(128 + { SIGINT: 2, SIGTERM: 15, SIGHUP: 1 }[signal]);
+  process.on(signal, async () => {
+    if (interrupted) return;
+    interrupted = true;
+    await stopCurrent();
+    process.exit(128 + constants.signals[signal]);
   });
 }
 
@@ -52,18 +67,23 @@ function run(script) {
       stdio: "inherit",
       detached: process.platform !== "win32",
     });
+    const child = current;
+    currentExited = new Promise((resolveExit) => {
+      child.once("exit", resolveExit);
+      child.once("error", resolveExit); // a script that never started has nothing to wait for
+    });
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
       console.error(`[launcher regressions] TIMEOUT after ${TIMEOUT_MS / 1000}s: ${script}; stopping it.`);
-      stopCurrent("SIGKILL");
+      void stopCurrent();
     }, TIMEOUT_MS);
     current.once("error", (error) => {
       clearTimeout(timer);
       console.error(`[launcher regressions] Could not start ${script}: ${error.message}`);
       resolveRun(false);
     });
-    // "exit", not "close": a leftover grandchild sharing this output must not keep the run waiting.
+    // stdio is inherited, so no pipe of ours outlives the script: "exit" fires as soon as the script ends.
     current.once("exit", (code, signal) => {
       clearTimeout(timer);
       const seconds = ((Date.now() - started) / 1000).toFixed(1);
@@ -80,7 +100,8 @@ function run(script) {
 }
 
 for (const script of SCRIPTS) {
-  if (!(await run(script))) {
+  // A stop signal ends the run here; its handler exits once the current script is gone.
+  if (interrupted || !(await run(script)) || interrupted) {
     process.exitCode = 1;
     break;
   }

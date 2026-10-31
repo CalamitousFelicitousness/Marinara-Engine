@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
-import { tmpdir } from "node:os";
+import { constants, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -220,6 +220,24 @@ function forceStopRun(run) {
 
 const runs = [];
 const servers = [];
+
+function cleanUp() {
+  for (const run of runs) forceStopRun(run);
+  for (const server of servers) {
+    if (server.listening) server.close();
+  }
+  rmSync(fixtureRoot, { recursive: true, force: true });
+}
+
+// A stop from the launcher regression runner (a timeout or Ctrl+C) still cleans up: each fixture launcher and
+// fake pnpm leads its own process group, which a stop sent to this script's group does not reach.
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+  process.on(signal, () => {
+    cleanUp();
+    process.exit(128 + constants.signals[signal]);
+  });
+}
+
 try {
   const ownedPort = await reservePort();
   const ownedRun = launchFixture(ownedPort, "owned");
@@ -328,9 +346,5 @@ try {
 
   console.log("Dev launcher process regression checks passed.");
 } finally {
-  for (const run of runs) forceStopRun(run);
-  for (const server of servers) {
-    if (server.listening) server.close();
-  }
-  rmSync(fixtureRoot, { recursive: true, force: true });
+  cleanUp();
 }

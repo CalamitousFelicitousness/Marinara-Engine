@@ -1499,7 +1499,9 @@ const capabilityPackageManifestBaseSchema = z
 //        AI and resolves the ids it changed. Requires `chat-write`; skips messages the user set by hand.
 // 1.390: `contributions.agentDetail.header: "engine"`: the Engine draws an agent page's header and
 //        passes the package's detail view `engineHeader: true` and a `headerSlot` for its buttons.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 390 } as const);
+// 1.391: `persistence.listChatSummaries(chatId).advancedMemory`: Advanced Memory's scene summaries with the
+//        `memory` block from `long-term-memory:runtime.summaryMemoryInstruction()`, stored untouched.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 391 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

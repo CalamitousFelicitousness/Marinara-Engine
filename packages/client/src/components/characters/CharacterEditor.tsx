@@ -140,9 +140,13 @@ import {
 import { PresetVariablesEditor } from "../presets/PresetVariablesEditor";
 import { requestProfessorMariOpen } from "../../lib/professor-mari-open";
 import { MariContextChip } from "../chat/MariContextChip";
+import { DescriptionSplitDialog } from "./DescriptionSplitDialog";
+import { requestMariDescriptionSplit } from "../../lib/description-split-mari";
 import { cn, copyToClipboard, generateClientId, getAvatarCropStyle } from "../../lib/utils";
 import {
   applyBakedGreetingImages,
+  applyDescriptionSplit,
+  DESCRIPTION_SPLIT_VERSION,
   findGreetingImageUrls,
   getCardVariableChipNames,
   getGreetingVariableChipNames,
@@ -150,6 +154,8 @@ import {
   readBakedGreetingImages,
   hasBakedGreetingImages,
   restoreBakedGreetingImages,
+  splitCharacterDescription,
+  type DescriptionSplitResult,
   type WeekSchedule,
 } from "@marinara-engine/shared";
 import { extractColorsFromImage } from "../../lib/avatar-color-extraction";
@@ -745,6 +751,50 @@ export function CharacterEditor() {
     if (review.fields.some((field) => field.entityId === characterId)) void restoreTakenOver();
   }, [mariReview.review, characterId]);
 
+  // Moves labelled text out of the description into the other card fields. The dialog summarises the
+  // split first; applying it saves the card straight away as a new version, so the unsplit card
+  // stays in the version history.
+  const [descriptionSplit, setDescriptionSplit] = useState<DescriptionSplitResult | null>(null);
+  const [descriptionSplitOpen, setDescriptionSplitOpen] = useState(false);
+  const handleSplitDescription = useCallback(
+    (force = false) => {
+      if (!formData) return;
+      setDescriptionSplit(splitCharacterDescription(formData, { force }));
+      setDescriptionSplitOpen(true);
+    },
+    [formData],
+  );
+  const applyDescriptionSplitResult = async () => {
+    setDescriptionSplitOpen(false);
+    if (descriptionSplit?.status !== "changed" || !formData) return;
+    const next = applyDescriptionSplit(formData, descriptionSplit.after);
+    updateFormData(() => next);
+    const fields = descriptionSplit.changed
+      .filter((field) => field !== "description")
+      .map((field) => localizeUi(`ui.characters.descriptionsplitdialog.field.${field}`))
+      .join(", ");
+    const saved = await saveCard(next, DESCRIPTION_SPLIT_VERSION);
+    toast.success(
+      localizeUi(
+        !saved
+          ? "ui.characters.metadatatab.splitDescriptionMovedTextInto"
+          : next.extensions.versioningEnabled !== false
+            ? "ui.characters.metadatatab.splitDescriptionSavedAsVersion"
+            : "ui.characters.metadatatab.splitDescriptionSaved",
+        { fields },
+      ),
+    );
+  };
+  // Hands the split to Professor Mari, who edits the saved card; nothing is sent until the user does.
+  const askMariToSplitDescription = useCallback(() => {
+    if (!characterId || !formData) return;
+    setDescriptionSplitOpen(false);
+    requestMariDescriptionSplit(
+      { id: characterId, name: formData.name },
+      localizeUi("ui.characters.descriptionsplitdialog.mariDraft", { name: formData.name }),
+    );
+  }, [characterId, formData, localizeUi]);
+
   const handleGeneratedCharacterSheet = useCallback(
     async (dataUrl: string) => {
       let file: File;
@@ -786,8 +836,10 @@ export function CharacterEditor() {
     setAvatarUploading(false);
   }, []);
 
-  const handleSave = async () => {
-    if (!characterId || !formData) return false;
+  const handleSave = () => saveCard(formData);
+  // Saves `data` as the card. `version` labels the version snapshot (the default is a manual save).
+  const saveCard = async (data: CharacterData | null, version?: { source: string; reason: string }) => {
+    if (!characterId || !data) return false;
     // The server would reject the whole card; say why instead (the Onboarding
     // tab offers Start over). Also covers the leave-page save, which stays put.
     if (unreadableOnboarding) {
@@ -807,8 +859,9 @@ export function CharacterEditor() {
     try {
       await updateCharacter.mutateAsync({
         id: characterId,
-        data: formData as unknown as Record<string, unknown>,
+        data: data as unknown as Record<string, unknown>,
         comment: characterComment,
+        ...(version && { versionSource: version.source, versionReason: version.reason }),
       });
       if (editRevisionRef.current === editRevisionAtSaveStart) {
         setDirtyState(false);
@@ -1327,6 +1380,15 @@ export function CharacterEditor() {
             }
           }}
         />
+        <DescriptionSplitDialog
+          open={descriptionSplitOpen}
+          result={descriptionSplit}
+          hasUnsavedChanges={dirty}
+          onAskMari={characterId ? askMariToSplitDescription : undefined}
+          onApply={applyDescriptionSplitResult}
+          onSplitAnyway={() => handleSplitDescription(true)}
+          onClose={() => setDescriptionSplitOpen(false)}
+        />
         <AvatarGenerationModal
           open={avatarGeneratorOpen}
           title={localizeUi("ui.characters.charactereditor.generateCharacterAvatar")}
@@ -1530,6 +1592,7 @@ export function CharacterEditor() {
                   onRemoveAvatar={handleAvatarRemove}
                   removingAvatar={removeAvatar.isPending}
                   hasUnsavedChanges={dirty}
+                  onSplitDescription={() => handleSplitDescription()}
                 />
               </section>
               <section data-editor-section="card">
@@ -2783,6 +2846,7 @@ function MetadataTab({
   onRemoveAvatar,
   removingAvatar,
   hasUnsavedChanges,
+  onSplitDescription,
 }: {
   characterId: string | null;
   formData: CharacterData;
@@ -2803,6 +2867,7 @@ function MetadataTab({
   onRemoveAvatar: () => void;
   removingAvatar: boolean;
   hasUnsavedChanges: boolean;
+  onSplitDescription: () => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const { t } = useTranslation();
@@ -2982,6 +3047,16 @@ function MetadataTab({
             currentAvatarPath={avatarPreview}
             hasUnsavedChanges={hasUnsavedChanges}
           />
+          <button
+            type="button"
+            onClick={onSplitDescription}
+            disabled={!formData.description.trim()}
+            title={localizeUi("ui.characters.metadatatab.splitDescriptionHelp")}
+            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--secondary)] px-3 py-2 text-xs font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Scissors size="0.875rem" />
+            {localizeUi("ui.characters.metadatatab.splitDescription")}
+          </button>
         </div>
         <label className="space-y-1.5">
           <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">

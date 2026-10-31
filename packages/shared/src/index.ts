@@ -236,6 +236,7 @@ export * from "./utils/thinking-tags.js";
 export * from "./utils/combat-icon.js";
 export * from "./utils/rpg-stats.js";
 export * from "./utils/lorebook-folder-tree.js";
+export * from "./utils/character-description-split.js";
 export * from "./utils/character-duplicates.js";
 export * from "./utils/character-tag-edits.js";
 export * from "./utils/greeting-image-bake.js";

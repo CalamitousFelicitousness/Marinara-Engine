@@ -1025,7 +1025,7 @@ export function dropGameLootRepeats(reply: string, recap: string): string {
   // Each drop as the recap counts it: "Staff", "gold pieces ×15". A name may hold a comma ("Crossbow,
   // heavy"), so a drop is found where its own words are, not by splitting the line.
   let left = `, ${line.toLowerCase()},`;
-  return reply.replace(/\[inventory:([^\]]*)\]/gi, (tag, body: string) => {
+  return reply.replace(/\[inventory:([^\][]*)\]/gi, (tag, body: string) => {
     const attributes = new Map<string, string>();
     for (const match of body.matchAll(/(\w+)="([^"]*)"/g)) attributes.set(match[1]!.toLowerCase(), match[2]!);
     const action = attributes.get("action")?.toLowerCase();

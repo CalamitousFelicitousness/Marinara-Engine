@@ -12,7 +12,12 @@ import {
   type RulesetDefinition,
 } from "@marinara-engine/shared";
 import { requirePrivilegedAccess } from "../middleware/privileged-gate.js";
-import { EXPERIENCE_FILE_IMPORT_RATE_LIMIT, PACKAGE_UPDATE_DECLINE_RATE_LIMIT } from "../middleware/rate-limit.js";
+import {
+  EXPERIENCE_FILE_IMPORT_RATE_LIMIT,
+  PACKAGE_INSTALL_RATE_LIMIT,
+  PACKAGE_UPDATE_DECLINE_RATE_LIMIT,
+  RULESET_LANGUAGE_RATE_LIMIT,
+} from "../middleware/rate-limit.js";
 import { openRulesetCatalog, openRulesetLocale } from "../services/game/ruleset-catalog.service.js";
 import { readRulesetRegistry } from "../services/game/ruleset-registry.service.js";
 import {
@@ -229,7 +234,7 @@ export async function capabilityPackagesRoutes(app: FastifyInstance) {
   });
   // The Engine's language changed (or a page opened in it): each installed catalog ruleset's language pack
   // (1.810) is fetched in it and the old language's removed. A pack that cannot be had leaves English.
-  app.post("/rulesets/language", async (request, reply) => {
+  app.post("/rulesets/language", { config: { rateLimit: RULESET_LANGUAGE_RATE_LIMIT } }, async (request, reply) => {
     if (!requirePrivilegedAccess(request, reply, { feature: "Ruleset language packs" })) return;
     const { locale } = rulesetLanguageBody.parse(request.body);
     return { locale, rulesets: await capabilityPackageManager.setRulesetLanguage(locale) };
@@ -329,7 +334,7 @@ export async function capabilityPackagesRoutes(app: FastifyInstance) {
   app.post<{
     Params: { id: string };
     Body: { expectedVersion: string; expectedArtifactSha256: string; locale?: string };
-  }>("/:id/install", async (request, reply) => {
+  }>("/:id/install", { config: { rateLimit: PACKAGE_INSTALL_RATE_LIMIT } }, async (request, reply) => {
     if (!requirePrivilegedAccess(request, reply, { feature: "Agent package installation" })) return;
     const { id } = packageParams.parse(request.params);
     const { expectedVersion, expectedArtifactSha256, locale } = installBody.parse(request.body);

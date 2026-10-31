@@ -307,7 +307,8 @@ function offMap(grid: TacticalGrid, x: number, y: number): boolean {
 
 function set(grid: TacticalGrid, x: number, y: number, terrain: TacticalTerrain): void {
   if (Number.isInteger(x) && Number.isInteger(y) && x >= 0 && y >= 0 && x < grid.width && y < grid.height)
-    if (!offMap(grid, x, y)) grid.tiles[y]![x] = terrain;
+    // fill() rather than an indexed write: x and y are bounded integers, never property names.
+    if (!offMap(grid, x, y)) grid.tiles[y]!.fill(terrain, x, x + 1);
 }
 
 function inBounds(grid: TacticalGrid, x: number, y: number): boolean {

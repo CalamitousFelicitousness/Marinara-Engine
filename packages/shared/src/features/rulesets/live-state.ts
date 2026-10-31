@@ -31,6 +31,7 @@ import {
   type RulesetTrackLevel,
   type RulesetValueRef,
 } from "../../schemas/ruleset.schema.js";
+import { withoutTrailingKind } from "../../utils/trailing-kind.js";
 import { rulesetCatalogEntriesByRef } from "./scaled-rows.js";
 import { rulesetContentMemo, rulesetPlanMemo } from "./plan-memo.js";
 import { parseRulesetCombatDice } from "../ruleset-combat/dice.js";
@@ -2835,10 +2836,7 @@ export function rulesetUseKeptForm(
     return { ok: false, reason: `bad-amount: name the form ${entry} takes, as as="Name"${listed}` };
   }
   // Its kind said after it is not part of its name (laptop 2026-10-26: as="Reef Shark, Beast").
-  const bare = wanted
-    .replace(/\s*\([^)]*\)\s*$/u, "")
-    .replace(/\s*,[^,]*$/u, "")
-    .trim();
+  const bare = withoutTrailingKind(wanted);
   const match = (name: string) => sameName(name, wanted) || (!!bare && sameName(name, bare));
   const named = offered.find(match) ?? (known ? undefined : wanted);
   if (!named) {

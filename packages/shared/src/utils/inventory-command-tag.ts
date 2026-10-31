@@ -193,12 +193,15 @@ const MEASURE_WORDS =
  *  Arrows". Null for a name with none, or a number that measures it ("50 feet of rope"). A number in
  *  brackets may be the item's own name ("Arrows (20)"), so it stays. */
 export function inventoryNameCount(name: string): { name: string; count: number } | null {
-  const trailing = /^(.+?)\s+[×x]\s*(\d{1,4})$/i.exec(name) ?? /^(.+?)×\s*(\d{1,4})$/.exec(name);
-  if (trailing) {
-    const count = Number(trailing[2]);
-    return count > 0 ? { name: trailing[1]!.trim(), count } : null;
+  // Each pattern is anchored on one side and has no two repeats that can take the same characters, so
+  // a long name cannot make it backtrack.
+  const trailing = /\s[×x]\s*(\d{1,4})$/i.exec(name) ?? /×\s*(\d{1,4})$/.exec(name);
+  const counted = trailing ? name.slice(0, trailing.index).trim() : "";
+  if (trailing && counted) {
+    const count = Number(trailing[1]);
+    return count > 0 ? { name: counted, count } : null;
   }
-  const leading = /^(\d{1,4})\s+(.+)$/.exec(name);
+  const leading = /^(\d{1,4})\s+(\S.*)$/.exec(name);
   if (leading && !MEASURE_WORDS.test(leading[2]!)) {
     const count = Number(leading[1]);
     return count > 0 ? { name: leading[2]!.trim(), count } : null;

@@ -17,6 +17,7 @@ import type {
   RulesetDefinition,
   RulesetProposedCreature,
 } from "../../schemas/ruleset.schema.js";
+import { withoutTrailingKind } from "../../utils/trailing-kind.js";
 import { rulesetCatalogIdsForBuild } from "../rulesets/scaled-rows.js";
 import { parseRulesetCombatDice, rulesetAverageAmount, rulesetAverageDamage } from "./dice.js";
 import type {
@@ -122,11 +123,7 @@ export function findRulesetCreature(
   }
   // A tag or a kind said beside the name is no part of it (laptop 2026-10-26: "Giant Crocodile [cr_5]",
   // "Reef Shark, Beast", "Wolf (Beast)").
-  const bare = wanted
-    .replace(/\s*\[[^\]]*\]\s*/gu, " ")
-    .replace(/\s*\([^)]*\)\s*$/u, "")
-    .replace(/\s*,[^,]*$/u, "")
-    .trim();
+  const bare = withoutTrailingKind(wanted.replace(/\[[^\][]*\]/gu, " "));
   // Nor is a leading "the" (laptop 2026-10-26: "the Giant Crocodile from the river").
   const unarticled = bare.replace(/^the\s+/iu, "");
   for (const plain of [...new Set([plainly(wanted), plainly(bare), plainly(unarticled)])]) {

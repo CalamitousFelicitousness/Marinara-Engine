@@ -322,6 +322,24 @@ const PROSE_LEXICON: Array<[DescriptionSplitField, RegExp]> = [
     /\b(setting|takes place|set in|genre|modern[- ]day|century|medieval|fantasy world|world|realm|kingdoms?|empire|continent|academy|city|village|town|located|built|currently|tonight|today|recently|has just|have just|the story (?:begins|starts)|begins when|starts when|this (?:story|scenario|roleplay)|the scenario|the roleplay|the story)\b/gi,
   ],
 ];
+/** Whether a quote holds two or more spaces ('She laughs "Oh, hello there"'), read like
+ *  `/["“][^"”]*\s[^"”]*\s[^"”]*["”]/`, whose three runs backtrack cubically on an unclosed quote. */
+function hasSpokenQuote(t: string): boolean {
+  let open = false;
+  let spaces = 0;
+  for (const c of t) {
+    if (c === '"' || c === "”") {
+      if (open && spaces >= 2) return true;
+      open = c === '"'; // a straight quote that closes nothing opens the next quote
+      spaces = 0;
+    } else if (c === "“") {
+      if (!open) spaces = 0;
+      open = true;
+    } else if (open && /\s/.test(c)) spaces++;
+  }
+  return false;
+}
+
 function classifyProse(text: string, ctx: Ctx): DescriptionSplitField | null {
   // The character's own name words do not count ("Rock Jaw" is not a jaw).
   const t = (ctx.nameRe ? text.replace(ctx.nameRe, " ") : text).trim();
@@ -339,7 +357,7 @@ function classifyProse(text: string, ctx: Ctx): DescriptionSplitField | null {
   if (
     /^[^:]{1,30}:\s*["“*]/.test(t) ||
     /^\{\{\s*char\s*\}\}\s*:/i.test(t) ||
-    /["“][^"”]*\s[^"”]*\s[^"”]*["”]/.test(t) ||
+    hasSpokenQuote(t) ||
     /\*[^*]{6,}\*/.test(t)
   ) {
     return null;
@@ -657,7 +675,7 @@ const RE_STRUCTURAL = /^(?:-{3,}|\*{3,}|_{3,}|={3,}|[[\]{}()]{1,3}|>|\]\s*\}|\}\
 const LABEL_BODY = String.raw`(?:${MACRO}|\([^()]{0,40}\)|[^:=()\[\]{}"“”*\n])+?`;
 const RE_PLAIN = new RegExp(String.raw`^(${LABEL_BODY})\s*[:=]\s*([\s\S]*)$`);
 const RE_WPP = new RegExp(String.raw`^((?:${MACRO_OWN}\s*)?[A-Za-z][\w'’/&\- ]{0,40}?)(\s*)(${WPP_OPEN})`);
-const RE_BRACKET_OPEN = new RegExp(String.raw`^\[\s*((?:${MACRO}|[^\[\]:;])+?)\s*[:;]\s*$`);
+const RE_MACROS = new RegExp(MACRO, "g");
 
 interface Inline {
   label: string;
@@ -750,6 +768,16 @@ function boldHeading(s: string): string | null {
   return null;
 }
 
+/** The label of a "[{{char}}'s Appearance:" line, read like `/^\[\s*((?:{{macro}}|[^\[\]:;])+?)\s*[:;]\s*$/`, which
+ *  can read each macro two ways and backtracks exponentially on a run of them; null when it is not one. */
+function bracketOpen(s: string): string | null {
+  const end = s.trimEnd();
+  if (!s.startsWith("[") || !/[:;]$/.test(end)) return null;
+  const body = end.slice(1, -1);
+  if (!body || /[[\]:;]/.test(body.replace(RE_MACROS, ""))) return null;
+  return body.trim() || body.at(-1)!;
+}
+
 function tokenize(text: string, ctx: Ctx): Tok {
   const trimmed = text.trim();
   const indent = text.length - text.trimStart().length;
@@ -788,8 +816,8 @@ function tokenize(text: string, ctx: Ctx): Tok {
   if ((m = s.match(/^`([^`]{1,40})`$/))) return { type: "heading", level: 5, label: m[1]! };
   if ((m = s.match(/^\[\s*([^[\]:]{1,60}?)\s*\]$/)) && isShortTitle(m[1]!))
     return { type: "heading", level: 5, label: m[1]! };
-  if ((m = s.match(RE_BRACKET_OPEN)) && wordCount(m[1]!) <= 7)
-    return { type: "heading", level: 5, label: m[1]!, bracket: true };
+  const bracket = bracketOpen(s);
+  if (bracket !== null && wordCount(bracket) <= 7) return { type: "heading", level: 5, label: bracket, bracket: true };
   if ((m = s.match(/^\d{1,2}[.)]\s+([^:.!?]{1,40})$/)) && isShortTitle(m[1]!) && /^\p{Lu}/u.test(m[1]!)) {
     return { type: "heading", level: 5, label: m[1]! };
   }
@@ -872,7 +900,7 @@ function speakerOf(label: string, value: string, ctx: Ctx): string | null {
   const raw = label.trim();
   if (!value.trim() || /^\{\{\s*user\s*\}\}$/i.test(raw)) return value.trim() ? "user" : null;
   const opens = /^["“*]/.test(value); // speech or an acted-out line
-  if (/^\{\{\s*char\s*\}\}$/i.test(raw)) return opens || /["“][^"”]*\s[^"”]*\s[^"”]*["”]/.test(value) ? "char" : null;
+  if (/^\{\{\s*char\s*\}\}$/i.test(raw)) return opens || hasSpokenQuote(value) ? "char" : null;
   const norm = normLabel(raw, ctx.names);
   if (USER_SPEAKERS.has(norm)) return "user";
   if (norm === "narrator" || norm === "me") return norm;
@@ -1460,11 +1488,12 @@ function split(before: DescriptionSplitFields, name: string, opts: AssignOptions
   result.after.description = tidy(moved.description);
   const duplicates: string[] = []; // text left out because the same words are already in the field
   let addedChars = 0;
+  // Text with no letters or digits ("...", "♡") is compared by its symbols: an empty key would match anything.
   const squash = (t: string) =>
     t
       .toLowerCase()
       .replace(/<start>/g, "")
-      .replace(/[^\p{L}\p{N}]+/gu, "");
+      .replace(/[^\p{L}\p{N}]+/gu, "") || noSpace(t);
   for (const field of MOVED_FIELDS) {
     let movedText = tidy(moved[field]);
     if (!movedText.trim()) continue;

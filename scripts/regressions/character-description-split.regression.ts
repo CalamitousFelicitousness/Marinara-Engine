@@ -8,7 +8,9 @@
 //  - keyword sorting is flagged and ignores the character's own name words
 //  - narrator / multi-character cards are skipped unless forced, empty descriptions are skipped
 //  - existing field text is appended to, not duplicated, and applyDescriptionSplit writes the extension fields
-//  - crafted long lines (heading markers, tabs, blank lines, a tab-filled name) finish quickly
+//  - symbol-only text ("...", "♡") is not dropped as already present
+//  - crafted long lines (heading markers, tabs, blank lines, a tab-filled name, bracket macros, unclosed quotes)
+//    finish quickly
 import assert from "node:assert/strict";
 import {
   applyDescriptionSplit,
@@ -294,6 +296,20 @@ assert.equal(existing.after.personality, "Calm under pressure.\n\nPersonality: b
 assert.equal(existing.after.appearance, "Appearance: tall, with a shaved head.");
 assert.equal(existing.after.description, "Nora is a pilot.");
 
+// 6b. Text with no letters or digits is not mistaken for text the other field already holds.
+const symbolMoved = splitCharacterDescription({
+  name: "Nora",
+  description: "Nora is a pilot.\n\nAppearance: ♡♡",
+  extensions: { appearance: "tall" },
+});
+assert.equal(symbolMoved.after.appearance, "tall\n\nAppearance: ♡♡", "a symbol-only section is appended");
+const symbolExisting = splitCharacterDescription({
+  name: "Nora",
+  description: "Nora is a pilot.\n\nPersonality: brave and reckless.",
+  personality: "...",
+});
+assert.equal(symbolExisting.after.personality, "...\n\nPersonality: brave and reckless.", "symbol-only text is kept");
+
 // 7. applyDescriptionSplit writes the top-level fields and the appearance/backstory extensions.
 const applied = applyDescriptionSplit(
   { name: "Nora", description: "x", extensions: { talkativeness: 0.5, appearance: "", backstory: "" } },
@@ -305,7 +321,12 @@ assert.equal(applied.extensions?.appearance, existing.after.appearance);
 assert.equal(applied.extensions?.talkativeness, 0.5, "other extensions are kept");
 
 // 8. Crafted card text stays linear: each of these lines used to backtrack for seconds to minutes.
-const crafted = ["=", "#", "\t", "!", "** ", "\n"].map((c) => c.repeat(20000) + "x");
+const crafted = [
+  ...["=", "#", "\t", "!", "** ", "\n"].map((c) => c.repeat(20000) + "x"),
+  "[" + "{{a}}".repeat(40) + "x", // a bracket heading's macros
+  'Mia is a quiet girl who lives in the old town.\nx "' + "a ".repeat(20000), // an unclosed quote
+  'Mia is a quiet girl.\n{{char}}: x "' + "a ".repeat(20000),
+];
 const started = performance.now();
 for (const description of crafted) splitCharacterDescription({ name: "Mia", description });
 splitCharacterDescription({ name: "\t".repeat(20000) + "x", description: "Personality: kind." });

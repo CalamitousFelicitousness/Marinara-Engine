@@ -599,8 +599,8 @@ try {
         restartRequired: false,
       });
       const narrowed = document([druidRow(wolfOnly)], scoped);
-      assert.equal(getCapabilityPackageInstallIssue(manifest421(423) as never, narrowed), gate421);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest421(424) as never, narrowed), gate421);
+      assert.equal(getCapabilityPackageInstallIssue(manifest421(435) as never, narrowed), gate421);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest421(436) as never, narrowed), gate421);
     }
     refused(
       document([wolfOnly], (doc) => {

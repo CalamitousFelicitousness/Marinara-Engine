@@ -56,6 +56,8 @@ import {
   smartOrderState,
   type SmartOrderCandidate,
 } from "../services/generation/smart-group-decision.js";
+import { SCENE_PRESENCE_TRANSCRIPT_DEPTH } from "../services/generation/scene-presence-decision.js";
+import { decideSceneCharacters } from "../services/generation/scene-presence.service.js";
 import {
   activationQuestionSettings,
   bypassActivationQuestion,
@@ -579,10 +581,12 @@ import {
 } from "../services/memory-recall-embedding.js";
 import { postToDiscordWebhook } from "../services/discord-webhook.js";
 import {
+  longTermMemoryRuntimeAvailable,
   recallLongTermMemory,
   recordLongTermMemoryPromptAccepted,
   type LongTermMemoryRecallReceipt,
 } from "../services/generation/long-term-memory-runtime.js";
+import { resolveMemoryRecallPolicy, splitCachedLongTermMemory } from "./generate/memory-recall-policy.js";
 import {
   finalizeCapabilityAgentResults,
   prepareCapabilityAgentContexts,
@@ -636,6 +640,7 @@ import {
   resolveGroupGenerationMode,
   resolveGroupIndividualHistorySpeaker,
   resolveRoleplaySummaryTail,
+  resolveCharacterIdentityMap,
   resolveCharacterNameMap,
   resolveChatSpeakerNames,
   resolvePromptCharacterIdsForTarget,
@@ -3038,6 +3043,102 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         }
       }
 
+      // ── Automated active characters (Merged Roleplay groups) ──
+      // Keeps the active list equal to who is in the scene. A custom "Choose active chat
+      // characters" agent owns the choice when the chat has one. Every failure keeps the list.
+      const autoActiveMode = chatMeta.autoActiveCharacters;
+      if (
+        (autoActiveMode === "decision" || autoActiveMode === "tracker") &&
+        chatMode === "roleplay" &&
+        groupGenerationMode === "merged" &&
+        allCharacterIds.length > 1 &&
+        // Any activity agent on this chat owns the list, even on a turn its cadence or keywords skip.
+        !characterActivityAgentConfigs.some((config) => perChatAgentSet.has(config.type)) &&
+        !input.continueMessageId &&
+        !input.impersonate
+      ) {
+        try {
+          const snapshot = (await rawSelectedGameStateSnapshotPromise) as Record<string, unknown> | null;
+          const { inactiveIds: nextInactiveIds, source } = await decideSceneCharacters({
+            mode: autoActiveMode,
+            chatId: input.chatId,
+            candidateIds: allCharacterIds,
+            trackedPresentCharacters: parseJsonField<unknown[]>(snapshot?.presentCharacters, []),
+            loadIdentities: async () =>
+              [...(await resolveCharacterIdentityMap(allCharacterIds, (id) => chars.getById(id, input.chatId)))].map(
+                ([id, identity]) => ({ id, ...identity }),
+              ),
+            currentInactiveIds: Array.isArray(chatMeta.inactiveCharacterIds) ? chatMeta.inactiveCharacterIds : [],
+            pinnedIds: Array.isArray(chatMeta.autoActiveCharacterPins) ? chatMeta.autoActiveCharacterPins : [],
+            narratorId:
+              typeof chatMeta.roleplayCommandNarratorId === "string" &&
+              allCharacterIds.includes(chatMeta.roleplayCommandNarratorId)
+                ? chatMeta.roleplayCommandNarratorId
+                : null,
+            getBackend: () =>
+              resolveDecisionBackend(
+                {
+                  getLocalDefault: () => appSettings.get(DECISION_SETTINGS_KEYS.localDefault),
+                  getThinkingPreGeneration: async () =>
+                    (await appSettings.get(DECISION_SETTINGS_KEYS.thinkingPreGeneration)) === "true",
+                  getDefaultConnection: () => connections.getDefaultForDecision(),
+                  getConnectionWithKey: (id) => connections.getWithKey(id),
+                  debugMode: requestDebug,
+                },
+                generationSignal,
+              ),
+            loadCandidates: async () =>
+              (
+                await loadCharacterPromptInfo({
+                  chars,
+                  characterIds: allCharacterIds,
+                  chatMode,
+                  chatId: input.chatId,
+                })
+              ).map((character) => ({
+                id: character.id,
+                name: character.name,
+                about: character.description || character.personality || undefined,
+              })),
+            // Merged replies are saved under the first character's id, so naming them by that
+            // id would tell the model that character spoke and is present. They're the narrator's.
+            buildTranscript: () =>
+              chatMessages
+                .filter((message: any) => message.role === "user" || message.role === "assistant")
+                .slice(-SCENE_PRESENCE_TRANSCRIPT_DEPTH)
+                .map((message: any) => ({
+                  role: message.role as string,
+                  name: message.role === "user" ? personaName : "the narrator",
+                  content: roleplayAgentText(
+                    conversationPromptHistoryContent(message, chatMode),
+                    message,
+                    agentWhisperNames,
+                  ),
+                })),
+          });
+          if (generationSignal.aborted) throw new Error("Generation aborted");
+          if (nextInactiveIds) {
+            const updatedChat = await chats.patchMetadata(
+              input.chatId,
+              (current) => ({ ...current, inactiveCharacterIds: nextInactiveIds }),
+              { touchUpdatedAt: false },
+            );
+            if (updatedChat) chatMeta = roomGenerationMetadata(parseExtra(updatedChat.metadata));
+            characterIds = resolveActiveCharacterIds(allCharacterIds, chatMeta, { mode: chatMode, allowEmpty: true });
+            sendSseEvent(reply, { type: "metadata_patch", data: { inactiveCharacterIds: nextInactiveIds } });
+            logger.info(
+              "[auto-active] %s set %d of %d chat character(s) active",
+              source,
+              characterIds.length,
+              allCharacterIds.length,
+            );
+          }
+        } catch (error) {
+          if (generationSignal.aborted) throw error;
+          logger.warn({ err: error, chatId: input.chatId }, "[auto-active] Could not update active characters");
+        }
+      }
+
       if (allCharacterIds.length > 0 && characterIds.length === 0 && chatMode !== "game") {
         throw new Error("All characters in this chat are disabled. Enable at least one character before generating.");
       }
@@ -3298,9 +3399,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             settings: agent.settings,
           })),
         });
-        if (chatEnableAgents && chatActiveAgentIds.includes("long-term-memory")) {
+        const longTermMemoryListed = chatEnableAgents && chatActiveAgentIds.includes("long-term-memory");
+        if (longTermMemoryListed) {
           runtimeSectionEligibleAgentTypes.add("long-term-memory");
         }
+        const longTermMemoryActive = longTermMemoryListed && longTermMemoryRuntimeAvailable();
         const chatActiveLorebookIds: string[] = Array.isArray(chatMeta.activeLorebookIds)
           ? (chatMeta.activeLorebookIds as string[])
           : [];
@@ -4201,8 +4304,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               signal: generationSignal,
             },
             summaryVectorizerAvailable: memoryRecallVectorizerAvailable,
-            includeRecallHistory:
-              chatEnableAgents && chatActiveAgentIds.includes("long-term-memory") && !input.regenerateMessageId,
+            includeRecallHistory: longTermMemoryListed && !input.regenerateMessageId,
           });
           finalMessages = preparedHistory.finalMessages;
           conversationRecallHistory = preparedHistory.recallHistoryMessages;
@@ -5897,9 +5999,16 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         );
         let recalledAgentVectorMemories: string[] = [];
         let memoryRecallAttempted = false;
-        if (chatMode === "conversation" && conversationContextMacroSlots.memories) {
+        // An active Long-term memory package replaces built-in recall in the main prompt (#8359).
+        const conversationMemoriesSlot = chatMode === "conversation" && conversationContextMacroSlots.memories;
+        const memoryRecallPolicy = resolveMemoryRecallPolicy({
+          longTermMemoryActive,
+          memoriesSlot: conversationMemoriesSlot,
+        });
+        let slotLongTermMemoryRecall: Awaited<ReturnType<typeof recallLongTermMemory>> = null;
+        if (conversationMemoriesSlot) {
           const memoryRecallMessages: GenerationPromptMessage[] = [];
-          if (enableMemoryRecall && memoryRecallVectorizerAvailable) {
+          if (memoryRecallPolicy.builtInRecall && enableMemoryRecall && memoryRecallVectorizerAvailable) {
             memoryRecallAttempted = true;
             recalledAgentVectorMemories = await injectMemoryRecallContext({
               db: app.db,
@@ -5915,15 +6024,43 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               wrapFormat,
             });
           }
+          let slotLongTermMemoryText: string | undefined;
+          if (memoryRecallPolicy.longTermMemoryPlacement === "memories-slot" && input.regenerateMessageId) {
+            // Regenerate reuses the original turn's cached notes (replayed below) instead of recalling again.
+            slotLongTermMemoryText = splitCachedLongTermMemory(
+              normalizeContextInjections(parseExtra(regenMsg?.extra).contextInjections),
+            ).slotText;
+          } else if (memoryRecallPolicy.longTermMemoryPlacement === "memories-slot") {
+            slotLongTermMemoryRecall = await recallLongTermMemory({
+              chatId: input.chatId,
+              chatMode,
+              characterIds: promptCharacterIds,
+              messages: selectHistoryMessagesForRecall(
+                roleplayAgentPrompt(
+                  sharedPromptForAgents(conversationRecallHistory ?? finalMessages),
+                  roleplayTimeline,
+                  agentWhisperNames,
+                ),
+              ),
+              signal: agentSignal,
+              debugMode: requestDebug || isDebug,
+            });
+            slotLongTermMemoryText = slotLongTermMemoryRecall?.text;
+          }
           const memoryRecallBlock = memoryRecallMessages
             .map((message) => message.content)
             .filter(Boolean)
             .join("\n\n");
-          conversationMemoriesBlockValue = [conversationImportantMemoryBlock, memoryRecallBlock]
+          conversationMemoriesBlockValue = [conversationImportantMemoryBlock, memoryRecallBlock, slotLongTermMemoryText]
             .filter(Boolean)
             .join("\n\n");
           replaceConversationContextMacro(finalMessages, "memories", conversationMemoriesBlockValue);
-        } else if (!advancedMemoryEnabled && enableMemoryRecall && memoryRecallVectorizerAvailable) {
+        } else if (
+          memoryRecallPolicy.builtInRecall &&
+          !advancedMemoryEnabled &&
+          enableMemoryRecall &&
+          memoryRecallVectorizerAvailable
+        ) {
           memoryRecallAttempted = true;
           recalledAgentVectorMemories = await injectMemoryRecallContext({
             db: app.db,
@@ -6235,6 +6372,10 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           gameState,
           currentLocation: agentCurrentLocationFromProjection(ownerSpatialProjection),
           characters: charInfo,
+          chatCharacters: allCharacterIds.flatMap((id) => {
+            const profile = historyMacroProfilesById.get(id);
+            return profile ? [{ id, name: profile.name, active: characterIds.includes(id) }] : [];
+          }),
           characterTrackerHistory: characterTrackerHistory as unknown as AgentContext["characterTrackerHistory"],
           persona:
             personaName !== "User"
@@ -7849,10 +7990,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // Without this split, KR/Router cached output would be replayed in the wrong prompt
           // position with different wrapping than the original generation, subtly changing the
           // model's behavior on regenerate/swipe.
+          // Cached Long-term memory notes already sit in the conversation memories slot.
           const runtimeHandledCached = splitRuntimeHandledAgentInjections(
             finalMessages,
             runtimeAgentSectionTokens,
-            contextInjections,
+            memoryRecallPolicy.longTermMemoryPlacement === "memories-slot"
+              ? splitCachedLongTermMemory(contextInjections).replay
+              : contextInjections,
             { omitUnmatched: presetOwnsAgentPlacement },
           );
           const unmatchedCachedLongTermMemory = runtimeHandledCached.omittedInjections.filter(
@@ -7900,7 +8044,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           clearUnusedRuntimeSectionsBeforeLtm();
         }
 
-        if (chatEnableAgents && chatActiveAgentIds.includes("long-term-memory") && !input.regenerateMessageId) {
+        if (memoryRecallPolicy.longTermMemoryPlacement === "memories-slot") {
+          // Already placed in the conversation memories slot; record it once without recalling again.
+          if (slotLongTermMemoryRecall) {
+            contextInjections.push({ agentType: "long-term-memory", text: slotLongTermMemoryRecall.text });
+            longTermMemoryRecallReceipt = slotLongTermMemoryRecall.receipt;
+          }
+        } else if (memoryRecallPolicy.longTermMemoryPlacement === "agent" && !input.regenerateMessageId) {
           const recall = await recallLongTermMemory({
             chatId: input.chatId,
             chatMode,

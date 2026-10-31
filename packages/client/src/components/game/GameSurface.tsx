@@ -1,5 +1,7 @@
 import {
   audioConnectionSupportsGeneration,
+  parseCombatIconChoice,
+  resolveCombatIconUrl,
   RULESET_PARTY_KEY,
   assignCombatTactics,
   combatTacticsSchema,
@@ -254,7 +256,7 @@ import type {
   GenerateSpatialMapDraftResponse,
   PendingSpatialTransition,
 } from "@marinara-engine/shared";
-import type { AvatarCrop, Persona, SceneSegmentEffect } from "@marinara-engine/shared";
+import type { AvatarCrop, CombatIconChoice, Persona, SceneSegmentEffect } from "@marinara-engine/shared";
 import {
   PROFESSOR_MARI_ID,
   SPOTIFY_RECENT_TRACK_HISTORY_LIMIT,
@@ -714,6 +716,8 @@ type GamePartyMemberInfo = {
   name: string;
   avatarUrl: string | null;
   avatarCrop?: AvatarCrop | null;
+  /** The card's Game Mode Icon choice; missing means the avatar. */
+  combatIcon?: CombatIconChoice | null;
   nameColor?: string;
   dialogueColor?: string;
   canRemove?: boolean;
@@ -1149,7 +1153,7 @@ export function generatedPartyMemberToCombatant(
     speed: readGameCardAttribute(gameCard, "speed", "spd", "dexterity", "dex", "agility") ?? 6 + level,
     level,
     side: "player",
-    sprite: matchedAvatar?.avatarUrl ?? undefined,
+    sprite: combatTokenSprite(matchedAvatar),
     statusEffects: combatStatusEffectsFromGenerated(member.statuses),
     skills:
       combatSkillsFromSheet(gameCard?.abilities)?.map((skill) => ({
@@ -1170,6 +1174,11 @@ export function generatedPartyMemberToCombatant(
   };
 }
 
+/** The picture a party member's fight token draws (their Game Mode Icon), or undefined for initials. */
+function combatTokenSprite(member: GamePartyMemberInfo | null | undefined): string | undefined {
+  return member ? (resolveCombatIconUrl(member.combatIcon, member.avatarUrl) ?? undefined) : undefined;
+}
+
 function hydrateCombatPartyAvatars(party: Combatant[], avatarCandidates: GamePartyMemberInfo[]): Combatant[] {
   if (avatarCandidates.length === 0) return party;
 
@@ -1177,7 +1186,13 @@ function hydrateCombatPartyAvatars(party: Combatant[], avatarCandidates: GamePar
   const nextParty = party.map((combatant) => {
     if (combatant.side !== "player") return combatant;
     const matchedAvatar = findNamedEntry(avatarCandidates, combatant.name, (entry) => entry.name);
-    const avatarUrl = matchedAvatar?.avatarUrl?.trim();
+    // A card set to its initials drops whatever picture an older snapshot gave the token.
+    if (parseCombatIconChoice(matchedAvatar?.combatIcon)?.source === "initials") {
+      if (!combatant.sprite) return combatant;
+      changed = true;
+      return { ...combatant, sprite: undefined };
+    }
+    const avatarUrl = combatTokenSprite(matchedAvatar);
     if (!avatarUrl || combatant.sprite === avatarUrl) return combatant;
     changed = true;
     return { ...combatant, sprite: avatarUrl };
@@ -2328,6 +2343,7 @@ interface GameSurfaceProps {
     appearance?: string;
     tags?: string[];
     avatarCrop?: AvatarCrop | null;
+    combatIcon?: CombatIconChoice | null;
     nameColor?: string;
     dialogueColor?: string;
   }>;
@@ -5156,13 +5172,13 @@ function GameSurfaceComponent({
         return {
           ...combatant,
           name: personaInfo.name,
-          sprite: combatant.sprite ?? personaInfo.avatarUrl ?? combatant.sprite,
+          sprite: combatant.sprite ?? resolveCombatIconUrl(personaInfo.combatIcon, personaInfo.avatarUrl) ?? undefined,
         };
       }
       return combatant;
     });
     if (changed) setCombatParty(corrected);
-  }, [combatParty, personaInfo?.name, personaInfo?.avatarUrl]);
+  }, [combatParty, personaInfo?.name, personaInfo?.avatarUrl, personaInfo?.combatIcon]);
 
   // ── Persist narration segment index (localStorage for instant reads + server for durability) ──
   const segmentStorageKey = `narration-idx:${activeChatId}`;
@@ -9004,6 +9020,7 @@ function GameSurfaceComponent({
             name: c.name,
             avatarUrl: c.avatarUrl ?? null,
             avatarCrop: c.avatarCrop ?? fromMap?.avatarCrop ?? null,
+            combatIcon: c.combatIcon ?? null,
             nameColor: fromMap?.nameColor,
             dialogueColor: fromMap?.dialogueColor,
             canRemove: true,
@@ -9030,6 +9047,7 @@ function GameSurfaceComponent({
           name: personaInfo.name,
           avatarUrl: personaInfo.avatarUrl ?? null,
           avatarCrop: personaInfo.avatarCrop ?? null,
+          combatIcon: personaInfo.combatIcon ?? null,
           nameColor: personaInfo.nameColor,
           dialogueColor: personaInfo.dialogueColor,
           canRemove: false,
@@ -9101,7 +9119,7 @@ function GameSurfaceComponent({
       const normalizedName = normalizeSceneAssetName(candidate.name);
       if (!normalizedName) return;
       const existing = candidatesByName.get(normalizedName);
-      if (!existing || (!existing.avatarUrl && candidate.avatarUrl)) {
+      if (!existing || (!existing.avatarUrl && candidate.avatarUrl) || (!existing.combatIcon && candidate.combatIcon)) {
         candidatesByName.set(normalizedName, candidate);
       }
     };
@@ -9126,6 +9144,7 @@ function GameSurfaceComponent({
         name: character.name,
         avatarUrl: character.avatarUrl ?? null,
         avatarCrop: character.avatarCrop ?? null,
+        combatIcon: character.combatIcon ?? null,
         nameColor: character.nameColor,
         dialogueColor: character.dialogueColor,
         canRemove: false,
@@ -9160,6 +9179,7 @@ function GameSurfaceComponent({
         name: personaInfo.name,
         avatarUrl: personaInfo.avatarUrl ?? null,
         avatarCrop: personaInfo.avatarCrop ?? null,
+        combatIcon: personaInfo.combatIcon ?? null,
         nameColor: personaInfo.nameColor,
         dialogueColor: personaInfo.dialogueColor,
         canRemove: false,
@@ -10711,6 +10731,7 @@ function GameSurfaceComponent({
           name: libraryCharacter.name,
           avatarUrl: libraryCharacter.avatarUrl ?? null,
           avatarCrop: libraryCharacter.avatarCrop ?? fromMap?.avatarCrop ?? null,
+          combatIcon: libraryCharacter.combatIcon ?? null,
           nameColor: fromMap?.nameColor,
           dialogueColor: fromMap?.dialogueColor,
           canRemove: false,
@@ -10830,7 +10851,7 @@ function GameSurfaceComponent({
           speed: speedStat?.value ?? derivedSpeed,
           level: pLevel,
           side: "player" as const,
-          sprite: m.avatarUrl ?? undefined,
+          sprite: combatTokenSprite(m),
           skills: combatSkillsFromSheet(gameCard?.abilities),
         };
       });

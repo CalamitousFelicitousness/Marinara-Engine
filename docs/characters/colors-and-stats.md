@@ -24,9 +24,11 @@ Set each color with the color field, or type a value:
 
 - **Name Display Color**: the color of the name. This field also supports a CSS gradient. A gradient is a smooth blend between colors. Example value: `linear-gradient(90deg, #f59e0b, #ef4444)`.
 - **Dialogue Highlight Color**: the color for text inside dialogue quotation marks. Example value: `#ffd700`.
-- **Message Box Color**: the background color of the chat message bubble. Use a semi-transparent color for the best result. Example value: `rgba(0, 0, 0, 0.5)`.
+- **Message Box Color**: the background color of the Roleplay chat message bubble. Example value: `#123456`.
 
-A semi-transparent color lets some of the background show through the bubble. The `rgba` format is red, green, blue, and an alpha value from 0 (see-through) to 1 (solid).
+Set transparency with **Settings → Appearance → Roleplay → Roleplay Messages Background Opacity**. This slider replaces the transparency saved in character, persona, and applied preset background colors, including colors extracted from avatars. Your saved color values are kept unchanged. Name and dialogue colors are not affected.
+
+Explicit custom-theme background hooks and card CSS can still override the app's native bubble styling.
 
 ## Where your colors show
 
@@ -56,6 +58,16 @@ A persona **Stats** tab has two separate blocks, each with its own toggle.
 The first block is **Persona Status Bars**, turned on with **Enable Persona Stats**. These bars track physical and mental needs. When you enable it, the starter bars are Satiety, Energy, Hygiene, and Mood, each at 100 out of 100. Under **Status Bars** you manage the list. Each bar has a name, a current value, a maximum, and a color. Click **Add** to create a bar and the X to remove one.
 
 The second block is **RPG Attributes**, turned on with **Enable RPG Attributes**. This works like a character card. It gives your persona **Pools** (starting with HP and MP at 100 out of 100) and **Attributes** (starting with STR, DEX, CON, INT, WIS, and CHA at 10).
+
+### Game Mode Icon
+
+Both **Stats** tabs have a **Game Mode Icon** block. It sets the picture on this character's or persona's round token on the board in a Game Mode fight. The small token beside the choices shows what the board will draw.
+
+- **Avatar** (the default) uses the avatar. With no avatar, the token shows the initials.
+- **Custom image** uses a picture from the card's own gallery. Pick one of the gallery pictures shown, or upload a new one, which is added to the gallery. The card has to be saved once before you can use this.
+- **Initials** always shows the initials, even when there is an avatar.
+
+The same picture shows for this character in the other fight styles too. If you delete the chosen picture from the gallery, the block says so; pick another or switch back to **Avatar**.
 
 ### Ruleset sheets
 

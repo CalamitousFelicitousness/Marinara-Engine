@@ -117,7 +117,7 @@ try {
       } as never,
       document(),
     );
-  assert.match(issue(792) ?? "", /setColumn.*1\.786/);
+  assert.match(issue(792) ?? "", /setColumn.*1\.793/);
   assert.doesNotMatch(issue(793) ?? "", /setColumn/);
 
   console.log(

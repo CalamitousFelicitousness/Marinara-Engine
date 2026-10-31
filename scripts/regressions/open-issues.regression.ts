@@ -5647,12 +5647,16 @@ assert.match(
   /enterToSendProfessorMari/u,
   "Professor Mari must read her persisted Send on Enter preference",
 );
-// One composer since the floating-mode branch was removed (f27ce165b).
+// One composer since the floating-mode branch was removed (f27ce165b). Its keys route through
+// composerKeyAction (#7913), which composer-triggers.regression.ts checks case by case.
 assert.equal(
-  mariChatAllSource.match(
-    /event\.key === "Enter" &&\s*!event\.shiftKey &&\s*\(enterToSend \|\| event\.metaKey \|\| event\.ctrlKey\)/gu,
-  )?.length,
+  mariChatAllSource.match(/composerKeyAction\(\{/gu)?.length,
   1,
+  "Professor Mari's composer must route its keys through composerKeyAction",
+);
+assert.match(
+  readFileSync(new URL("../../packages/client/src/lib/composer-triggers.ts", import.meta.url), "utf8"),
+  /if \(input\.enterToSend\) \{\s*if \(!input\.shiftKey\) return modifier \? "queue" : "send";\s*\} else if \(modifier\) \{\s*return input\.shiftKey \? "queue" : "send";/u,
   "Professor Mari's composer must preserve Shift+Enter and require the configured send shortcut",
 );
 assert.match(professorMariHomeSource, /toggleProfessorChatSelection/u);
@@ -5729,7 +5733,7 @@ assert.match(
   professorMariHomeSource,
   // #5725 strengthened this guard: it also rejects responses requested for a
   // previous chat and holds mode fields across pending mode writes.
-  /const refreshWorkspaceStatus = useCallback\(\s*async \(shouldApply\?: \(\) => boolean\)[\s\S]{0,700}if \(shouldApply\?\.\(\) === false \|\| activeChatIdRef\.current !== chatIdAtStart\) return status;[\s\S]{0,900}setWorkspaceStatus\(/u,
+  /const refreshWorkspaceStatus = useCallback\(\s*async \(shouldApply\?: \(\) => boolean\)[\s\S]{0,800}if \(shouldApply\?\.\(\) === false \|\| activeChatIdRef\.current !== chatIdAtStart\) return status;[\s\S]{0,900}setWorkspaceStatus\(/u,
   "Professor Mari workspace status loads must recheck an operation guard before applying a response",
 );
 assert.match(
@@ -5872,8 +5876,7 @@ assert.match(
   /resolveFeatureAgentPackage\(selectedFeatureAgent, installedCapabilities\.data \?\? \[\]\)/u,
 );
 assert.match(featureAgentDetailHostSource, /mari-editor-shell mari-editor-legacy-bridge/u);
-assert.match(featureAgentDetailHostSource, /<header className="mari-editor-header">/u);
-assert.match(featureAgentDetailHostSource, /<Sparkles size="1\.125rem"/u);
+assert.match(featureAgentDetailHostSource, /<AgentDetailHeader\b/u);
 assert.doesNotMatch(featureAgentDetailHostSource, /\bPuzzle\b/u);
 assert.doesNotMatch(featureAgentDetailHostSource, /featureagentdetailhost\.feature"/u);
 assert.match(
@@ -9874,7 +9877,7 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
   for (const [panelName, source] of sidebarPanelSources) {
     assert.match(
       source,
-      /max-md:pr-(?:14|16|20|24|32|36) \[@media\(pointer:coarse\)\]:pr-(?:14|16|20|24|32|36)/u,
+      /max-md:pr-(?:10|14|16|20|24|32|36|\[4\.5rem\]) \[@media\(pointer:coarse\)\]:pr-(?:10|14|16|20|24|32|36|\[4\.5rem\])/u,
       `${panelName} rows must reserve action space only for touch layouts`,
     );
     assert.doesNotMatch(

@@ -35,6 +35,7 @@ import { readUIPersistence, UI_PERSISTENCE, UI_PERSISTENCE_HOST_COPY } from "../
 import { addApprovedRemoteImageUrl, normalizeApprovedRemoteImageUrls } from "../lib/remote-images";
 import { normalizeChatWidgetFont } from "../lib/font-family";
 import type { ChatWizardDefaults, ChatWizardMode } from "../lib/chat-wizard-defaults";
+import type { MariFieldReview } from "../lib/mari-editor-fields";
 import {
   readSeasonalPreview,
   seasonalThemeFor,
@@ -180,6 +181,17 @@ export function normalizeMariWindowWidthRem(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value)
     ? Math.max(MARI_WINDOW_WIDTH_MIN_REM, Math.min(MARI_WINDOW_WIDTH_MAX_REM, Math.round(value)))
     : MARI_WINDOW_WIDTH_DEFAULT_REM;
+}
+
+/** Companion panel width. The minimum lets her dock at 1440px with both sidebars open; her tabs still fit. */
+export const MARI_COMPANION_WIDTH_MIN_REM = 20;
+export const MARI_COMPANION_WIDTH_DEFAULT_REM = 24;
+export const MARI_COMPANION_WIDTH_MAX_REM = 32;
+
+export function normalizeMariCompanionWidthRem(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(MARI_COMPANION_WIDTH_MIN_REM, Math.min(MARI_COMPANION_WIDTH_MAX_REM, Math.round(value * 2) / 2))
+    : MARI_COMPANION_WIDTH_DEFAULT_REM;
 }
 
 export function normalizeConversationBackgroundImageOpacity(value: unknown): number {
@@ -743,6 +755,12 @@ interface UIState {
   mariWindowHeightRem: number;
   /** Desktop window width, in rem. Only Professor Mari's window uses it. */
   mariWindowWidthRem: number;
+  /** Desktop: Prof. Mari docks as a companion panel beside an open editor (header toggle). */
+  mariCompanionDocked: boolean;
+  /** Companion panel width in rem. */
+  mariCompanionWidthRem: number;
+  /** Scroll root of the open editor that offers the companion panel. Not persisted. */
+  mariCompanionRoot: HTMLElement | null;
   omnibarWindowWidthRem: number;
   /** Search window height in rem; null sizes it to its results, as before. */
   omnibarWindowHeightRem: number | null;
@@ -785,6 +803,24 @@ interface UIState {
   regexDetailId: string | null;
   /** The primary field currently focused in an open editor, for Mari omnibar handoff. Transient, never persisted. */
   activeEditorField: { id: string; label: string } | null;
+  /** Current text of the field that had focus when the omnibar opened. Transient, never persisted. */
+  mariFieldDraft: { fieldId: string; value: string; selection?: string } | null;
+  /** Prof. Mari asks the open editor to show this field: scroll to it and pulse it once. Transient. */
+  /** `scroll: false` pulses the field in place (companion hover). */
+  mariRevealField: { entityId: string; path: string; scroll?: boolean } | null;
+  /** The editor field a running Prof. Mari step is writing, for its working glow. Transient. */
+  mariWorkingField: { entityId: string; path: string } | null;
+  /** Her text so far while she writes character fields: character id → editor field id → text. Transient. */
+  mariFieldStream: Record<string, Record<string, string>> | null;
+  /** Her change to a character as the editor shows it in the fields: waiting for Keep, or kept
+   * with Undo. Published by her open chat, which owns the replies. Transient. */
+  mariFieldReview: MariFieldReview | null;
+  /** The open editor's plain save, which her chat runs before a send whose writes skip review. Transient. */
+  mariEditorSave: (() => Promise<"saved" | "clean" | "failed">) | null;
+  /** Fields of her held change that wait in the open character editor. Transient. */
+  mariFieldWaitingCount: number;
+  /** Fields of the held change (by its message id) the user declined; every Accept sends them. Transient. */
+  mariFieldDeclined: { key: string; fields: Array<{ entityId: string; fieldId: string }> };
   /**
    * The most recent recoverable app failure, so the omnibar can answer "fix this".
    * `retry` is a serializable target the omnibar maps to a real action, never a
@@ -1018,8 +1054,6 @@ interface UIState {
   chibiProfessorMariEnabled: boolean;
   /** When true, Professor Mari shows generated suggestion chips and guided-plan options. */
   professorMariSuggestionsEnabled: boolean;
-  /** When true, the Command Center (omnibar) surfaces Professor Mari's LLM-backed assistance. */
-  commandCenterMariEnabled: boolean;
   /** When true, the omnibar adds proactive context and edit suggestions. */
   omnibarSuggestionsEnabled: boolean;
   /** When true, achievements appear on Home and announce unlocks. Backend tracking stays silent either way. */
@@ -1251,6 +1285,15 @@ interface UIState {
   toggleRightPanel: (panel: Panel) => void;
   setSettingsTab: (tab: string) => void;
   setActiveEditorField: (field: { id: string; label: string } | null) => void;
+  setMariFieldDraft: (draft: UIState["mariFieldDraft"]) => void;
+  revealMariField: (entityId: string, path: string, options?: { scroll?: boolean }) => void;
+  clearMariRevealField: () => void;
+  setMariWorkingField: (field: { entityId: string; path: string } | null) => void;
+  setMariFieldStream: (fields: Record<string, Record<string, string>> | null) => void;
+  setMariFieldReview: (review: MariFieldReview | null) => void;
+  setMariEditorSave: (save: (() => Promise<"saved" | "clean" | "failed">) | null) => void;
+  setMariFieldWaitingCount: (count: number) => void;
+  setMariFieldDeclined: (declined: { key: string; fields: Array<{ entityId: string; fieldId: string }> }) => void;
   setLastAppError: (error: UIState["lastAppError"]) => void;
   setSettingsTargetControlId: (controlId: string | null) => void;
   requestHome: (request: HomeRequest) => void;
@@ -1277,6 +1320,9 @@ interface UIState {
   setMariEditViewMode: (mode: MariEditViewMode) => void;
   setMariWindowHeightRem: (height: number) => void;
   setMariWindowWidthRem: (width: number) => void;
+  setMariCompanionDocked: (docked: boolean) => void;
+  setMariCompanionWidthRem: (width: number) => void;
+  setMariCompanionRoot: (root: HTMLElement | null) => void;
   setOmnibarWindowWidthRem: (width: number) => void;
   setOmnibarWindowHeightRem: (height: number | null) => void;
   setMariAppearancePack: (packId: string) => void;
@@ -1307,7 +1353,10 @@ interface UIState {
   setConnectionPanelSort: (sort: ConnectionPanelSort) => void;
   setAgentPanelSort: (sort: ResourcePanelSort) => void;
   setLibraryManualOrder: (kind: string, order: { active: boolean; ids: string[] }) => void;
-  openCharacterDetail: (id: string, options?: { preserveCharacterLibrary?: boolean; initialTab?: string }) => void;
+  openCharacterDetail: (
+    id: string,
+    options?: { preserveCharacterLibrary?: boolean; initialTab?: string; revealField?: string },
+  ) => void;
   closeCharacterDetail: () => void;
   openLorebookDetail: (id: string, options?: { initialTab?: string; entryId?: string; field?: string }) => void;
   closeLorebookDetail: () => void;
@@ -1433,7 +1482,6 @@ interface UIState {
   setTTSLineVolume: (v: number) => void;
   setChibiProfessorMariEnabled: (v: boolean) => void;
   setProfessorMariSuggestionsEnabled: (v: boolean) => void;
-  setCommandCenterMariEnabled: (v: boolean) => void;
   setOmnibarSuggestionsEnabled: (v: boolean) => void;
   setAchievementsEnabled: (v: boolean) => void;
   setSeasonalThemesDisabled: (v: boolean) => void;
@@ -1715,7 +1763,6 @@ export function pickSyncedSettings(state: UIState) {
     ttsLineVolume: state.ttsLineVolume,
     chibiProfessorMariEnabled: state.chibiProfessorMariEnabled,
     professorMariSuggestionsEnabled: state.professorMariSuggestionsEnabled,
-    commandCenterMariEnabled: state.commandCenterMariEnabled,
     omnibarSuggestionsEnabled: state.omnibarSuggestionsEnabled,
     mariPanelSortMode: state.mariPanelSortMode,
     omnibarAsideEnabled: state.omnibarAsideEnabled,
@@ -1725,6 +1772,8 @@ export function pickSyncedSettings(state: UIState) {
     mariEditViewMode: state.mariEditViewMode,
     mariWindowHeightRem: normalizeMariWindowHeightRem(state.mariWindowHeightRem),
     mariWindowWidthRem: normalizeMariWindowWidthRem(state.mariWindowWidthRem),
+    mariCompanionDocked: state.mariCompanionDocked,
+    mariCompanionWidthRem: normalizeMariCompanionWidthRem(state.mariCompanionWidthRem),
     omnibarWindowWidthRem: normalizeOmnibarWindowWidthRem(state.omnibarWindowWidthRem),
     omnibarWindowHeightRem: normalizeOmnibarWindowHeightRem(state.omnibarWindowHeightRem),
     mariAppearancePackId: getMariAppearancePack(state.mariAppearancePackId).id,
@@ -1888,6 +1937,8 @@ export function pickPersistedUIState(state: UIState) {
     mariEditViewMode: state.mariEditViewMode,
     mariWindowHeightRem: normalizeMariWindowHeightRem(state.mariWindowHeightRem),
     mariWindowWidthRem: normalizeMariWindowWidthRem(state.mariWindowWidthRem),
+    mariCompanionDocked: state.mariCompanionDocked,
+    mariCompanionWidthRem: state.mariCompanionWidthRem,
     omnibarWindowWidthRem: normalizeOmnibarWindowWidthRem(state.omnibarWindowWidthRem),
     omnibarWindowHeightRem: normalizeOmnibarWindowHeightRem(state.omnibarWindowHeightRem),
     mariAppearancePackId: getMariAppearancePack(state.mariAppearancePackId).id,
@@ -1979,7 +2030,6 @@ export function pickPersistedUIState(state: UIState) {
     ttsLineVolume: state.ttsLineVolume,
     chibiProfessorMariEnabled: state.chibiProfessorMariEnabled,
     professorMariSuggestionsEnabled: state.professorMariSuggestionsEnabled,
-    commandCenterMariEnabled: state.commandCenterMariEnabled,
     omnibarSuggestionsEnabled: state.omnibarSuggestionsEnabled,
     achievementsEnabled: state.achievementsEnabled,
     seasonalThemesDisabled: state.seasonalThemesDisabled,
@@ -2109,6 +2159,14 @@ export const useUIStore = create<UIState>()(
         trackerPanelSectionOrder: [...TRACKER_DATA_PANEL_SECTIONS],
         settingsTab: "general",
         activeEditorField: null,
+        mariFieldDraft: null,
+        mariRevealField: null,
+        mariWorkingField: null,
+        mariFieldStream: null,
+        mariFieldReview: null,
+        mariEditorSave: null,
+        mariFieldWaitingCount: 0,
+        mariFieldDeclined: { key: "", fields: [] },
         lastAppError: null,
         settingsTargetControlId: null,
         homeRequest: null,
@@ -2133,6 +2191,9 @@ export const useUIStore = create<UIState>()(
         mariEditViewMode: "easy",
         mariWindowHeightRem: MARI_WINDOW_HEIGHT_DEFAULT_REM,
         mariWindowWidthRem: MARI_WINDOW_WIDTH_DEFAULT_REM,
+        mariCompanionDocked: true,
+        mariCompanionWidthRem: MARI_COMPANION_WIDTH_DEFAULT_REM,
+        mariCompanionRoot: null,
         omnibarWindowWidthRem: OMNIBAR_WINDOW_WIDTH_DEFAULT_REM,
         omnibarWindowHeightRem: null,
         mariAppearancePackId: "basic",
@@ -2281,7 +2342,6 @@ export const useUIStore = create<UIState>()(
         ttsLineVolume: 50,
         chibiProfessorMariEnabled: true,
         professorMariSuggestionsEnabled: true,
-        commandCenterMariEnabled: true,
         omnibarSuggestionsEnabled: true,
         achievementsEnabled: true,
         seasonalThemesDisabled: false,
@@ -2495,6 +2555,15 @@ export const useUIStore = create<UIState>()(
 
         setSettingsTab: (tab) => set({ settingsTab: tab }),
         setActiveEditorField: (field) => set({ activeEditorField: field }),
+        setMariFieldDraft: (draft) => set({ mariFieldDraft: draft }),
+        revealMariField: (entityId, path, options) => set({ mariRevealField: { entityId, path, ...options } }),
+        clearMariRevealField: () => set({ mariRevealField: null }),
+        setMariWorkingField: (field) => set({ mariWorkingField: field }),
+        setMariFieldStream: (fields) => set({ mariFieldStream: fields }),
+        setMariFieldReview: (review) => set({ mariFieldReview: review }),
+        setMariEditorSave: (save) => set({ mariEditorSave: save }),
+        setMariFieldWaitingCount: (count) => set({ mariFieldWaitingCount: count }),
+        setMariFieldDeclined: (declined) => set({ mariFieldDeclined: declined }),
         setLastAppError: (error) => set({ lastAppError: error }),
         setSettingsTargetControlId: (controlId) => set({ settingsTargetControlId: controlId }),
         requestHome: (homeRequest) => set({ homeRequest }),
@@ -2521,6 +2590,9 @@ export const useUIStore = create<UIState>()(
         setMariEditViewMode: (mode) => set({ mariEditViewMode: mode }),
         setMariWindowHeightRem: (height) => set({ mariWindowHeightRem: normalizeMariWindowHeightRem(height) }),
         setMariWindowWidthRem: (width) => set({ mariWindowWidthRem: normalizeMariWindowWidthRem(width) }),
+        setMariCompanionDocked: (docked) => set({ mariCompanionDocked: docked }),
+        setMariCompanionWidthRem: (width) => set({ mariCompanionWidthRem: normalizeMariCompanionWidthRem(width) }),
+        setMariCompanionRoot: (root) => set({ mariCompanionRoot: root }),
         setOmnibarWindowWidthRem: (width) => set({ omnibarWindowWidthRem: normalizeOmnibarWindowWidthRem(width) }),
         setOmnibarWindowHeightRem: (height) => set({ omnibarWindowHeightRem: normalizeOmnibarWindowHeightRem(height) }),
         // A dated pack is never stored: picking it clears the opt-out, so the user's own pick returns after its window.
@@ -2578,6 +2650,8 @@ export const useUIStore = create<UIState>()(
             return {
               characterDetailId: id,
               characterDetailInitialTab: options?.initialTab ?? null,
+              // In the same patch as the navigation, so a refused editor leave drops it too.
+              mariRevealField: options?.revealField ? { entityId: id, path: options.revealField } : null,
               lorebookDetailId: null,
               presetDetailId: null,
               connectionDetailId: null,
@@ -3061,7 +3135,7 @@ export const useUIStore = create<UIState>()(
           // K6: mark the start of every real open (any trigger routes through
           // here) so the first-result-paint effect can measure against it.
           if (open && !get().omnibarOpen && get().debugMode) markOmnibarOpenStart();
-          set(open ? { omnibarOpen: true } : { omnibarOpen: false, omnibarSettings: null });
+          set(open ? { omnibarOpen: true } : { omnibarOpen: false, omnibarSettings: null, mariFieldDraft: null });
         },
         openOmnibarSettings: (controlId = null) => {
           if (!get().omnibarOpen && get().debugMode) markOmnibarOpenStart();
@@ -3204,7 +3278,6 @@ export const useUIStore = create<UIState>()(
         setTTSLineVolume: (v) => set({ ttsLineVolume: Math.max(0, Math.min(100, Math.round(v))) }),
         setChibiProfessorMariEnabled: (v) => set({ chibiProfessorMariEnabled: v }),
         setProfessorMariSuggestionsEnabled: (v) => set({ professorMariSuggestionsEnabled: v }),
-        setCommandCenterMariEnabled: (v) => set({ commandCenterMariEnabled: v }),
         setOmnibarSuggestionsEnabled: (v) => set({ omnibarSuggestionsEnabled: v }),
         setAchievementsEnabled: (v) => set({ achievementsEnabled: v }),
         // Switching seasonal themes back on also undoes a "Turn it off" from this year's greeting.
@@ -4128,10 +4201,6 @@ export const useUIStore = create<UIState>()(
         if (version <= 88 && persisted.reduceAmbientEffects === undefined) {
           persisted.reduceAmbientEffects = false;
         }
-        // v94 -> v95: Command Center Mari LLM assistance defaults on for existing users.
-        if (version <= 94 && persisted.commandCenterMariEnabled === undefined) {
-          persisted.commandCenterMariEnabled = true;
-        }
         // v94 -> v95: existing custom positions stay untouched; the exact legacy
         // default is the only reliable indication that the widget was never moved.
         if (
@@ -4151,11 +4220,11 @@ export const useUIStore = create<UIState>()(
         }
         // v101 -> v102: the Home navigator and its setting are gone; its commands moved to the omnibar.
         delete persisted.professorMariNavigationEnabled;
+        delete persisted.commandCenterMariEnabled;
         persisted.appAccentRgbMode = persisted.appAccentRgbMode === true;
         persisted.customCursorEnabled = persisted.customCursorEnabled !== false;
         persisted.reduceAmbientEffects = persisted.reduceAmbientEffects === true;
         persisted.professorMariSuggestionsEnabled = persisted.professorMariSuggestionsEnabled !== false;
-        persisted.commandCenterMariEnabled = persisted.commandCenterMariEnabled !== false;
         persisted.omnibarSuggestionsEnabled = persisted.omnibarSuggestionsEnabled !== false;
         persisted.includeReasoningInExports = persisted.includeReasoningInExports === true;
         persisted.includePrivateNotesInExports = persisted.includePrivateNotesInExports === true;
@@ -4184,6 +4253,8 @@ export const useUIStore = create<UIState>()(
           ...persisted,
           mariWindowHeightRem: normalizeMariWindowHeightRem(persisted.mariWindowHeightRem),
           mariWindowWidthRem: normalizeMariWindowWidthRem(persisted.mariWindowWidthRem),
+          mariCompanionDocked: persisted.mariCompanionDocked !== false,
+          mariCompanionWidthRem: normalizeMariCompanionWidthRem(persisted.mariCompanionWidthRem),
           omnibarWindowWidthRem: normalizeOmnibarWindowWidthRem(persisted.omnibarWindowWidthRem),
           omnibarWindowHeightRem: normalizeOmnibarWindowHeightRem(persisted.omnibarWindowHeightRem),
           mariAppearancePackId: getMariAppearancePack(persisted.mariAppearancePackId).id,

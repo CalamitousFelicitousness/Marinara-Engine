@@ -75,7 +75,7 @@ These commands help you steer a story, play a character, and add art. Most of th
 
 | Command | Also works as | What it does |
 |---|---|---|
-| `/guided [direction]` \| `/guided respond for [name] [direction (optional)]` | `/narrator`, `/narrate`, `/nar` | Steers the next AI reply in a direction you describe. |
+| `/guided [direction]` \| `/guided respond as [name] [direction (optional)]` | `/narrator`, `/narrate`, `/nar` | Steers the next AI reply in a direction you describe. |
 | `/as [name] [message (optional)]` | `/respond` | Posts a message as a character, or asks a character to reply. |
 | `/emote [expression (optional)]` \| `/emote "[name]" [expression (optional)]` | `/emotion`, `/sprite` | Lists or switches a character's sprite expression. |
 | `/roll [dice (optional)]` | `/r`, `/dice` | Rolls dice and posts the result. |
@@ -94,10 +94,10 @@ To steer the next reply, add your direction after `/guided`:
 /guided make him confess he is lying
 ```
 
-In a group Roleplay chat, use `/guided respond for [name] [direction (optional)]` to choose the responding character. For example:
+In a group Roleplay chat, use `/guided respond as [name] [direction (optional)]` to choose the responding character. `reply as` and `respond for` also work. For example:
 
 ```
-/guided respond for "Powers That Be" describe the approaching storm
+/guided respond as "Powers That Be" describe the approaching storm
 ```
 
 Use `/as [name] [message (optional)]` to post text as a character. Leaving out the message asks the model to generate that character's next response instead:
@@ -114,6 +114,8 @@ The `/roll` command reads dice notation. This rolls two six-sided dice:
 ```
 
 You can add a modifier, like `/roll 1d20+5`. If you type `/roll` with nothing after it, Marinara rolls `1d20`.
+
+To keep only some of the dice, add `kh` (keep highest) or `kl` (keep lowest) and a number: `/roll 4d6kh3` rolls four dice and adds the highest three, and `/roll 2d20kl1` keeps the lower of two. `dl` and `dh` drop the lowest or highest instead, as in `/roll 4d6dl1`. The dice that don't count are still shown, dimmed.
 
 A sprite is a piece of character art that shows an expression. The `/emote` command switches which one is shown. Type `/emote` alone to see the available expressions, or name one to switch to it:
 

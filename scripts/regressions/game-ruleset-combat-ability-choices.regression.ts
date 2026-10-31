@@ -132,7 +132,7 @@ assert.match(refusal(withChoices({ finesse: ["str", "str"] })), /An ability is n
       combat: { attacks: [{ list: "attacks", abilityChoices: { finesse: ["str", "dex"] } }] },
     } as never;
     const issue =
-      /choose the best of several abilities \(abilityChoices\) requires schemaVersion 2 and capabilityApi 1\.785/;
+      /choose the best of several abilities \(abilityChoices\) requires schemaVersion 2 and capabilityApi 1\.792/;
     assert.match(getCapabilityPackageInstallIssue(manifest(383), ruleset) ?? "", issue);
     assert.doesNotMatch(getCapabilityPackageInstallIssue(manifest(792), ruleset) ?? "", issue);
   } finally {
@@ -222,7 +222,7 @@ assert.match(refusal(withChoices({ finesse: ["str", "str"] })), /An ability is n
       combat: { attacks: [{ list: "attacks", toHit: { sheetBonus: { value: { const: 2 } } } }] },
     } as never;
     const issue =
-      /add a number off the sheet to hit \(toHit\.sheetBonus\) requires schemaVersion 2 and capabilityApi 1\.792/;
+      /add a number off the sheet to hit \(toHit\.sheetBonus\) requires schemaVersion 2 and capabilityApi 1\.799/;
     assert.match(getCapabilityPackageInstallIssue(manifest(798), ruleset) ?? "", issue);
     assert.doesNotMatch(getCapabilityPackageInstallIssue(manifest(799), ruleset) ?? "", issue);
   } finally {

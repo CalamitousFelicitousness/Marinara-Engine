@@ -344,7 +344,7 @@ try {
     permissions: [],
     restartRequired: false,
   });
-  const gate = /encounter budget.*capabilityApi 1\.795/;
+  const gate = /encounter budget.*capabilityApi 1\.802/;
   const issue = (minor: number, one: Record<string, any>) =>
     getCapabilityPackageInstallIssue(manifest(minor) as any, one);
   assert.match(issue(801, doc()) ?? "", gate);

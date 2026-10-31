@@ -1619,20 +1619,20 @@ try {
   // Up to 800 since 1.728, which 5e's armor training outgrew.
   const mostDerived = structuredClone(derivedDoc);
   mostDerived.sheet.derived.push({ id: "extra_400", label: "Extra", op: "sum", of: [{ const: 1 }] });
-  assert.match(issue(727, mostDerived) ?? "", /more than 400 derived values.*1\.716/);
+  assert.match(issue(727, mostDerived) ?? "", /more than 400 derived values.*1\.728/);
   assert.doesNotMatch(issue(728, mostDerived) ?? "", /derived values/);
-  assert.doesNotMatch(issue(727, derivedDoc) ?? "", /1\.716/, "400 derived values need no new minor");
+  assert.doesNotMatch(issue(727, derivedDoc) ?? "", /1\.728/, "400 derived values need no new minor");
   const steps24 = structuredClone(moreStepsDoc);
   steps24.sheet.builder.steps.length = 24;
   assert.match(issue(111, steps24) ?? "", /more than 16 builder steps.*1\.112/);
   assert.equal(issue(112, steps24), null);
   // Up to 32 steps and 60 entries a catalog step since 1.767.
-  assert.match(issue(766, moreStepsDoc) ?? "", /more than 24 builder steps.*1\.755/);
+  assert.match(issue(766, moreStepsDoc) ?? "", /more than 24 builder steps.*1\.767/);
   assert.equal(issue(767, moreStepsDoc), null);
   const spellbook = variant((doc) => Object.assign(doc.sheet.builder.steps[0], { min: 0, max: 44 }));
-  assert.match(issue(766, spellbook) ?? "", /more than 40 entries.*1\.755/);
+  assert.match(issue(766, spellbook) ?? "", /more than 40 entries.*1\.767/);
   assert.equal(issue(767, spellbook), null);
-  assert.doesNotMatch(issue(766, biggerCatalogDoc) ?? "", /1\.755/, "40 entries need no new minor");
+  assert.doesNotMatch(issue(766, biggerCatalogDoc) ?? "", /1\.767/, "40 entries need no new minor");
   const oldStepsLimit = structuredClone(moreStepsDoc);
   oldStepsLimit.sheet.builder.steps.length = 16;
   assert.equal(issue(111, oldStepsLimit), null, "16 steps need no new minor");

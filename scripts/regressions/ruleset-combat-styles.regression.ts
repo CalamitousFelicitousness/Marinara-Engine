@@ -116,7 +116,7 @@ try {
   }
 
   // ── The gate ──
-  const gate = /capabilityApi 1\.778 or newer/;
+  const gate = /capabilityApi 1\.379 or newer/;
   const manifest = (minor: number) => ({
     schemaVersion: 2,
     capabilityApi: { major: 1, minor },

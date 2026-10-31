@@ -197,7 +197,7 @@ try {
     );
     refused(
       (entry) => (entry.manifest.capabilityApi.minor = 809),
-      /capabilityApi 1\.803/,
+      /capabilityApi 1\.810/,
       "packs need a ruleset of 1.810",
     );
     // An older Engine's catalog read drops such an entry; this one keeps it, and drops a bad one alone.

@@ -256,7 +256,7 @@ try {
     assert.equal(parseRulesetDefinition(many(400)).ok, true, "400 since 1.111");
     assert.equal(parseRulesetDefinition(many(800)).ok, true, "800 since 1.728");
     assert.equal(parseRulesetDefinition(many(801)).ok, false, "801 do not");
-    assert.match(issue(727, many(401)) ?? "", /1\.716/);
+    assert.match(issue(727, many(401)) ?? "", /1\.728/);
     assert.equal(issue(728, many(401)), null);
     assert.match(issue(83, many(61)) ?? "", /more than 60 derived values.*1\.84/);
     assert.equal(issue(84, many(61)), null);

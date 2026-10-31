@@ -667,7 +667,7 @@ try {
         contributions: { assets: { paths: ["ruleset.json"] } },
       }) as never;
     const issue =
-      /throw its symbol dice, or a creature with upgraded attack dice, requires schemaVersion 2 and capabilityApi 1\.783/;
+      /throw its symbol dice, or a creature with upgraded attack dice, requires schemaVersion 2 and capabilityApi 1\.382/;
     const cases: Array<[string, unknown]> = [
       ["a symbol fight", { combat: { kind: "symbol-pool" } }],
       ["a symbols block", { combat: { symbols: {} } }],

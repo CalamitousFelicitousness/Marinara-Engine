@@ -1,13 +1,21 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
-import { generateRoutes } from "../../packages/server/src/routes/generate.routes.js";
-import type { ActiveAgentRun } from "../../packages/server/src/routes/generate/retry-agents-route.js";
-import {
-  createGenerationEventSink,
-  generationOutputSettled,
-  sendSseEvent,
-} from "../../packages/server/src/routes/generate/sse.js";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const dir = mkdtempSync(join(tmpdir(), "marinara-interrupted-retry-"));
+process.env.DATA_DIR = dir;
+process.env.FILE_STORAGE_DIR = join(dir, "storage");
+process.env.NODE_ENV = "test";
+process.env.MARINARA_LITE = "true";
+process.env.LOG_LEVEL = "silent";
+const requireServer = createRequire(new URL("../../packages/server/package.json", import.meta.url));
+const Fastify = requireServer("fastify") as typeof import("fastify").default;
+const { generateRoutes } = await import("../../packages/server/src/routes/generate.routes.js");
+const { createGenerationEventSink, generationOutputSettled, sendSseEvent } =
+  await import("../../packages/server/src/routes/generate/sse.js");
+type ActiveAgentRun = import("../../packages/server/src/routes/generate/retry-agents-route.js").ActiveAgentRun;
 
 // An interrupted turn must stay retryable: a turn sent right after a Stop or an interrupt waits for the stopped run to
 // unwind instead of being refused, a run stopped from elsewhere tells its still-open stream it ended, and the client
@@ -58,6 +66,7 @@ try {
   activeGenerations.clear();
   await app.close();
   await closeDB();
+  rmSync(dir, { recursive: true, force: true });
 }
 
 const read = (path: string) => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");

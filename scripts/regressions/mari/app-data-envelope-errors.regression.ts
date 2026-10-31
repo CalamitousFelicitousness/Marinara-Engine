@@ -30,7 +30,7 @@ try {
   const lorebookId = ((await mariDb.executeAction({ action: "lorebook.list" })) as { output: Array<{ id: string }> })
     .output[0]!.id;
 
-  // One chat per call site: the gate runs once per chat.
+  // One chat per call site: the gate runs once per turn, and nothing here starts a new turn (#8391 re-arms it).
   let n = 0;
   const commandsFor = (chatId: string | null, acceptedHeldCalls = false) => {
     const commands = new WorkspaceCommands({ db } as never, () => ({
@@ -123,6 +123,25 @@ try {
     apply: false,
   });
   assert.doesNotMatch(linkPreview.output, /read skill/);
+  // onboarding.md sends the card patch with the block, so that handbook alone covers character.update.
+  const onboarding = commandsFor("onboarding-update");
+  await onboarding({ action: "skill.get", id: "builtin-onboarding" });
+  const cardPatch = await onboarding({
+    action: "character.update",
+    characterId: aldric,
+    patch: { description: "x" },
+    apply: false,
+  });
+  assert.doesNotMatch(cardPatch.output, /read skill/, "onboarding read covers character.update");
+  const cardCreate = await onboarding({ action: "character.create", data: { name: "Other" }, apply: false });
+  assert.match(cardCreate.output, /read skill `builtin-characters` first/, "only character.update is covered");
+  const cold = await commandsFor("onboarding-cold")({
+    action: "character.update",
+    characterId: aldric,
+    patch: { description: "x" },
+    apply: false,
+  });
+  assert.match(cold.output, /read skill `builtin-characters` first/, "nothing read: still refused");
   // Calls the user accepted were held, so the gate never saw them: Accept applies them all.
   const accepted = await commandsFor(
     "accept",

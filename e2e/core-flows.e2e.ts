@@ -3825,7 +3825,7 @@ test("Character row actions can add a resource to the active chat without draggi
     await clickTopbarPanel(page, "characters");
 
     // This action proof needs one character, not the shard's accumulated catalog.
-    await page.getByRole("textbox", { name: "Search characters", exact: true }).fill(characterName);
+    await page.getByRole("textbox", { name: "Search characters/tags", exact: true }).fill(characterName);
     const folderRow = page.locator(`[data-character-folder-id="${group.id}"]`);
     const folderHeader = folderRow.locator(':scope > [role="button"]');
     await folderHeader.click();
@@ -7502,8 +7502,24 @@ for (const mode of ["roleplay", "conversation"] as const) {
   test(
     `${mode} exposes reasoning and explains unavailable saved summaries`,
     { tag: "@smoke" },
-    async ({ page }, testInfo) => {
+    async ({ page, context }, testInfo) => {
       const characters: Array<{ id: string; name: string }> = [];
+      if (testInfo.project.name.includes("webkit")) {
+        await page.addInitScript(() => {
+          let clipboardText = "";
+          Object.defineProperty(navigator, "clipboard", {
+            configurable: true,
+            value: {
+              readText: async () => clipboardText,
+              writeText: async (value: string) => {
+                clipboardText = String(value);
+              },
+            },
+          });
+        });
+      } else {
+        await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+      }
       if (mode === "conversation") {
         for (const name of ["Reasoning One", "Reasoning Two"]) {
           const characterResponse = await page.request.post("/api/characters", {
@@ -7601,6 +7617,12 @@ for (const mode of ["roleplay", "conversation"] as const) {
         const thoughtsDialog = page.getByRole("dialog", { name: "Model Thoughts" });
         await expect(thoughtsDialog).toBeVisible();
         await expect(thoughtsDialog).toContainText("First reasoning chunk.");
+        const copyThoughtsButton = thoughtsDialog.getByRole("button", { name: "Copy model thoughts" });
+        await expect(copyThoughtsButton).toBeVisible();
+        if (testInfo.project.name.includes("mobile")) await copyThoughtsButton.tap();
+        else await copyThoughtsButton.click();
+        await expect(thoughtsDialog.getByRole("button", { name: "Thoughts copied" })).toBeVisible();
+        await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("First reasoning chunk.");
 
         await updateLiveReasoningState(page, chat.id, "append-thinking", " Second reasoning chunk.");
         await expect(thoughtsDialog).toContainText("First reasoning chunk. Second reasoning chunk.");
@@ -7619,8 +7641,9 @@ for (const mode of ["roleplay", "conversation"] as const) {
         await expect
           .poll(() => thoughtsDialog.evaluate((dialog) => dialog.contains(document.activeElement)))
           .toBe(true);
+        await closeThoughtsButton.focus();
         await page.keyboard.press("Tab");
-        await expect(closeThoughtsButton).toBeFocused();
+        await expect(thoughtsDialog.getByRole("button", { name: /Copy model thoughts|Thoughts copied/ })).toBeFocused();
         await page.keyboard.press("Tab");
         await expect(closeThoughtsButton).toBeFocused();
         await page.keyboard.press("Escape");
@@ -7661,6 +7684,7 @@ for (const mode of ["roleplay", "conversation"] as const) {
         await unavailableThoughtsButton.click();
         const unavailableDialog = page.getByRole("dialog", { name: "Model Thoughts" });
         await expect(unavailableDialog).toContainText("Reasoning summary unavailable");
+        await expect(unavailableDialog.getByRole("button", { name: "Copy model thoughts" })).toHaveCount(0);
         await expect(unavailableDialog).toContainText(
           "The model used reasoning, but the provider did not return a displayable summary for this response.",
         );
@@ -7675,8 +7699,12 @@ for (const mode of ["roleplay", "conversation"] as const) {
   );
 }
 
-test("Roleplay can show streaming reasoning inline and control automatic collapse", async ({ page }, testInfo) => {
+test("Roleplay can show streaming reasoning inline and control automatic collapse", async ({
+  page,
+  context,
+}, testInfo) => {
   test.skip(!testInfo.project.name.includes("desktop"), "Inline Roleplay reasoning behavior is covered on desktop.");
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
 
   const chatResponse = await page.request.post("/api/chats", {
     data: { name: "Inline Roleplay Reasoning Smoke", mode: "roleplay", characterIds: [] },
@@ -7738,6 +7766,11 @@ test("Roleplay can show streaming reasoning inline and control automatic collaps
     const savedRow = page.locator(`[data-message-id="${message.id}"]`);
     const savedThinking = savedRow.locator("[data-message-thinking-inline]");
     const savedThinkingButton = savedThinking.getByRole("button", { name: "Thought for 2 seconds…" });
+    const copyInlineThoughtsButton = savedThinking.getByRole("button", { name: "Copy model thoughts" });
+    await expect(copyInlineThoughtsButton).toBeVisible();
+    await copyInlineThoughtsButton.click();
+    await expect(savedThinking.getByRole("button", { name: "Thoughts copied" })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("Saved inline reasoning.");
     await expect(savedThinkingButton).toHaveAttribute("aria-expanded", "false");
     const chromeTextColor = await readCssVariableColor(page, "--marinara-chat-chrome-text");
     const accentTextColor = await readCssVariableColor(page, "--marinara-chat-chrome-button-text-active");
@@ -12272,7 +12305,7 @@ test("ElevenLabs keeps models visible and exposes scrollable account voices in e
     await expect(modelSelect.locator("option")).toHaveCount(3);
     await expect(modelSelect.locator('option[value="eleven_v3"]')).toHaveText("Eleven v3 (eleven_v3)");
 
-    const allCharactersVoicePicker = ttsCard.getByRole("button", { name: "All Characters Voice" });
+    const allCharactersVoicePicker = ttsCard.getByRole("button", { name: "Shared Voice" });
     await allCharactersVoicePicker.click();
     const voiceList = page.getByTestId("tts-voice-options");
     await expect(voiceList.getByRole("option")).toHaveCount(49);
@@ -12290,9 +12323,9 @@ test("ElevenLabs keeps models visible and exposes scrollable account voices in e
     await ttsCard.getByRole("combobox", { name: "Voice Option" }).selectOption("per-character");
     const refreshButton = ttsCard.getByRole("button", { name: "Refresh", exact: true });
     await expect(refreshButton).toBeVisible();
-    await ttsCard.getByRole("button", { name: "Add character voice" }).click();
+    await ttsCard.getByRole("button", { name: "Add voice" }).click();
 
-    const characterPicker = ttsCard.getByRole("button", { name: "Select character" });
+    const characterPicker = ttsCard.getByRole("button", { name: "Select character or persona" });
     await characterPicker.click();
     const characterList = page.getByTestId("tts-character-options");
     await expect(characterList).toBeVisible();
@@ -12893,7 +12926,7 @@ test("installed Home destinations appear as browser tabs without returning to th
     }
   }
   expect(errors).toEqual([]);
-  // An uncapped package catalog must still let the user reach the final tab.
+  // An uncapped package catalog folds into the tab menu instead of scrolling, and still reaches the final tab.
   await page.route("**/api/capability-packages/destination-*/client?*", (route) => {
     const id = new URL(route.request().url()).pathname.split("/")[3];
     return route.fulfill({
@@ -12924,7 +12957,9 @@ test("installed Home destinations appear as browser tabs without returning to th
     }),
   );
   await page.reload();
-  await expect(tabList.getByRole("tab")).toHaveCount(42);
+  const tabMenuTrigger = page.getByRole("button", { name: "Show all experiences" });
+  await expect(tabMenuTrigger).toBeVisible();
+  await expect(tabList.getByRole("tab")).toHaveCount(1);
   for (const size of mobile
     ? [
         { width: 390, height: 844 },
@@ -12932,11 +12967,16 @@ test("installed Home destinations appear as browser tabs without returning to th
       ]
     : [page.viewportSize()!]) {
     await page.setViewportSize(size);
-    expect(await tabList.evaluate((rail) => rail.scrollWidth > rail.clientWidth)).toBe(true);
-    await expect(tabList).toHaveCSS("overflow-x", "auto");
+    await expect(tabMenuTrigger).toBeVisible();
+    expect(await tabList.evaluate((rail) => rail.scrollWidth <= rail.clientWidth + 1)).toBe(true);
+    await tabMenuTrigger.click();
+    const tabMenu = page.locator('[data-component="HomeBrowserHub.TabMenu"]');
+    await expect(tabMenu.getByRole("button")).toHaveCount(41);
+    const lastEntry = tabMenu.getByRole("button", { name: "Destination 39", exact: true });
+    await lastEntry.scrollIntoViewIfNeeded();
+    await lastEntry.click();
+    await expect(tabMenu).toHaveCount(0);
     const lastTab = tabList.getByRole("tab", { name: "Destination 39", exact: true });
-    await lastTab.scrollIntoViewIfNeeded();
-    await lastTab.click();
     await expect(lastTab).toHaveAttribute("aria-selected", "true");
     await expect(lastTab.locator(":scope > span.truncate")).toBeVisible();
     const rail = (await tabList.boundingBox())!;
@@ -21785,8 +21825,9 @@ test("Roleplay reduced paint effects preserve semantic and custom styling", asyn
     await expect(defaultBubble).toHaveAttribute("data-roleplay-bubble-transparent", "true");
     await expect(defaultBubble).toHaveCSS("background-image", "none");
     await expect(defaultBubble).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-    await expect(bubble).not.toHaveAttribute("data-roleplay-bubble-transparent", "true");
-    expect(await bubble.evaluate((element) => getComputedStyle(element).backgroundImage)).toContain("rgb(18, 52, 86)");
+    await expect(bubble).toHaveAttribute("data-roleplay-bubble-transparent", "true");
+    await expect(bubble).toHaveCSS("background-image", "none");
+    await expect(bubble).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
 
     await expect
       .poll(() =>
@@ -21802,7 +21843,7 @@ test("Roleplay reduced paint effects preserve semantic and custom styling", asyn
     await page.reload();
     await expect(surface).toHaveClass(/mari-rp-reduced-paint/);
     await expect(defaultBubble).toHaveAttribute("data-roleplay-bubble-transparent", "true");
-    await expect(bubble).not.toHaveAttribute("data-roleplay-bubble-transparent", "true");
+    await expect(bubble).toHaveAttribute("data-roleplay-bubble-transparent", "true");
     await expect(bubble).not.toHaveCSS("box-shadow", "none");
   } finally {
     await Promise.all([

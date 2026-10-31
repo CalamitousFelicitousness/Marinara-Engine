@@ -140,7 +140,7 @@ try {
   });
   assert.match(
     getCapabilityApiCompatibilityIssue(unsupportedMajorManifest) ?? "",
-    /requires capability API 2\.0; this Engine supports 1\.804/,
+    /requires capability API 2\.0; this Engine supports 1\.811/,
   );
   const currentMinorManifest = capabilityPackageManifestSchema.parse({
     ...manifestV2,
@@ -231,6 +231,10 @@ try {
     [804, "ammunition's bonus to hit"],
     [385, "shared gallery image saving"],
     [386, "Home browser openConnection and raw generation debug logging"],
+    [387, "chat summaries"],
+    [388, "host-only services"],
+    [389, "hide messages from the AI"],
+    [390, "let the Engine draw an agent page header"],
   ];
   for (const [minor, label] of supportedMinors) {
     assert.equal(
@@ -832,7 +836,8 @@ try {
   // otherwise land second and overwrite requestedCatalogUrl. Overlay behaviour
   // has its own coverage in capability-preview-overlay.regression.ts.
   const normalizedCatalog = await capabilityPackageManager.catalog(async (url) => {
-    requestedCatalogUrl = url;
+    // The store.json sidecar beside the catalog is fetched too; pin only the catalog.
+    if (String(url).endsWith("/catalog.json")) requestedCatalogUrl = url;
     return new Response(
       JSON.stringify({
         schemaVersion: 1,

@@ -50,6 +50,12 @@ const workspaceAgent =
   readSource("packages/server/src/services/professor-mari/workspace-round-review.ts");
 assert.match(workspaceAgent, /include the confirmatory read in the SAME response whenever you can/u);
 assert.match(workspaceAgent, /never present it with an apology \("Oops", "my bad"\)/u);
+const seasonalFlavors = readSource("packages/server/src/services/professor-mari/workspace-agent.service.ts");
+assert.match(seasonalFlavors, /new Map<string, string>\(\[/u, "dated pack flavors use a Map");
+assert.match(seasonalFlavors, /MARI_SEASON_FLAVORS\.get\(seasonalPackId \?\? ""\)/u);
+assert.match(seasonalFlavors, /\["raccoon", MARI_RACCOON_SEASON_FLAVOR\]/u, "raccoon flavor text remains registered");
+assert.match(seasonalFlavors, /\[\s*"party",\s*`Seasonal flavor:/u);
+assert.match(seasonalFlavors, /\[\s*"hungover",\s*`Seasonal flavor:/u);
 // app_data writes verify themselves via the store read-back (see the
 // mari-write-readback lane); the same-frame read guidance remains for the
 // write/edit/copy/move/bash mutations that have no read-back.
@@ -135,7 +141,10 @@ assert.doesNotMatch(mariChatAll, /mari-omnibar-header-menu__destinations|moreMar
 const headerNewChat = mariHeaderChromeFlat.indexOf(
   '<button type="button" onClick={() => void runRestart()} disabled={isBusy} className="mari-omnibar-header-new-chat"',
 );
-assert.ok(headerNewChat > mariHeaderChromeFlat.indexOf("{headerDestinations.map("), "New chat closes the row after Chats");
+assert.ok(
+  headerNewChat > mariHeaderChromeFlat.indexOf("{headerDestinations.map("),
+  "New chat closes the row after Chats",
+);
 // Q5 (slice 57b): the "Chats · +" group closes the row, at the right under settings and Close, so Chats is
 // the last destination (DOM order is the tab order).
 const headerDestinationIds = [
@@ -190,6 +199,17 @@ assert.ok(browserHubFlat.includes('{mobileShell && mobileBookmarksOpen && active
 assert.doesNotMatch(browserHub, /BookmarksOnOtherTabs/u);
 assert.ok("home.browser.bookmarksCompact" in enJson);
 
+// Tabs that overflow fold into a three-dots menu instead of scrolling. Home is never folded, the open tab stays
+// in the row, and the trigger is a sibling of the tablist (which may only contain tabs).
+const tabListStart = browserHubFlat.indexOf('data-component="HomeBrowserHub.TabList"');
+const tabMenuTrigger = browserHubFlat.indexOf('data-component="HomeBrowserHub.TabMenuTrigger"');
+assert.ok(tabListStart > 0 && tabMenuTrigger > tabListStart, "the folded-tab trigger follows the tablist");
+assert.ok(browserHubFlat.includes("if (tabsCollapsed && !tabActive) return null;"), "the open package tab stays");
+assert.ok(browserHubFlat.includes('{!tabsCollapsed || activeTab === "professor" ? ('), "Professor folds unless open");
+assert.ok(browserHubFlat.includes("{tabsCollapsed && tabMenuOpen ? ("), "the menu only exists while folded");
+assert.match(globalsCss, /\[data-component="HomeBrowserHub\.TabMenuTrigger"\]/u, "short landscape sizes the trigger");
+assert.ok("home.browser.tabMenu" in enJson);
+
 // #5820: the Accept action for held edits must never be captioned as a mere
 // suggestion. Users read "Suggestions only. Pick one, or type your own." and
 // concluded Mari had silently done nothing, so the safety mechanism's only
@@ -197,7 +217,7 @@ assert.ok("home.browser.bookmarksCompact" in enJson);
 // Slice 71: the held change is now a "Needs you" card (no chip row, no caption) whose words say
 // plainly that nothing is applied yet, and whose buttons send the same Accept / decline replies.
 assert.ok(
-  mariChatFlat.includes("const heldChangeCard = chipRowAwaitsApproval && !guidedPlanStep;"),
+  mariChatFlat.includes("const heldChangeCard = chipRowAwaitsApproval;"),
   "a held change renders as its card, not as a suggestions row",
 );
 assert.ok(

@@ -12,6 +12,7 @@ import {
   type BuiltInAgentManifest,
   type InstalledCapabilityPackage,
   type InstalledRuleset,
+  type StampedCapabilityCatalog,
   type RulesetCatalogPayload,
 } from "@marinara-engine/shared";
 import { api, ApiError } from "../lib/api-client";
@@ -192,7 +193,7 @@ export function useRemoveRuleset() {
 export function useCapabilityCatalog(enabled = true) {
   return useQuery({
     queryKey: capabilityPackageKeys.catalog(),
-    queryFn: () => api.get<CapabilityCatalog>("/capability-packages/catalog"),
+    queryFn: () => api.get<StampedCapabilityCatalog>("/capability-packages/catalog"),
     enabled,
     staleTime: 5 * 60_000,
     retry: 1,

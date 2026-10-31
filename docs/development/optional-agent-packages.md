@@ -589,7 +589,7 @@ events and spatial snapshots. `chat-read` gates chat, message, game-state and sp
 The same checks apply inside persistence transactions and chat locks; a write permission does not
 implicitly grant read permission. Engine-owned persistence calls remain trusted.
 
-The Download Agents detail view shows the installed version's declared permissions after installation.
+The Agent Organizer detail view shows the installed version's declared permissions after installation.
 When the catalog version requests different permissions, it shows those separately. Installing or
 updating code still requires the existing approval bound to that exact version and checksum; model
 commands do not request separate approval on every turn.
@@ -770,7 +770,7 @@ The base keeps the package manager, catalog client, generic agent pipeline contr
 
 The official catalog is a schema-validated, versioned JSON document fetched over HTTPS. Each release entry includes immutable artifact URLs, SHA-256 digests, byte sizes, engine compatibility, permissions, and whether its runtime requires a restart. A ruleset entry may also list `locales`, its language packs by language (Capability API 1.810), each with its own URL, SHA-256 digest and byte size and the store card's translated name and description. The Engine fetches only the pack in its current language after installing the ruleset, and again when its language changes (`POST /api/capability-packages/rulesets/language`, sent by the page as it opens and on each change), keeping it with the installed version and removing the others; see [Writing Rulesets](../extending/writing-rulesets.md).
 
-Updates need the user's consent: apart from one-time migrations that keep an upgraded install's former built-ins (see [Compatibility migration](#compatibility-migration)), startup never downloads or installs a package. `GET /api/capability-packages/updates/pending` lists each installed official package whose catalog version is newer and compatible with the running Engine and capability API, leaving out a version the user already declined. The client shows them in one **Agent updates available** prompt. **Update all** installs each through the normal installation pipeline, pinned to the offered version and artifact SHA-256. **Not now** records the declined versions in `DATA_DIR/capability-packages/update-decisions-v1.json` (`POST /api/capability-packages/updates/decline`), so that version is not offered again, while a newer one is. **Update** stays available in **Download Agents** either way. Failures are isolated per package. Existing files and registry state remain usable when the catalog is offline or verification fails, and server-runtime readiness failures use the previous-version rollback path.
+Updates need the user's consent: apart from one-time migrations that keep an upgraded install's former built-ins (see [Compatibility migration](#compatibility-migration)), startup never downloads or installs a package. `GET /api/capability-packages/updates/pending` lists each installed official package whose catalog version is newer and compatible with the running Engine and capability API, leaving out a version the user already declined. The client shows them in one **Agent updates available** prompt. The prompt installs each selected update through the normal installation pipeline, pinned to the offered version and artifact SHA-256. Updates the user leaves unselected are declined the same way as **Not now**. **Not now** records the declined versions in `DATA_DIR/capability-packages/update-decisions-v1.json` (`POST /api/capability-packages/updates/decline`), so that version is not offered again, while a newer one is. **Update** stays available in **Agent Organizer** either way. Failures are isolated per package. Existing files and registry state remain usable when the catalog is offline or verification fails, and server-runtime readiness failures use the previous-version rollback path.
 
 Release notes are published as `notes.json` beside the `catalog.json` they describe, never inside a catalog entry or a manifest: an older Engine drops a catalog entry with a key it does not know. Each pending update carries, as `releaseNotes`, the notes of every version after the installed one up to the offered one, newest first, and `releaseHighlight` is true when any of them is marked as a change the user will notice. Notes are plain text and are never rendered as Markdown or HTML.
 
@@ -826,9 +826,9 @@ Every uninstall requires confirmation. Affected chats fall back to their ordinar
 
 ## Catalog interface
 
-The Agents panel contains a `Download Agents` control matching the `Download` button in the Characters and Personas panels, which opens the Card Browser. It opens a full-screen responsive library with search, package kinds, compatibility information, install/update state, permissions, storage cost, documentation, and uninstall controls.
+The Agents panel contains an `Agent Organizer` control matching the `Download` button in the Characters and Personas panels, which opens the Card Browser. It opens a full-screen responsive library with search, package kinds, compatibility information, install/update state, permissions, storage cost, documentation, and uninstall controls.
 
-Desktop uses a browse list with an adjacent detail region. Mobile uses one pane with explicit back navigation and touch-sized actions. Empty, offline, incompatible, corrupt-download, interrupted-install, update, rollback, and restart-required states are first-class.
+Desktop shows a sidebar with search, mode filter and sections next to the store pages. Mobile shows search, mode filter and section chips above the page; an agent page replaces the list, with explicit back navigation and touch-sized actions. Empty, offline, incompatible, corrupt-download, interrupted-install, update, rollback, and restart-required states are first-class.
 
 ## Extraction gate
 
@@ -1787,6 +1787,70 @@ exit button available on every package screen and use `aria-pressed` to reflect 
 must update the button without replacing unfinished forms. Packages depending on this control
 declare capability API 1.376 or newer; older packages can keep their existing layouts.
 
+### Capability API 1.390: the Engine draws an agent page header
+
+A package with `contributions.agentDetail` can set `"header": "engine"`. The Engine then draws the
+same header as on every other agent page: Back, the store banner and logo, the name, the Active
+toggle for the open chat and Manage package. The `detail` view gets two extra props:
+`engineHeader: true` and `headerSlot`, an element in the header actions. Hide your own header when
+`engineHeader` is set, and render extra header buttons (for example "Add memories" or help) into
+`headerSlot`, with a React portal or `appendChild`. `headerSlot` is `null` on the first render, so
+wait for the next props update. Without the flag, the package keeps the full page as before.
+Declare capability API 1.390 when you set it.
+
+### Capability API 1.389: hide or show messages from the AI
+
+`persistence.setMessagesHiddenFromAI(chatId, messageIds, hidden)` hides messages of one chat from the AI,
+or shows them again, as the Engine's summary does with **Hide summarised messages**. It needs the
+`chat-write` permission and changes the message and every swipe. A chat that is not found rejects.
+
+- Ids that are not messages of this chat are ignored.
+- A message whose visibility the user set by hand is never changed.
+- It resolves the ids whose flag this call changed. A message that was already hidden (by the summary,
+  for example) is not returned, so record the returned ids and show only those again later.
+
+Older Engines do not have the method: check that it exists, or declare 1.389.
+
+```ts
+const hidden = (await api.runtime.persistence.setMessagesHiddenFromAI?.(chatId, messageIds, true)) ?? [];
+```
+
+### Capability API 1.388: a service only the Engine can read
+
+Every service a package registers is readable by every other package through `runtime.services.get(key)`. A
+service meant for the Engine alone, such as a runtime the Engine calls during generation, takes a third argument:
+
+```ts
+api.registerService("my-package:runtime", service, { hostOnly: true });
+```
+
+The Engine's own lookup still returns it. `runtime.services.get` returns `null` for it to every package, the owner
+included. Releasing the service clears the flag, so the key can be registered again without it. An Engine older than
+1.388 ignores the argument, so the service stays readable there; do not rely on `hostOnly` for secrecy on older
+Engines.
+
+### Capability API 1.387: read a chat's summaries
+
+`persistence.listChatSummaries(chatId)` returns the summaries the Engine keeps for a chat, so a package
+does not parse the chat's metadata for them. It needs the `chat-read` permission, like `listMessages`,
+and returns copies:
+
+- `day` and `week`: Conversation summaries by date (`"DD.MM.YYYY"`, a week by its Monday), each
+  `{ summary, keyDetails }`.
+- `rolling`: the rolling summary entries in the chat's order, disabled ones included (check `enabled`).
+  A chat that only has the older single summary reads it as one entry with `origin: "legacy"`, dated
+  with the chat's last update time.
+- `gameSessions`: a Game's summary of each previous session. Every entry is complete: a missing text
+  field reads `""`, a missing list `[]`, an older `revelations` list joins `keyDiscoveries`, and a missing
+  `sessionNumber` is the entry's position (from 1). An entry without a date takes the chat's last update time.
+
+A chat without summaries, or one that is not found, gets empty values. Older Engines do not have the
+method: check that it exists, or declare 1.387.
+
+```ts
+const { day, week, rolling, gameSessions } = (await api.runtime.persistence.listChatSummaries?.(chatId)) ?? {};
+```
+
 ### Capability API 1.386: open a connection, and raw generation for packages
 
 The browser view gets `openConnection(connectionId)`. It opens the connection editor on that saved
@@ -2114,7 +2178,8 @@ servers take a few libraries from the Engine instead of bundling them. Every new
 
 - `runtime.services.get(key)` returns a service a package registered with `api.registerService`, or `null` while it is
   absent or during a shared-room generation. It reads the Engine's own registry, so every package sees it.
-  `agent-runtime:` and `mari-actions:` keys always return `null`; only the Engine reads those.
+  `agent-runtime:` and `mari-actions:` keys always return `null`; only the Engine reads those. So does a service
+  registered with `hostOnly` (Capability API 1.388), for every package including its owner.
 - `runtime.commands.parse(content)`, `strip(content)` and `instructions()` read conversation commands with the
   Engine's grammar and every package's registered tags.
 - `runtime.logger.isLevelEnabled(level)` says whether the Engine logger writes that level now.
@@ -2159,17 +2224,26 @@ copy splits state the Engine keeps in one place. Pure helpers and types may stil
 
 **Shared server libraries.** A package server may leave `zod`, `adm-zip`, `dotenv`, `nanoid` and `jsonrepair` out of
 its bundle and import them by name, as it already may for `@huggingface/transformers`, `onnxruntime-node`,
-`onnxruntime-web`, `sharp`, `pino`, `pino-pretty` and `undici`. Node resolves them through managed links in the package's
-runtime copy to `DATA_DIR/capability-packages/node_modules`, which points to the Engine's `packages/server/node_modules`.
+`onnxruntime-web`, `sharp`, `pino`, `pino-pretty` and `undici`. The Engine builds managed links in each package's
+host-managed runtime copy by resolving its server's declared dependencies with Node's package resolver. This works
+with direct, hoisted and partially hoisted dependencies, including when `DATA_DIR` is outside the Engine checkout.
 Zod is the compatibility exception: a package's `zod` import resolves to the full `zod-v3` dependency, including its
 default, named, CommonJS and subpath exports. Other libraries keep the very module instance the Engine uses. The
-Engine's own `zod` imports continue to resolve to native Zod 4. pnpm keeps only the
-server's direct dependencies there, so only those names resolve; a dependency of a dependency, such as `ws`, does not.
-The Engine keeps the names above as direct production dependencies of `packages/server`, and every install keeps that
-layout: source and launcher installs, Windows (where the data link is a junction), Android and Termux, and both
-Docker images. When it starts or activates a package, the Engine rebuilds a data link that points anywhere else,
-including one left dangling by a data folder moved from another install path. Anything there that is not a link is
-left alone.
+Engine's own `zod` imports continue to resolve to native Zod 4. The names above remain direct production dependencies
+of `packages/server`. Managed snapshots link declared dependencies; undeclared transitives such as `ws` are not part
+of the shared-library contract. Missing optional libraries are skipped, and installed development tools remain
+available. A missing or incompatible Zod 3 alias fails activation explicitly instead of letting a package silently
+load native Zod 4. Host dependency setup failures preserve the requested package version and rollback metadata;
+after the Engine dependency is repaired, activation can retry without reinstalling the package.
+Windows uses junctions for these links; source and launcher installs, Android and Termux, and both Docker images use
+the same dependency-resolution contract. Legacy shared data links are refreshed when the physical server dependency
+directory is available. Existing real directories are left alone, and fresh runtime copies resolve their dependencies
+independently of that legacy data link. A package's own declared bundled dependency tree remains intact.
+
+At startup, legacy API-1 packages disabled by the known Zod migration errors are retried through the normal
+compatibility and file-integrity checks. This lets a repaired Engine recover an already failed installation without
+deleting its maps or other package data. Other error messages remain disabled. Historical registry entries
+record only error messages, so recovery recognizes the exact legacy `innerType` and nested `curve` failures.
 
 **Declaring it.** A package that uses any of this declares `schemaVersion: 2`, `capabilityApi: { major: 1, minor: 341 }`
 and `builtAgainst`, and keeps its `engine` range. A `schemaVersion: 1` manifest is never checked against the

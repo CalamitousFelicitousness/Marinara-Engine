@@ -325,6 +325,38 @@ try {
     );
   assertRoomPersonaName(named, "\u0645\u06CC\u200C\u0634\u0648\u062F", "guest_fixture");
   assertRoomPersonaName(named, "Rowan", "guest_fixture");
+
+  // An Approve refused for a name in use ends the request with that reason, and the host is told,
+  // instead of a silent 400 with the guest waiting forever. A rejoined guest's hero, matched by name
+  // to the host's entry, gets its own fight id, so the fight still opens.
+  const source = (path: string) => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
+  const service = source("packages/server/src/services/multiplayer/service.ts");
+  assert.match(service, /session\.status = "declined";\s+session\.declinedFor = "identity-conflict";\s+this\.wake\(host\);/u);
+  assert.match(service, /error: session\.declinedFor \?\? "declined"/u);
+  assert.match(
+    source("packages/client/src/features/multiplayer/MultiplayerHostControls.tsx"),
+    /t\("multiplayer\.host\.approveConflict", \{ name: request\.persona\.name \}\)/u,
+  );
+  const gameSurface = source("packages/client/src/components/game/GameSurface.tsx");
+  assert.match(
+    gameSurface,
+    /if \(takenIds\.has\(combatant\.id\)\) \{\s+(?:\/\/[^\n]*\s+)?combatant\.id = `generated-party-\$\{index\}-\$\{slugifyCombatantId\(member\.name\)\}`;\s+combatant\.sprite = undefined;/u,
+  );
+  // Members named exactly as a unit claim it before name-variant matches, in either party order,
+  // and a later member only sees units nobody holds yet.
+  assert.match(gameSurface, /\.sort\(\(a, b\) => Number\(!isExact\(a\.member\)\) - Number\(!isExact\(b\.member\)\)\)/u);
+  assert.match(gameSurface, /combatAvatarCandidates\.filter\(\(candidate\) => !takenIds\.has\(candidate\.id\)\)/u);
+  assert.match(gameSurface, /partyCombatants\[index\] = combatant;/u);
+  const { findNamedEntry, hasExactNamedEntry } = await import(
+    "../../packages/client/src/lib/game-character-name-match.js"
+  );
+  const units = [{ id: "persona:active", name: "Lyra Dawnblade" }];
+  const byName = (unit: { name: string }) => unit.name;
+  assert.equal(hasExactNamedEntry(units, "Lyra Dawnblade", byName), true);
+  assert.equal(hasExactNamedEntry(units, "lyra  dawnblade", byName), true, "case and spacing still match exactly");
+  assert.equal(hasExactNamedEntry(units, "Lyra", byName), false, "a variant is not an exact match");
+  assert.equal(findNamedEntry(units, "Lyra", byName)?.id, "persona:active", "while a variant still finds the unit");
+  assert.equal(hasExactNamedEntry(units, "", byName), false);
 } finally {
   await closeDB();
   rmSync(dir, { recursive: true, force: true });

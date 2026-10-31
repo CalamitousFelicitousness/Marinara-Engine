@@ -138,7 +138,7 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    const gate = /fakes can be spotted.*capabilityApi 1\.794/;
+    const gate = /fakes can be spotted.*capabilityApi 1\.801/;
     const issue = (minor: number, doc: Record<string, any>) =>
       getCapabilityPackageInstallIssue(manifest(minor) as any, doc);
     assert.match(issue(800, spotting()) ?? "", gate);

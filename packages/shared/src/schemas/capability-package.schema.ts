@@ -387,6 +387,13 @@ const capabilityPackageManifestBaseSchema = z
               )
               .min(1)
               .max(32),
+            /**
+             * Capability API 1.390. `"engine"`: the Engine draws the page header (Back, store banner
+             * and logo, name, author and version, Active, Manage package). The package's
+             * `view="detail"` gets `engineHeader: true` and a `headerSlot` element to portal its own
+             * header buttons into. Leave it out to draw the whole page, header included, as before.
+             */
+            header: z.literal("engine").optional(),
           })
           .strict()
           .optional(),
@@ -1475,14 +1482,8 @@ const capabilityPackageManifestBaseSchema = z
 //        field's `hideWhen` by a derived value, a condition's `pickable: false`, a track's `showWhenSet`,
 //        an item toggle's `onLabel` and `offLabel`, an item use's `title`, a derived value's `signed`,
 //        and creature traits to 1200.
-// 1.391-1.789: the 5e work (Ruleset Engine capabilities and combat AI), held until 5e lands; each
-//        minor's keys are documented in docs/extending/writing-rulesets.md.
 // 1.379: which combat styles a ruleset's games may play (`combat.styles`): the New Game wizard and the
 //        game's settings offer only those, and a game saved on another plays the first one listed.
-//        Upstream's 1.391, numbered above the held 5e minors.
-// 1.790: what a ruleset's weights are counted in (`items.carry.unit`), said after every weight shown.
-// 1.791: a damage change only on a blow carrying given damage types (`onTypes`), and one that spends
-//        its condition once it adds (`spentOnUse`).
 // 1.380: package-bound per-chat agent reference lorebook trigger resolution.
 // 1.381: independent browser audio players, shared manifest fetch and default music selection.
 // 1.382: fights for a symbol-pool ruleset (`combat.kind: "symbol-pool"`): attacks, saves, checks,
@@ -1493,10 +1494,23 @@ const capabilityPackageManifestBaseSchema = z
 //        A creature action's `upgrades` names its upgraded to-hit dice.
 // 1.383: fight health on a plain track that fills up to its maximum (`combat.health` or
 //        `battle.health` naming a track with neither levels nor boxes): Genesys's Wounds, read as the
-//        room left above its value, damage adding points and a heal taking them off. Upstream's 1.395.
+//        room left above its value, damage adding points and a heal taking them off.
 // 1.384: animate a saved Global Gallery image through a saved video connection, without exposing its credentials.
 // 1.385: package clients save images through the Engine gallery's existing platform-aware helpers.
 // 1.386: the Home browser view's openConnection(connectionId), and /api/generate/raw's debugMode prompt logging.
+// 1.387: `persistence.listChatSummaries(chatId)`: a chat's day, week, rolling and Game session summaries. Requires
+//        `chat-read`, like `listMessages`.
+// 1.388: `api.registerService(key, service, { hostOnly: true })` keeps a service out of `runtime.services.get`, so only
+//        the Engine reads it.
+// 1.389: `persistence.setMessagesHiddenFromAI(chatId, messageIds, hidden)` hides or shows a chat's messages from the
+//        AI and resolves the ids it changed. Requires `chat-write`; skips messages the user set by hand.
+// 1.390: `contributions.agentDetail.header: "engine"`: the Engine draws an agent page's header and
+//        passes the package's detail view `engineHeader: true` and a `headerSlot` for its buttons.
+// 1.391-1.789: the 5e work (Ruleset Engine capabilities and combat AI), held until 5e lands; each
+//        minor's keys are documented in docs/extending/writing-rulesets.md.
+// 1.790: what a ruleset's weights are counted in (`items.carry.unit`), said after every weight shown.
+// 1.791: a damage change only on a blow carrying given damage types (`onTypes`), and one that spends
+//        its condition once it adds (`spentOnUse`).
 // 1.792: an attack list's `abilityChoices`: a value of a row's ability column that stands for the
 //        best of several abilities, for its damage too (5e's Finesse, the better of STR and DEX).
 // 1.793: a sheet migration's `setColumn`: one column set on every list row its `where` columns match,
@@ -2227,9 +2241,62 @@ export type CapabilityCatalog = z.infer<typeof capabilityCatalogSchema>;
  *  its own entries. The Engine assigns it from the source URL and nowhere else,
  *  so a value arriving on the wire is rejected by the strict entry schema and
  *  can never reach a consumer. */
-export type StampedCapabilityCatalogPackage = CapabilityCatalogPackage & { preview?: true };
+export type StampedCapabilityCatalogPackage = CapabilityCatalogPackage & {
+  preview?: true;
+  store?: CapabilityStoreListing;
+};
+
+/** Agent Organizer sections, in display order. */
+export const CAPABILITY_STORE_SECTIONS = [
+  "apps",
+  "games",
+  "writing",
+  "memory",
+  "trackers",
+  "adventure",
+  "media",
+  "alive",
+] as const;
+export type CapabilityStoreSection = (typeof CAPABILITY_STORE_SECTIONS)[number];
+
+/**
+ * One package's entry in the `store.json` sidecar beside a catalog.json. Paths are
+ * relative to the sidecar URL. Unknown keys are dropped (not rejected), so the Agents
+ * repo can add fields without breaking Engines that predate them. Untrusted remote data.
+ */
+export const capabilityStoreEntrySchema = z.object({
+  section: z.enum(CAPABILITY_STORE_SECTIONS),
+  tagline: z.string().trim().min(1).max(120),
+  featured: z.number().int().positive().max(1000).optional(),
+  iconPath: z.string().min(1).max(512).optional(),
+  bannerPath: z.string().min(1).max(512).optional(),
+  bannerSmallPath: z.string().min(1).max(512).optional(),
+  previews: z.array(z.string().min(1).max(512)).max(4).optional(),
+});
+
+/** A starter kit: a named set of packages the Organizer installs together. */
+export const capabilityStoreKitSchema = z.object({
+  id: z.string().trim().min(1).max(80),
+  name: z.string().trim().min(1).max(80),
+  tagline: z.string().trim().max(160).default(""),
+  packages: z.array(z.string().min(1).max(80)).min(1).max(20),
+});
+export type CapabilityStoreKit = z.infer<typeof capabilityStoreKitSchema>;
+
+/** Store data as the Engine serves it: image paths resolved to absolute URLs. */
+export interface CapabilityStoreListing {
+  section: CapabilityStoreSection;
+  tagline: string;
+  featured?: number;
+  iconUrl?: string;
+  bannerUrl?: string;
+  bannerSmallUrl?: string;
+  previewUrls?: string[];
+}
 export type StampedCapabilityCatalog = Omit<CapabilityCatalog, "packages"> & {
   packages: StampedCapabilityCatalogPackage[];
+  /** Starter kits from the published store sidecar; packages not in the catalog are dropped. */
+  kits?: CapabilityStoreKit[];
 };
 export type InstalledCapabilityPackage = z.infer<typeof installedCapabilityPackageSchema>;
 export type PackagedAgentDefinition = z.infer<typeof packagedAgentDefinitionSchema>;

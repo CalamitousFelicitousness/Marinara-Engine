@@ -16,7 +16,7 @@ Tactical combat places your party and enemies on a battlefield. Select a party u
 
 There are no battlefield settings to fill in when you create a game. Each fight gets a board of its own, generated from a new seed and from the GM's brief for that scene.
 
-The GM supplies the scene's environment, formation and a short terrain brief. The engine then creates the exact tiles and spawn positions. Briefs can request terrain patches and barriers near the center or an edge of the map. Terrain guidance is a request to the GM, not a guarantee that every word becomes a tile. The accepted battlefield is saved, so refreshing restores that board rather than generating another one.
+The GM supplies the scene's environment, formation and a short terrain brief. The engine then creates the exact tiles and spawn positions. Briefs can request terrain patches and barriers near the center or an edge of the map. The accepted battlefield is saved, so refreshing restores that board rather than generating another one.
 
 The engine checks the brief and the resulting layout. It preserves requested terrain while making the generated encounter reachable. If those constraints cannot fit together, the battle reports the problem. **Use generated terrain** explicitly starts without the rejected terrain features; it does not quietly erase them.
 

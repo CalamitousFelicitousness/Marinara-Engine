@@ -102,7 +102,7 @@ const fight = keepPartyTemperaments(
 assert.deepEqual(fight.party[0]!.aiHints, { temperament: "cautious", proficiency: "veteran", kept: true });
 assert.equal(fight.party[1]!.aiHints?.temperament, "honourable");
 assert.equal(fight.party[2]!.aiHints?.temperament, partyTemperamentFallback("chat-9", "Tobin"));
-assert.equal(fight.party[3]!.aiHints?.kept, true);
+assert.equal(fight.party[3]!.aiHints, undefined, "one with no card fights as any combatant does");
 assert.equal(fight.fresh.size, 2, "only members with a card have one written");
 const written = cardsWithFreshTemperaments(cards, fight.fresh);
 assert.ok(written.changed);

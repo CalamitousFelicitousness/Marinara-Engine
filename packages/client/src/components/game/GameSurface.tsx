@@ -912,7 +912,6 @@ function combatLevelFromHp(maxHp: number, fallbackLevel: number): number {
 type StoredGameCombatCard = {
   name?: unknown;
   temperament?: unknown;
-  temperamentInitial?: unknown;
   abilities?: unknown;
   rpgStats?: {
     attributes?: Array<{ name?: unknown; value?: unknown }>;

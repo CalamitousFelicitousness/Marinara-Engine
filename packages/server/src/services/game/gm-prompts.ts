@@ -3066,7 +3066,7 @@ export function buildPartyRecruitCardPrompt(ctx: {
       : []),
     `RULES:`,
     `- Return EXACTLY one JSON object with these keys: name, shortDescription, class, abilities, strengths, weaknesses, temperament, extra.`,
-    ...(isRegeneration ? [] : [PARTY_TEMPERAMENT_RULE]),
+    PARTY_TEMPERAMENT_RULE,
     `- Keep the name exactly "${ctx.targetCharacterName}".`,
     `- Ground the card in the existing campaign state, world, and recent events.`,
     `- Respect the supplied character card as canon. Do not contradict it.`,

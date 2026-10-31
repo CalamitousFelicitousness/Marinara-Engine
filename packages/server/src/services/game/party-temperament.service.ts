@@ -49,16 +49,18 @@ export function keepPartyTemperaments<T extends { name?: unknown; aiHints?: Comb
     const name = typeof member.name === "string" ? member.name.trim() : "";
     if (!name) return member;
     const card = gameCardFor(named, name);
+    // One with no game card (a summoned beast, a unit the fight added) is no party member of the
+    // story's: it fights as any combatant does, with its own hints and a draw.
+    if (!card) return member;
     // Keyed by the card's own name, so the one drawn is written onto the card it was drawn for.
-    const key = normalizeCharacterLookupName(card?.name ?? name);
+    const key = normalizeCharacterLookupName(card.name);
     let temperament = gameCardTemperament(card)?.current;
     if (!temperament) {
       temperament =
         fresh.get(key) ??
         readPartyTemperament(member.aiHints?.temperament) ??
-        partyTemperamentFallback(gameId, card?.name ?? name);
-      // Only a member with a card keeps one: a summoned or room-added unit fights with this one.
-      if (card) fresh.set(key, temperament);
+        partyTemperamentFallback(gameId, card.name);
+      fresh.set(key, temperament);
     }
     return { ...member, aiHints: withKeptTemperament(member.aiHints, temperament) };
   });

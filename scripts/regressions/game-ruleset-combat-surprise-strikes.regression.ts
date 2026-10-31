@@ -1,5 +1,5 @@
 /**
- * Strikes at a surprised or not-yet-acted target (Capability API 1.531).
+ * Strikes at a surprised or not-yet-acted target (Capability API 1.543).
  *
  *   - A condition's change to attacks with `whenTarget` "not-yet-acted": Assassinate's advantage on
  *     a creature that has not taken a turn in the fight, gone once it has.
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 531);
+  assert.ok(supportedCapabilityApi.minor >= 543);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -177,7 +177,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with attacks or damage narrowed to a surprised or not-yet-acted target (whenTarget, target-surprised, target-not-yet-acted) or hits made criticals (critical) requires schemaVersion 2 and capabilityApi 1.531 or newer";
+      "A ruleset with attacks or damage narrowed to a surprised or not-yet-acted target (whenTarget, target-surprised, target-not-yet-acted) or hits made criticals (critical) requires schemaVersion 2 and capabilityApi 1.543 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -191,12 +191,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(530) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(531) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(542) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(543) as never, fiveE()), gate);
   }
 
   console.log(
-    "Surprise strikes: advantage on a creature yet to act, a critical and 2d6-like more on a surprised one, gone once it has acted; a creature's attack mode and a rider on a surprised target; refusals; gated at 1.531.",
+    "Surprise strikes: advantage on a creature yet to act, a critical and 2d6-like more on a surprised one, gone once it has acted; a creature's attack mode and a rider on a surprised target; refusals; gated at 1.543.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -390,7 +390,7 @@ export async function injectGameGmPromptRuntime(args: {
   const resolvedCombatStyle =
     pinnedCombatStyle ??
     legacyTacticalCombatStyle ??
-    // A style the game's ruleset leaves out plays as the first one it lists (1.778).
+    // A style the game's ruleset leaves out plays as the first one it lists (1.379).
     rulesetCombatStyle(
       args.ruleset,
       (args.chatMetadata.gameCombatStyle as string) || (setupConfig?.combatStyle as string) || "classic",

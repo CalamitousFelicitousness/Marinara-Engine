@@ -1,5 +1,5 @@
 /**
- * Items that hold conditions off (Capability API 1.464), by name or by kind (1.471).
+ * Items that hold conditions off (Capability API 1.476), by name or by kind (1.483).
  *
  *   - Periapt of Health: a disease already caught is held off while it is worn, not ended; no new one
  *     is caught; taken off, the old one holds again.
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 464);
+  assert.ok(supportedCapabilityApi.minor >= 476);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -159,7 +159,7 @@ try {
     assert.equal(sick(state), true);
   }
 
-  // ── By kind (1.471): every disease held off, and none caught ──
+  // ── By kind (1.483): every disease held off, and none caught ──
   {
     const byKind = { conditionImmunities: ["disease"], suppresses: ["disease"] };
     parsed(fiveE(byKind));
@@ -185,7 +185,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose items soften a fall or hold conditions off (fallsSafely or suppresses on an item's effect) requires schemaVersion 2 and capabilityApi 1.464 or newer";
+      "A ruleset whose items soften a fall or hold conditions off (fallsSafely or suppresses on an item's effect) requires schemaVersion 2 and capabilityApi 1.476 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -200,24 +200,24 @@ try {
       restartRequired: false,
     });
     for (const worn of [periapt, { fallsSafely: true }]) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(463) as never, fiveE(worn)), gate);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(464) as never, fiveE(worn)), gate);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(475) as never, fiveE(worn)), gate);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(476) as never, fiveE(worn)), gate);
     }
     assert.notEqual(
-      getCapabilityPackageInstallIssue(manifest(463) as never, fiveE({ conditionImmunities: ["sewer_plague"] })),
+      getCapabilityPackageInstallIssue(manifest(475) as never, fiveE({ conditionImmunities: ["sewer_plague"] })),
       gate,
       "immunities alone are older",
     );
     const kindGate =
-      "A ruleset whose items hold off a kind of condition (suppresses naming a kind) requires schemaVersion 2 and capabilityApi 1.471 or newer";
+      "A ruleset whose items hold off a kind of condition (suppresses naming a kind) requires schemaVersion 2 and capabilityApi 1.483 or newer";
     const byKind = fiveE({ suppresses: ["disease"] });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(470) as never, byKind), kindGate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(471) as never, byKind), kindGate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(470) as never, fiveE()), kindGate, "by name is 1.464's");
+    assert.equal(getCapabilityPackageInstallIssue(manifest(482) as never, byKind), kindGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(483) as never, byKind), kindGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(482) as never, fiveE()), kindGate, "by name is 1.476's");
   }
 
   console.log(
-    "Worn holds: a Periapt of Health holds a caught disease off and keeps new ones off, and it holds again once taken off; gated at 1.464.",
+    "Worn holds: a Periapt of Health holds a caught disease off and keeps new ones off, and it holds again once taken off; gated at 1.476.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

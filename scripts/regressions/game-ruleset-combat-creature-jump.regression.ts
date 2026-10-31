@@ -1,5 +1,5 @@
 /**
- * A creature's own jump (Capability API 1.703): 5e's bulette, Standing Leap, a 30-foot long jump and
+ * A creature's own jump (Capability API 1.715): 5e's bulette, Standing Leap, a 30-foot long jump and
  * a 15-foot high one, with or without a running start.
  *
  *   - `creature.jump`: the distances in place of what the ruleset reads off its abilities, copied
@@ -31,7 +31,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 703);
+  assert.ok(supportedCapabilityApi.minor >= 715);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -111,7 +111,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a creature that jumps its own distance (creature.jump) requires schemaVersion 2 and capabilityApi 1.703 or newer";
+      "A ruleset with a creature that jumps its own distance (creature.jump) requires schemaVersion 2 and capabilityApi 1.715 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -125,13 +125,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(702) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(703) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(702) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(714) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(715) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(714) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Creature jump: a bulette's Standing Leap reaches 6 cells long and 3 high standing, half that without withoutRunUp, triple with Jump; gated at 1.703.",
+    "Creature jump: a bulette's Standing Leap reaches 6 cells long and 3 high standing, half that without withoutRunUp, triple with Jump; gated at 1.715.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

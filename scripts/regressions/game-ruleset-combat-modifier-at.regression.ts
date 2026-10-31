@@ -1,5 +1,5 @@
 /**
- * A change at targets that are something (Capability API 1.713): 5e's Demon Armor.
+ * A change at targets that are something (Capability API 1.725): 5e's Demon Armor.
  *
  *   - A modifier to the holder's own attacks or damage with `at` reaches only targets that are that.
  *   - Import refusals and the install gate.
@@ -30,7 +30,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 713);
+  assert.ok(supportedCapabilityApi.minor >= 725);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -197,7 +197,7 @@ try {
     );
     refused(fiveE([{ to: "attacks", mode: "disadvantage", at: { tags: ["devil"] } }]), /devil/);
     const gate =
-      "A ruleset with a change to its holder's attacks or damage at targets that are something (modifiers[].at) requires schemaVersion 2 and capabilityApi 1.713 or newer";
+      "A ruleset with a change to its holder's attacks or damage at targets that are something (modifiers[].at) requires schemaVersion 2 and capabilityApi 1.725 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -211,11 +211,11 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(712) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(713) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(724) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(725) as never, fiveE()), gate);
   }
 
-  console.log("Demon Armor: disadvantage and 5 more damage against a demon only; gated at 1.713.");
+  console.log("Demon Armor: disadvantage and 5 more damage against a demon only; gated at 1.725.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

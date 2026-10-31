@@ -1,5 +1,5 @@
 /**
- * A check out of a condition that spends its item or bars more tries (Capability API 1.623): 5e's Iron
+ * A check out of a condition that spends its item or bars more tries (Capability API 1.635): 5e's Iron
  * Bands of Binding, "On a success, the item is destroyed ... If the check fails, any further attempts
  * made by that creature automatically fail until 24 hours have elapsed."
  *
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 623);
+  assert.ok(supportedCapabilityApi.minor >= 635);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -204,7 +204,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a check out of a condition that spends its item or bars more tries (checkEnds.spendsItem, checkEnds.failedRetryAfter) requires schemaVersion 2 and capabilityApi 1.623 or newer";
+      "A ruleset with a check out of a condition that spends its item or bars more tries (checkEnds.spendsItem, checkEnds.failedRetryAfter) requires schemaVersion 2 and capabilityApi 1.635 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -218,12 +218,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(622) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(623) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(634) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(635) as never, document()), gate);
   }
 
   console.log(
-    "Iron Bands: an escape spends them, a failed one bars more tries for a day, the command word lets go; gated at 1.623.",
+    "Iron Bands: an escape spends them, a failed one bars more tries for a day, the command word lets go; gated at 1.635.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

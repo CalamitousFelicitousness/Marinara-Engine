@@ -1,5 +1,5 @@
 /**
- * Blinking out (Capability API 1.493).
+ * Blinking out (Capability API 1.505).
  *
  *   - As its holder's turn ends, an 11 or higher on a d20 takes them off the board: no target, and the
  *     fight is not lost for it. Under it, they stay.
@@ -31,7 +31,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 493);
+  assert.ok(supportedCapabilityApi.minor >= 505);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -140,7 +140,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions blink their holder off the board until their next turn (a condition's blinks) requires schemaVersion 2 and capabilityApi 1.493 or newer";
+      "A ruleset whose conditions blink their holder off the board until their next turn (a condition's blinks) requires schemaVersion 2 and capabilityApi 1.505 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -156,13 +156,13 @@ try {
     });
     const doc = JSON.parse(fiveEText) as Record<string, any>;
     doc.combat.conditions[0].blinks = { atLeast: 11 };
-    assert.equal(getCapabilityPackageInstallIssue(manifest(492) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(493) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(492) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(504) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(505) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(504) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Blink: an 11 as the turn ends takes its holder off the board, out of reach and not lost, back as their next turn starts in the nearest free place; gated at 1.493.",
+    "Blink: an 11 as the turn ends takes its holder off the board, out of reach and not lost, back as their next turn starts in the nearest free place; gated at 1.505.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

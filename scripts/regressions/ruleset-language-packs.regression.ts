@@ -1,10 +1,10 @@
 /**
- * A catalog ruleset's language packs (Capability API 1.803). Its translations are not inside its
+ * A catalog ruleset's language packs (Capability API 1.810). Its translations are not inside its
  * `.ruleset.json`: the catalog entry lists `locales: { <lang>: { url, sha256, bytes, name?, description? } }`,
  * one `<id>-<version>.<lang>.json` per language, holding what a ruleset file's `locales/<lang>.json` holds.
  *
  *   - The entry is read strictly: a language code (never English), an https URL named for the version and
- *     language, a sha256, a size within 8 MB, at most 40, and only on a ruleset declaring 1.803.
+ *     language, a sha256, a size within 8 MB, at most 40, and only on a ruleset declaring 1.810.
  *   - An install fetches the main file, then the one pack in the Engine's language, and keeps it in the
  *     installed version's folder. A change of language fetches that language's pack and removes the old.
  *   - Offline, with none listed, or with a pack that is not the file listed (size, checksum, language,
@@ -42,7 +42,7 @@ ruleset.id = ID;
 const english = ruleset.name as string;
 const rulesetData = Buffer.from(JSON.stringify(ruleset));
 
-function manifestOf(version: string, paths: Array<{ path: string; data: Buffer }>, minor = 803) {
+function manifestOf(version: string, paths: Array<{ path: string; data: Buffer }>, minor = 810) {
   return capabilityPackageManifestSchema.parse({
     schemaVersion: 2,
     id: ID,
@@ -196,9 +196,9 @@ try {
       "at most 40",
     );
     refused(
-      (entry) => (entry.manifest.capabilityApi.minor = 802),
+      (entry) => (entry.manifest.capabilityApi.minor = 809),
       /capabilityApi 1\.803/,
-      "packs need a ruleset of 1.803",
+      "packs need a ruleset of 1.810",
     );
     // An older Engine's catalog read drops such an entry; this one keeps it, and drops a bad one alone.
     const parsed = parseCapabilityCatalogWithCompat({

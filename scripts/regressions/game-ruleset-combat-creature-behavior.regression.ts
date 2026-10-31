@@ -1,5 +1,5 @@
 /**
- * How a creature goes about a fight, as its own data says (Capability API 1.750).
+ * How a creature goes about a fight, as its own data says (Capability API 1.762).
  *
  *   - `behavior` on `combat`, a creature type and a stat block, merged key by key, the creature's own
  *     winning; its temperament and role over the dealt ones, unless the Game Master gave one.
@@ -45,7 +45,7 @@ const {
 } = await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 750);
+  assert.ok(supportedCapabilityApi.minor >= 762);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -1001,7 +1001,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with how a creature goes about a fight (a behavior saying its temperament, role, targets, openers, pack or ambush) requires schemaVersion 2 and capabilityApi 1.750 or newer";
+      "A ruleset with how a creature goes about a fight (a behavior saying its temperament, role, targets, openers, pack or ambush) requires schemaVersion 2 and capabilityApi 1.762 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -1016,73 +1016,73 @@ try {
       restartRequired: false,
     });
     const wolfish = fiveE((doc) => (lurkerEntry(doc).behavior = { pack: true }));
-    assert.equal(getCapabilityPackageInstallIssue(manifest(749) as never, wolfish), gate, "a creature's own");
+    assert.equal(getCapabilityPackageInstallIssue(manifest(761) as never, wolfish), gate, "a creature's own");
     assert.equal(
       getCapabilityPackageInstallIssue(
-        manifest(749) as never,
+        manifest(761) as never,
         fiveE((doc) => (doc.combat.behavior = { targets: ["weakest"] })),
       ),
       gate,
       "the ruleset's",
     );
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(750) as never, wolfish), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(762) as never, wolfish), gate);
     assert.notEqual(
-      getCapabilityPackageInstallIssue(manifest(749) as never, fiveE()),
+      getCapabilityPackageInstallIssue(manifest(761) as never, fiveE()),
       gate,
       "a condition's behavior is not one",
     );
     const solo =
-      'A ruleset with a creature that fights a side alone (a behavior whose role is "solo") requires schemaVersion 2 and capabilityApi 1.763 or newer';
+      'A ruleset with a creature that fights a side alone (a behavior whose role is "solo") requires schemaVersion 2 and capabilityApi 1.775 or newer';
     const dragonish = fiveE((doc) => (lurkerEntry(doc).behavior = { role: "solo" }));
-    assert.equal(getCapabilityPackageInstallIssue(manifest(762) as never, dragonish), solo);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(763) as never, dragonish), solo);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(762) as never, wolfish), solo);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(774) as never, dragonish), solo);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(775) as never, dragonish), solo);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(774) as never, wolfish), solo);
     const guarding =
-      "A ruleset with a bodyguard (a behavior's guards) requires schemaVersion 2 and capabilityApi 1.764 or newer";
+      "A ruleset with a bodyguard (a behavior's guards) requires schemaVersion 2 and capabilityApi 1.776 or newer";
     const guardish = fiveE((doc) => (lurkerEntry(doc).behavior = { guards: ["casters"] }));
-    assert.equal(getCapabilityPackageInstallIssue(manifest(763) as never, guardish), guarding);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(764) as never, guardish), guarding);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(775) as never, guardish), guarding);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(776) as never, guardish), guarding);
     const fanatic =
-      'A ruleset with a fanatic (a behavior whose temperament is "fanatical") requires schemaVersion 2 and capabilityApi 1.765 or newer';
+      'A ruleset with a fanatic (a behavior whose temperament is "fanatical") requires schemaVersion 2 and capabilityApi 1.777 or newer';
     const zealous = fiveE((doc) => (lurkerEntry(doc).behavior = { temperament: "fanatical" }));
-    assert.equal(getCapabilityPackageInstallIssue(manifest(764) as never, zealous), fanatic);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(765) as never, zealous), fanatic);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(776) as never, zealous), fanatic);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(777) as never, zealous), fanatic);
     const turning =
-      "A ruleset with a creature whose temperament turns (a behavior's shifts) requires schemaVersion 2 and capabilityApi 1.766 or newer";
+      "A ruleset with a creature whose temperament turns (a behavior's shifts) requires schemaVersion 2 and capabilityApi 1.778 or newer";
     const turns = fiveE((doc) => (lurkerEntry(doc).behavior = { shifts: [{ on: "bloodied", to: "reckless" }] }));
-    assert.equal(getCapabilityPackageInstallIssue(manifest(765) as never, turns), turning);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(766) as never, turns), turning);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(777) as never, turns), turning);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(778) as never, turns), turning);
     const proud =
-      'A ruleset with an arrogant creature (a behavior whose temperament is "arrogant") requires schemaVersion 2 and capabilityApi 1.767 or newer';
+      'A ruleset with an arrogant creature (a behavior whose temperament is "arrogant") requires schemaVersion 2 and capabilityApi 1.779 or newer';
     const lofty = fiveE((doc) => (lurkerEntry(doc).behavior = { temperament: "arrogant" }));
-    assert.equal(getCapabilityPackageInstallIssue(manifest(766) as never, lofty), proud);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(767) as never, lofty), proud);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(778) as never, lofty), proud);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(779) as never, lofty), proud);
     const ground =
-      'A ruleset with a territorial creature (a behavior whose temperament is "territorial", or with a territory) requires schemaVersion 2 and capabilityApi 1.768 or newer';
+      'A ruleset with a territorial creature (a behavior whose temperament is "territorial", or with a territory) requires schemaVersion 2 and capabilityApi 1.780 or newer';
     const keeps = fiveE((doc) => (lurkerEntry(doc).behavior = { temperament: "territorial", territory: 3 }));
-    assert.equal(getCapabilityPackageInstallIssue(manifest(767) as never, keeps), ground);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(768) as never, keeps), ground);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(779) as never, keeps), ground);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(780) as never, keeps), ground);
     refused(
       fiveE((doc) => (lurkerEntry(doc).behavior = { territory: 0 })),
       /territory/,
     );
     const vicious =
-      'A ruleset with a cruel creature (a behavior whose temperament is "cruel") requires schemaVersion 2 and capabilityApi 1.769 or newer';
+      'A ruleset with a cruel creature (a behavior whose temperament is "cruel") requires schemaVersion 2 and capabilityApi 1.781 or newer';
     const cruel = fiveE((doc) => (lurkerEntry(doc).behavior = { temperament: "cruel" }));
-    assert.equal(getCapabilityPackageInstallIssue(manifest(768) as never, cruel), vicious);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(769) as never, cruel), vicious);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(780) as never, cruel), vicious);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(781) as never, cruel), vicious);
     const fair =
-      'A ruleset with an honourable creature (a behavior whose temperament is "honourable") requires schemaVersion 2 and capabilityApi 1.770 or newer';
+      'A ruleset with an honourable creature (a behavior whose temperament is "honourable") requires schemaVersion 2 and capabilityApi 1.782 or newer';
     const knightly = fiveE((doc) => (lurkerEntry(doc).behavior = { temperament: "honourable" }));
-    assert.equal(getCapabilityPackageInstallIssue(manifest(769) as never, knightly), fair);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(770) as never, knightly), fair);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(781) as never, knightly), fair);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(782) as never, knightly), fair);
     const ravenous =
-      'A ruleset with a hungry creature (a behavior whose temperament is "hungry") requires schemaVersion 2 and capabilityApi 1.771 or newer';
+      'A ruleset with a hungry creature (a behavior whose temperament is "hungry") requires schemaVersion 2 and capabilityApi 1.783 or newer';
     const hungry = fiveE((doc) => (lurkerEntry(doc).behavior = { temperament: "hungry" }));
-    assert.equal(getCapabilityPackageInstallIssue(manifest(770) as never, hungry), ravenous);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(771) as never, hungry), ravenous);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(782) as never, hungry), ravenous);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(783) as never, hungry), ravenous);
     const grows = fiveE((doc) => (lurkerEntry(doc).behavior = { shifts: [{ on: "ally-down", to: "arrogant" }] }));
-    assert.equal(getCapabilityPackageInstallIssue(manifest(766) as never, grows), proud);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(778) as never, grows), proud);
     refused(
       fiveE(
         (doc) =>
@@ -1132,7 +1132,7 @@ try {
   }
 
   console.log(
-    "Combat behavior: merged from the ruleset, the type and the creature; its temperament and role; casters, attackers and a pack's prey first; its opener once; an ambusher keeps still and springs; roles read off what it does; bodyguards stay by their charge; a leader rallies; a temperament turns once; a proud legend flies off; a territorial one keeps its ground; a cruel one strikes the fallen only where the game allows; an honourable one fights fair; a hungry one drags its prey off, and stops; a holder lets go of the fallen and bites the one it holds; a shooter far better up close walks in, a blade not yet called up aside; a strayed bodyguard walks back; a Multiattack turns from the one it dropped; refused and gated at 1.750, 1.763, 1.764, 1.765, 1.766, 1.767, 1.768, 1.769, 1.770 and 1.771.",
+    "Combat behavior: merged from the ruleset, the type and the creature; its temperament and role; casters, attackers and a pack's prey first; its opener once; an ambusher keeps still and springs; roles read off what it does; bodyguards stay by their charge; a leader rallies; a temperament turns once; a proud legend flies off; a territorial one keeps its ground; a cruel one strikes the fallen only where the game allows; an honourable one fights fair; a hungry one drags its prey off, and stops; a holder lets go of the fallen and bites the one it holds; a shooter far better up close walks in, a blade not yet called up aside; a strayed bodyguard walks back; a Multiattack turns from the one it dropped; refused and gated at 1.762, 1.775, 1.776, 1.777, 1.778, 1.779, 1.780, 1.781, 1.782 and 1.783.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -4755,7 +4755,7 @@ html[data-marinara-accent-animation] .mari-message-action {
      (half the 0.25rem chip gap) to the right, so it never reaches the next chip's hit area. */
   .mari-workspace-context-chip__remove::after {
     position: absolute;
-    inset: -0.875rem -0.125rem -0.875rem -1.625rem;
+    inset: -0.875rem -0.125rem -0.875rem -1.637rem;
     content: "";
   }
 

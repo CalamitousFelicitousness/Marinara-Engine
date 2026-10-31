@@ -96,21 +96,21 @@ export type DirectedCommand =
       also?: Array<{ x: number; y: number }>;
       /** A wall's section struck at instead of a creature (1.200): one of the option's `walls`. */
       wall?: { x: number; y: number };
-      /** A lasting area ended instead of a creature (1.414): one of the option's `dispels`. */
+      /** A lasting area ended instead of a creature (1.426): one of the option's `dispels`. */
       dispel?: { casterId: string; actionId: string };
-      /** A condition struck at and cut away instead of a creature (1.518): one of the option's `cuts`. */
+      /** A condition struck at and cut away instead of a creature (1.530): one of the option's `cuts`. */
       cut?: { holderId: string; condition: string };
-      /** Which of its target's conditions it ends (1.414), from the option's `endsChoices`. */
+      /** Which of its target's conditions it ends (1.426), from the option's `endsChoices`. */
       ends?: string[];
       /** Who goes along on a teleport (1.276): ids its option's `teleport.carries` offers. */
       carries?: string[];
-      /** Whom a layered wall spares (1.479): ids its option's `designates` offers. */
+      /** Whom a layered wall spares (1.491): ids its option's `designates` offers. */
       designates?: string[];
-      /** The kinds its zone strikes (1.740): ids its option's `kindsOf` offers. */
+      /** The kinds its zone strikes (1.752): ids its option's `kindsOf` offers. */
       kinds?: string[];
-      /** Stored instead of done (1.511). */
+      /** Stored instead of done (1.523). */
       storesIn?: { holderId: string; item?: number };
-      /** How many levels up a target moved to `to` is lifted (1.552): Telekinesis. */
+      /** How many levels up a target moved to `to` is lifted (1.564): Telekinesis. */
       rises?: number;
       /** How many uses it spends, where the option offers an `amount` (1.251): Lay on Hands. */
       amount?: number;
@@ -139,7 +139,7 @@ export type DirectedCommand =
   | { type: "ammo"; unitId: string; weapon: number; stack: number }
   /** A companion's standing orders, or none to go back to its default. */
   | { type: "orders"; unitId: string; orders: CombatOrders | null }
-  /** Whether the player chooses what their own symbol throws buy (1.382) rather than the Engine. */
+  /** Whether the player chooses what their own symbol throws buy (1.394) rather than the Engine. */
   | { type: "spends"; choose: boolean }
   | { type: "flee" }
   /** The party gives itself up to opponents who are all honourable (combat AI T6): a ruleset fight's. */
@@ -226,13 +226,13 @@ export interface DirectedRulesetCombatant {
   defeated: boolean;
   /** Sent out of the fight, alive (1.236): off the board until it comes back, if it does. */
   away?: true;
-  /** Gave itself up (1.749): out of the fight, but still standing where it gave up, a prisoner. */
+  /** Gave itself up (1.761): out of the fight, but still standing where it gave up, a prisoner. */
   surrendered?: true;
   /** Gone of its own accord, by a teleport that leaves the fight (1.279). */
   left?: true;
   /** Caught unaware (1.237): their first turn is only ended, and they answer nothing until then. */
   surprised?: true;
-  /** What an opponent still has on it of what it began the fight with (1.787), by name. */
+  /** What an opponent still has on it of what it began the fight with (1.794), by name. */
   carrying?: Array<{ name: string; count: number }>;
   /** A party member's hands (2026-10-26): what they hold, what they carry that could go in them, and
    *  what each weapon shoots first. Absent for one with no weapon among their items. */
@@ -267,7 +267,7 @@ export interface DirectedRulesetCombatant {
   /** Shown in its flying art (1.352): it flies without walking, hovers, is up in the air, or flew this
    *  turn. Art only. */
   flying?: true;
-  /** Art and marks only (1.773): the options it casts by praying (the ruleset's
+  /** Art and marks only (1.785): the options it casts by praying (the ruleset's
    *  `combat.poses.divine`), and that it is hidden, so it sneaks as it moves. */
   prays?: string[];
   hidden?: true;
@@ -520,7 +520,7 @@ export interface DirectedRulesetView {
   window?: {
     id: string;
     kind: "reaction" | "signature" | "spend";
-    /** For a `spend` window (1.382): the side being asked spends for, and whether the throw landed. */
+    /** For a `spend` window (1.394): the side being asked spends for, and whether the throw landed. */
     spend?: { by: "attacker" | "target"; hit: boolean };
     /** Which moment, for the ones a reaction waits for, and what is happening at it. */
     moment?: "aimed" | "hit" | "harmed" | "used" | "falls" | "turn-start" | "caught" | "attacked";
@@ -555,7 +555,7 @@ export interface DirectedRulesetView {
      *  answers. Present only for a held area on a board. */
     cells?: Array<{ x: number; y: number }>;
   };
-  /** A fight in symbol dice (1.382): whether the player chooses their own spends. */
+  /** A fight in symbol dice (1.394): whether the player chooses their own spends. */
   spends?: { choose: boolean };
   /** The last 200 events, each with a running number so a client prints only what is new. */
   events: Array<{ seq: number; event: DirectedRulesetEvent }>;

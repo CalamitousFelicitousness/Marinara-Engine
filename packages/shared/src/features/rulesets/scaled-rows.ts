@@ -122,7 +122,7 @@ export function recomputeScaledRows(
       let next: Record<string, string | number | boolean> | null = null;
       for (const [columnId, scaled] of Object.entries(spec.scaled)) {
         const column = columnById.get(columnId);
-        // A text by steps (1.398): Font of Inspiration's recharge by level.
+        // A text by steps (1.410): Font of Inspiration's recharge by level.
         if (scaled.texts && (column?.type === "text" || column?.type === "enum")) {
           const read = resolveRulesetValueRef(definition, build, scaled.from, sheetNumbers());
           if (!Number.isFinite(read)) continue;

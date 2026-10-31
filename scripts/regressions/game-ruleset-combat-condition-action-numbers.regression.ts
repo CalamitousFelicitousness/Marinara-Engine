@@ -1,5 +1,5 @@
 /**
- * A condition's entry used at numbers of its own (Capability API 1.621): 5e's Potion of Animal
+ * A condition's entry used at numbers of its own (Capability API 1.633): 5e's Potion of Animal
  * Friendship, "you can cast the animal friendship spell (save DC 13) for 1 hour at will".
  *
  *   - A fighter with no spellcasting, holding the potion's condition, casts it at DC 13.
@@ -31,7 +31,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 621);
+  assert.ok(supportedCapabilityApi.minor >= 633);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -132,7 +132,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a condition's entry used at numbers of its own (actions with entry and saveDifficulty or toHit) requires schemaVersion 2 and capabilityApi 1.621 or newer";
+      "A ruleset with a condition's entry used at numbers of its own (actions with entry and saveDifficulty or toHit) requires schemaVersion 2 and capabilityApi 1.633 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -146,12 +146,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(620) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(621) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(632) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(633) as never, document()), gate);
   }
 
   console.log(
-    "Condition actions at numbers of their own: a potion's spell cast at DC 13 by a fighter; gated at 1.621.",
+    "Condition actions at numbers of their own: a potion's spell cast at DC 13 by a fighter; gated at 1.633.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

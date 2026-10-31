@@ -77,7 +77,7 @@ export function DirectedCombatUI(props: Props) {
   }, [definition]);
   // What the ruleset calls the number an attack is rolled against, for the one prompt that shows it.
   const defenseLabel = definition ? rulesetValueLabel(definition, definition.combat?.defense) : "";
-  // What the player reads of the ruleset is in their language where it ships a translation (1.803);
+  // What the player reads of the ruleset is in their language where it ships a translation (1.810);
   // what goes back to the story (the summary, the choices sent) stays the ruleset's own English.
   const strings = useRulesetStrings(definition?.id, definition?.version, i18n.resolvedLanguage ?? i18n.language);
   const rulesetText = useMemo(() => rulesetTextLookup(strings.data?.strings), [strings.data]);
@@ -85,7 +85,7 @@ export function DirectedCombatUI(props: Props) {
     () => (s?.ruleset ? translateRulesetView(s.ruleset, rulesetText) : undefined),
     [s?.ruleset, rulesetText],
   );
-  // The kinds a zone strikes, named in the menu as it is cast (1.740), sent with that option once.
+  // The kinds a zone strikes, named in the menu as it is cast (1.752), sent with that option once.
   // Every hook comes before the loading return, so the screen asks for the same hooks every time.
   const namedKinds = useRef<{ optionId: string; kinds: string[] } | null>(null);
   const nameKinds = useCallback((optionId: string, kinds: string[]) => {
@@ -93,7 +93,7 @@ export function DirectedCombatUI(props: Props) {
   }, []);
   // Leaving ends the fight for good, so it asks once more first, as the menu's own Leave does.
   const [leaving, setLeaving] = useState(false);
-  // Whether the player picks their own symbol spends (1.382) is this browser's, carried into each new
+  // Whether the player picks their own symbol spends (1.394) is this browser's, carried into each new
   // fight once, as it opens: the fight starts with the Engine picking.
   const spendsCarried = useRef<RulesetSpendCarried | null>(null);
   const [preferSpends, setPreferSpends] = useState(readSpendChoice);

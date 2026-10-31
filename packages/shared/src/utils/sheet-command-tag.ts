@@ -196,10 +196,10 @@ export function parseSheetCommandTagBody(body: string): ParsedSheetCommandTag {
     return { ...parsed, op: { op: "note", field, value: values.get("value") ?? "" } };
   }
   if (name === "pass") {
-    // Days of game time (1.432): a whole count.
+    // Days of game time (1.444): a whole count.
     const days = readInteger(values.get("days"));
     if (days === null || days < 1) return parsed;
-    // Spent resting (1.743): yes, true or on.
+    // Spent resting (1.755): yes, true or on.
     const resting = /^(yes|true|on)$/i.test(values.get("resting")?.trim() ?? "");
     return { ...parsed, op: { op: "pass", days, ...(resting ? { resting: true as const } : {}) } };
   }
@@ -213,13 +213,13 @@ export function parseSheetCommandTagBody(body: string): ParsedSheetCommandTag {
       const amount = values.has("amount") ? readInteger(values.get("amount")) : 1;
       return pool && amount !== null ? { ...parsed, op: { op: "spend", pool, amount } } : parsed;
     }
-    // What it gives back (1.397): `recover="Level 1 Slot:2, Level 2 Slot:1"`, a count after each pool.
+    // What it gives back (1.409): `recover="Level 1 Slot:2, Level 2 Slot:1"`, a count after each pool.
     const rawRecover = values.get("recover");
     const recover = rawRecover === undefined ? [] : readRecover(rawRecover);
     if (recover === null) return parsed;
-    // The creature it calls (1.790): `as="Owl"`, for a call that stays once the use is done.
+    // The creature it calls (1.797): `as="Owl"`, for a call that stays once the use is done.
     const as = values.get("as")?.trim();
-    // As a ritual (1.799): yes, true or on.
+    // As a ritual (1.806): yes, true or on.
     const ritual = /^(yes|true|on)$/i.test(values.get("ritual")?.trim() ?? "");
     return {
       ...parsed,
@@ -234,7 +234,7 @@ export function parseSheetCommandTagBody(body: string): ParsedSheetCommandTag {
     };
   }
   if (name === "dismiss") {
-    // What a use outside a fight called and kept (1.790), by the entry's name or the creature's.
+    // What a use outside a fight called and kept (1.797), by the entry's name or the creature's.
     const entry = values.get("name")?.trim();
     if (!entry) return parsed;
     return { ...parsed, op: { op: "dismiss", name: entry } };
@@ -253,7 +253,7 @@ export function parseSheetCommandTagBody(body: string): ParsedSheetCommandTag {
   if (rawDice !== undefined && (dice === null || dice < 0)) return parsed;
   // From one pool of several (1.337): 5e's d8 hit dice.
   const pool = dice ? values.get("pool")?.trim() : undefined;
-  // A feature it offers as it ends (1.776): `use="Arcane Recovery"`, and what it gives back, if picked.
+  // A feature it offers as it ends (1.788): `use="Arcane Recovery"`, and what it gives back, if picked.
   const use = values.get("use")?.trim();
   const rawRecover = use ? values.get("recover") : undefined;
   const recover = rawRecover === undefined ? [] : readRecover(rawRecover);

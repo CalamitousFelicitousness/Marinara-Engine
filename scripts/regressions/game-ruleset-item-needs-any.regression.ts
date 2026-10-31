@@ -1,5 +1,5 @@
 /**
- * An item asking any one of what it names (Capability API 1.678): 5e's "requires attunement by a
+ * An item asking any one of what it names (Capability API 1.690): 5e's "requires attunement by a
  * cleric, druid, or warlock", and a scroll on two classes' lists read by either.
  *
  *   - `binds.needsAny`: bound by a cleric or a druid, it is worn; by neither, it reads as not worn.
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 678);
+  assert.ok(supportedCapabilityApi.minor >= 690);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -217,7 +217,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose items ask any one of what they name, or more than 4 things (binds.needsAny, userNeedsAny), requires schemaVersion 2 and capabilityApi 1.678 or newer";
+      "A ruleset whose items ask any one of what they name, or more than 4 things (binds.needsAny, userNeedsAny), requires schemaVersion 2 and capabilityApi 1.690 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -231,25 +231,25 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(677) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(678) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(689) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(690) as never, fiveE()), gate);
     const allOf = fiveE();
     delete allOf.catalogs.at(-1).entries[0].item.binds.needsAny;
     delete allOf.catalogs.at(-1).entries[1].item.userNeedsAny;
     assert.notEqual(
-      getCapabilityPackageInstallIssue(manifest(677) as never, allOf),
+      getCapabilityPackageInstallIssue(manifest(689) as never, allOf),
       gate,
-      "every one of them is 1.654",
+      "every one of them is 1.666",
     );
     allOf.catalogs.at(-1).entries[1].item.userNeeds = Array.from({ length: 5 }, () => ({
       value: { field: "cleric_level" },
       atLeast: 1,
     }));
-    assert.equal(getCapabilityPackageInstallIssue(manifest(677) as never, allOf), gate, "more than 4");
+    assert.equal(getCapabilityPackageInstallIssue(manifest(689) as never, allOf), gate, "more than 4");
   }
 
   console.log(
-    "Item needs, any one: a talisman bound by a cleric or a druid, a scroll read by either, nobody else; up to 8; gated at 1.678.",
+    "Item needs, any one: a talisman bound by a cleric or a druid, a scroll read by either, nobody else; up to 8; gated at 1.690.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

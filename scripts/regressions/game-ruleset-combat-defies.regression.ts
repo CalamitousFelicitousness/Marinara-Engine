@@ -1,5 +1,5 @@
 /**
- * Commands broken at a cost (Capability API 1.631): 5e's Geas.
+ * Commands broken at a cost (Capability API 1.643): 5e's Geas.
  *
  *   - A condition whose `harms` comes `at` "defies" stops nothing it commands: what its
  *     "cannot-harm" would stop is offered, marked with the condition it breaks, and doing it deals
@@ -35,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 631);
+  assert.ok(supportedCapabilityApi.minor >= 643);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -184,7 +184,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a condition whose commands its holder may break at a cost (harms.at defies) requires schemaVersion 2 and capabilityApi 1.631 or newer";
+      "A ruleset with a condition whose commands its holder may break at a cost (harms.at defies) requires schemaVersion 2 and capabilityApi 1.643 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -199,12 +199,12 @@ try {
       restartRequired: false,
     });
     const doc = () => document({ effects: ["cannot-harm"], harms: { at: "defies", dice: "5d10" } });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(630) as never, doc()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(631) as never, doc()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(642) as never, doc()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(643) as never, doc()), gate);
   }
 
   console.log(
-    "Defies: a Geas's commands broken at a cost (a blow, a spell, a walk out of its ring), harmed once where it says; refused with nothing commanded; gated at 1.631.",
+    "Defies: a Geas's commands broken at a cost (a blow, a spell, a walk out of its ring), harmed once where it says; refused with nothing commanded; gated at 1.643.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

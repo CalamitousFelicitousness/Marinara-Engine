@@ -1,5 +1,5 @@
 /**
- * Conditions harm puts on a creature (Capability API 1.529).
+ * Conditions harm puts on a creature (Capability API 1.541).
  *
  *   - A flesh golem's Aversion of Fire: fire that deals it anything puts disadvantage (poisoned, in
  *     this test) on it until the end of its next turn; slashing does not, nor fire it is immune to.
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 529);
+  assert.ok(supportedCapabilityApi.minor >= 541);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -157,7 +157,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a creature that harm puts conditions on (whenHarmedBy) requires schemaVersion 2 and capabilityApi 1.529 or newer";
+      "A ruleset with a creature that harm puts conditions on (whenHarmedBy) requires schemaVersion 2 and capabilityApi 1.541 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -171,12 +171,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(528) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(529) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(540) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(541) as never, fiveE()), gate);
   }
 
   console.log(
-    "When harmed by: a flesh golem burnt is put off by fire to the end of its next turn, not when cut or immune; an unknown condition refused; gated at 1.529.",
+    "When harmed by: a flesh golem burnt is put off by fire to the end of its next turn, not when cut or immune; an unknown condition refused; gated at 1.541.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

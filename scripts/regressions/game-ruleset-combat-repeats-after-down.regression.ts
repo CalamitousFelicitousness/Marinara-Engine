@@ -1,5 +1,5 @@
 /**
- * A concentration entry moved on once its target is down (Capability API 1.591): Hunter's Mark.
+ * A concentration entry moved on once its target is down (Capability API 1.603): Hunter's Mark.
  *
  *   - `repeats.afterTargetDown`: the repeat is offered only once everybody the cast was last aimed
  *     at is down, at no cost; made, what the cast put on them moves to the new target, and the new
@@ -35,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 591);
+  assert.ok(supportedCapabilityApi.minor >= 603);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -160,7 +160,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with an entry made again only once its target is down (repeats.afterTargetDown) requires schemaVersion 2 and capabilityApi 1.591 or newer";
+      "A ruleset with an entry made again only once its target is down (repeats.afterTargetDown) requires schemaVersion 2 and capabilityApi 1.603 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -174,13 +174,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(590) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(591) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(590) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(602) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(603) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(602) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Repeats after target down: Hunter's Mark offered again only once its target is down, the mark moved at no cost; gated at 1.591.",
+    "Repeats after target down: Hunter's Mark offered again only once its target is down, the mark moved at no cost; gated at 1.603.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

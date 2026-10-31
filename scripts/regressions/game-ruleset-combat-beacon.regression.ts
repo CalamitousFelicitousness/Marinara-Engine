@@ -1,5 +1,5 @@
 /**
- * Death saves as saves, and healing at its most (Capability API 1.487).
+ * Death saves as saves, and healing at its most (Capability API 1.499).
  *
  *   - A condition's `deathSaves: "advantage"` rolls its holder's dying rolls twice: Beacon of Hope.
  *   - `dying.asSave`: what adds to every save adds to the dying roll (Bless), and what rolls every
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 487);
+  assert.ok(supportedCapabilityApi.minor >= 499);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -187,7 +187,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose dying rolls are saves, or whose conditions change them or healing (dying asSave, deathSaves, healedMax), requires schemaVersion 2 and capabilityApi 1.487 or newer";
+      "A ruleset whose dying rolls are saves, or whose conditions change them or healing (dying asSave, deathSaves, healedMax), requires schemaVersion 2 and capabilityApi 1.499 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -207,17 +207,17 @@ try {
       return one;
     };
     const save = doc((one) => (one.combat.dying.asSave = true));
-    assert.equal(getCapabilityPackageInstallIssue(manifest(486) as never, save), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(487) as never, save), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(498) as never, save), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(499) as never, save), gate);
     const lean = doc((one) => (one.combat.conditions[0].deathSaves = "advantage"));
-    assert.equal(getCapabilityPackageInstallIssue(manifest(486) as never, lean), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(498) as never, lean), gate);
     const most = doc((one) => (one.combat.conditions[0].healedMax = true));
-    assert.equal(getCapabilityPackageInstallIssue(manifest(486) as never, most), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(486) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(498) as never, most), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(498) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Beacon: dying rolls with advantage, as saves they take Bless and curses but not what is narrowed to one save, healing at its most; gated at 1.487.",
+    "Beacon: dying rolls with advantage, as saves they take Bless and curses but not what is narrowed to one save, healing at its most; gated at 1.499.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

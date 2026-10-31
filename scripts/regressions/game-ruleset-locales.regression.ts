@@ -1,12 +1,12 @@
 /**
- * A ruleset's translations in a ruleset package file a player shares (Capability API 1.803):
+ * A ruleset's translations in a ruleset package file a player shares (Capability API 1.810):
  * `locales/<language>.json` beside its ruleset, the package localization catalog's shape with a `ruleset`
  * section of display strings, each keyed by its English word for word. (A catalog ruleset's come as
  * language packs instead: ruleset-language-packs.regression.ts.)
  *
  *   - Read strictly: the language its name says, strings only, nothing else in the file; one not
  *     translated yet is left out, and a package's own English listing translates nothing.
- *   - A package file carries them only at 1.803; the import keeps only the one in the page's language
+ *   - A package file carries them only at 1.810; the import keeps only the one in the page's language
  *     (or the one it is a kind of) under its version, and importing the version again in another
  *     language replaces it (display only, no part of the version).
  *   - The strings route answers the language asked, else the one it is a kind of ("pt" for "pt-BR"),
@@ -52,7 +52,7 @@ process.env.DATA_DIR = dataDir;
 process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
 process.env.LOG_LEVEL = "silent";
 
-assert.ok(supportedCapabilityApi.minor >= 803);
+assert.ok(supportedCapabilityApi.minor >= 810);
 
 // ── The file, read strictly ──
 {
@@ -102,7 +102,7 @@ const localeFile = (locale: string, strings: Record<string, string>) => ({
   name: `locales/${locale}.json`,
   data: Buffer.from(JSON.stringify({ _meta: { locale }, ruleset: strings })),
 });
-function packageFile(locales: Array<{ name: string; data: Buffer }>, minor = 803) {
+function packageFile(locales: Array<{ name: string; data: Buffer }>, minor = 810) {
   const files = [{ name: "ruleset.json", data: Buffer.from(JSON.stringify(example)) }, ...locales];
   const manifest = {
     schemaVersion: 2,
@@ -128,7 +128,7 @@ function packageFile(locales: Array<{ name: string; data: Buffer }>, minor = 803
   };
 }
 
-// The manifest gate: a ruleset file's translations need 1.803 (no longer 1.798); another package's
+// The manifest gate: a ruleset file's translations need 1.810 (no longer 1.805); another package's
 // locales/ folder is its own.
 {
   const early = packageFile([localeFile("ru", { [english]: "Угольные дороги" })], 802).manifest;
@@ -136,12 +136,12 @@ function packageFile(locales: Array<{ name: string; data: Buffer }>, minor = 803
   assert.equal(read.success, false);
   assert.match(
     JSON.stringify(read.error?.issues),
-    /translations \(locales\/<language>.json\) require schemaVersion 2 and capabilityApi 1.803/,
+    /translations \(locales\/<language>.json\) require schemaVersion 2 and capabilityApi 1.810/,
   );
   assert.equal(
     capabilityPackageManifestSchema.safeParse(packageFile([localeFile("ru", {})], 798).manifest).success,
     false,
-    "1.798 no longer carries translations",
+    "1.805 no longer carries translations",
   );
   const notRuleset = {
     ...early,
@@ -150,7 +150,7 @@ function packageFile(locales: Array<{ name: string; data: Buffer }>, minor = 803
     files: [early.files[1]],
   };
   assert.ok(
-    !JSON.stringify(capabilityPackageManifestSchema.safeParse(notRuleset).error?.issues ?? []).includes("1.803"),
+    !JSON.stringify(capabilityPackageManifestSchema.safeParse(notRuleset).error?.issues ?? []).includes("1.810"),
   );
 }
 
@@ -186,7 +186,7 @@ try {
     assert.equal(JSON.parse(read.locales.ru!)[english], "Угольные дороги");
     const early = readRulesetPackageFile(packageFile([ru], 802));
     assert.equal(early.ok, false);
-    assert.match((early as { issues: string[] }).issues.join(" "), /1.803/);
+    assert.match((early as { issues: string[] }).issues.join(" "), /1.810/);
     const wrong = readRulesetPackageFile(
       packageFile([
         { name: "locales/ru.json", data: Buffer.from(JSON.stringify({ _meta: { locale: "de" }, ruleset: {} })) },
@@ -195,10 +195,10 @@ try {
     assert.equal(wrong.ok, false);
     assert.match((wrong as { issues: string[] }).issues.join(" "), /_meta.locale is not "ru"/);
 
-    // ── A check names the least API, 1.803 with translations, and every language the file carries ──
+    // ── A check names the least API, 1.810 with translations, and every language the file carries ──
     const checked = await app.inject({ method: "POST", url: "/api/game-rulesets/check", payload: { package: file } });
     assert.equal(checked.statusCode, 200, checked.body);
-    assert.deepEqual(checked.json().capabilityApi, { major: 1, minor: 803 });
+    assert.deepEqual(checked.json().capabilityApi, { major: 1, minor: 810 });
     assert.deepEqual(checked.json().locales, ["pt", "ru"]);
     const review = await app.inject({
       method: "POST",

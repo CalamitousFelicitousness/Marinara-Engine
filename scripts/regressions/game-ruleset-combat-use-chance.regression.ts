@@ -1,8 +1,8 @@
 /**
- * A use that works only on a roll (Capability API 1.428).
+ * A use that works only on a roll (Capability API 1.440).
  *
  *   - Divine Intervention: a d100 at or under the cleric's level works and spends its own row; one
- *     over it does nothing and spends the long-rest row on the same entry instead (1.430), leaving its
+ *     over it does nothing and spends the long-rest row on the same entry instead (1.442), leaving its
  *     own; from 20th level it
  *     works without a roll. Once the long-rest row is spent it is not offered.
  *   - A creature's printed chance: a demon's 30 percent.
@@ -38,7 +38,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 430);
+  assert.ok(supportedCapabilityApi.minor >= 442);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -49,7 +49,7 @@ try {
     rows: [
       { list: "features", values: { name: "Divine Intervention" } },
       { list: "counters", values: { name: "Divine Intervention", max: 1, recharge: "none" } },
-      // On the same entry (1.430): a use spends only the row it names, its own by `usesOf`.
+      // On the same entry (1.442): a use spends only the row it names, its own by `usesOf`.
       { list: "counters", values: { name: "Divine Plea", max: 1, recharge: "long" } },
     ],
     mechanics: {
@@ -242,7 +242,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose uses work only on a roll (chance) requires schemaVersion 2 and capabilityApi 1.428 or newer";
+      "A ruleset whose uses work only on a roll (chance) requires schemaVersion 2 and capabilityApi 1.440 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -256,13 +256,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(427) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(428) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(427) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(439) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(440) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(439) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Use chance: Divine Intervention works at or under the cleric's level, spends the long-rest row instead when it fails, and is sure at 20th; a demon's 30 percent; gated at 1.428.",
+    "Use chance: Divine Intervention works at or under the cleric's level, spends the long-rest row instead when it fails, and is sure at 20th; a demon's 30 percent; gated at 1.440.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

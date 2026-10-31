@@ -1,5 +1,5 @@
 /**
- * A zone moved on a check that a talisman helps with (Capability API 1.690): 5e's Talisman of the
+ * A zone moved on a check that a talisman helps with (Capability API 1.702): 5e's Talisman of the
  * Sphere, "you double your proficiency bonus on the check ... levitate it 10 feet plus a number of
  * additional feet equal to 10 × your Intelligence modifier".
  *
@@ -36,7 +36,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 690);
+  assert.ok(supportedCapabilityApi.minor >= 702);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -211,7 +211,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a zone moved on a check that a mover holding something does better (zone.move.check.holding) requires schemaVersion 2 and capabilityApi 1.690 or newer";
+      "A ruleset with a zone moved on a check that a mover holding something does better (zone.move.check.holding) requires schemaVersion 2 and capabilityApi 1.702 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -225,13 +225,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(689) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(690) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(701) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(702) as never, document()), gate);
     const { holding: _holding, ...plain } = check;
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(689) as never, document(plain)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(701) as never, document(plain)), gate);
   }
 
-  console.log("Talisman of the Sphere: its proficiency on the check, and its reach once in control; gated at 1.690.");
+  console.log("Talisman of the Sphere: its proficiency on the check, and its reach once in control; gated at 1.702.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

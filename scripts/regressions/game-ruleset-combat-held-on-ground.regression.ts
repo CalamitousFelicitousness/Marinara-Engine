@@ -1,5 +1,5 @@
 /**
- * A condition held only on some ground (Capability API 1.701): 5e's vampire in running water.
+ * A condition held only on some ground (Capability API 1.713): 5e's vampire in running water.
  *
  *   - `heldOnlyIn.ground`: it holds only while its holder stands on a tile it names, on a board whose
  *     place it names, or in a lasting area left by an action it names by id or label.
@@ -31,7 +31,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 701);
+  assert.ok(supportedCapabilityApi.minor >= 713);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -158,7 +158,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a condition held only on ground it names (heldOnlyIn.ground) requires schemaVersion 2 and capabilityApi 1.701 or newer";
+      "A ruleset with a condition held only on ground it names (heldOnlyIn.ground) requires schemaVersion 2 and capabilityApi 1.713 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -172,13 +172,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(700) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(701) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(700) as never, fiveE({ light: ["sunlight"] })), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(712) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(713) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(712) as never, fiveE({ light: ["sunlight"] })), gate);
   }
 
   console.log(
-    "Held on ground: a vampire's running-water condition holds on a water tile, a swamp board and a Running Water area, and is held off elsewhere and off a board; gated at 1.701.",
+    "Held on ground: a vampire's running-water condition holds on a water tile, a swamp board and a Running Water area, and is held off elsewhere and off a board; gated at 1.713.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

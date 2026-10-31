@@ -1,6 +1,6 @@
 /**
  * Swallowing, regurgitating, room by size, climbing out of a corpse, and what a sequence does once
- * all of it hit (Capability API 1.392).
+ * all of it hit (Capability API 1.404).
  *
  *   - A behir's swallow: dealt 30 or more from inside in one turn, it saves or lets them out prone.
  *   - A purple worm's corpse: swallowed, its holder slain, they stay inside until they climb out
@@ -40,7 +40,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 392);
+  assert.ok(supportedCapabilityApi.minor >= 404);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -453,7 +453,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset that holds inside by size, lets out on the blows dealt from inside or out of a fallen holder, or with a creature action aimed by type or with what follows all of a sequence hitting, requires schemaVersion 2 and capabilityApi 1.392 or newer";
+      "A ruleset that holds inside by size, lets out on the blows dealt from inside or out of a fallen holder, or with a creature action aimed by type or with what follows all of a sequence hitting, requires schemaVersion 2 and capabilityApi 1.404 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -467,19 +467,19 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(391) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(392) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(391) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(403) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(404) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(403) as never, JSON.parse(fiveEText)), gate);
     // A creature action aimed by type alone.
     const typed = JSON.parse(fiveEText);
     typed.catalogs.find(
       (catalog: { holds?: string }) => catalog.holds === "creatures",
     ).entries[0].creature.actions[0].targetTypes = { is: { types: ["humanoid"] } };
-    assert.equal(getCapabilityPackageInstallIssue(manifest(391) as never, typed), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(403) as never, typed), gate);
   }
 
   console.log(
-    "Swallow: let out prone on 30 from inside and a failed save, kept on a made one; climbed out of a corpse for 20 feet, prone; Whelm holds one Large or two Medium; a mound grapples and engulfs once both Slams hit a Medium target; Constrict only at Large or smaller; gated at 1.392.",
+    "Swallow: let out prone on 30 from inside and a failed save, kept on a made one; climbed out of a corpse for 20 feet, prone; Whelm holds one Large or two Medium; a mound grapples and engulfs once both Slams hit a Medium target; Constrict only at Large or smaller; gated at 1.404.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -563,7 +563,7 @@ try {
             !line.startsWith("- For other checks") &&
             !line.startsWith("- If roll_dice has already returned") &&
             !line.startsWith("- Do not use roll_dice for") &&
-            // What a ruleset makes that lasts a while (1.747) is said only where one is pinned.
+            // What a ruleset makes that lasts a while (1.759) is said only where one is pinned.
             !line.startsWith("  Something made to last only so long"),
         )
         .join("\n");

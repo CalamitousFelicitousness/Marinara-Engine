@@ -55,7 +55,7 @@ export function rulesetModedAction(
     ...(mode.toHit !== undefined && action.toHit !== undefined ? { toHit: action.toHit + mode.toHit } : {}),
     ...(mode.target !== undefined && base !== undefined ? { target: base + mode.target } : {}),
     ...(mode.targets !== undefined ? { targets: { ...action.targets, count: mode.targets } } : {}),
-    // A sequence without the steps its maker left out (1.630).
+    // A sequence without the steps its maker left out (1.642).
     ...(mode.skips && action.sequence
       ? {
           sequence: action.sequence.map((step, index) =>
@@ -64,15 +64,15 @@ export function rulesetModedAction(
         }
       : {}),
     ...(mode.ammo !== undefined ? { shots: mode.ammo } : {}),
-    // How long what it makes lasts, as picked (1.747): Creation's material.
+    // How long what it makes lasts, as picked (1.759): Creation's material.
     ...(mode.madeLasts !== undefined && action.makesItems
       ? { makesItems: { ...action.makesItems, lasts: mode.madeLasts } }
       : {}),
-    // The familiarity picked (1.657), rolled on as it leaves the fight.
+    // The familiarity picked (1.669), rolled on as it leaves the fight.
     ...(mode.familiar !== undefined && action.teleport
       ? { teleport: { ...action.teleport, familiar: mode.familiar } }
       : {}),
-    // Out of the stack picked (1.644): an Arrow of Slaying.
+    // Out of the stack picked (1.656): an Arrow of Slaying.
     ...(mode.ammoFrom !== undefined ? { ammoFrom: mode.ammoFrom } : {}),
     // Its own reach and clauses (1.190): a javelin of lightning's bolt, 4d6 more on a hit.
     ...(mode.range ? { range: { ...mode.range } } : {}),
@@ -83,7 +83,7 @@ export function rulesetModedAction(
     ...(mode.cure ? cureOnly(mode.cure) : {}),
     // The creature type picked (1.270), remembered by what it puts on: Antipathy/Sympathy.
     ...(mode.kind && action.applies ? { applies: action.applies.map((one) => ({ ...one, kind: mode.kind })) } : {}),
-    // The form picked (1.379), taken by whoever what it puts on lands on, none above their cap.
+    // The form picked (1.391), taken by whoever what it puts on lands on, none above their cap.
     ...(mode.form && action.applies
       ? {
           applies: action.applies.map((one) => ({
@@ -93,15 +93,15 @@ export function rulesetModedAction(
           })),
         }
       : {}),
-    // Who is called in this mode (1.381): Conjure Animals' picks.
+    // Who is called in this mode (1.393): Conjure Animals' picks.
     ...(mode.call ? { calls: mode.call } : {}),
-    // The one of its applies picked (1.435), in place of all of them.
+    // The one of its applies picked (1.447), in place of all of them.
     ...(mode.appliesPick !== undefined && action.applies?.[mode.appliesPick]
       ? { applies: [action.applies[mode.appliesPick]!], appliesOneOf: undefined }
       : {}),
     // What a hit sets off around whoever it hit (1.312): a Hammer of Thunderbolts' clap.
     ...(mode.aroundHit ? { aroundHit: mode.aroundHit } : {}),
-    // A contest won takes, and does nothing else (1.679): Telekinesis on a held object.
+    // A contest won takes, and does nothing else (1.691): Telekinesis on a held object.
     ...(mode.takes && action.contested
       ? {
           contested: { ...action.contested, takes: structuredClone(mode.takes) },
@@ -110,7 +110,7 @@ export function rulesetModedAction(
           damage: undefined,
         }
       : {}),
-    // The damage type named (1.740): Forbiddance's radiant or necrotic.
+    // The damage type named (1.752): Forbiddance's radiant or necrotic.
     ...(mode.damageType && action.damage
       ? {
           damage: {
@@ -172,7 +172,7 @@ export function rulesetAmmoFirst(actor: RulesetCombatant, action: RulesetCombatA
 }
 
 /**
- * Which ammunition a shot takes first (1.644), lowest first: plain; then one whose clauses of its own
+ * Which ammunition a shot takes first (1.656), lowest first: plain; then one whose clauses of its own
  * reach anybody (an Arrow +1); then one with a clause that reaches only some targets, kept for what
  * it is for (an Arrow of Undead Slaying). Pip, a companion, shot a slaying arrow at a humanoid with
  * four +1 arrows left (laptop 2026-10-26).
@@ -201,7 +201,7 @@ export function rulesetNextShotStack(actor: RulesetCombatant, action: RulesetCom
 }
 
 /** A shot as the ammunition it would be shot with makes it (2026-10-26, for a forecast): with the
- *  clauses of that stack's own (1.644) on its damage, as the blow resolves with them. */
+ *  clauses of that stack's own (1.656) on its damage, as the blow resolves with them. */
 export function rulesetShotAsLoaded(actor: RulesetCombatant, action: RulesetCombatAction): RulesetCombatAction {
   if (!action.ammo?.riders || !action.damage) return action;
   const stack = rulesetNextShotStack(actor, action);
@@ -210,7 +210,7 @@ export function rulesetShotAsLoaded(actor: RulesetCombatant, action: RulesetComb
   return { ...action, damage: { ...action.damage, plus: [...(action.damage.plus ?? []), ...rider.plus] } };
 }
 
-/** How many are left of one stack of the fighter's (1.644). */
+/** How many are left of one stack of the fighter's (1.656). */
 export function rulesetStackLeft(actor: RulesetCombatant, index: number): number {
   return Math.max(0, (actor.sheet?.items?.[index]?.quantity ?? 0) - (actor.itemsUsed?.[index] ?? 0));
 }
@@ -227,7 +227,7 @@ export function rulesetLoaded(actor: RulesetCombatant, clip: NonNullable<Ruleset
 export function rulesetItemUseLeft(actor: RulesetCombatant, use: NonNullable<RulesetCombatAction["itemUse"]>): number {
   const held = actor.sheet?.items?.[use.item];
   if (use.consumes) return Math.max(0, (held?.quantity ?? 0) - (actor.itemsUsed?.[use.item] ?? 0));
-  // Its own uses (1.506): as this fight left them, else as its stack kept them, else all of them.
+  // Its own uses (1.518): as this fight left them, else as its stack kept them, else all of them.
   if (use.ownUses) {
     const { more, max } = use.ownUses;
     const now = actor.usesLeft?.[`${use.item}:${more}`] ?? held?.usesLeft?.[String(more)] ?? max;
@@ -238,13 +238,13 @@ export function rulesetItemUseLeft(actor: RulesetCombatant, use: NonNullable<Rul
   return Math.max(0, Math.min(use.charges.max, now));
 }
 
-/** How many times an item has been used on with no charges left since they last came back (1.611):
+/** How many times an item has been used on with no charges left since they last came back (1.623):
  *  as this fight left the count, else as its stack kept it (under `usesLeft.o`), else none. */
 export function rulesetItemOverused(actor: RulesetCombatant, item: number): number {
   return actor.usesLeft?.[`${item}:o`] ?? actor.sheet?.items?.[item]?.usesLeft?.o ?? 0;
 }
 
-/** How many times an item that costs something used again before a rest (1.731) has been used since
+/** How many times an item that costs something used again before a rest (1.743) has been used since
  *  its user last took that rest: as this fight left the count, else as its stack kept it (under
  *  `usesLeft.a`), else none. */
 export function rulesetItemUsedSinceRest(actor: RulesetCombatant, item: number): number {
@@ -256,9 +256,9 @@ export function rulesetItemUsedSinceRest(actor: RulesetCombatant, item: number):
  *  item's use needs one of it left, or the charges it spends. */
 export function rulesetShotsAvailable(actor: RulesetCombatant, action: RulesetCombatAction): boolean {
   if (action.itemUse) {
-    // Broken, torn or blown apart (1.617), whatever it has left: a Horn of Blasting that exploded.
+    // Broken, torn or blown apart (1.629), whatever it has left: a Horn of Blasting that exploded.
     if (actor.broken?.[action.itemUse.item]) return false;
-    // Used on past its last charge while it holds together (1.611): a Wind Fan.
+    // Used on past its last charge while it holds together (1.623): a Wind Fan.
     if (action.itemUse.charges?.overuse && !action.itemUse.consumes && !action.itemUse.ownUses) return true;
     const left = rulesetItemUseLeft(actor, action.itemUse);
     return action.itemUse.consumes || action.itemUse.ownUses ? left >= 1 : left >= (action.itemUse.charges?.cost ?? 0);
@@ -278,7 +278,7 @@ export function rulesetShotsAvailable(actor: RulesetCombatant, action: RulesetCo
 
 /** Takes up to `count` of the items with this tag out of the fighter's bag, first stack first, and
  *  notes the share of them that comes back after a won fight. How many were taken. Ammunition goes in
- *  the order of `rulesetAmmoRank` (1.644), and `from` takes out of that stack alone. `first`
+ *  the order of `rulesetAmmoRank` (1.656), and `from` takes out of that stack alone. `first`
  *  is the stack its holder chose to shoot first (2026-10-26), before all the rest. */
 function draw(
   actor: RulesetCombatant,
@@ -304,7 +304,7 @@ function draw(
     const take = Math.min(wanted, Math.max(0, held.quantity - used));
     if (take <= 0) continue;
     (actor.itemsUsed ??= {})[index] = used + take;
-    // Where the shot came from (1.538), for ammunition destroyed as it hits.
+    // Where the shot came from (1.550), for ammunition destroyed as it hits.
     actor.lastShot = index;
     if (recover) {
       const recoverable = (actor.recoverable ??= {});
@@ -327,7 +327,7 @@ export function spendRulesetShots(
   const use = action.itemUse;
   if (use && (use.consumes || use.charges || use.ownUses)) {
     const said = { type: "uses" as const, actorId: actor.id, optionId: action.id, label: action.label };
-    // One of its own uses (1.506), never the item's charges.
+    // One of its own uses (1.518), never the item's charges.
     if (use.ownUses) {
       const left = Math.max(0, rulesetItemUseLeft(actor, use) - 1);
       (actor.usesLeft ??= {})[`${use.item}:${use.ownUses.more}`] = left;
@@ -407,7 +407,7 @@ export function recoverRulesetAmmo(state: RulesetEncounterState): RulesetCombatE
       });
     }
     delete combatant.recoverable;
-    // Ammunition spent as it struck (1.644), back as the plain ammunition it became: the stack grows.
+    // Ammunition spent as it struck (1.656), back as the plain ammunition it became: the stack grows.
     for (const [index, share] of Object.entries(combatant.recoverableInto ?? {})) {
       const back = Math.floor(share + 1e-9);
       if (back <= 0) continue;
@@ -484,9 +484,9 @@ export function breakRulesetItem(
 }
 
 /**
- * How a fighter draws the item at `index` of what they hold as they use it (Capability API 1.800), with
+ * How a fighter draws the item at `index` of what they hold as they use it (Capability API 1.807), with
  * `drawn` the items the fight has drawn or put away since it began (`RulesetCombatant.drawn`): see
- * `gameInventoryDrawPlan`. What a call lends (1.726) and what hovers (1.693) hold no slot.
+ * `gameInventoryDrawPlan`. What a call lends (1.738) and what hovers (1.705) hold no slot.
  */
 export function rulesetHeldDrawPlan(
   definition: RulesetDefinition,
@@ -510,7 +510,7 @@ export function rulesetHeldDrawPlan(
   );
 }
 
-/** Whether a fighter's held item is in their hands to use (1.800): worn, or drawn as it is used and
+/** Whether a fighter's held item is in their hands to use (1.807): worn, or drawn as it is used and
  *  either drawn by the fight already or one that could be drawn now. */
 export function rulesetHeldReady(
   definition: RulesetDefinition,
@@ -537,17 +537,17 @@ export interface RulesetFightItemChange {
   loaded?: number;
   /** What an item with charges holds now. */
   charges?: number;
-  /** What a weapon has taken off its damage rolls for good now (1.538), corroded. */
+  /** What a weapon has taken off its damage rolls for good now (1.550), corroded. */
   corroded?: number;
-  /** The levels it has ever taken in now (1.558). */
+  /** The levels it has ever taken in now (1.570). */
   absorbedEver?: number;
-  /** Its rolled call's lasting state now (1.578): an Efreeti Bottle. */
+  /** Its rolled call's lasting state now (1.590): an Efreeti Bottle. */
   callRoll?: RulesetItemCallRoll;
-  /** The form it is in now (1.562), 0 as it was made, when the fight changed it. */
+  /** The form it is in now (1.574), 0 as it was made, when the fight changed it. */
   form?: number;
-  /** What is left of its further uses that count their own (1.506), by place in `moreUses`. */
+  /** What is left of its further uses that count their own (1.518), by place in `moreUses`. */
   usesLeft?: Record<string, number>;
-  /** What is stored in it now (1.511), when the fight stored or cast something. */
+  /** What is stored in it now (1.523), when the fight stored or cast something. */
   storedEntries?: RulesetStoredEntry[];
   /** It broke when its last charge was spent: what was taken is lost, not used. */
   broke?: true;
@@ -557,14 +557,14 @@ export interface RulesetFightItemChange {
   truly?: string;
   /** Its switch as the fight left it, when the fight turned it (1.170). */
   on?: boolean;
-  /** What was made to last only so long has this many minutes left (1.747). */
+  /** What was made to last only so long has this many minutes left (1.759). */
   vanishesIn?: number;
-  /** Drawn as it was used (1.800), true; or put away to make room for another, false. */
+  /** Drawn as it was used (1.807), true; or put away to make room for another, false. */
   equipped?: boolean;
 }
 
 /**
- * What is left of what an opponent had on it as the fight began (1.787), each with how many it still
+ * What is left of what an opponent had on it as the fight began (1.794), each with how many it still
  * has: a sheet's items as it used them up, a plain block's by the uses its actions have left. What
  * it never had a way to use is all still there. Nothing for one that carried nothing.
  */
@@ -620,23 +620,23 @@ export function rulesetFightItemChanges(
       const reloaded = loaded !== undefined && loaded !== earlier?.loaded?.[index];
       const charges = combatant.charges?.[index];
       const spent = charges !== undefined && charges !== earlier?.charges?.[index];
-      // Corroded further (1.538), since `before`.
+      // Corroded further (1.550), since `before`.
       const corroded = combatant.corroded?.[index];
       const rusted = corroded !== undefined && corroded !== (earlier?.corroded?.[index] ?? held.corroded);
-      // Changed form (1.562), since `before`.
+      // Changed form (1.574), since `before`.
       const form = combatant.itemForms?.[index];
       const was = earlier ? (earlier.itemForms?.[index] ?? earlier.sheet?.items?.[index]?.form ?? 0) : undefined;
       const reformed = form !== undefined && form !== was;
-      // Taken in further (1.558), since `before`.
+      // Taken in further (1.570), since `before`.
       const absorbedEver = combatant.absorbedEver?.[index];
       const drank =
         absorbedEver !== undefined && absorbedEver !== (earlier?.absorbedEver?.[index] ?? held.absorbedEver);
-      // Its rolled call kept, counted or spent (1.578), since `before`.
+      // Its rolled call kept, counted or spent (1.590), since `before`.
       const callRoll = combatant.callRolls?.[index];
       const opened =
         callRoll !== undefined &&
         JSON.stringify(callRoll) !== JSON.stringify(earlier?.callRolls?.[index] ?? held.callRoll ?? {});
-      // Its own uses spent (1.506), since `before`.
+      // Its own uses spent (1.518), since `before`.
       const usesLeft = Object.fromEntries(
         Object.entries(combatant.usesLeft ?? {}).flatMap(([key, left]) => {
           const [at, more] = key.split(":");
@@ -644,7 +644,7 @@ export function rulesetFightItemChanges(
         }),
       );
       const usesSpent = Object.keys(usesLeft).length > 0;
-      // What it stores (1.511), stored or cast since `before`.
+      // What it stores (1.523), stored or cast since `before`.
       const storedNow = held.item.stores ? rulesetStoredNow(combatant, index) : [];
       const storedBefore = earlier ? rulesetStoredNow(earlier, index) : (held.storedEntries ?? []);
       const restored = !!held.item.stores && JSON.stringify(storedNow) !== JSON.stringify(storedBefore);
@@ -653,7 +653,7 @@ export function rulesetFightItemChanges(
       // Become another item on its last charge (1.272), since `before`.
       const became = combatant.became?.[index];
       const turned = became !== undefined && earlier?.became?.[index] === undefined;
-      // What is left of the time what was made lasts (1.747), in minutes, its turns as the fight counts.
+      // What is left of the time what was made lasts (1.759), in minutes, its turns as the fight counts.
       // Several makings on clocks of their own: the stack goes with the soonest of them.
       const batches = held.madeLasting ? combatant.madeFor?.[String(index)] : undefined;
       const madeLeft = batches?.length ? Math.min(...batches.map((batch) => batch.rounds)) : undefined;
@@ -661,7 +661,7 @@ export function rulesetFightItemChanges(
         madeLeft !== undefined ? Math.max(1, Math.ceil((madeLeft * (roundSeconds ?? 6)) / 60)) : undefined;
       const ticked =
         madeLeft !== undefined && JSON.stringify(batches) !== JSON.stringify(earlier?.madeFor?.[String(index)]);
-      // Drawn or put away (1.800), since `before`.
+      // Drawn or put away (1.807), since `before`.
       const wornNow = combatant.drawn?.[index];
       const swapped = wornNow !== undefined && wornNow !== (earlier?.drawn?.[index] ?? held.worn);
       if (
@@ -772,14 +772,14 @@ export function applyRulesetFightItemChanges(
       next[at] = { ...plain, item: change.becomes.ref, name: change.becomes.name, quantity };
       continue;
     }
-    // What it stores (1.511), as the fight left it: nothing kept once it is empty.
+    // What it stores (1.523), as the fight left it: nothing kept once it is empty.
     if (change.storedEntries) delete kept.storedEntries;
-    // The form it was left in (1.562).
+    // The form it was left in (1.574).
     if (change.form !== undefined) delete kept.form;
     next[at] = {
       ...kept,
       quantity,
-      // Kept even empty (1.563), so an item found holding some is not found holding them again.
+      // Kept even empty (1.575), so an item found holding some is not found holding them again.
       ...(change.storedEntries && quantity === 1 ? { storedEntries: change.storedEntries } : {}),
       ...(change.loaded !== undefined ? { loaded: change.loaded } : {}),
       ...(change.charges !== undefined ? { charges: change.charges } : {}),
@@ -789,10 +789,10 @@ export function applyRulesetFightItemChanges(
       ...(change.form && quantity === 1 ? { form: change.form } : {}),
       ...(change.usesLeft && quantity === 1 ? { usesLeft: { ...kept.usesLeft, ...change.usesLeft } } : {}),
       ...(on && quantity === 1 ? { on: true as const } : {}),
-      // What was made again lasts as long as the last of it made (1.747).
+      // What was made again lasts as long as the last of it made (1.759).
       ...(change.vanishesIn !== undefined ? { vanishesIn: change.vanishesIn } : {}),
     };
-    // Drawn as it was used (1.800), or put away to make room for another: one of a larger stack is
+    // Drawn as it was used (1.807), or put away to make room for another: one of a larger stack is
     // drawn into a stack of its own, right after the rest of it.
     if (change.equipped === false) delete next[at]!.equipped;
     if (change.equipped === true && !stack.equipped) {
@@ -807,7 +807,7 @@ export function applyRulesetFightItemChanges(
   return { stacks: next, journal };
 }
 
-/** What an item a combatant holds stores now (1.511), at `item` on their sheet, or what a creature
+/** What an item a combatant holds stores now (1.523), at `item` on their sheet, or what a creature
  *  that stores holds, with no `item`: each stored entry not yet cast, in the order it was stored. */
 export function rulesetStoredNow(combatant: RulesetCombatant, item?: number): RulesetStoredEntry[] {
   return combatant.actions.flatMap((action) =>
@@ -832,11 +832,11 @@ export function rulesetChargeSteps(action: RulesetCombatAction, payWith: string 
   return Number.isInteger(more) && more > 0 ? Math.min(more, step.max) : 0;
 }
 
-/** Paying a use of a pool group out of a worn item's charges, a charge a level (1.559):
+/** Paying a use of a pool group out of a worn item's charges, a charge a level (1.571):
  *  `itemslot:<item>:<pool>`, paid at that pool's level as the pool itself would be. */
 export const RULESET_ITEM_SLOT_PREFIX = "itemslot:";
 
-/** The item and the pool a payment out of an item's charges stands for (1.559), or null for a payment
+/** The item and the pool a payment out of an item's charges stands for (1.571), or null for a payment
  *  of another kind. */
 export function rulesetItemSlotPayment(payWith: string | undefined): { item: number; pool: string } | null {
   if (!payWith?.startsWith(RULESET_ITEM_SLOT_PREFIX)) return null;
@@ -845,7 +845,7 @@ export function rulesetItemSlotPayment(payWith: string | undefined): { item: num
   return Number.isInteger(at) && at >= 0 && pool.length > 0 ? { item: at, pool: pool.join(":") } : null;
 }
 
-/** The most charges a held item holds (1.559): its own number, or its stat's; 0 without any. */
+/** The most charges a held item holds (1.571): its own number, or its stat's; 0 without any. */
 export function rulesetHeldChargesMax(held: { item: { charges?: unknown; stats?: Record<string, unknown> } }): number {
   const most = (held.item.charges as { max?: number | { stat: string } } | undefined)?.max;
   const read = typeof most === "number" ? most : most ? held.item.stats?.[most.stat] : undefined;
@@ -854,9 +854,9 @@ export function rulesetHeldChargesMax(held: { item: { charges?: unknown; stats?:
 
 /** Averting the eyes from a gaze's holder, or looking again (1.268): `avert:<holder id>`. */
 export const RULESET_AVERT_OPTION_PREFIX = "avert:";
-/** Slipping free of a condition (1.473): `slip:<condition>`. */
+/** Slipping free of a condition (1.485): `slip:<condition>`. */
 export const RULESET_SLIP_OPTION_PREFIX = "slip:";
-/** An attack given up for one by a creature its maker called (1.475): `lend:<called id>:<action id>`. */
+/** An attack given up for one by a creature its maker called (1.487): `lend:<called id>:<action id>`. */
 export const RULESET_LEND_OPTION_PREFIX = "lend:";
 
 const ITEM_ACTION = /^(?:item|offhand|use|switch|reload|spend|form|shift|take):(\d+)(?::\d+)?$/;
@@ -872,7 +872,7 @@ export function rulesetActionItemIndex(action: Pick<RulesetCombatAction, "id">):
  *  every action, or a stat block's own. */
 export function rulesetActionDropped(actor: RulesetCombatant, action: RulesetCombatAction): boolean {
   if (!actor.dropped?.length) return false;
-  // A weapon put in hand (1.467), its every attack, though it may still be dismissed.
+  // A weapon put in hand (1.479), its every attack, though it may still be dismissed.
   const conjured =
     action.kind === "switch"
       ? undefined
@@ -927,7 +927,7 @@ export function rulesetThingsToDrop(
       const named = actor.actions.find((action) => rulesetActionItemIndex(action) === index)?.label;
       add(`item:${index}`, held.name ?? named ?? held.item.category);
     });
-    // A weapon put in hand that is no item of theirs (1.467): a pact weapon, which a bound one is not.
+    // A weapon put in hand that is no item of theirs (1.479): a pact weapon, which a bound one is not.
     for (const [id, made] of Object.entries(actor.conjured ?? {})) {
       const weapon = actor.conjurable?.[`${id}|${made.mode}`];
       if (!weapon || weapon.bound !== undefined) continue;

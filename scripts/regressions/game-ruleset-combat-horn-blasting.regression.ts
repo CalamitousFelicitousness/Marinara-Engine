@@ -1,5 +1,5 @@
 /**
- * Another amount dealt instead to what it names (Capability API 1.616): 5e's Horn of Blasting,
+ * Another amount dealt instead to what it names (Capability API 1.628): 5e's Horn of Blasting,
  * "Creatures and objects made of glass or crystal have disadvantage on the saving throw and take 10d6
  * thunder damage instead of 5d6."
  *
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 616);
+  assert.ok(supportedCapabilityApi.minor >= 628);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -163,7 +163,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with an entry dealing another amount to what it names (amountAgainst) requires schemaVersion 2 and capabilityApi 1.616 or newer";
+      "A ruleset with an entry dealing another amount to what it names (amountAgainst) requires schemaVersion 2 and capabilityApi 1.628 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -177,11 +177,11 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(615) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(616) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(627) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(628) as never, document()), gate);
   }
 
-  console.log("Horn of Blasting: glass saves at disadvantage and takes 10d6 instead of 5d6; gated at 1.616.");
+  console.log("Horn of Blasting: glass saves at disadvantage and takes 10d6 instead of 5d6; gated at 1.628.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

@@ -1,5 +1,5 @@
 /**
- * What a layered wall's layers stop, and whom it spares as picked (Capability API 1.479).
+ * What a layered wall's layers stop, and whom it spares as picked (Capability API 1.491).
  *
  *   - A layer's `blocks`: while it stands, attacks from afar that are not magical (red), those that
  *     are (orange), and spells cast across the wall (indigo) do not pass; each lifts as its layer falls.
@@ -40,7 +40,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 479);
+  assert.ok(supportedCapabilityApi.minor >= 491);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -252,7 +252,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose layered walls stop what passes through a layer (layer blocks) or spare those picked as they are cast (spares chosen) requires schemaVersion 2 and capabilityApi 1.479 or newer";
+      "A ruleset whose layered walls stop what passes through a layer (layer blocks) or spare those picked as they are cast (spares chosen) requires schemaVersion 2 and capabilityApi 1.491 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -266,12 +266,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(478) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(479) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(490) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(491) as never, fiveE()), gate);
   }
 
   console.log(
-    "Layer blocks: a Prismatic Wall's red stops plain shots, its orange magic ones, its indigo spells, each lifting as it falls; it spares its caster and those picked as it is cast; gated at 1.479.",
+    "Layer blocks: a Prismatic Wall's red stops plain shots, its orange magic ones, its indigo spells, each lifting as it falls; it spares its caster and those picked as it is cast; gated at 1.491.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

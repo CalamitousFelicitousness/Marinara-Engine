@@ -1,5 +1,5 @@
 /**
- * A golem's Berserk (Capability API 1.530).
+ * A golem's Berserk (Capability API 1.542).
  *
  *   - `rollsAtTurnStart`: at 40 hit points or fewer, a 6 on a d6 as its turn starts puts berserk on
  *     it; a 5 does not; above 40 nothing is rolled.
@@ -38,7 +38,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 530);
+  assert.ok(supportedCapabilityApi.minor >= 542);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -200,7 +200,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a low-health roll at turn start (rollsAtTurnStart), a condition sending its holder at the nearest creature (behavior nearest) or ending at full health (endsAtFullHealth) requires schemaVersion 2 and capabilityApi 1.530 or newer";
+      "A ruleset with a low-health roll at turn start (rollsAtTurnStart), a condition sending its holder at the nearest creature (behavior nearest) or ending at full health (endsAtFullHealth) requires schemaVersion 2 and capabilityApi 1.542 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -214,12 +214,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(529) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(530) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(541) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(542) as never, fiveE()), gate);
   }
 
   console.log(
-    "Berserk: a golem at 40 or fewer rolls a d6 as its turn starts, a 6 sending it at the nearest creature it sees, walked beside it and at nobody else, ended when healed to full; refused for an unknown condition or a roll it cannot make; gated at 1.530.",
+    "Berserk: a golem at 40 or fewer rolls a d6 as its turn starts, a 6 sending it at the nearest creature it sees, walked beside it and at nobody else, ended when healed to full; refused for an unknown condition or a roll it cannot make; gated at 1.542.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

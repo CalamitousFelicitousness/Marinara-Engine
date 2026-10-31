@@ -26,7 +26,7 @@ const restRequestSchema = z
       .record(z.string().min(1).max(64), z.number().int().min(0).max(100))
       .refine((dice) => Object.keys(dice).length <= 12, { message: "Too many pools" })
       .optional(),
-    /** The features chosen to use as it ends (1.776), each with the spent pools it gives back. */
+    /** The features chosen to use as it ends (1.788), each with the spent pools it gives back. */
     recover: z
       .array(
         z
@@ -68,9 +68,9 @@ const itemUseRequestSchema = z
   .object({
     chatId: z.string().min(1).max(200),
     stackId: z.string().min(1).max(200),
-    /** One of the item's further uses (Capability API 1.506), by its place in `moreUses` from 1. */
+    /** One of the item's further uses (Capability API 1.518), by its place in `moreUses` from 1. */
     more: z.number().int().min(1).max(16).optional(),
-    /** How long what it makes lasts (Capability API 1.747), by its place in `makesItems.lasts` from 1. */
+    /** How long what it makes lasts (Capability API 1.759), by its place in `makesItems.lasts` from 1. */
     lasts: z.number().int().min(1).max(8).optional(),
   })
   .strict();
@@ -218,7 +218,7 @@ export async function gameInventoryRoutes(app: FastifyInstance) {
     return answer;
   });
 
-  // The features a rest offers this character to use as it ends (1.776), for the sheet's rest buttons.
+  // The features a rest offers this character to use as it ends (1.788), for the sheet's rest buttons.
   app.post("/rest-offers", async (req, reply) => {
     const parsed = restOffersRequestSchema.safeParse(req.body);
     if (!parsed.success) {

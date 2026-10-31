@@ -1,11 +1,11 @@
 /**
  * A Necklace of Prayer Beads' last two pieces.
  *
- *   - A further use that spends another's count (Capability API 1.734): the bead of curing's Lesser
+ *   - A further use that spends another's count (Capability API 1.746): the bead of curing's Lesser
  *     Restoration off the same bead as its Cure Wounds, in a fight and out of one.
- *   - A call rolled among what it reads from a catalog (Capability API 1.735): the bead of summons'
+ *   - A call rolled among what it reads from a catalog (Capability API 1.747): the bead of summons'
  *     Planar Ally, a celestial, elemental or fiend chosen for its user, never picked by them.
- *   - An item of only further uses, rolled for (Capability API 1.736): no `use` of its own, its menu
+ *   - An item of only further uses, rolled for (Capability API 1.748): no `use` of its own, its menu
  *     only its beads, in a fight and out of one.
  *   - Refusals and the install gates.
  */
@@ -40,7 +40,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 736);
+  assert.ok(supportedCapabilityApi.minor >= 748);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -333,21 +333,21 @@ try {
     restartRequired: false,
   });
   const rolledGate =
-    "A ruleset with a call rolled among what it reads from a catalog (calls.rolled with calls.from) requires schemaVersion 2 and capabilityApi 1.735 or newer";
+    "A ruleset with a call rolled among what it reads from a catalog (calls.rolled with calls.from) requires schemaVersion 2 and capabilityApi 1.747 or newer";
   const usesOfGate =
-    "A ruleset with a further use that spends another's count (moreUses[].usesOf) requires schemaVersion 2 and capabilityApi 1.734 or newer";
+    "A ruleset with a further use that spends another's count (moreUses[].usesOf) requires schemaVersion 2 and capabilityApi 1.746 or newer";
   const onlyGate =
-    "A ruleset with an item of only further uses, rolled for (moreUses with moreUsesRolled and no use), requires schemaVersion 2 and capabilityApi 1.736 or newer";
-  assert.equal(getCapabilityPackageInstallIssue(manifest(735) as never, document(beadsOnly)), onlyGate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(736) as never, document(beadsOnly)), onlyGate);
-  assert.equal(getCapabilityPackageInstallIssue(manifest(734) as never, document()), rolledGate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(735) as never, document()), rolledGate);
+    "A ruleset with an item of only further uses, rolled for (moreUses with moreUsesRolled and no use), requires schemaVersion 2 and capabilityApi 1.748 or newer";
+  assert.equal(getCapabilityPackageInstallIssue(manifest(747) as never, document(beadsOnly)), onlyGate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(748) as never, document(beadsOnly)), onlyGate);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(746) as never, document()), rolledGate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(747) as never, document()), rolledGate);
   const noAlly = document((item) => item.moreUses.splice(2, 1));
-  assert.equal(getCapabilityPackageInstallIssue(manifest(733) as never, noAlly), usesOfGate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(734) as never, noAlly), usesOfGate);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(745) as never, noAlly), usesOfGate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(746) as never, noAlly), usesOfGate);
 
   console.log(
-    "Prayer beads: Lesser Restoration spends the curing bead's count with Cure Wounds, in a fight and out; Planar Ally's creature chosen among what it reads; a necklace of only beads; refusals and the gates at 1.734, 1.735 and 1.736.",
+    "Prayer beads: Lesser Restoration spends the curing bead's count with Cure Wounds, in a fight and out; Planar Ally's creature chosen among what it reads; a necklace of only beads; refusals and the gates at 1.746, 1.747 and 1.748.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

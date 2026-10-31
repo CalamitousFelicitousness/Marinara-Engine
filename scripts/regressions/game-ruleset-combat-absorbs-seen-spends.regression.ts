@@ -1,5 +1,5 @@
 /**
- * Taking in only a seen caster's spell, and paying a budget for it (Capability API 1.557).
+ * Taking in only a seen caster's spell, and paying a budget for it (Capability API 1.569).
  *
  *   - `absorbs.seen`: an Ioun Stone of Greater Absorption takes in only what a creature its holder
  *     can see casts; one it can't see gets its bolt through.
@@ -38,7 +38,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 557);
+  assert.ok(supportedCapabilityApi.minor >= 569);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -249,7 +249,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with absorbing only from a seen caster or paid for with a budget (absorbs.seen, absorbs.spends) requires schemaVersion 2 and capabilityApi 1.557 or newer";
+      "A ruleset with absorbing only from a seen caster or paid for with a budget (absorbs.seen, absorbs.spends) requires schemaVersion 2 and capabilityApi 1.569 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -265,14 +265,14 @@ try {
     });
     const withSeen = document(undefined, { catalogs: ["spells"], maxLevel: 6, seen: true });
     const withSpends = document((doc) => (doc.catalogs.at(-1).entries[0].item.worn.absorbs.spends = "reaction"));
-    assert.equal(getCapabilityPackageInstallIssue(manifest(556) as never, withSeen), gate);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(556) as never, withSpends), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(557) as never, withSeen), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(556) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(568) as never, withSeen), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(568) as never, withSpends), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(569) as never, withSeen), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(568) as never, document()), gate);
   }
 
   console.log(
-    "Absorbs seen and spends: only a caster in sight is taken in, and a reaction-paid absorb spends it and takes nothing in without one; gated at 1.557.",
+    "Absorbs seen and spends: only a caster in sight is taken in, and a reaction-paid absorb spends it and takes nothing in without one; gated at 1.569.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

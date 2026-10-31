@@ -68,7 +68,7 @@ export interface RulesetBuilderApplied {
    *  levels step): kept until the builder's answer changes, and cleared with it when it has none. */
   typedFields?: string[];
   rows: string[];
-  /** The marks a mark step ticked (1.754), as `<list>:<column>:<row's catalog ref>`, so unmarking clears
+  /** The marks a mark step ticked (1.766), as `<list>:<column>:<row's catalog ref>`, so unmarking clears
    *  only those. */
   marks?: string[];
   /** The sheet below the rating stages, and their last numeric answer. */
@@ -112,7 +112,7 @@ export interface RulesetBuilderState {
   assign?: Record<string, number>;
   /** Entry ids picked at each catalog step. */
   picks?: Record<string, string[]>;
-  /** The rows marked at each mark step (1.754), by their catalog ref. */
+  /** The rows marked at each mark step (1.766), by their catalog ref. */
   marks?: Record<string, string[]>;
   /** Abilities chosen for a grant's `abilities.choose`, keyed by `rulesetBuilderChoiceKey`. */
   abilityChoices?: Record<string, string[]>;
@@ -549,7 +549,7 @@ function filterHas(entry: RulesetCatalogEntry, filterId: string, value: string |
 /** Set while the builder works out a sheet without one exclusive group's picks (1.100), so the entries
  *  judged inside it are read off that sheet as it stands and the rule never nests. */
 let judgingWithoutGroups = false;
-/** The step and group that sheet is without: its default (1.759) is not taken in their place either, or
+/** The step and group that sheet is without: its default (1.771) is not taken in their place either, or
  *  the improvement a feat replaces would still meet the feat's prerequisite. */
 let judgingWithout: { step: string; group: string } | null = null;
 /** What a read made under the judging above depends on, as one memo key. */
@@ -604,7 +604,7 @@ function builderOptions(
   const sheet =
     step.reads && build ? rulesetBuilderBuildBefore(definition, build, state, catalogs, step.reads.before) : build;
   const limit = step.upTo && sheet ? resolveRulesetValueRef(definition, sheet, step.upTo.value) : null;
-  // Or read for each entry (1.753): its own class's level, the highest the sheet has of those it names.
+  // Or read for each entry (1.765): its own class's level, the highest the sheet has of those it names.
   const per = step.upTo?.per;
   const limitOf = (entry: RulesetCatalogEntry): number | null => {
     if (!per || !sheet) return limit;
@@ -636,9 +636,9 @@ function builderOptions(
     return without;
   };
   return entries.filter((entry) => {
-    // A variant is used through its parent's row, never picked on its own (1.756).
+    // A variant is used through its parent's row, never picked on its own (1.768).
     if (entry.variantOf !== undefined) return false;
-    // A list matches any of its values (1.718).
+    // A list matches any of its values (1.730).
     for (const [filterId, value] of Object.entries(step.filters ?? {})) {
       if (![value].flat().some((one) => filterHas(entry, filterId, one))) return false;
     }
@@ -689,7 +689,7 @@ export function rulesetBuilderStamp(
 }
 
 /** The sheet as the builder would leave it without the step's picks of one `exclusive` group (1.100),
- *  or the default taken in their place (1.759): what they wrote taken back, everything else as it was.
+ *  or the default taken in their place (1.771): what they wrote taken back, everything else as it was.
  *  The sheet itself when none are picked. */
 function rulesetBuilderBuildWithoutGroup(
   definition: RulesetDefinition,
@@ -703,7 +703,7 @@ function rulesetBuilderBuildWithoutGroup(
   const inGroup = new Set(
     (catalogs[step.catalog] ?? []).filter((each) => each.exclusive === group).map((each) => each.id),
   );
-  // A step that takes all it offers can hold a group's default (1.759) with nothing stored.
+  // A step that takes all it offers can hold a group's default (1.771) with nothing stored.
   if (!step.takesAll && !picks.some((id) => inGroup.has(id))) return build;
   let byState = withoutGroupCache.get(build);
   if (!byState) withoutGroupCache.set(build, (byState = new WeakMap()));
@@ -802,7 +802,7 @@ function builderPicks(
   // `within` only ever names an earlier step (the ruleset is refused otherwise), so this ends.
   const offered = rulesetBuilderOptions(definition, step, state, catalogs, build);
   const byId = new Map(offered.map((entry) => [entry.id, entry]));
-  // Taken without asking (1.753): everything it offers, and of each `exclusive` group the latest pick.
+  // Taken without asking (1.765): everything it offers, and of each `exclusive` group the latest pick.
   if (step.takesAll) {
     const chosen = groupsTaken(offered, state.picks?.[stepId] ?? [], stepId);
     return offered.filter((entry) => !entry.exclusive || chosen.get(entry.exclusive) === entry.id);
@@ -821,7 +821,7 @@ function builderPicks(
     : exclusive.slice(0, max);
 }
 
-/** The rows a mark step offers (1.754): those on its list that a catalog wrote and that match its
+/** The rows a mark step offers (1.766): those on its list that a catalog wrote and that match its
  *  `where`, by their catalog ref, each once. A row the player typed in has no ref and is not offered. */
 export function rulesetBuilderMarkRows(
   step: StepOf<"mark">,
@@ -841,7 +841,7 @@ export function rulesetBuilderMarkRows(
   });
 }
 
-/** How many rows a mark step lets the player mark (1.754): its `max`, or what `countFrom` reads. */
+/** How many rows a mark step lets the player mark (1.766): its `max`, or what `countFrom` reads. */
 export function rulesetBuilderMarkCount(
   definition: RulesetDefinition,
   step: StepOf<"mark">,
@@ -851,7 +851,7 @@ export function rulesetBuilderMarkCount(
   return step.max ?? 0;
 }
 
-/** The rows marked at a mark step (1.754): the stored marks still offered, the earliest first, no more
+/** The rows marked at a mark step (1.766): the stored marks still offered, the earliest first, no more
  *  than it lets the player mark. */
 export function rulesetBuilderMarked(
   definition: RulesetDefinition,
@@ -868,7 +868,7 @@ export function rulesetBuilderMarked(
 }
 
 /** What a step that takes all it offers takes of each `exclusive` group it offers: the latest pick
- *  of it, or, with none, its default (1.759) or the only entry of it offered. A group missing here
+ *  of it, or, with none, its default (1.771) or the only entry of it offered. A group missing here
  *  waits on the player. */
 function groupsTaken(
   offered: readonly RulesetCatalogEntry[],
@@ -905,7 +905,7 @@ export function rulesetBuilderPickAdded(
   const kept = stored.filter(
     (each) => each !== id && (!group || entries.find((entry) => entry.id === each)?.exclusive !== group),
   );
-  // A step that takes all it offers (1.753) stores only its groups' picks, one for each group.
+  // A step that takes all it offers (1.765) stores only its groups' picks, one for each group.
   return step.max === 1 && !step.takesAll ? [id] : [...kept, id];
 }
 
@@ -1357,7 +1357,7 @@ export function rulesetBuilderEntrySlots(
 ): RulesetBuilderEntrySlot[] {
   const steps = definition.sheet.builder?.steps ?? [];
   const granting = orderedGrants(definition, state, catalogs, build);
-  // What the picks give outright (1.775) is held already, so no choice offers it again.
+  // What the picks give outright (1.787) is held already, so no choice offers it again.
   const given = new Set<string>(
     granting.flatMap(({ entry }) =>
       (entry.grants?.entries?.add ?? []).flatMap((add) => add.ids.map((id) => `${add.catalog}/${id}`)),
@@ -1387,7 +1387,7 @@ export function rulesetBuilderEntrySlots(
           .filter(
             (option) =>
               (option.rows?.length ?? 0) > 0 &&
-              // A variant is used through its parent's row, never picked on its own (1.756), here as
+              // A variant is used through its parent's row, never picked on its own (1.768), here as
               // in a catalog step: "Produce Flame (held)" is Produce Flame's (laptop class builds 2026-10-24).
               option.variantOf === undefined &&
               Object.entries(choice.filters ?? {}).every(([filterId, value]) => filterHas(option, filterId, value)) &&
@@ -1647,7 +1647,7 @@ function desired(
       if (!out.rows.includes(ref)) out.rows.push(ref);
     }
   }
-  // Entries given outright (1.775): an elf's Common and Elvish.
+  // Entries given outright (1.787): an elf's Common and Elvish.
   for (const { entry } of rulesetBuilderGranting(definition, state, catalogs, build))
     for (const given of entry.grants?.entries?.add ?? [])
       for (const id of given.ids) {
@@ -2382,7 +2382,7 @@ function applyRulesetBuilderLegacy(
     if (wrote) next.rows.push(ref);
   }
 
-  // Marks (1.754): a row newly marked has its column ticked, and one unmarked has it cleared, as far as
+  // Marks (1.766): a row newly marked has its column ticked, and one unmarked has it cleared, as far as
   // the builder ticked it. A tick the player changed on the sheet since stays theirs until the mark does.
   const written = { ...build, abilities, skills, saves, fields, lists };
   const wanted = new Map<string, { list: string; column: string; ref: string }>();
@@ -2497,7 +2497,7 @@ function rowsStepLimit(definition: RulesetDefinition, step: StepOf<"rows">): num
   return Math.min(step.max ?? listMax, listMax);
 }
 
-/** How many of the player's own rows a rows step's `countFrom` asks for (Capability API 1.791): what
+/** How many of the player's own rows a rows step's `countFrom` asks for (Capability API 1.798): what
  *  it reads off the sheet, never above what the step lets the player add, 0 with none. 5e's hit point
  *  rolls read one per level after 1st (5e ship-readiness re-test 2026-10-24). */
 export function rulesetBuilderRowsCountFrom(
@@ -2511,7 +2511,7 @@ export function rulesetBuilderRowsCountFrom(
 }
 
 /** The whole rows a rows step waits on before its badge clears: its `min`, or what `countFrom` asks
- *  for when that is more (1.791). */
+ *  for when that is more (1.798). */
 export function rulesetBuilderRowsMin(
   definition: RulesetDefinition,
   step: StepOf<"rows">,
@@ -2533,7 +2533,7 @@ export function rulesetBuilderNewRow(definition: RulesetDefinition, step: StepOf
   };
 }
 
-/** A rows step as the builder starts it (1.791): new rows added, each as the step's own "add row"
+/** A rows step as the builder starts it (1.798): new rows added, each as the step's own "add row"
  *  makes it, until the player's own rows reach what `countFrom` asks for, never past the step's or the
  *  list's maximum. It never takes a row away, and with nothing to add hands back the same sheet.
  *  `from` is the sheet the count is read off (the builder's applied sheet), `build` the one written. */
@@ -2573,7 +2573,7 @@ export function rulesetBuilderRemaining(
     )
       continue;
     if (step.kind === "catalog" && step.takesAll) {
-      // Taken without asking (1.753): what waits is each offered group with nothing taken of it.
+      // Taken without asking (1.765): what waits is each offered group with nothing taken of it.
       const offered = rulesetBuilderOptions(definition, step, state, catalogs, build);
       const taken = groupsTaken(offered, state.picks?.[step.id] ?? [], step.id);
       const groups = new Set(offered.flatMap((entry) => (entry.exclusive ? [entry.exclusive] : [])));
@@ -2607,7 +2607,7 @@ export function rulesetBuilderRemaining(
       const missing = rows.filter(({ row }) =>
         (step.required ?? []).some((id) => row[id] === undefined || row[id] === ""),
       ).length;
-      // countFrom (1.791) asks for that many whole rows as min does, the larger of the two: the rows
+      // countFrom (1.798) asks for that many whole rows as min does, the larger of the two: the rows
       // still to add, and each one there not yet whole, counted once (laptop 2026-10-25: four unrolled
       // hit-point rows read "8 choices left").
       add(step.id, rulesetBuilderRowsMin(definition, step, build) - rows.length);
@@ -2631,7 +2631,7 @@ export function rulesetBuilderRemaining(
         rulesetBuilderShownFields(definition, step, build).filter((id) => {
           if (step.optional?.includes(id)) return false;
           const value = build.fields[id];
-          // A default that means "not chosen yet" (1.775) still waits: a dragon ancestor of "none".
+          // A default that means "not chosen yet" (1.787) still waits: a dragon ancestor of "none".
           if (
             step.unansweredAtDefault?.includes(id) &&
             value === definition.sheet.fields.find((field) => field.id === id)?.default

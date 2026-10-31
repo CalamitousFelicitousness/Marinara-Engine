@@ -1,5 +1,5 @@
 /**
- * A call that ends with its caller, on an entry or an item (Capability API 1.720): a Feather Token's
+ * A call that ends with its caller, on an entry or an item (Capability API 1.732): a Feather Token's
  * whip.
  *
  *   - An item's `calls.endsWithCaller`: those it called leave as soon as their caller is out.
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 720);
+  assert.ok(supportedCapabilityApi.minor >= 732);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -167,7 +167,7 @@ try {
 
   // ── The install gate ──
   const gate =
-    "A ruleset with a catalog entry's or an item's call that ends with its caller (calls.endsWithCaller) requires schemaVersion 2 and capabilityApi 1.720 or newer";
+    "A ruleset with a catalog entry's or an item's call that ends with its caller (calls.endsWithCaller) requires schemaVersion 2 and capabilityApi 1.732 or newer";
   const manifest = (minor: number) => ({
     schemaVersion: 2,
     capabilityApi: { major: 1, minor },
@@ -181,13 +181,13 @@ try {
     permissions: [],
     restartRequired: false,
   });
-  assert.equal(getCapabilityPackageInstallIssue(manifest(719) as never, document()), gate);
-  assert.equal(getCapabilityPackageInstallIssue(manifest(719) as never, document(tokenUse(true))), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(720) as never, document()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(719) as never, JSON.parse(fiveEText)), gate);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(731) as never, document()), gate);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(731) as never, document(tokenUse(true))), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(732) as never, document()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(731) as never, JSON.parse(fiveEText)), gate);
 
   console.log(
-    "Feather Token whip: an item's call ends with its caller, out or (with incapacitated) down or unable to act; gated at 1.720.",
+    "Feather Token whip: an item's call ends with its caller, out or (with incapacitated) down or unable to act; gated at 1.732.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

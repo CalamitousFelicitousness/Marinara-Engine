@@ -1,5 +1,5 @@
 /**
- * Poisons on a weapon: hits that deal damage and ask a save (Capability API 1.670).
+ * Poisons on a weapon: hits that deal damage and ask a save (Capability API 1.682).
  *
  *   - A condition's `onHit.damage` and `onHit.save`: serpent venom's 10 poison, halved on a made
  *     save; `onSuccess: "negates"` deals nothing when it is made. What it `applies` goes on only on a
@@ -32,7 +32,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 670);
+  assert.ok(supportedCapabilityApi.minor >= 682);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -177,7 +177,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a condition whose holder's hits deal damage or ask a save (onHit damage, save, failedBy, damageTypes) requires schemaVersion 2 and capabilityApi 1.670 or newer";
+      "A ruleset with a condition whose holder's hits deal damage or ask a save (onHit damage, save, failedBy, damageTypes) requires schemaVersion 2 and capabilityApi 1.682 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -191,11 +191,11 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(669) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(670) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(681) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(682) as never, fiveE()), gate);
     assert.notEqual(
       getCapabilityPackageInstallIssue(
-        manifest(669) as never,
+        manifest(681) as never,
         fiveE({ weapon: true, applies: [{ condition: "poisoned", duration: "instant" }] }),
       ),
       gate,
@@ -203,7 +203,7 @@ try {
   }
 
   console.log(
-    "Weapon poison: a hit's own damage halved or negated on a save, worse on a bad failure, only on the right blows; gated at 1.670.",
+    "Weapon poison: a hit's own damage halved or negated on a save, worse on a bad failure, only on the right blows; gated at 1.682.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -31,17 +31,17 @@ export const COMBAT_TEMPERAMENTS = [
   "patient",
   "methodical",
   "coordinated",
-  // Never dealt by chance: only where its data or the story names it (combat AI T2, 1.765).
+  // Never dealt by chance: only where its data or the story names it (combat AI T2, 1.777).
   "fanatical",
-  // Never dealt by chance: it holds back until the fight proves serious (combat AI T5, 1.767).
+  // Never dealt by chance: it holds back until the fight proves serious (combat AI T5, 1.779).
   "arrogant",
-  // Never dealt by chance: it keeps to its ground (combat AI T4, 1.768).
+  // Never dealt by chance: it keeps to its ground (combat AI T4, 1.780).
   "territorial",
-  // Never dealt by chance, and strikes the fallen only where the game allows it (combat AI T3, 1.769).
+  // Never dealt by chance, and strikes the fallen only where the game allows it (combat AI T3, 1.781).
   "cruel",
-  // Never dealt by chance: it fights fair, one on one, and spares the beaten (combat AI T6, 1.770).
+  // Never dealt by chance: it fights fair, one on one, and spares the beaten (combat AI T6, 1.782).
   "honourable",
-  // Never dealt by chance: a predator that takes one victim and drags it off (combat AI T8, 1.771).
+  // Never dealt by chance: a predator that takes one victim and drags it off (combat AI T8, 1.783).
   "hungry",
 ] as const;
 export type CombatTemperament = (typeof COMBAT_TEMPERAMENTS)[number];
@@ -71,7 +71,7 @@ export const COMBAT_ROLES = [
   "spellcaster",
   "supporter",
   "controller",
-  /** One that fights a whole side alone (1.763): a dragon, a lich, a kraken, with moves of its own
+  /** One that fights a whole side alone (1.775): a dragon, a lich, a kraken, with moves of its own
    *  between turns. It spends what it has, area first, and never trades blow for blow. */
   "solo",
 ] as const;

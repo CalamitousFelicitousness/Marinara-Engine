@@ -1,5 +1,5 @@
 /**
- * A zone lasting past 1000 rounds, closed by its caster, or spreading (Capability API 1.624): 5e's
+ * A zone lasting past 1000 rounds, closed by its caster, or spreading (Capability API 1.636): 5e's
  * Eversmoking Bottle, whose smoke "expands at a rate of 10 feet per minute until it reaches its maximum
  * radius" and, stoppered, "disperses after 10 minutes"; and an Oil of Slipperiness's grease "for 8
  * hours".
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 624);
+  assert.ok(supportedCapabilityApi.minor >= 636);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -176,7 +176,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a zone lasting past 1000 rounds, closed by its caster or spreading (zone.rounds, zone.close, zone.spreads) requires schemaVersion 2 and capabilityApi 1.624 or newer";
+      "A ruleset with a zone lasting past 1000 rounds, closed by its caster or spreading (zone.rounds, zone.close, zone.spreads) requires schemaVersion 2 and capabilityApi 1.636 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -190,12 +190,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(623) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(624) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(635) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(636) as never, document()), gate);
   }
 
   console.log(
-    "Long zones: the bottle's smoke spreads to its most, closed lingers and goes; 8 hours read; gated at 1.624.",
+    "Long zones: the bottle's smoke spreads to its most, closed lingers and goes; 8 hours read; gated at 1.636.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

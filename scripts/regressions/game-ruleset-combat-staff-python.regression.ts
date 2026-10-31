@@ -1,6 +1,6 @@
 /**
  * An item that becomes the creature it calls, and a catalog entry's or an item's call its user may
- * dismiss (Capability API 1.600): a Staff of the Python, "The staff becomes a giant constrictor
+ * dismiss (Capability API 1.612): a Staff of the Python, "The staff becomes a giant constrictor
  * snake under your control ... By using a bonus action to speak the command word again, you return
  * the staff to its normal form".
  *
@@ -36,7 +36,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 600);
+  assert.ok(supportedCapabilityApi.minor >= 612);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -254,7 +254,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with an item that becomes the creature it calls (calls.becomesItem), or a catalog entry's or an item's call its user may send away (calls.dismissible), requires schemaVersion 2 and capabilityApi 1.600 or newer";
+      "A ruleset with an item that becomes the creature it calls (calls.becomesItem), or a catalog entry's or an item's call its user may send away (calls.dismissible), requires schemaVersion 2 and capabilityApi 1.612 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -269,17 +269,17 @@ try {
       restartRequired: false,
     });
     const plain = { creature: "creatures/snake", count: { flat: 1 } };
-    assert.equal(getCapabilityPackageInstallIssue(manifest(599) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(611) as never, document()), gate);
     assert.equal(
-      getCapabilityPackageInstallIssue(manifest(599) as never, document({ ...plain, dismissible: true })),
+      getCapabilityPackageInstallIssue(manifest(611) as never, document({ ...plain, dismissible: true })),
       gate,
     );
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(600) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(599) as never, document(plain)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(612) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(611) as never, document(plain)), gate);
   }
 
   console.log(
-    "Staff of the Python: the staff becomes the snake, turned back on a bonus action, shattered with it; gated at 1.600.",
+    "Staff of the Python: the staff becomes the snake, turned back on a bonus action, shattered with it; gated at 1.612.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

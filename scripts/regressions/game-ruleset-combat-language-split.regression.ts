@@ -1,5 +1,5 @@
 /**
- * Several languages in one row, and a sheet with none written down (Capability API 1.576).
+ * Several languages in one row, and a sheet with none written down (Capability API 1.588).
  *
  *   - `combat.languages.split`: 5e's `[", ", " and "]`, so "Languages: Common and Dwarvish" names two.
  *   - A sheet with no language row has its languages unwritten: Suggestion keeps nobody out for it.
@@ -32,7 +32,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 576);
+  assert.ok(supportedCapabilityApi.minor >= 588);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -127,7 +127,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with several languages in one row (combat.languages.split) requires schemaVersion 2 and capabilityApi 1.576 or newer";
+      "A ruleset with several languages in one row (combat.languages.split) requires schemaVersion 2 and capabilityApi 1.588 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -141,13 +141,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(575) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(576) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(575) as never, document(false)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(587) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(588) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(587) as never, document(false)), gate);
   }
 
   console.log(
-    "Language split: one row names several languages; a sheet with none written down keeps nobody out; gated at 1.576.",
+    "Language split: one row names several languages; a sheet with none written down keeps nobody out; gated at 1.588.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

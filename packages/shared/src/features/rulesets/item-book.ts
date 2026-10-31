@@ -96,9 +96,9 @@ export interface RulesetItemEffectFact {
     ability?: string;
     type?: string;
     fromSource?: true;
-    /** Only on blows of these types (1.780). */
+    /** Only on blows of these types (1.791). */
     onTypes?: string[];
-    /** Spent the first time it adds (1.780). */
+    /** Spent the first time it adds (1.791). */
     spentOnUse?: true;
   };
   /** Conditions and damage labels, and magic, that narrow this save modifier (1.134). */
@@ -110,7 +110,7 @@ export interface RulesetItemEffectFact {
     | { value: string }
     | { fails: true }
     | { atLeast: number }
-    /** Defense never below this (1.393): a number, or the label of what it reads off the sheet. */
+    /** Defense never below this (1.405): a number, or the label of what it reads off the sheet. */
     | { floor: string }
     | { times: 0.5 | 2 }
     | { effect: string }
@@ -190,7 +190,7 @@ export interface RulesetItemUseFact {
    *  and the dead it brings back within so many rounds. */
   ends?: { conditions: string[]; count?: number };
   stabilizes?: true;
-  /** Its chance in 100 to backfire on its user as it is used (1.617), what it deals them, and whether
+  /** Its chance in 100 to backfire on its user as it is used (1.629), what it deals them, and whether
    *  it is destroyed. */
   backfires?: { chance: number; amount: string; damageType?: string; destroys?: true };
   revives?: { withinRounds: number; health: string };
@@ -199,13 +199,13 @@ export interface RulesetItemUseFact {
   charges?: {
     cost: number;
     max: number;
-    /** The dice a stack is found holding (1.560), rather than full. */
+    /** The dice a stack is found holding (1.572), rather than full. */
     rolled?: string;
-    /** `after` (1.543): the days, and the hours (a sum, perhaps dice), it waits once run out. */
+    /** `after` (1.555): the days, and the hours (a sum, perhaps dice), it waits once run out. */
     recharge?: { rests: string[]; amount: "max" | string; after?: { days?: number; hours?: string } };
     /** `regains` (1.271): the faces at or over `atLeast` give back `amount` charges. */
     breaksOn?: { die: number; atMost?: number; regains?: { atLeast: number; amount: string }; becomes?: string };
-    /** Used on with none left (1.611): its chance in 100 of tearing, cumulative or not. */
+    /** Used on with none left (1.623): its chance in 100 of tearing, cumulative or not. */
     overuse?: { chance: number; cumulative?: true };
   };
   /** A pool it gives back some of, by the pool's label. */
@@ -261,7 +261,7 @@ export interface RulesetItemAttackFact {
    *  conditions it puts on the one hit, by their labels. */
   spends?: Array<{
     label: string;
-    /** Or its own uses (1.521), and its amount none where it only puts conditions on. */
+    /** Or its own uses (1.533), and its amount none where it only puts conditions on. */
     charges?: number;
     uses?: number;
     amount?: string;
@@ -882,7 +882,7 @@ export function rulesetItemEffectFacts(
   return facts;
 }
 
-/** What a floor under defense reads (1.393), as a reader would say it: its number, or the sheet value
+/** What a floor under defense reads (1.405), as a reader would say it: its number, or the sheet value
  *  it reads in the sheet's own words. */
 function floorLabel(definition: RulesetDefinition, atLeast: number | RulesetValueRef): string {
   return typeof atLeast === "number" ? String(atLeast) : sheetBonusWords(definition, atLeast);
@@ -948,7 +948,7 @@ export function rulesetItemEffectText(fact: RulesetItemEffectFact): string {
   return `${"mode" in change ? change.mode : "value" in change ? change.value : ""} on ${which}`;
 }
 
-/** Whether an item is drawn as it is used (Capability API 1.800): it takes slots, and its category
+/** Whether an item is drawn as it is used (Capability API 1.807): it takes slots, and its category
  *  or one of its tags is one the ruleset's `items.drawOnUse` names. Weapons, in 5e: a sword is used
  *  out of its sheath and a bow off the back, and either goes in hand as a free swap. */
 export function rulesetItemDrawsOnUse(
@@ -1197,7 +1197,7 @@ export function rulesetItemBook(
       if (entry.aliases) aliased.push({ read, aliases: entry.aliases });
     }
   }
-  // Other names (1.775) find an item after every item's own name: "Plate" for Plate Armor.
+  // Other names (1.787) find an item after every item's own name: "Plate" for Plate Armor.
   const aliasOnly = new Set<string>();
   for (const { read, aliases } of aliased)
     for (const alias of aliases) {
@@ -1501,7 +1501,7 @@ export function rulesetItemBearers(
   };
 }
 
-/** What a stack of an item with rolled charges holds before anything spent or gained them (1.560),
+/** What a stack of an item with rolled charges holds before anything spent or gained them (1.572),
  *  against its written most or its stat's. */
 function foundCharges(item: RulesetCatalogItem, stackId: string): number {
   const most = item.charges?.max;
@@ -1526,7 +1526,7 @@ export function rulesetSheetItems(
     if (!stack.item || gameInventoryBagKey(stack.holder) !== bag) return [];
     const made = book.itemOf(stack.item)?.entry.item;
     if (!made) return [];
-    // In another form (1.562): that form's item's attack, worn effect and switch.
+    // In another form (1.574): that form's item's attack, worn effect and switch.
     const formRef = stack.form ? made.forms?.into[stack.form - 1]?.item : undefined;
     const formItem = formRef ? book.itemOf(formRef)?.entry.item : undefined;
     const item = formItem ? rulesetFormedItem(made, formItem) : made;
@@ -1535,7 +1535,7 @@ export function rulesetSheetItems(
     const takesSlots = Object.values(item.slots ?? {}).some((count) => count > 0);
     const binds = !!item.binds;
     const worn = (takesSlots || binds) && (!takesSlots || stack.equipped === true) && (!binds || stack.bound === true);
-    // Drawn as it is used (1.800): a fight offers it while it is only carried, and draws it as it is used.
+    // Drawn as it is used (1.807): a fight offers it while it is only carried, and draws it as it is used.
     const drawOnUse = book.itemOf(stack.item)?.drawOnUse === true;
     return [
       {
@@ -1558,7 +1558,7 @@ export function rulesetSheetItems(
         ...(stack.absorbedEver ? { absorbedEver: stack.absorbedEver } : {}),
         ...(stack.callRoll ? { callRoll: stack.callRoll } : {}),
         ...(stack.usesLeft ? { usesLeft: stack.usesLeft } : {}),
-        // Found holding some (1.563) until a fight stores or casts out of it.
+        // Found holding some (1.575) until a fight stores or casts out of it.
         ...(stack.storedEntries
           ? { storedEntries: stack.storedEntries }
           : item.stores?.found
@@ -1617,7 +1617,7 @@ export function rulesetCardItems(
   };
 }
 
-/** Whose bag a party card's items are in (1.708): the card read for the player (the one named for
+/** Whose bag a party card's items are in (1.720): the card read for the player (the one named for
  *  who the chat plays as, else the first) carries the player's own, null; every other card its own,
  *  by its name. */
 export function rulesetCardHolder(

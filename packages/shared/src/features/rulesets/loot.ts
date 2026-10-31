@@ -75,7 +75,7 @@ export function rollRulesetLootTable(
 }
 
 /**
- * What a creature has on it as a fight begins (1.787): each line of its `inventory` rolled for once,
+ * What a creature has on it as a fight begins (1.794): each line of its `inventory` rolled for once,
  * `chance` in a hundred, then its `count` of its item or its loot table's picks. Picks of one item
  * are added together; an item a layer took out is not had.
  */

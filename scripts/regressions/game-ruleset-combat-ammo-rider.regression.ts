@@ -1,5 +1,5 @@
 /**
- * Ammunition with clauses of its own (Capability API 1.644): 5e's Arrow of Slaying, "a creature of
+ * Ammunition with clauses of its own (Capability API 1.656): 5e's Arrow of Slaying, "a creature of
  * the type ... hit by the arrow must make a DC 17 Constitution saving throw, taking an extra 6d10
  * piercing damage on a failed save, or half as much extra damage on a successful one. Once an arrow of
  * slaying deals its extra damage to a creature, it becomes a nonmagical arrow."
@@ -41,7 +41,7 @@ const { rankRulesetChoices } =
   await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 644);
+  assert.ok(supportedCapabilityApi.minor >= 656);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -277,7 +277,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with ammunition that adds to the shot it is fired as (item ammoRider) requires schemaVersion 2 and capabilityApi 1.644 or newer";
+      "A ruleset with ammunition that adds to the shot it is fired as (item ammoRider) requires schemaVersion 2 and capabilityApi 1.656 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -291,17 +291,17 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(643) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(644) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(655) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(656) as never, document()), gate);
   }
 
-  // ── A bonus to hit on the shot it rides (1.804: the real Arrow +1 added nothing to the roll) ──
+  // ── A bonus to hit on the shot it rides (1.811: the real Arrow +1 added nothing to the roll) ──
   {
     const plusOne = document((rider) => {
       rider.toHit = 3;
     });
     const toHitGate =
-      "A ruleset with ammunition that adds to the attack roll of its shot (an ammoRider's toHit) requires schemaVersion 2 and capabilityApi 1.804 or newer";
+      "A ruleset with ammunition that adds to the attack roll of its shot (an ammoRider's toHit) requires schemaVersion 2 and capabilityApi 1.811 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -319,12 +319,12 @@ try {
     const rolled = (mode?: string) =>
       eventsOf(shoot(fight([foe("wolf", "beast", 200)], hit), "wolf", mode, hit).events, "attack")[0]!.total;
     assert.equal(rolled("shot:2") - rolled(), 3, "the shot it rides is rolled 3 higher, a plain one not");
-    assert.equal(getCapabilityPackageInstallIssue(manifest(803) as never, plusOne), toHitGate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(804) as never, plusOne), toHitGate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(810) as never, plusOne), toHitGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(811) as never, plusOne), toHitGate);
   }
 
   console.log(
-    "Arrow of Slaying: ammunition's own 6d10 against its kind, shot as its own mode, spent into a plain arrow; gated at 1.644.",
+    "Arrow of Slaying: ammunition's own 6d10 against its kind, shot as its own mode, spent into a plain arrow; gated at 1.656.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

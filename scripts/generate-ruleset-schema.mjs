@@ -181,7 +181,7 @@ function enumTableShape(node) {
   if (!node || typeof node !== "object") return;
   Object.values(node).forEach(enumTableShape);
   const properties = node.properties;
-  // A words table (1.677) names one to forty words the same way.
+  // A words table (1.689) names one to forty words the same way.
   if (node.type === "object" && properties?.op?.const === "wordsTable" && properties.table) {
     properties.table.minProperties = 1;
     properties.table.maxProperties = 40;
@@ -246,7 +246,7 @@ function uniqueConditionEndings(node) {
   }
 }
 
-// A combat block names each of its styles once, and one of them built in (1.778).
+// A combat block names each of its styles once, and one of them built in (1.379).
 function checkedCombatStyles(node) {
   if (Array.isArray(node)) return node.forEach(checkedCombatStyles);
   if (!node || typeof node !== "object") return;
@@ -333,7 +333,7 @@ function modifierSaysSomething(node) {
     },
     ...["attacks", "blow", "ability", "damageType", "fromSource"].map((key) => ({
       if: { required: [key] },
-      // fromSource also narrows the advantage of attacks-taken (1.489): True Strike.
+      // fromSource also narrows the advantage of attacks-taken (1.501): True Strike.
       then: {
         properties: {
           to: { enum: key === "fromSource" ? ["damage-taken", "attacks-taken"] : ["damage", "damage-taken"] },

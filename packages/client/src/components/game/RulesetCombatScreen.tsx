@@ -50,7 +50,7 @@ export interface RulesetCombatScreenProps {
   onControlCompanions?: (controller: CombatController) => void;
   /** The companions' standing orders, under the turn order. */
   controls?: ReactNode;
-  /** Whether the player picks their own symbol spends (1.382). */
+  /** Whether the player picks their own symbol spends (1.394). */
   onSpends?: (choose: boolean) => void;
   /** An error, or the fight's end, put at the top of the pane by the caller. */
   notice?: ReactNode;
@@ -132,7 +132,7 @@ export function RulesetCombatScreen({
   }, [view.round, setRound]);
   useEffect(() => () => setRound(null), [setRound]);
 
-  // The budgets' names in the player's language (1.798), as the rest of the fight's words are.
+  // The budgets' names in the player's language (1.805), as the rest of the fight's words are.
   const text = useRulesetText();
   const marks = useMemo(() => rulesetBudgetMarks(definition, text), [definition, text]);
   const byId = new Map(view.combatants.map((combatant) => [combatant.id, combatant]));

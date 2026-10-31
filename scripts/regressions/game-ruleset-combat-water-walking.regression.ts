@@ -1,5 +1,5 @@
 /**
- * Walking on water (Capability API 1.516).
+ * Walking on water (Capability API 1.528).
  *
  *   - Water Walk: its holder walks onto water at a plain step, may stop there, and is never under
  *     it; without it, water is not walked at all. No ledge is climbed, as `runsAcross` would.
@@ -35,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 516);
+  assert.ok(supportedCapabilityApi.minor >= 528);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -128,7 +128,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions let their holder walk on water (walksOnLiquid) requires schemaVersion 2 and capabilityApi 1.516 or newer";
+      "A ruleset whose conditions let their holder walk on water (walksOnLiquid) requires schemaVersion 2 and capabilityApi 1.528 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -142,13 +142,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(515) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(516) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(515) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(527) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(528) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(527) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Water walking: Water Walk walks onto water for a plain step, stops there, is not under it, and climbs no ledge; gated at 1.516.",
+    "Water walking: Water Walk walks onto water for a plain step, stops there, is not under it, and climbs no ledge; gated at 1.528.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

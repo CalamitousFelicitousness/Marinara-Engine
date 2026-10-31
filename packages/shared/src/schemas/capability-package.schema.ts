@@ -1475,68 +1475,68 @@ const capabilityPackageManifestBaseSchema = z
 //        field's `hideWhen` by a derived value, a condition's `pickable: false`, a track's `showWhenSet`,
 //        an item toggle's `onLabel` and `offLabel`, an item use's `title`, a derived value's `signed`,
 //        and creature traits to 1200.
-// 1.379-1.777: the 5e work (Ruleset Engine capabilities and combat AI), held until 5e lands; each
+// 1.391-1.789: the 5e work (Ruleset Engine capabilities and combat AI), held until 5e lands; each
 //        minor's keys are documented in docs/extending/writing-rulesets.md.
-// 1.778: which combat styles a ruleset's games may play (`combat.styles`): the New Game wizard and the
+// 1.379: which combat styles a ruleset's games may play (`combat.styles`): the New Game wizard and the
 //        game's settings offer only those, and a game saved on another plays the first one listed.
-//        Upstream's 1.379, numbered above the held 5e minors.
-// 1.779: what a ruleset's weights are counted in (`items.carry.unit`), said after every weight shown.
-// 1.780: a damage change only on a blow carrying given damage types (`onTypes`), and one that spends
+//        Upstream's 1.391, numbered above the held 5e minors.
+// 1.790: what a ruleset's weights are counted in (`items.carry.unit`), said after every weight shown.
+// 1.791: a damage change only on a blow carrying given damage types (`onTypes`), and one that spends
 //        its condition once it adds (`spentOnUse`).
-// 1.781: package-bound per-chat agent reference lorebook trigger resolution.
-// 1.782: independent browser audio players, shared manifest fetch and default music selection.
-// 1.783: fights for a symbol-pool ruleset (`combat.kind: "symbol-pool"`): attacks, saves, checks,
+// 1.380: package-bound per-chat agent reference lorebook trigger resolution.
+// 1.381: independent browser audio players, shared manifest fetch and default music selection.
+// 1.382: fights for a symbol-pool ruleset (`combat.kind: "symbol-pool"`): attacks, saves, checks,
 //        contests and initiative thrown in the ruleset's own symbol dice, a defense read as the
 //        difficulty dice, `combat.symbols` for the harm each net success adds, flat soak and the
 //        spends leftover symbols buy (harm, a critical, a condition, a track, boost or setback dice
 //        on the next roll), picked by the Engine and the AI for whichever side spends that symbol.
 //        A creature action's `upgrades` names its upgraded to-hit dice.
-// 1.784: fight health on a plain track that fills up to its maximum (`combat.health` or
+// 1.383: fight health on a plain track that fills up to its maximum (`combat.health` or
 //        `battle.health` naming a track with neither levels nor boxes): Genesys's Wounds, read as the
-//        room left above its value, damage adding points and a heal taking them off. Upstream's 1.383.
+//        room left above its value, damage adding points and a heal taking them off. Upstream's 1.395.
 // 1.384: animate a saved Global Gallery image through a saved video connection, without exposing its credentials.
 // 1.385: package clients save images through the Engine gallery's existing platform-aware helpers.
 // 1.386: the Home browser view's openConnection(connectionId), and /api/generate/raw's debugMode prompt logging.
-// 1.785: an attack list's `abilityChoices`: a value of a row's ability column that stands for the
+// 1.792: an attack list's `abilityChoices`: a value of a row's ability column that stands for the
 //        best of several abilities, for its damage too (5e's Finesse, the better of STR and DEX).
-// 1.786: a sheet migration's `setColumn`: one column set on every list row its `where` columns match,
+// 1.793: a sheet migration's `setColumn`: one column set on every list row its `where` columns match,
 //        as attack rows made before a weapon's ability choice existed.
-// 1.787: a bestiary creature's `inventory`: what it has on it as a fight begins, each line an item of
+// 1.794: a bestiary creature's `inventory`: what it has on it as a fight begins, each line an item of
 //        the ruleset's or a loot table's picks, `chance` in a hundred and `count` of it. It uses what it
 //        can (a sheet-backed one as a party member does; a plain stat block what is used up in the using
 //        and reads nothing of its user), and what it has left drops when it is beaten. The Game Master
 //        may give an opponent its own instead (`carrying`).
-// 1.788: a text field's or list column's `suggestions`: words offered as chips to pick, the field still
+// 1.795: a text field's or list column's `suggestions`: words offered as chips to pick, the field still
 //        typed in freely (a ranger's favored enemies).
-// 1.789: a text field's or list column's `pick`: how many of its `suggestions` its holder picks, read
+// 1.796: a text field's or list column's `pick`: how many of its `suggestions` its holder picks, read
 //        off the sheet (a ranger's favored enemies by level), shown as "choose N".
-// 1.790: a `beforeFight` entry that calls a creature, used outside a fight, keeps it on its user's
+// 1.797: a `beforeFight` entry that calls a creature, used outside a fight, keeps it on its user's
 //        sheet, and it joins every fight they are in until it is dismissed or killed (Find Familiar).
-// 1.791: a guided-builder rows step's `countFrom`: how many of the player's own rows it wants, read off
+// 1.798: a guided-builder rows step's `countFrom`: how many of the player's own rows it wants, read off
 //        the sheet (5e's hit point rolls, one per level after 1st). The step starts with that many and
 //        waits on that many whole rows, as its `min` does.
-// 1.792: an attack list's `toHit.sheetBonus`: a number off the sheet added to hit on its rows, or on
+// 1.799: an attack list's `toHit.sheetBonus`: a number off the sheet added to hit on its rows, or on
 //        only the rows whose `when` column holds a value (5e's Archery on ranged weapons).
-// 1.795: an encounter budget, `combat.threat.budget`, and a threat tier's `worth`: what a fight may hold
+// 1.802: an encounter budget, `combat.threat.budget`, and a threat tier's `worth`: what a fight may hold
 //        for a party by level and game difficulty. The Game Master is told it, and invented opponents
 //        are brought down a rung while a fight is over it.
-// 1.796: a rest's `clear.temp`: every pool's temporary points go as it ends (5e's temporary hit points
+// 1.803: a rest's `clear.temp`: every pool's temporary points go as it ends (5e's temporary hit points
 //        at a long rest).
-// 1.797: `combat.signatureAtTurnStart`: signature actions also bought as a foe's turn starts.
-// 1.799: a sheet list's `ritual`: a yes-or-no column whose ticked rows may be used outside a fight as a
+// 1.804: `combat.signatureAtTurnStart`: signature actions also bought as a foe's turn starts.
+// 1.806: a sheet list's `ritual`: a yes-or-no column whose ticked rows may be used outside a fight as a
 //        ritual, the use tag's ritual="yes", paying none of their pools (5e's ritual spells).
-// 1.800: `items.drawOnUse`: items of some categories or tags used while only carried, each put in hand
+// 1.807: `items.drawOnUse`: items of some categories or tags used while only carried, each put in hand
 //        as it is used by putting away the fewest other such items in its slots (5e's weapons).
-// 1.801: a sheet list's `ritualNeeds`: the entries a sheet must hold a row from to use its rows as
+// 1.808: a sheet list's `ritualNeeds`: the entries a sheet must hold a row from to use its rows as
 //        rituals (5e's Ritual Casting).
-// 1.802: a rest's `every`: the hours of the game's clock before it may be taken again (5e's one long
+// 1.809: a rest's `every`: the hours of the game's clock before it may be taken again (5e's one long
 //        rest in 24 hours).
-// 1.803: a ruleset's language packs: a catalog entry's `locales`, one `<id>-<version>.<lang>.json` per
+// 1.810: a ruleset's language packs: a catalog entry's `locales`, one `<id>-<version>.<lang>.json` per
 //        language, fetched only in the Engine's language; and a ruleset package file a player shares may
 //        carry `locales/<lang>.json`, of which an import keeps the Engine's language alone.
-// 1.804: an `ammoRider`'s `toHit`: what magic ammunition adds to the attack roll of the shot it rides
+// 1.811: an `ammoRider`'s `toHit`: what magic ammunition adds to the attack roll of the shot it rides
 //        (5e's Arrow +1).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 804 } as const);
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 811 } as const);
 
 const capabilityApiVersionSchema = z
   .object({
@@ -1982,7 +1982,7 @@ export const capabilityPackageManifestSchema = z
         });
       }
     }
-    // A ruleset package file's translations (1.803) ship beside its ruleset. Only a ruleset package's are:
+    // A ruleset package file's translations (1.810) ship beside its ruleset. Only a ruleset package's are:
     // another package's locales/ folder is its own business. The catalog never carries them inside the
     // file: its rulesets list language packs instead.
     if (
@@ -1990,18 +1990,18 @@ export const capabilityPackageManifestSchema = z
       manifest.contributions.assets.paths.some(isRulesetLocaleAssetPath)
     ) {
       const api = manifest.schemaVersion === 2 ? manifest.capabilityApi : null;
-      if (!api || api.major < 1 || (api.major === 1 && api.minor < 803)) {
+      if (!api || api.major < 1 || (api.major === 1 && api.minor < 810)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["contributions", "assets", "paths"],
           message:
-            "A ruleset file's translations (locales/<language>.json) require schemaVersion 2 and capabilityApi 1.803 or newer",
+            "A ruleset file's translations (locales/<language>.json) require schemaVersion 2 and capabilityApi 1.810 or newer",
         });
       }
     }
   });
 
-/** One language pack of a catalog ruleset (1.803): where it is, pinned by its sha256 and size, and the
+/** One language pack of a catalog ruleset (1.810): where it is, pinned by its sha256 and size, and the
  *  store card's name and description in its language. */
 const capabilityCatalogLocalePackSchema = z
   .object({
@@ -2035,7 +2035,7 @@ export const capabilityCatalogPackageSchema = z
       .strict(),
     iconUrl: z.string().url().optional(),
     documentationUrl: z.string().url().optional(),
-    /** A ruleset's language packs (1.803), by language: each `<id>-<version>.<lang>.json`, fetched only in
+    /** A ruleset's language packs (1.810), by language: each `<id>-<version>.<lang>.json`, fetched only in
      *  the Engine's language, with the store card's name and description in it. English is the ruleset. */
     locales: z
       .record(z.string(), capabilityCatalogLocalePackSchema)
@@ -2049,11 +2049,11 @@ export const capabilityCatalogPackageSchema = z
     if (!entry.locales) return;
     const { manifest } = entry;
     const api = manifest.schemaVersion === 2 ? manifest.capabilityApi : null;
-    if (!manifest.kind.includes("ruleset") || !api || api.major < 1 || (api.major === 1 && api.minor < 803)) {
+    if (!manifest.kind.includes("ruleset") || !api || api.major < 1 || (api.major === 1 && api.minor < 810)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["locales"],
-        message: "Language packs belong to a ruleset of schemaVersion 2 and capabilityApi 1.803 or newer",
+        message: "Language packs belong to a ruleset of schemaVersion 2 and capabilityApi 1.810 or newer",
       });
     }
     for (const [locale, pack] of Object.entries(entry.locales)) {

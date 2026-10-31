@@ -320,7 +320,7 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     ...(action.slaysOnFailedSave ? { slaysOnFailedSave: true as const } : {}),
     ...(action.slaysHealthAtMost !== undefined ? { slaysHealthAtMost: action.slaysHealthAtMost } : {}),
     ...(action.dropsOnFailedSave ? { dropsOnFailedSave: true as const } : {}),
-    // Never on the same creature again (1.661): Frightful Presence.
+    // Never on the same creature again (1.673): Frightful Presence.
     ...(action.oncePerTarget ? { oncePerTarget: { ...action.oncePerTarget } } : {}),
     ...(action.healsOnSlay && amountOf(action.healsOnSlay) ? { healsOnSlay: amountOf(action.healsOnSlay)! } : {}),
     // Who it fells on Held Ground stays down (1.323).
@@ -331,18 +331,18 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     ...(action.push !== undefined ? { push: action.push } : {}),
     ...(action.pull !== undefined ? { pull: action.pull } : {}),
     ...(action.onFell ? { onFell: structuredClone(action.onFell) } : {}),
-    // A roar louder each time (1.674).
+    // A roar louder each time (1.686).
     ...(action.byUse ? { byUse: [...action.byUse] } : {}),
-    // A Harpoon's contest (1.682).
+    // A Harpoon's contest (1.694).
     ...(action.contest ? { contest: structuredClone(action.contest) } : {}),
-    // Only on a target small enough (1.685).
+    // Only on a target small enough (1.697).
     ...(action.ridersIs ? { ridersIs: structuredClone(action.ridersIs) } : {}),
-    // Etherealness (1.672).
+    // Etherealness (1.684).
     ...(action.dismisses ? { dismisses: structuredClone(action.dismisses) } : {}),
     // What its attack is made with (1.189), so changes narrowed to an ability reach it.
     ...(action.ability ? { ability: action.ability } : {}),
     ...(action.reducesMax ? { reducesMax: { ...action.reducesMax } } : {}),
-    // On a called creature (1.573): Arcane Hand's fist, with no modifier and more for each slot.
+    // On a called creature (1.585): Arcane Hand's fist, with no modifier and more for each slot.
     ...(action.callerAdds === false ? { callerAdds: false as const } : {}),
     ...(action.perCallerStep && amountOf(action.perCallerStep)
       ? { perCallerStep: amountOf(action.perCallerStep)! }
@@ -377,7 +377,7 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
         }
       : {}),
     ...(action.self ? { self: true as const } : {}),
-    // Free, and only before its first attack of its own turn (1.593): Reckless.
+    // Free, and only before its first attack of its own turn (1.605): Reckless.
     ...(action.free ? { free: true as const } : {}),
     ...(action.beforeAttack ? { beforeAttack: true as const } : {}),
     // In the ruleset's distance, as push is (1.276): the encounter turns it into cells.
@@ -395,24 +395,24 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     ...(action.ground ? { ground: structuredClone(action.ground) } : {}),
     // Whoever it lands on walks toward it (1.326).
     ...(action.draws ? { draws: { ...action.draws } } : {}),
-    // Engulf and Whelm (1.390).
+    // Engulf and Whelm (1.402).
     ...(action.engulf ? { engulf: structuredClone(action.engulf) } : {}),
-    // Deadly Leap (1.712).
+    // Deadly Leap (1.724).
     ...(action.leapsOnto ? { leapsOnto: { ...action.leapsOnto } } : {}),
-    // Luring Song (1.714).
+    // Luring Song (1.726).
     ...(action.sustains ? { sustains: { budget: action.sustains.budget } } : {}),
-    // Aimed only at whoever is this, and what a sequence does once all of it hit (1.392).
+    // Aimed only at whoever is this, and what a sequence does once all of it hit (1.404).
     ...(action.targetTypes ? { targetTypes: structuredClone(action.targetTypes) } : {}),
     ...(action.allHit ? { allHit: structuredClone(action.allHit) } : {}),
     // The Hour Bell, and the Litany broken (1.327).
     ...(action.actedOnly ? { actedOnly: true as const } : {}),
     ...(action.brokenNextLair ? { brokenNextLair: action.brokenNextLair } : {}),
-    // The forms it changes into (1.379), found in the bestiary as the fight begins.
+    // The forms it changes into (1.391), found in the bestiary as the fight begins.
     ...(action.forms ? { forms: structuredClone(action.forms) } : {}),
     // Who it calls into the fight (1.325), found in the bestiary as the fight begins.
-    // A printed chance (1.428): a demon's summoning.
+    // A printed chance (1.440): a demon's summoning.
     ...(action.chance ? { chance: { ...action.chance } } : {}),
-    // Or its options, for rounds and bound to its caller (1.433): Summon Demon.
+    // Or its options, for rounds and bound to its caller (1.445): Summon Demon.
     ...(action.calls && (action.calls.options || (action.calls.creature && amountOf(action.calls.count)))
       ? {
           calls: {
@@ -424,7 +424,7 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
             ...(action.calls.cantCall ? { cantCall: true as const } : {}),
             ...(action.calls.dismissible ? { dismissible: structuredClone(action.calls.dismissible) } : {}),
             ...(action.calls.leash ? { leash: action.calls.leash } : {}),
-            // Set down within so far of it, seen (1.608): Animate Trees.
+            // Set down within so far of it, seen (1.620): Animate Trees.
             ...(action.calls.within ? { within: { ...action.calls.within } } : {}),
             ...(action.calls.onlyWhere ? { onlyWhere: structuredClone(action.calls.onlyWhere) } : {}),
             ...(action.calls.arrivesIn && amountOf(action.calls.arrivesIn)
@@ -432,7 +432,7 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
               : {}),
             ...(action.calls.atCorpse ? { atCorpse: structuredClone(action.calls.atCorpse) } : {}),
             ...(action.calls.atMost ? { atMost: action.calls.atMost } : {}),
-            // Commanded, with their caller's own attack (1.694): a solar's Flying Sword.
+            // Commanded, with their caller's own attack (1.706): a solar's Flying Sword.
             ...(action.calls.commandedWith ? { commandedWith: action.calls.commandedWith } : {}),
             ...(action.calls.commandedBy ? { commandedBy: { action: action.calls.commandedBy.action } } : {}),
             ...(action.calls.fromCaller ? { fromCaller: { action: action.calls.fromCaller.action } } : {}),
@@ -951,7 +951,7 @@ export function rulesetUnpricedLegendary(
   return { actions: bought };
 }
 
-/** A sequence's steps with some left out (1.630), a step made after another's hit still pointing at
+/** A sequence's steps with some left out (1.642), a step made after another's hit still pointing at
  *  that step's new place, and gone with it when it went. */
 export function rulesetKeptSteps<T extends { ifHit?: number }>(steps: readonly T[], keep: (step: T) => boolean): T[] {
   const places = new Map<number, number>();
@@ -966,7 +966,7 @@ export function rulesetKeptSteps<T extends { ifHit?: number }>(steps: readonly T
   return kept;
 }
 
-/** How many strikes a sequence step makes on average (1.630): its dice's average where it rolls. */
+/** How many strikes a sequence step makes on average (1.642): its dice's average where it rolls. */
 export function rulesetStepAverageTimes(step: { times: number; dice?: { count: number; sides: number } }): number {
   return step.dice ? (step.dice.count * (step.dice.sides + 1)) / 2 : step.times;
 }
@@ -995,7 +995,7 @@ function blockFromCreature(creature: RulesetCreature, budgets: ReadonlySet<strin
     ...(creature.sheet ? { sheet: structuredClone(creature.sheet) } : {}),
     ...(creature.spellcasting ? { spellcasting: structuredClone(creature.spellcasting) } : {}),
     ...(creature.stores ? { stores: structuredClone(creature.stores) } : {}),
-    // What it does as it dies (1.527), last among them and never on its menu.
+    // What it does as it dies (1.539), last among them and never on its menu.
     actions: [
       ...actions.filter((action): action is RulesetStatBlockAction => action !== null),
       ...(creature.onDeath ? [{ ...creatureAction(creature.onDeath), onDeath: true as const }] : []),
@@ -1038,7 +1038,7 @@ function blockFromCreature(creature: RulesetCreature, budgets: ReadonlySet<strin
     ...(creature.type !== undefined ? { type: creature.type } : {}),
     ...(creature.tags ? { tags: [...creature.tags] } : {}),
     ...(creature.alignment !== undefined ? { alignment: creature.alignment } : {}),
-    // How much thought it puts into a fight (1.748), and its nerve (1.749).
+    // How much thought it puts into a fight (1.760), and its nerve (1.761).
     ...(creature.mind !== undefined ? { mind: creature.mind } : {}),
     ...(creature.behavior ? { behavior: structuredClone(creature.behavior) } : {}),
     ...(creature.morale !== undefined ? { morale: creature.morale } : {}),
@@ -1434,7 +1434,7 @@ export function clampRulesetStatBlock(
     if (action.toHit !== undefined && action.toHit > toHitCap) {
       adjusted.push(`"${action.name}" now hits at ${toHitCap} instead of ${action.toHit}.`);
       action.toHit = toHitCap;
-      // Never more upgraded dice than it now throws (1.783).
+      // Never more upgraded dice than it now throws (1.382).
       if (action.upgrades !== undefined && action.upgrades > Math.max(0, toHitCap)) {
         action.upgrades = Math.max(0, toHitCap);
       }

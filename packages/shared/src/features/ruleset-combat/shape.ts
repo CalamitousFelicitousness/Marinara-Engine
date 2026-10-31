@@ -1,5 +1,5 @@
 /**
- * Shapes (Capability API 1.379): somebody changed into another creature's form while a condition
+ * Shapes (Capability API 1.391): somebody changed into another creature's form while a condition
  * with `shape` holds. 5e's Wild Shape, Polymorph, True Polymorph and Shapechange, a monster's Change
  * Shape. The form is built as the fight builds a creature of it, and its actions, defense, saves,
  * checks, speeds, senses, size and traits take the place of the holder's own; what the shape keeps
@@ -24,10 +24,10 @@ import {
 
 type ShapeRule = NonNullable<NonNullable<RulesetCombat["conditions"]>[number]["shape"]>;
 
-/** The id of the action that gives a shape up (1.379). */
+/** The id of the action that gives a shape up (1.391). */
 export const RULESET_SHAPE_REVERT_ID = "shape:revert";
 
-/** Whether the form `applies` carries may be taken by `target` (1.379): at or below what its sheet's
+/** Whether the form `applies` carries may be taken by `target` (1.391): at or below what its sheet's
  *  `targetLevel` reads, or a creature's own rank. Anything without a cap may. */
 export function rulesetFormAllowed(
   definition: RulesetDefinition,
@@ -54,7 +54,7 @@ export function rulesetFormAllowed(
 }
 
 /**
- * The saves and contest checks `target`'s sheet is proficient in (1.392), each with the ability it
+ * The saves and contest checks `target`'s sheet is proficient in (1.404), each with the ability it
  * reads and what its proficiency adds: a check by the skill its value reads. Nothing without a sheet.
  */
 function rulesetProficiencies(
@@ -88,8 +88,8 @@ function rulesetProficiencies(
   return { saves, checks };
 }
 
-/** Whether a shape's `keeps` names this action (1.379): by id, by entry (`"catalog/entry"`, or the
- *  entry's own id), or by its whole catalog (`"catalog/*"`, 1.422). */
+/** Whether a shape's `keeps` names this action (1.391): by id, by entry (`"catalog/entry"`, or the
+ *  entry's own id), or by its whole catalog (`"catalog/*"`, 1.434). */
 export function rulesetKeepsAction(keeps: ReadonlySet<string>, one: RulesetCombatAction): boolean {
   return (
     keeps.has(one.id) ||
@@ -137,7 +137,7 @@ export function rulesetTakeShape(
     else (was as Record<string, unknown>)[key] = structuredClone(target[key]);
   }
   // What it keeps of its own: actions by id or entry ("catalog/entry", or the entry's own id), or a
-  // whole catalog ("catalog/*", 1.422), saves and checks by id.
+  // whole catalog ("catalog/*", 1.434), saves and checks by id.
   const keeps = new Set(rule.keeps ?? []);
   const kept = target.actions.filter((one) => rulesetKeepsAction(keeps, one));
   const keptIds = new Set(kept.map((one) => one.id));
@@ -164,7 +164,7 @@ export function rulesetTakeShape(
   target.speed = built.speed;
   const pick = (from: Record<string, number> | undefined, ids: readonly string[] | undefined) =>
     Object.fromEntries(Object.entries(from ?? {}).filter(([id]) => ids?.includes(id)));
-  // Where the rule says so (1.391, 1.392), each save and check its holder is proficient in is the
+  // Where the rule says so (1.403, 1.404), each save and check its holder is proficient in is the
   // better of the form's own and the form's ability with the holder's proficiency.
   const proficient = rule.betterOf ? rulesetProficiencies(definition, target) : undefined;
   const better = (
@@ -224,7 +224,7 @@ export function rulesetTakeShape(
   return target.shape;
 }
 
-/** `target` gives its shape up (1.379): everything it took the place of comes back. */
+/** `target` gives its shape up (1.391): everything it took the place of comes back. */
 export function rulesetLeaveShape(target: RulesetCombatant): RulesetShaped | null {
   const shape = target.shape;
   if (!shape) return null;

@@ -1,8 +1,8 @@
 /**
- * The encounter budget (Capability API 1.795).
+ * The encounter budget (Capability API 1.802).
  *
  *   - Schema and gate: a threat tier's `worth` and `combat.threat.budget`, its level fields, one worth
- *     a step on every row, `forGame` naming its steps; gated at 1.795.
+ *     a step on every row, `forGame` naming its steps; gated at 1.802.
  *   - What a party may meet: each member's row by level, the step its game difficulty plays at (in
  *     order, or `forGame`'s), one step higher with a boss; a crowd row up for a small party.
  *   - A fight over it: invented opponents come down a rung at a time, the one worth the most first; a
@@ -327,7 +327,7 @@ try {
     /Budget:|worth \d|fits it at/,
   );
 
-  // ── The 1.795 gate ──
+  // ── The 1.802 gate ──
   const manifest = (minor: number) => ({
     schemaVersion: 2,
     capabilityApi: { major: 1, minor },
@@ -347,16 +347,16 @@ try {
   const gate = /encounter budget.*capabilityApi 1\.795/;
   const issue = (minor: number, one: Record<string, any>) =>
     getCapabilityPackageInstallIssue(manifest(minor) as any, one);
-  assert.match(issue(794, doc()) ?? "", gate);
-  assert.equal(issue(795, doc()), null);
+  assert.match(issue(801, doc()) ?? "", gate);
+  assert.equal(issue(802, doc()), null);
   assert.match(
     issue(
-      794,
+      801,
       doc((one) => delete one.combat.threat.budget),
     ) ?? "",
     gate,
   );
-  assert.doesNotMatch(issue(794, JSON.parse(text)) ?? "", gate);
+  assert.doesNotMatch(issue(801, JSON.parse(text)) ?? "", gate);
 
   // A bestiary creature far beyond the party sends lesser ones of its kind that fit, and stays out of
   // the fight (Alyssa 2026-10-26: a CR 21 lich for a level 4 party).

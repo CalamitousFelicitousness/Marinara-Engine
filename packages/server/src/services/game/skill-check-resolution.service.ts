@@ -212,7 +212,7 @@ export interface SkillCheckRequest {
   who?: string;
   /** `with=`: roll the skill or save with another ability than its own. Ruleset games only. */
   withAbility?: string;
-  /** `for=`: what the check is made for (1.739), "climb" or "swim", for a change narrowed to it. */
+  /** `for=`: what the check is made for (1.751), "climb" or "swim", for a change narrowed to it. */
   purpose?: string;
   /** `threshold=`: the per-die target a pool check counts with, where the ruleset lets it move. */
   threshold?: number;
@@ -816,7 +816,7 @@ export function rulesetCheckTargetFor(
   skill: string,
   who?: string,
   withAbility?: string,
-  /** What it is made for (1.739), read without case. */
+  /** What it is made for (1.751), read without case. */
   purpose?: string,
 ): RulesetCheckTarget | null {
   const key = rulesetRollerKey(ruleset, who);
@@ -921,7 +921,7 @@ export function rulesetCheckEffectsFor(
   const build = key ? ruleset.builds.get(key) : undefined;
   if (!key || !build) return { modifiers: [], advantage: [], disadvantage: [], fails: [] };
   const sources = rulesetCheckSources(ruleset.definition, build, ruleset.live[key], ruleset.items.get(key));
-  // Whether they add their whole proficiency to its skill (1.416), for a change narrowed to that.
+  // Whether they add their whole proficiency to its skill (1.428), for a change narrowed to that.
   const tier = target?.type === "skill" ? ruleset.sheets.get(key)?.skillTiers[target.id] : undefined;
   return rulesetCheckEffects(
     [...sources, ...applied],
@@ -978,7 +978,7 @@ export function rulesetUntrainedFor(
   return entry ? rulesetUntrainedRule(definition, entry) : null;
 }
 
-/** The floors under this check (1.405), read off the roller's sheet: the highest face any of them
+/** The floors under this check (1.417), read off the roller's sheet: the highest face any of them
  *  lifts a die to, and the highest total. A `proficient` one counts only on a skill the roller adds
  *  their whole proficiency to. */
 export function rulesetCheckFloorsFor(
@@ -1276,7 +1276,7 @@ function resolveRulesetSkillCheck(
     : undefined;
   const applied = {
     ...(swapped ? { withAbility: swapped } : {}),
-    // What it was made for (1.739), kept on the record so a reload reads the same changes.
+    // What it was made for (1.751), kept on the record so a reload reads the same changes.
     ...(target?.purpose ? { purpose: target.purpose } : {}),
     // Said even on a summed check, where it is also inside `modifier`: "-2 because you are Wounded"
     // is not something a player can read out of one number.
@@ -1472,7 +1472,7 @@ function resolveRulesetSkillCheck(
   const summed = modifier + penalty + adjust + boost;
   // The Game Master's `mode=` and what leans the character's own roll, cancelling out together.
   const mode = rulesetCheckRollMode(request, effects);
-  // Floors under the check (1.405): Reliable Talent's 10, Indomitable Might's Strength score.
+  // Floors under the check (1.417): Reliable Talent's 10, Indomitable Might's Strength score.
   const floors = isSave ? { from: [] } : rulesetCheckFloorsFor(ruleset, request, target, effects);
   const rolled = rollDiceSumCheck(
     definition,

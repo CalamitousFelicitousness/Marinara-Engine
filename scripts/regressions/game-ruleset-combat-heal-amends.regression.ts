@@ -1,5 +1,5 @@
 /**
- * Healing an amend adds (Capability API 1.408).
+ * Healing an amend adds (Capability API 1.420).
  *
  *   - Disciple of Life: every creature a spell of 1st level or higher heals regains 2 + its level more;
  *     a cantrip's healing is not changed.
@@ -38,7 +38,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 408);
+  assert.ok(supportedCapabilityApi.minor >= 420);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -274,7 +274,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose entries amend the healing of others (healAdd) or heal their user as they heal somebody else (healsSelf) requires schemaVersion 2 and capabilityApi 1.408 or newer";
+      "A ruleset whose entries amend the healing of others (healAdd) or heal their user as they heal somebody else (healsSelf) requires schemaVersion 2 and capabilityApi 1.420 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -288,13 +288,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(407) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(408) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(407) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(419) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(420) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(419) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Heal amends: Disciple of Life adds 2 + the level to every creature a 1st-level or higher spell heals; Blessed Healer heals its caster 2 + the level once when it heals somebody else; gated at 1.408.",
+    "Heal amends: Disciple of Life adds 2 + the level to every creature a 1st-level or higher spell heals; Blessed Healer heals its caster 2 + the level once when it heals somebody else; gated at 1.420.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

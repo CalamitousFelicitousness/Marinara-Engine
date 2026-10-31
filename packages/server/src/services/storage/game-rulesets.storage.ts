@@ -15,7 +15,7 @@
 // map is part of the version: the same ruleset text with other catalogs is another version.
 //
 // Its translation is kept the same way, `{ <language>: <sha256> }`, but is display only and so no part of
-// the version: the import keeps the one in the Engine's language (1.803), and importing the same version
+// the version: the import keeps the one in the Engine's language (1.810), and importing the same version
 // again in another language replaces it.
 // ──────────────────────────────────────────────
 
@@ -54,7 +54,7 @@ export interface GameRulesetRow {
   definition: string;
   /** `{ <catalog id>: <sha256> }` as JSON, for a package file's catalog files; null otherwise. */
   catalogs: string | null;
-  /** `{ <language>: <sha256> }` as JSON, for the translation kept of a package file's (1.803); null (or
+  /** `{ <language>: <sha256> }` as JSON, for the translation kept of a package file's (1.810); null (or
    *  absent, on a row stored before them) otherwise. */
   locales?: string | null;
   createdAt: string;
@@ -72,7 +72,7 @@ export interface PutGameRulesetInput {
   /** A package file's catalog files, by catalog id, exactly as they arrived (RM). Only the package import
    *  sends them; every other import keeps its catalogs inline. */
   catalogs?: Record<string, string>;
-  /** The translation kept of a package file's (1.803), by language: the JSON of the strings it translates.
+  /** The translation kept of a package file's (1.810), by language: the JSON of the strings it translates.
    *  Given, it replaces what the version kept (`{}` keeps none); absent, that stays. */
   locales?: Record<string, string>;
 }
@@ -234,7 +234,7 @@ function assertStorableRuleset(input: PutGameRulesetInput): void {
       entries: [...(entriesById[catalog.id] ?? catalog.entries ?? [])],
     })),
   };
-  // The pools hang-ons name off list rows, now every catalog's rows are here (1.392).
+  // The pools hang-ons name off list rows, now every catalog's rows are here (1.404).
   const rowIssues = rulesetHangsOnRowIssues(complete);
   if (rowIssues.length) throw new RulesetRefusedError(`The ruleset is not usable: ${rowIssues.slice(0, 5).join("; ")}`);
   for (const catalog of complete.catalogs ?? []) {
@@ -413,7 +413,7 @@ export function createGameRulesetsStorage(db: DB) {
       return text !== undefined && sha256Of(text) === sha256 ? { sha256, text } : null;
     },
 
-    /** A stored version's translation into one language (1.803), checked against the sha256 its row
+    /** A stored version's translation into one language (1.810), checked against the sha256 its row
      *  names; null when the version has none in that language. */
     async localeText(
       rulesetId: string,

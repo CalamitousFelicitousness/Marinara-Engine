@@ -4,7 +4,7 @@ import { useRulesetStrings } from "./use-capability-packages";
 import { rulesetTextLookup, type RulesetText } from "../lib/ruleset-text";
 
 /**
- * A ruleset's own words in the player's language (1.803), as the fight screen reads them: its
+ * A ruleset's own words in the player's language (1.810), as the fight screen reads them: its
  * translation for the language on screen, or every word as written. Only what is shown goes through
  * it; ids, and what goes back to the rules or onto a sheet, stay the ruleset's own.
  */

@@ -1,9 +1,9 @@
 /**
- * Putting on one of an entry's applies, picked as it is used (Capability API 1.435).
+ * Putting on one of an entry's applies, picked as it is used (Capability API 1.447).
  *
  *   - Primeval Awareness: its one mile, or six in favored terrain, offered as modes; the one picked
  *     is put on alone, and with none picked the first.
- *   - Nine to pick from (1.456): Bestow Curse's curses on one entry; more than six without
+ *   - Nine to pick from (1.468): Bestow Curse's curses on one entry; more than six without
  *     `appliesOneOf` refused.
  *   - Refusals and the install gate.
  */
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 435);
+  assert.ok(supportedCapabilityApi.minor >= 447);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -156,7 +156,7 @@ try {
     assert.deepEqual(holds(definition, undefined), ["primeval"], "none picked: the first");
   }
 
-  // ── Nine to pick from (1.456) ──
+  // ── Nine to pick from (1.468) ──
   const nine = {
     applies: [
       { condition: "primeval", duration: { rounds: 10 } },
@@ -178,7 +178,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose entries put on one of their applies, picked as they are used (appliesOneOf), requires schemaVersion 2 and capabilityApi 1.435 or newer";
+      "A ruleset whose entries put on one of their applies, picked as they are used (appliesOneOf), requires schemaVersion 2 and capabilityApi 1.447 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -192,18 +192,18 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(434) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(435) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(434) as never, fiveE({ appliesOneOf: undefined })), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(446) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(447) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(446) as never, fiveE({ appliesOneOf: undefined })), gate);
     const many =
-      "A ruleset whose entries pick one of more than six conditions (appliesOneOf) requires schemaVersion 2 and capabilityApi 1.456 or newer";
-    assert.equal(getCapabilityPackageInstallIssue(manifest(455) as never, fiveE(nine)), many);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(456) as never, fiveE(nine)), many);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(455) as never, fiveE()), many);
+      "A ruleset whose entries pick one of more than six conditions (appliesOneOf) requires schemaVersion 2 and capabilityApi 1.468 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(467) as never, fiveE(nine)), many);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(468) as never, fiveE(nine)), many);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(467) as never, fiveE()), many);
   }
 
   console.log(
-    "Applies one of: Primeval Awareness offers its one mile or six as modes and puts on only the one picked, the first when none is; nine on one entry; gated at 1.435 and 1.456.",
+    "Applies one of: Primeval Awareness offers its one mile or six as modes and puts on only the one picked, the first when none is; nine on one entry; gated at 1.447 and 1.468.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -1,5 +1,5 @@
 /**
- * Actions only in a given shape (Capability API 1.534).
+ * Actions only in a given shape (Capability API 1.546).
  *
  *   - A wereboar's Charge `"inShape": ["creatures/boar", "creatures/hybrid"]` is on its menu only in
  *     one of those forms; its Spear `"inShape": ["own"]` only in its own; its Tusks in any.
@@ -28,7 +28,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 534);
+  assert.ok(supportedCapabilityApi.minor >= 546);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -108,7 +108,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with creature actions only in a given shape (inShape) requires schemaVersion 2 and capabilityApi 1.534 or newer";
+      "A ruleset with creature actions only in a given shape (inShape) requires schemaVersion 2 and capabilityApi 1.546 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -122,12 +122,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(533) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(534) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(545) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(546) as never, fiveE()), gate);
   }
 
   console.log(
-    "In shape: a wereboar charges only as a boar or hybrid, spears only in its own shape, gores in any; refusals; gated at 1.534.",
+    "In shape: a wereboar charges only as a boar or hybrid, spears only in its own shape, gores in any; refusals; gated at 1.546.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

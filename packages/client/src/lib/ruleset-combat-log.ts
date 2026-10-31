@@ -51,7 +51,7 @@ export interface RulesetCombatNames {
   distance: (cells: number) => string;
   /** A drop of so many levels of the board in the ruleset's own distance (combat C6b): "10 ft". */
   height: (levels: number) => string;
-  /** One of a symbol pool's symbols (1.783), by id. */
+  /** One of a symbol pool's symbols (1.382), by id. */
   symbol?: (id: string) => string;
   /** So many of a live pool, by what one of it is called (1.378): "1 1st-level slot", "2 1st-level
    *  slots". Undefined for a pool that names no unit. */
@@ -86,7 +86,7 @@ export function rulesetCombatNames(
   definition: RulesetDefinition,
   view: DirectedRulesetView,
   t: TFunction,
-  /** The ruleset's own words in the player's language (1.803). */
+  /** The ruleset's own words in the player's language (1.810). */
   text: (english: string) => string = (english) => english,
 ): RulesetCombatNames {
   const combatants = new Map(view.combatants.map((combatant) => [combatant.id, combatant.name]));
@@ -233,7 +233,7 @@ function symbolsText(symbols: Record<string, number>, t: TFunction, symbolName: 
   return named.length > 0 ? named.join(", ") : (t("game.combat.ruleset.roll.noSymbols") as string);
 }
 
-/** A symbol throw (1.783), for a `symbol-pool` fight: the symbols left after cancelling, from how
+/** A symbol throw (1.382), for a `symbol-pool` fight: the symbols left after cancelling, from how
  *  many of the thrower's own dice (how many upgraded, the boost and setback dice, and what made them
  *  up). What it was thrown against is the line's to say. */
 export function rulesetSymbolRollText(
@@ -422,7 +422,7 @@ export function rulesetCombatEventLine(
       return key("turn", { actor: names.combatant(event.actorId) });
     case "attack": {
       const named = bonusNamer(names, t);
-      // A symbol throw carries its difficulty dice with it (1.783).
+      // A symbol throw carries its difficulty dice with it (1.382).
       if (event.pool?.symbols) {
         return key(event.outcome === "miss" ? "attackSymbolMiss" : "attackSymbolHit", {
           actor: names.combatant(event.actorId),
@@ -567,9 +567,9 @@ export function rulesetCombatEventLine(
         .filter(Boolean)
         .join(" ");
     case "skip":
-      // Not commanded by its caller (1.545).
+      // Not commanded by its caller (1.557).
       if (event.reason === "uncommanded") return key("skipUncommanded", { actor: names.combatant(event.actorId) });
-      // Under nobody's control (1.602): it only walks toward its caller.
+      // Under nobody's control (1.614): it only walks toward its caller.
       if (event.reason === "wild") return key("skipWild", { actor: names.combatant(event.actorId) });
       return key("skipDazed", { actor: names.combatant(event.actorId) });
     case "heal":
@@ -758,7 +758,7 @@ export function rulesetCombatEventLine(
             label: event.label,
           })
         : key("left", { actor: names.combatant(event.actorId), label: event.label });
-    // How a teleport out of the fight went (1.657).
+    // How a teleport out of the fight went (1.669).
     case "teleportRoll":
       return key(
         event.outcome === "mishap"
@@ -772,20 +772,20 @@ export function rulesetCombatEventLine(
       );
     case "returned":
       return key(event.gone ? "returnedGone" : "returned", { target: names.combatant(event.targetId) });
-    // Called creatures come after their caller's turns (1.601): Children of the Night's.
+    // Called creatures come after their caller's turns (1.613): Children of the Night's.
     case "arrived":
       return key("arrived", {
         actor: names.combatant(event.actorId),
         names: event.ids.map((id) => names.combatant(id)).join(", "),
       });
-    // What a creature does as it dies (1.527): a mephit's Death Burst.
+    // What a creature does as it dies (1.539): a mephit's Death Burst.
     case "turnRoll":
       return key(event.roll >= event.atLeast ? "turnRollMet" : "turnRollMissed", {
         actor: names.combatant(event.actorId),
         roll: event.roll,
         conditions: event.conditions.map((one) => names.condition(one)).join(", "),
       });
-    // A weapon corroded on what it hit (1.538).
+    // A weapon corroded on what it hit (1.550).
     case "corroded":
       return key(event.ammunition ? "corrodedAmmo" : event.destroyed ? "corrodedDestroyed" : "corroded", {
         actor: names.combatant(event.actorId),
@@ -793,7 +793,7 @@ export function rulesetCombatEventLine(
         label: event.label,
         penalty: event.penalty,
       });
-    // A hydra's heads (1.537).
+    // A hydra's heads (1.549).
     case "headLost":
       return key("headLost", { actor: names.combatant(event.actorId), left: event.left });
     case "headsGrow":
@@ -810,10 +810,10 @@ export function rulesetCombatEventLine(
       });
     case "deathBurst":
       return key("deathBurst", { actor: names.combatant(event.actorId), label: event.label });
-    // Another use's effect beside the one used (1.522): Thunderclap with Lightning Strike.
+    // Another use's effect beside the one used (1.534): Thunderclap with Lightning Strike.
     case "alongside":
       return key("alongside", { actor: names.combatant(event.actorId), label: event.label, to: event.to });
-    // A sequence's rolled strikes (1.630): a violet fungus's 1d4 touches.
+    // A sequence's rolled strikes (1.642): a violet fungus's 1d4 touches.
     case "strikesRolled":
       return key("strikesRolled", {
         actor: names.combatant(event.actorId),
@@ -821,7 +821,7 @@ export function rulesetCombatEventLine(
         dice: event.dice,
         count: event.count,
       });
-    // A table rolled as something was used (1.546): a Wand of Wonder's d100.
+    // A table rolled as something was used (1.558): a Wand of Wonder's d100.
     case "rolledTable":
       return key("rolledTable", {
         actor: names.combatant(event.actorId),
@@ -830,10 +830,10 @@ export function rulesetCombatEventLine(
         of: event.of,
         result: event.result,
       });
-    // Set aside by a zone (1.520): Antimagic Field's summons.
+    // Set aside by a zone (1.532): Antimagic Field's summons.
     case "setAside":
       return key("setAside", { target: names.combatant(event.targetId), label: event.label });
-    // Stored to be cast later (1.511): a Ring of Spell Storing's.
+    // Stored to be cast later (1.523): a Ring of Spell Storing's.
     case "stored":
       return key("stored", {
         actor: names.combatant(event.actorId),
@@ -841,7 +841,7 @@ export function rulesetCombatEventLine(
         by: event.by,
         level: event.level,
       });
-    // Turned back at its user (1.510): a Ring of Spell Turning's.
+    // Turned back at its user (1.522): a Ring of Spell Turning's.
     case "turnedBack":
       return key("turnedBack", {
         target: names.combatant(event.targetId),
@@ -849,7 +849,7 @@ export function rulesetCombatEventLine(
         label: event.label,
         by: event.by,
       });
-    // A foe's entry taken in by its only target (1.509): a Rod of Absorption's.
+    // A foe's entry taken in by its only target (1.521): a Rod of Absorption's.
     case "absorbed":
       return key(event.charges ? "absorbedCharges" : "absorbed", {
         target: names.combatant(event.targetId),
@@ -860,7 +860,7 @@ export function rulesetCombatEventLine(
       });
     // A check made to end a condition (1.313): Maze's way out.
     case "checkEnded":
-      // For somebody else (1.505): a creature on fire doused by a friend.
+      // For somebody else (1.517): a creature on fire doused by a friend.
       if (event.holderId)
         return key(event.success ? "checkEndedFor" : "checkEndedForFailed", {
           actor: names.combatant(event.actorId),
@@ -908,21 +908,21 @@ export function rulesetCombatEventLine(
       return key(`compelled${event.does[0]!.toUpperCase()}${event.does.slice(1)}`, values);
     }
     case "split":
-      // A creature split in two (1.462): a Black Pudding.
+      // A creature split in two (1.474): a Black Pudding.
       return key("split", {
         actor: names.combatant(event.actorId),
         names: event.ids.map((id) => names.combatant(id)).join(", "),
         health: event.health,
       });
     case "raisedMax":
-      // A health maximum raised (1.460): Aid.
+      // A health maximum raised (1.472): Aid.
       return key("raisedMax", {
         target: names.combatant(event.targetId),
         condition: names.condition(event.condition),
         amount: event.amount,
       });
     case "ray":
-      // A ray rolled for one target (1.455): Prismatic Spray.
+      // A ray rolled for one target (1.467): Prismatic Spray.
       return key("ray", {
         actor: names.combatant(event.actorId),
         target: names.combatant(event.targetId),
@@ -931,20 +931,20 @@ export function rulesetCombatEventLine(
         roll: event.roll,
       });
     case "steered":
-      // Holders of a condition steered (1.451): Compulsion.
+      // Holders of a condition steered (1.463): Compulsion.
       return key("steered", {
         actor: names.combatant(event.actorId),
         label: event.label,
         targets: event.targetIds.map((id) => names.combatant(id)).join(", "),
       });
     case "wasted":
-      // A turn's budget lost to a condition (1.450): Bestow Curse.
+      // A turn's budget lost to a condition (1.462): Bestow Curse.
       return key("wasted", {
         actor: names.combatant(event.actorId),
         condition: names.condition(event.condition),
         budget: event.label,
       });
-    // What a contest won took away (1.655): Telekinesis on a held object.
+    // What a contest won took away (1.667): Telekinesis on a held object.
     case "takenAway":
       return key("takenAway", {
         actor: names.combatant(event.actorId),
@@ -988,7 +988,7 @@ export function rulesetCombatEventLine(
       });
     case "resized":
       return key("resized", { target: names.combatant(event.targetId), size: event.label });
-    // Struck at to cut it away (1.518): a net.
+    // Struck at to cut it away (1.530): a net.
     case "cut":
       return key(event.outcome === "miss" ? "cutMiss" : event.freed ? "cutFreed" : "cut", {
         actor: names.combatant(event.actorId),
@@ -1042,24 +1042,24 @@ export function rulesetCombatEventLine(
     // Drawn toward whoever spoke to them (1.326): Whisper a Name.
     case "drawn":
       return key("drawn", { actor: names.combatant(event.actorId), target: names.combatant(event.targetId) });
-    // What was stored cast by itself at its moment (1.556): Contingency.
+    // What was stored cast by itself at its moment (1.568): Contingency.
     case "storedCast":
       return key("storedCast", {
         actor: names.combatant(event.actorId),
         target: names.combatant(event.targetId),
         label: event.label,
       });
-    // An image passed through (1.555): Mislead's double.
+    // An image passed through (1.567): Mislead's double.
     case "seenThrough":
       return key("seenThrough", {
         actor: names.combatant(event.actorId),
         target: names.combatant(event.targetId),
         label: event.label,
       });
-    // Lifted by a condition they now hold (1.553): Reverse Gravity.
+    // Lifted by a condition they now hold (1.565): Reverse Gravity.
     case "lifted":
       return key("lifted", { target: names.combatant(event.targetId), levels: event.to });
-    // Moved where whoever won them over picked (1.552): Telekinesis.
+    // Moved where whoever won them over picked (1.564): Telekinesis.
     case "carried":
       return key(event.rises ? "carriedUp" : "carried", {
         label: event.label,
@@ -1086,20 +1086,20 @@ export function rulesetCombatEventLine(
           : key(event.short.why === "full" ? "calledShortFull" : "calledShortRoom", { count: event.short.count });
       return `${said} ${why}`;
     }
-    // Health regained as a turn starts (1.383): Regeneration, Survivor.
-    // Taken inside somebody, or let out beside them (1.390).
+    // Health regained as a turn starts (1.395): Regeneration, Survivor.
+    // Taken inside somebody, or let out beside them (1.402).
     case "inside":
       return key(event.out ? "letOut" : "inside", {
         target: names.combatant(event.targetId),
         holder: names.combatant(event.holderId),
       });
-    // Holding their breath under water (1.485), or out of it.
+    // Holding their breath under water (1.497), or out of it.
     case "breath":
       return key(event.held > 0 ? "breathHeld" : event.lasts > 0 ? "breathGone" : "breathOut", {
         actor: names.combatant(event.actorId),
         count: event.held > 0 ? event.held : event.lasts,
       });
-    // Up on a mount, down off it, or thrown (1.483).
+    // Up on a mount, down off it, or thrown (1.495).
     case "mount":
       return key(event.off ? (event.fell ? "thrown" : "dismounted") : "mounted", {
         rider: names.combatant(event.riderId),
@@ -1110,20 +1110,20 @@ export function rulesetCombatEventLine(
         actor: names.combatant(event.actorId),
         amount: event.amount,
       });
-    // Called creatures sent away (1.381): Conjure Animals' minute up, or its concentration broken.
+    // Called creatures sent away (1.393): Conjure Animals' minute up, or its concentration broken.
     case "sentAway":
       return key("sentAway", {
         actor: names.combatant(event.actorId),
         names: event.ids.map((id) => names.combatant(id)).join(", "),
       });
-    // Called creatures turning on their caller's side (1.525): Conjure Elemental's, concentration broken.
-    // An item spent for good as what it called dies (1.599): a Ring of Djinni Summoning.
+    // Called creatures turning on their caller's side (1.537): Conjure Elemental's, concentration broken.
+    // An item spent for good as what it called dies (1.611): a Ring of Djinni Summoning.
     case "itemSpent":
       return key("itemSpent", { actor: names.combatant(event.actorId), label: event.label });
-    // A missile caught and kept (1.613): Gloves of Missile Snaring.
+    // A missile caught and kept (1.625): Gloves of Missile Snaring.
     case "missileKept":
       return key("missileKept", { actor: names.combatant(event.actorId), label: event.label });
-    // An item backfiring on its user (1.617): a Horn of Blasting exploding.
+    // An item backfiring on its user (1.629): a Horn of Blasting exploding.
     case "backfired":
       return key(event.destroyed ? "backfiredDestroyed" : "backfired", {
         actor: names.combatant(event.actorId),
@@ -1135,15 +1135,15 @@ export function rulesetCombatEventLine(
         actor: names.combatant(event.actorId),
         names: event.ids.map((id) => names.combatant(id)).join(", "),
       });
-    // A shape taken, given up or refused (1.379): Wild Shape, Polymorph.
+    // A shape taken, given up or refused (1.391): Wild Shape, Polymorph.
     case "shaped":
       return key(event.refused ? "shapeRefused" : event.gone ? "shapeGone" : "shaped", {
         actor: names.combatant(event.targetId),
         form: event.form,
       });
-    // Hanging on at 1 (1.320): the Hourglass; with no count of uses (1.387), Undead Fortitude.
+    // Hanging on at 1 (1.320): the Hourglass; with no count of uses (1.399), Undead Fortitude.
     case "hangsOn":
-      // Spared being slain outright (1.583): Death Ward.
+      // Spared being slain outright (1.595): Death Ward.
       if (event.outright)
         return key(event.label ? "hangsOnOutrightNamed" : "hangsOnOutright", {
           actor: names.combatant(event.actorId),
@@ -1224,7 +1224,7 @@ export function rulesetCombatEventLine(
           health: event.health,
         },
       );
-    // Taken by a carapace (1.710).
+    // Taken by a carapace (1.722).
     case "reflected":
       return key(event.back ? "reflectedBack" : "reflected", {
         target: names.combatant(event.targetId),
@@ -1233,13 +1233,13 @@ export function rulesetCombatEventLine(
         by: event.by,
         roll: event.roll,
       });
-    // Items made by a cast (1.708).
+    // Items made by a cast (1.720).
     case "itemsMade":
       return key("itemsMade", { actor: names.combatant(event.actorId), label: event.label, count: event.count });
-    // What was made vanishing as its time runs out (1.747).
+    // What was made vanishing as its time runs out (1.759).
     case "itemsVanished":
       return key("itemsVanished", { actor: names.combatant(event.actorId), label: event.label, count: event.count });
-    // Losing heart (1.749), and getting away once broken: what set it off first (re-test 14).
+    // Losing heart (1.761), and getting away once broken: what set it off first (re-test 14).
     case "moraleCheck":
       return key(`moraleCheck.${keySegment(event.trigger)}`, { actor: names.combatant(event.actorId) });
     // A temperament turning (combat AI T7), and a territorial one keeping its ground (T4).
@@ -1258,7 +1258,7 @@ export function rulesetCombatEventLine(
       );
     case "fled":
       return key("fled", { actor: names.combatant(event.actorId) });
-    // Knocked out by a pulled blow (1.707).
+    // Knocked out by a pulled blow (1.719).
     case "knockedOut":
       return key("knockedOut", { actor: names.combatant(event.actorId), source: names.combatant(event.sourceId) });
     case "pushBraced":
@@ -1268,8 +1268,8 @@ export function rulesetCombatEventLine(
         distance: names.distance(event.cells),
       });
     case "pushed":
-      // And moved with them (1.585): the Forceful Hand.
-      // Or pulled in (1.662): a balor's whip.
+      // And moved with them (1.597): the Forceful Hand.
+      // Or pulled in (1.674): a balor's whip.
       return key(event.pulled ? "pulled" : event.followed ? "pushedFollowed" : "pushed", {
         actor: names.combatant(event.actorId),
         target: names.combatant(event.targetId),
@@ -1278,7 +1278,7 @@ export function rulesetCombatEventLine(
         y: event.to.y,
       });
     case "teleported":
-      // Kept in by a zone, its save failed (1.590).
+      // Kept in by a zone, its save failed (1.602).
       if (event.heldIn)
         return key("teleportHeld", { actor: names.combatant(event.actorId), label: event.label, zone: event.heldIn });
       return event.by
@@ -1374,7 +1374,7 @@ export function rulesetCombatEventLine(
           label: event.label,
         });
       }
-      // A hidden one found (1.442).
+      // A hidden one found (1.454).
       if (event.outcome === "found") {
         return key("zoneFound", {
           actor: names.combatant(event.actorId),
@@ -1382,7 +1382,7 @@ export function rulesetCombatEventLine(
           target: names.combatant(event.targetId ?? ""),
         });
       }
-      // A layered wall's layer destroyed, or holding (1.477), and each layer crossed.
+      // A layered wall's layer destroyed, or holding (1.489), and each layer crossed.
       if (event.outcome === "layer-gone" || event.outcome === "layer-held") {
         return key(event.outcome === "layer-gone" ? "zoneLayerGone" : "zoneLayerHeld", {
           actor: names.combatant(event.actorId),
@@ -1409,7 +1409,7 @@ export function rulesetCombatEventLine(
       if (event.outcome === "turned") {
         return key("zoneTurned", { actor: names.combatant(event.actorId), label: event.label });
       }
-      // A trap disarmed, or not (1.656), and the check it was tried with.
+      // A trap disarmed, or not (1.668), and the check it was tried with.
       if (event.outcome === "disarmed" || event.outcome === "disarm-failed") {
         return key(event.outcome === "disarmed" ? "zoneDisarmed" : "zoneDisarmFailed", {
           actor: names.combatant(event.actorId),
@@ -1418,14 +1418,14 @@ export function rulesetCombatEventLine(
           roll: event.check ? checkRollText(event.check, names, t) : "",
         });
       }
-      // Closed by its caster, and widened (1.624): an Eversmoking Bottle.
+      // Closed by its caster, and widened (1.636): an Eversmoking Bottle.
       if (event.outcome === "closed" || event.outcome === "spread") {
         return key(event.outcome === "closed" ? "zoneClosed" : "zoneSpread", {
           actor: names.combatant(event.actorId),
           label: event.label,
         });
       }
-      // On to its next stage (1.544).
+      // On to its next stage (1.556).
       if (event.outcome === "stage") {
         return key("zoneStage", {
           actor: names.combatant(event.actorId),
@@ -1463,7 +1463,7 @@ export function rulesetCombatEventLine(
             label: event.label,
           });
     case "casting": {
-      // A cast taking rounds (1.448).
+      // A cast taking rounds (1.460).
       const said = { actor: names.combatant(event.actorId), label: event.label, left: event.left ?? 0 };
       if (event.outcome === "started") return key("castingStarted", said);
       if (event.outcome === "continued") return key("castingContinued", said);
@@ -1742,13 +1742,13 @@ export function rulesetCombatEventLine(
           });
     case "switch":
       return key(event.on ? "switchOn" : "switchOff", { actor: names.combatant(event.actorId), label: event.label });
-    // Taken over, or let go (1.564).
+    // Taken over, or let go (1.576).
     case "controlled":
       return key(event.active ? "controlled" : "controlReleased", {
         source: names.combatant(event.sourceId),
         target: names.combatant(event.targetId),
       });
-    // An item turned into another of its forms (1.562).
+    // An item turned into another of its forms (1.574).
     case "reformed":
       return key("reformed", { actor: names.combatant(event.actorId), label: event.label, form: event.form });
     case "recovered":

@@ -1,5 +1,5 @@
 /**
- * A gnoll's Rampage (Capability API 1.532).
+ * A gnoll's Rampage (Capability API 1.544).
  *
  *   - Dropping a creature to 0 with a melee attack on its own turn: its bonus action spent, half its
  *     speed more to move, and its bite once more this turn, at whoever else is there.
@@ -32,7 +32,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 532);
+  assert.ok(supportedCapabilityApi.minor >= 544);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -151,7 +151,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a creature that rampages on after felling one (rampage) requires schemaVersion 2 and capabilityApi 1.532 or newer";
+      "A ruleset with a creature that rampages on after felling one (rampage) requires schemaVersion 2 and capabilityApi 1.544 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -165,12 +165,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(531) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(532) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(543) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(544) as never, fiveE()), gate);
   }
 
   console.log(
-    "Rampage: a gnoll that bites one down spends its bonus action for half its speed more and a bite again; not on a shot or with no bonus action left; refusals; gated at 1.532.",
+    "Rampage: a gnoll that bites one down spends its bonus action for half its speed more and a bite again; not on a shot or with no bonus action left; refusals; gated at 1.544.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

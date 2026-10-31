@@ -1,5 +1,5 @@
 /**
- * A ward picked as it is cast (Capability API 1.745): 5e's Wish, "up to ten creatures you can see
+ * A ward picked as it is cast (Capability API 1.757): 5e's Wish, "up to ten creatures you can see
  * immunity to a single spell or other magical effect for 8 hours" (a lich's life drain).
  *
  *   - Its option offers every entry and creature action anybody in the fight has, once each, and
@@ -39,7 +39,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 745);
+  assert.ok(supportedCapabilityApi.minor >= 757);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -214,7 +214,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a ward picked as it is cast (wardPick) requires schemaVersion 2 and capabilityApi 1.745 or newer";
+      "A ruleset with a ward picked as it is cast (wardPick) requires schemaVersion 2 and capabilityApi 1.757 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -228,13 +228,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(744) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(745) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(744) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(756) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(757) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(756) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Ward pick: Wish wards its targets off one entry or creature action picked as it is cast, a lich's life drain but not its claw, kept on the sheet until dispelled; gated at 1.745.",
+    "Ward pick: Wish wards its targets off one entry or creature action picked as it is cast, a lich's life drain but not its claw, kept on the sheet until dispelled; gated at 1.757.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -4,7 +4,7 @@
 // The official catalog pins each entry's artifact to its canonical Marinara-Agents URL. A ruleset is
 // published as its ruleset package file (`<id>-<version>.ruleset.json`, 1.374) and an Experience as its
 // Experience file (1.373), never a zip, with a ruleset's language packs (`<id>-<version>.<lang>.json`,
-// 1.803) beside it. The canonical name used to be `<id>-<version>.zip` for every kind, so a ruleset
+// 1.810) beside it. The canonical name used to be `<id>-<version>.zip` for every kind, so a ruleset
 // entry made the published catalog throw (every package gone) and was dropped from the preview overlay,
 // and its URL would have been rewritten to a .zip that does not exist. Pinned here:
 //   * a ruleset entry with a language pack loads from the published catalog and from the overlay, its
@@ -42,7 +42,7 @@ function rulesetEntry(id: string, branch: "main" | "staging", artifactName = `${
       files: [{ path: "ruleset.json", sha256: sha256("{}"), bytes: 2 }],
       permissions: [],
       restartRequired: false,
-      capabilityApi: { major: 1, minor: 803 },
+      capabilityApi: { major: 1, minor: 810 },
       builtAgainst: { engineVersion: "2.4.6", engineCommit: "0".repeat(40) },
     },
     category: "misc" as const,

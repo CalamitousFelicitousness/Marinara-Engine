@@ -1,5 +1,5 @@
 /**
- * Swallowing, continued (Capability API 1.394).
+ * Swallowing, continued (Capability API 1.406).
  *
  *   - A kraken's Bite: hits anybody, swallows only whom the kraken grapples, and the grapple ends.
  *   - A gelatinous cube's engulfed pulled out by an ally beside it: DC 12, 3d6 acid to whoever tries.
@@ -36,7 +36,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 394);
+  assert.ok(supportedCapabilityApi.minor >= 406);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -397,7 +397,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset that pulls somebody out of a creature, puts a condition on only a held target or ends one with it, or shares a holder's harm (a contest's pulls, targetHolds, endsOnTarget or harmsPuller on what an action puts on, or a condition's takesSourceHarm), requires schemaVersion 2 and capabilityApi 1.394 or newer";
+      "A ruleset that pulls somebody out of a creature, puts a condition on only a held target or ends one with it, or shares a holder's harm (a contest's pulls, targetHolds, endsOnTarget or harmsPuller on what an action puts on, or a condition's takesSourceHarm), requires schemaVersion 2 and capabilityApi 1.406 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -411,14 +411,14 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(393) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(394) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(393) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(405) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(406) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(405) as never, JSON.parse(fiveEText)), gate);
     // Each on its own.
     const only = (edit: (doc: Record<string, any>) => void) => {
       const doc = JSON.parse(fiveEText);
       edit(doc);
-      return getCapabilityPackageInstallIssue(manifest(393) as never, doc);
+      return getCapabilityPackageInstallIssue(manifest(405) as never, doc);
     };
     assert.equal(
       only((doc) => doc.combat.contests.push({ ...pullOut, targetHolds: "grappled" })),
@@ -441,7 +441,7 @@ try {
   }
 
   console.log(
-    "Pull out: a kraken swallows only whom it grapples and the grapple ends; an ally beside a cube pulls its engulfed out at DC 12 and is burned win or lose; Whelm at 14; a rug passes half of each blow to whom it smothers; gated at 1.394.",
+    "Pull out: a kraken swallows only whom it grapples and the grapple ends; an ally beside a cube pulls its engulfed out at DC 12 and is burned win or lose; Whelm at 14; a rug passes half of each blow to whom it smothers; gated at 1.406.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

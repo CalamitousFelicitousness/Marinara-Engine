@@ -1,5 +1,5 @@
 /**
- * The evocation wizard's features (Capability API 1.401).
+ * The evocation wizard's features (Capability API 1.413).
  *
  *   - Empowered Evocation: the Intelligence modifier added to one damage roll of every evocation
  *     spell, an amend by the spells catalog's `school` filter; every target of a roll they share takes
@@ -40,7 +40,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 401);
+  assert.ok(supportedCapabilityApi.minor >= 413);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -319,7 +319,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose entries amend or alter by a catalog's filter, add to one damage roll (damageOnce), leave half on a save (halfOnSave) or spare whole or by level requires schemaVersion 2 and capabilityApi 1.401 or newer";
+      "A ruleset whose entries amend or alter by a catalog's filter, add to one damage roll (damageOnce), leave half on a save (halfOnSave) or spare whole or by level requires schemaVersion 2 and capabilityApi 1.413 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -333,13 +333,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(400) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(401) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(400) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(412) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(413) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(412) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Evocation: Empowered Evocation's +3 on every target of a burst's one roll, not a necromancy spell's; Potent Cantrip's half on a save; Sculpt Spells spares 1 + the slot's level whole, evocation only; gated at 1.401.",
+    "Evocation: Empowered Evocation's +3 on every target of a burst's one roll, not a necromancy spell's; Potent Cantrip's half on a save; Sculpt Spells spares 1 + the slot's level whole, evocation only; gated at 1.413.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

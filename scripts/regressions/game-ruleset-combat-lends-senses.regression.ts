@@ -1,5 +1,5 @@
 /**
- * Seeing through another's eyes (Capability API 1.468).
+ * Seeing through another's eyes (Capability API 1.480).
  *
  *   - A condition with `lendsSenses`: whoever put it on sees what its holder sees, as well as what
  *     they see themselves. A dazzled warlock sees a goblin through its familiar; not through one it
@@ -30,7 +30,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 468);
+  assert.ok(supportedCapabilityApi.minor >= 480);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -121,7 +121,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions lend their holder's senses to whoever put them on (lendsSenses) requires schemaVersion 2 and capabilityApi 1.468 or newer";
+      "A ruleset whose conditions lend their holder's senses to whoever put them on (lendsSenses) requires schemaVersion 2 and capabilityApi 1.480 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -135,12 +135,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(467) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(468) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(479) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(480) as never, fiveE()), gate);
   }
 
   console.log(
-    "Lends senses: a dazzled warlock sees through its familiar's eyes, and through nobody else's; gated at 1.468.",
+    "Lends senses: a dazzled warlock sees through its familiar's eyes, and through nobody else's; gated at 1.480.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

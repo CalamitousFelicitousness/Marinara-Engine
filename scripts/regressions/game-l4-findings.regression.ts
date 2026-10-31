@@ -233,7 +233,7 @@ try {
     assert.equal(turn(long, unclocked.live).outcomes[0]!.reason, "rested-already");
     assert.equal(turn(long, turn("They walk on.", unclocked.live).live).outcomes[0]!.ok, true);
 
-    // A rest the ruleset says is taken only so often (1.802): 5e's long rest, once in 24 hours from the
+    // A rest the ruleset says is taken only so often (1.809): 5e's long rest, once in 24 hours from the
     // start of the last, whatever the clock did in between.
     const daily = parsed(
       (() => {

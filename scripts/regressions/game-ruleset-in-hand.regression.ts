@@ -3,7 +3,7 @@
  * taking a carried weapon or shield in hand on their own turn, and the ammunition a weapon shoots first.
  *
  *   - `draw` takes a carried weapon or shield in hand by its place in the fighter's items, as an item
- *     drawn as it is used is drawn (1.800): the fewest weapons in its way are put away, and the menu is
+ *     drawn as it is used is drawn (1.807): the fewest weapons in its way are put away, and the menu is
  *     read again from what they hold, so the attacks offered change mid-fight.
  *   - Nothing else is ever put away for it: a buckler in the hand it needs refuses it, named.
  *   - It spends the turn's one free interaction with an object (the free pick-up, 1.266): a second in

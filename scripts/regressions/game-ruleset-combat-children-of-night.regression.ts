@@ -1,6 +1,6 @@
 /**
  * A call offered only where it says, and called creatures that arrive after their caller's turns
- * (Capability API 1.601): a vampire's Children of the Night, "calls 2d4 swarms of bats or rats,
+ * (Capability API 1.613): a vampire's Children of the Night, "calls 2d4 swarms of bats or rats,
  * provided that the sun isn't up. While outdoors, the vampire can call 3d6 wolves instead. The
  * called creatures arrive in 1d4 rounds".
  *
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 601);
+  assert.ok(supportedCapabilityApi.minor >= 613);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -201,7 +201,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a call offered only where it says (onlyWhere), or whose creatures arrive after their caller's turns (calls.arrivesIn), requires schemaVersion 2 and capabilityApi 1.601 or newer";
+      "A ruleset with a call offered only where it says (onlyWhere), or whose creatures arrive after their caller's turns (calls.arrivesIn), requires schemaVersion 2 and capabilityApi 1.613 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -215,15 +215,15 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(600) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(612) as never, fiveE()), gate);
     assert.equal(
-      getCapabilityPackageInstallIssue(manifest(600) as never, fiveE({ ...children, arrivesIn: undefined })),
+      getCapabilityPackageInstallIssue(manifest(612) as never, fiveE({ ...children, arrivesIn: undefined })),
       gate,
     );
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(601) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(613) as never, fiveE()), gate);
   }
 
-  console.log("Children of the Night: offered by light and place, arriving after the vampire's turns; gated at 1.601.");
+  console.log("Children of the Night: offered by light and place, arriving after the vampire's turns; gated at 1.613.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

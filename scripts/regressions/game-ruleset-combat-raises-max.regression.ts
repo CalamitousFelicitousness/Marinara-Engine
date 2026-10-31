@@ -1,5 +1,5 @@
 /**
- * Raising the health maximum (Capability API 1.460).
+ * Raising the health maximum (Capability API 1.472).
  *
  *   - Aid: a sheet's maximum and health raised by 5 on its 2nd-level cost and 5 more a step higher;
  *     healed back up to the raised maximum; the raise falls away with the condition, outside the
@@ -39,7 +39,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 460);
+  assert.ok(supportedCapabilityApi.minor >= 472);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -211,7 +211,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions raise their holder's health maximum (raisesMax) requires schemaVersion 2 and capabilityApi 1.460 or newer";
+      "A ruleset whose conditions raise their holder's health maximum (raisesMax) requires schemaVersion 2 and capabilityApi 1.472 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -225,12 +225,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(459) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(460) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(471) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(472) as never, fiveE()), gate);
   }
 
   console.log(
-    "Raises max: Aid raises a sheet's maximum and health by its slot, healed up to it and gone with the condition; Heroes' Feast's 2d10 on a stat block; gated at 1.460.",
+    "Raises max: Aid raises a sheet's maximum and health by its slot, healed up to it and gone with the condition; Heroes' Feast's 2d10 on a stat block; gated at 1.472.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

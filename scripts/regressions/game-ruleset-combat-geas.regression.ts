@@ -1,5 +1,5 @@
 /**
- * Harm for defiance (Capability API 1.549): 5e's Geas.
+ * Harm for defiance (Capability API 1.561): 5e's Geas.
  *
  *   - A condition whose `harms` comes `at` "attacks-source-side" deals its holder its harm as they
  *     attack whoever put it on, or one of their side; `once` deals it only the first time.
@@ -31,7 +31,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 549);
+  assert.ok(supportedCapabilityApi.minor >= 561);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -115,7 +115,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a condition that harms its holder for attacking whoever put it on (harms.at attacks-source, attacks-source-side, harms.once) requires schemaVersion 2 and capabilityApi 1.549 or newer";
+      "A ruleset with a condition that harms its holder for attacking whoever put it on (harms.at attacks-source, attacks-source-side, harms.once) requires schemaVersion 2 and capabilityApi 1.561 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -130,16 +130,16 @@ try {
       restartRequired: false,
     });
     const doc = () => document({ at: "attacks-source", dice: "5d10" });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(548) as never, doc()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(549) as never, doc()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(560) as never, doc()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(561) as never, doc()), gate);
     assert.notEqual(
-      getCapabilityPackageInstallIssue(manifest(548) as never, document({ at: "turn-start", dice: "1d4" })),
+      getCapabilityPackageInstallIssue(manifest(560) as never, document({ at: "turn-start", dice: "1d4" })),
       gate,
     );
   }
 
   console.log(
-    "Geas: harmed for striking its caster's side, only once; only at its caster where it says; gated at 1.549.",
+    "Geas: harmed for striking its caster's side, only once; only at its caster where it says; gated at 1.561.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

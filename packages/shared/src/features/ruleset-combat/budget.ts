@@ -1,4 +1,4 @@
-// How much a fight may hold for the party that meets it (Capability API 1.795): each threat tier's
+// How much a fight may hold for the party that meets it (Capability API 1.802): each threat tier's
 // `worth`, a budget per member by level and difficulty step, and how a crowd of opponents counts. The
 // Game Master is told the budget, and the Engine brings invented opponents down a rung at a time while
 // a fight is over it. A creature of a bestiary, or one that comes back, is counted and never changed.

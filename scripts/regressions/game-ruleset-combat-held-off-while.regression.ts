@@ -1,5 +1,5 @@
 /**
- * Conditions held off while others hold (Capability API 1.515).
+ * Conditions held off while others hold (Capability API 1.527).
  *
  *   - Cloak of Displacement: its displacement does nothing while its wearer is restrained, or another
  *     condition stops them acting or moving (stunned, grappled), and holds again once that ends.
@@ -27,7 +27,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 515);
+  assert.ok(supportedCapabilityApi.minor >= 527);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -92,7 +92,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions are held off while their holder holds others or does what they name (heldOffWhile) requires schemaVersion 2 and capabilityApi 1.515 or newer";
+      "A ruleset whose conditions are held off while their holder holds others or does what they name (heldOffWhile) requires schemaVersion 2 and capabilityApi 1.527 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -106,13 +106,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(514) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(515) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(514) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(526) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(527) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(526) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Held off while: Cloak of Displacement does nothing while its wearer is restrained, stunned, grappled or incapacitated, and holds again after; gated at 1.515.",
+    "Held off while: Cloak of Displacement does nothing while its wearer is restrained, stunned, grappled or incapacitated, and holds again after; gated at 1.527.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

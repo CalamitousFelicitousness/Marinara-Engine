@@ -781,7 +781,7 @@ export function BackgroundPicker({
             <img
               src={`${background.url}?w=${BACKGROUND_THUMBNAIL_WIDTH}`}
               alt=""
-              className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.025]"
+              className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.25]"
               loading="lazy"
               decoding="async"
             />

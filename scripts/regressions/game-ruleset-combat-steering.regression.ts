@@ -1,10 +1,10 @@
 /**
- * Walking and steering (Capability API 1.451).
+ * Walking and steering (Capability API 1.463).
  *
  *   - Compulsion: a foe holding its condition is not walked until steered; its caster's Steer is
  *     offered only while somebody holds it from them; steered, the foe is walked toward the point
  *     as its turn starts.
- *   - Acting first (1.459): with `walks: "after"` the foe is not walked as its turn starts, and is
+ *   - Acting first (1.471): with `walks: "after"` the foe is not walked as its turn starts, and is
  *     walked as it ends its turn, with the movement it has left.
  *   - Refusals and the install gate.
  */
@@ -38,7 +38,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 451);
+  assert.ok(supportedCapabilityApi.minor >= 463);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -167,7 +167,7 @@ try {
     assert.equal(now.y, 2, "six cells, as far as its speed goes");
   }
 
-  // ── Acting first (1.459) ──
+  // ── Acting first (1.471) ──
   {
     definition = parsed(fiveE({ moves: "toward", from: "steered", walks: "after" }));
     const fresh = structuredClone(state);
@@ -190,7 +190,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions walk their holder or are steered (behavior walks, from steered, steers) requires schemaVersion 2 and capabilityApi 1.451 or newer";
+      "A ruleset whose conditions walk their holder or are steered (behavior walks, from steered, steers) requires schemaVersion 2 and capabilityApi 1.463 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -204,18 +204,18 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(450) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(451) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(462) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(463) as never, fiveE()), gate);
     const after =
-      'A ruleset whose conditions walk their holder as they end their turn (behavior walks "after") requires schemaVersion 2 and capabilityApi 1.459 or newer';
+      'A ruleset whose conditions walk their holder as they end their turn (behavior walks "after") requires schemaVersion 2 and capabilityApi 1.471 or newer';
     const late = fiveE({ moves: "toward", from: "steered", walks: "after" });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(458) as never, late), after);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(459) as never, late), after);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(458) as never, fiveE()), after);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(470) as never, late), after);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(471) as never, late), after);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(470) as never, fiveE()), after);
   }
 
   console.log(
-    "Steering: Compulsion's foe is walked only once steered, toward the point, as far as it can, or as it ends its turn after acting; gated at 1.451 and 1.459.",
+    "Steering: Compulsion's foe is walked only once steered, toward the point, as far as it can, or as it ends its turn after acting; gated at 1.463 and 1.471.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

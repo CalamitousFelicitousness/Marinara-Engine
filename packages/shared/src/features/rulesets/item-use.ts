@@ -78,13 +78,13 @@ export type RulesetItemUseRefusal =
   | "not-worn"
   /** None of its charges are left, or not as many as one use spends. */
   | "none-left"
-  /** A condition its user holds forbids using it (1.512): Feeblemind's magic items. */
+  /** A condition its user holds forbids using it (1.524): Feeblemind's magic items. */
   | "forbidden"
-  /** Its user's sheet does not meet what it asks (1.654): a scroll off another class's list. */
+  /** Its user's sheet does not meet what it asks (1.666): a scroll off another class's list. */
   | "needs-unmet"
   /** Its user is dead on their sheet, and it does not bring back the dead. */
   | "dead"
-  /** It is drawn as it is used (1.800), and the slots it needs are held by what is not put away for
+  /** It is drawn as it is used (1.807), and the slots it needs are held by what is not put away for
    *  it (a shield, armor, a cursed weapon), or its user has too few of them at all. */
   | "slots-full";
 
@@ -108,7 +108,7 @@ export interface RulesetItemUseSaid {
   parts: RulesetItemUsePart[];
   /** What it does to somebody else, which the Engine leaves to the story. */
   aimed?: string;
-  /** What is left of it: how many in the stack, its charges, or the uses of its own (1.506). */
+  /** What is left of it: how many in the stack, its charges, or the uses of its own (1.518). */
   left: { count: number } | { charges: number; max: number } | { uses: number; max: number };
   /** It spent its last charge and its `breaksOn` die said it breaks: the face rolled. */
   broke?: number;
@@ -119,11 +119,11 @@ export interface RulesetItemUseSaid {
   /** Its gate, when its user rolled one: what was rolled, the total (a pool's successes) against the
    *  difficulty, and whether it passed. Failed, nothing it does happened. */
   gate?: { check: string; total: number; difficulty: number; success: boolean; rolls: number[] };
-  /** What its use made (1.732), into its user's bag: a scroll of Goodberry's berries. */
+  /** What its use made (1.744), into its user's bag: a scroll of Goodberry's berries. */
   made?: { name: string; count: number };
-  /** Drawn as it was used (1.800): it is on now, and these were put away to make room. */
+  /** Drawn as it was used (1.807): it is on now, and these were put away to make room. */
   drawn?: { stowed: string[] };
-  /** Used again before its user rested (1.731): the save they rolled, and what failing it did. */
+  /** Used again before its user rested (1.743): the save they rolled, and what failing it did. */
   again?: { save: string; total: number; difficulty: number; success: boolean; rolls: number[]; harms: string[] };
 }
 
@@ -142,7 +142,7 @@ export type RulesetItemUseOutcome =
       heldBy?: string[];
     };
 
-/** What an item's use reads off the ruleset's items to draw it as it is used (1.800): every item, and
+/** What an item's use reads off the ruleset's items to draw it as it is used (1.807): every item, and
  *  the slots every character has. A bound cursed item stays where it is. */
 export function rulesetItemDrawRules(
   definition: RulesetDefinition,
@@ -168,14 +168,14 @@ type RulesetItemUseInput = {
   roll: (sides: number) => number;
   /** One of its further uses (1.267), by its place in `moreUses` from 1; its first use without it. */
   more?: number;
-  /** How long what it makes lasts (1.747), by its place in `makesItems.lasts` from 1; the first without it. */
+  /** How long what it makes lasts (1.759), by its place in `makesItems.lasts` from 1; the first without it. */
   lasts?: number;
 };
 
 /**
  * Use the item on one stack, for whoever carries it. `live` is that character's stored live state and
  * `build` their sheet; `roll` throws one die of the given sides. Nothing is changed on a refusal. An
- * item drawn as it is used (1.800) is put on first, as a free swap that puts away the fewest other
+ * item drawn as it is used (1.807) is put on first, as a free swap that puts away the fewest other
  * such items holding its slots, and the use is made with it on; where nothing may be put away to make
  * room it is refused as `slots-full` (laptop v3 2026-10-26: a carried Longbow was never offered).
  */
@@ -208,12 +208,12 @@ function useHeldRulesetItem(input: RulesetItemUseInput): RulesetItemUseOutcome {
     return { ok: false, reason: "no-use" };
   const use = chosen?.use ?? item.use;
   if (!use) return { ok: false, reason: "no-use" };
-  // How long what it makes lasts (1.747), as its user picked.
+  // How long what it makes lasts (1.759), as its user picked.
   if (input.lasts !== undefined && !use.makesItems?.lasts?.[input.lasts - 1]) return { ok: false, reason: "no-use" };
   // Used while worn where it takes a slot or binds, as a fight uses it; worn means bound too there.
-  // One drawn as it is used (1.800) was put on above, where it could be.
+  // One drawn as it is used (1.807) was put on above, where it could be.
   if (!gameInventoryWearMet(stack, gameInventoryWearNeeds(entry!))) return { ok: false, reason: "not-worn" };
-  // Bound by somebody who does not meet what it asks, it is not worn; nor used by them (1.654).
+  // Bound by somebody who does not meet what it asks, it is not worn; nor used by them (1.666).
   if (item.binds?.needs || item.userNeeds) {
     const bare = evaluateRulesetSheetLive(definition, user.build, user.live);
     if (item.binds?.needs && !rulesetItemNeedsMet(definition, user.build, bare, item.binds.needs, item.binds.needsAny))
@@ -233,7 +233,7 @@ function useHeldRulesetItem(input: RulesetItemUseInput): RulesetItemUseOutcome {
     )
   )
     return { ok: false, reason: "dead" };
-  // Nor while a condition they hold forbids it (1.512), as a fight keeps it off the menu.
+  // Nor while a condition they hold forbids it (1.524), as a fight keeps it off the menu.
   const holding = readRulesetLive(definition, user.build, user.live).conditions.filter((one) => one.active);
   const forbidding = (definition.combat?.conditions ?? []).some(
     (entry) =>
@@ -246,15 +246,15 @@ function useHeldRulesetItem(input: RulesetItemUseInput): RulesetItemUseOutcome {
   const max = facts?.charges?.max;
   if (use.charges !== undefined) {
     if (max === undefined) return { ok: false, reason: "none-left" };
-    // A stack found with rolled charges (1.560) holds that many until something changes them.
+    // A stack found with rolled charges (1.572) holds that many until something changes them.
     const now = Math.min(max, stack.charges ?? rulesetChargesStart(facts!.charges!, max, stack.id));
     if (now < use.charges) return { ok: false, reason: "none-left" };
   }
-  // Its own uses (1.506), kept on the stack by its place, or another's it spends (1.734).
+  // Its own uses (1.518), kept on the stack by its place, or another's it spends (1.746).
   const ownPlace = chosen?.usesOf ? rulesetMoreUsesOf(item, chosen) + 1 : input.more;
   if (chosen?.usesOf && !ownPlace) return { ok: false, reason: "no-use" };
   const own = chosen?.usesOf ? item.moreUses![ownPlace! - 1]!.uses : chosen?.uses;
-  // Its most, rolled for this stack where it is (1.523).
+  // Its most, rolled for this stack where it is (1.535).
   const ownMax = own ? rulesetOwnUsesMax(own, stack.id, ownPlace!, item.moreUsesRolled) : undefined;
   const ownNow = own ? Math.min(ownMax!, stack.usesLeft?.[String(ownPlace)] ?? ownMax!) : undefined;
   if (ownNow !== undefined && ownNow < 1) return { ok: false, reason: "none-left" };
@@ -331,7 +331,7 @@ function useHeldRulesetItem(input: RulesetItemUseInput): RulesetItemUseOutcome {
     const heal = healed ? { ...healed, total: Math.max(0, healed.total + (Number.isFinite(added) ? added : 0)) } : null;
     if (heal && health) {
       // A wound track clears one mark, as a heal in a fight does; a pool, or a plain track that fills
-      // up (1.784), takes the amount.
+      // up (1.383), takes the amount.
       const plainTrack =
         "track" in health && !definition.sheet.live.tracks.find((track) => track.id === health.track)?.kinds;
       const now =
@@ -381,7 +381,7 @@ function useHeldRulesetItem(input: RulesetItemUseInput): RulesetItemUseOutcome {
         });
       }
     }
-    // Spent pools given back (1.643): a Pearl of Power's slot.
+    // Spent pools given back (1.655): a Pearl of Power's slot.
     if (use.recovers) {
       for (const pool of rulesetRecoverPicks(definition, user.build, live, use.recovers)) {
         const now = write({ op: "restore", pool, amount: 1 });
@@ -390,7 +390,7 @@ function useHeldRulesetItem(input: RulesetItemUseInput): RulesetItemUseOutcome {
         parts.push({ kind: "restore", amount: 1, rolls: [], label, now });
       }
     }
-    // Abilities raised for good (1.503): a manual read, a tome studied.
+    // Abilities raised for good (1.515): a manual read, a tome studied.
     if (use.raises) {
       live = raiseRulesetLiveAbilities(live, use.raises);
       const scores = evaluateRulesetSheetLive(definition, user.build, live).abilityScores;
@@ -403,14 +403,14 @@ function useHeldRulesetItem(input: RulesetItemUseInput): RulesetItemUseOutcome {
       // Read off the user as it applies (1.167), what came before it included.
       if (applies.when && !sheetWithin(applies.when)) continue;
       if (!write({ op: "condition", condition: applies.condition, active: true })) continue;
-      // Kept on while the item is worn (1.651), by its stack.
+      // Kept on while the item is worn (1.663), by its stack.
       const needs = gameInventoryWearNeeds(item);
       if (applies.whileItemWorn && (needs.equipped || needs.bound))
         live = rulesetLiveWithWornFrom(live, applies.condition, stack.id);
-      // Its days (1.650), off its user's sheet, or until midnight (1.738), counted as days pass.
+      // Its days (1.662), off its user's sheet, or until midnight (1.750), counted as days pass.
       if (applies.lastsDays !== undefined) {
         const ref = applies.lastsDays;
-        // Rolled as it goes on (1.743), resting days counting more.
+        // Rolled as it goes on (1.755), resting days counting more.
         const days =
           ref === "midnight"
             ? 1
@@ -503,7 +503,7 @@ function useHeldRulesetItem(input: RulesetItemUseInput): RulesetItemUseOutcome {
       }
   }
 
-  // Used again before its user rested (1.731): past the first such use, its save, failed costing them.
+  // Used again before its user rested (1.743): past the first such use, its save, failed costing them.
   const again = use.againBeforeRest;
   const usedBefore = again ? Math.min(100, stack.usesLeft?.a ?? 0) : 0;
   let againSaid: RulesetItemUseSaid["again"];
@@ -561,11 +561,11 @@ function useHeldRulesetItem(input: RulesetItemUseInput): RulesetItemUseOutcome {
   const becomes = turnsInto && breaks?.becomes ? { ref: breaks.becomes, name: turnsInto.name } : undefined;
   const broke = becomes ? undefined : cracked;
   const after = recharged ? recharged.amount : charges;
-  // What it makes (1.732), into its user's bag beside it, as a fight writes what a cast made.
+  // What it makes (1.744), into its user's bag beside it, as a fight writes what a cast made.
   const makes = works ? use.makesItems : undefined;
   const madeEntry = makes ? input.itemOf(makes.item) : undefined;
   const madeLasts = makes?.lasts?.[(input.lasts ?? 1) - 1]?.minutes;
-  // What vanishes is a stack of its own, never one it tops up (1.747).
+  // What vanishes is a stack of its own, never one it tops up (1.759).
   const lastingId = (n: number): string =>
     `${stack.id}-made-${makes!.item.replace(/[^a-zA-Z0-9_-]/g, "-")}-lasting-${n}`;
   const madeInto =
@@ -651,7 +651,7 @@ function useHeldRulesetItem(input: RulesetItemUseInput): RulesetItemUseOutcome {
  * its `unless` holds; undefined when its difficulty is read off a stat the item does not give, a use
  * the Engine cannot make. `holder` is the bag whose worn items count toward the check.
  */
-/** What an item deals whoever it comes into the hands of (Capability API 1.688), on their sheet
+/** What an item deals whoever it comes into the hands of (Capability API 1.700), on their sheet
  *  outside a fight: the first of its `touchHarms` lines whose needs they meet, rolled, off their
  *  health pool (or one mark of a wound track's lightest kind). Null when nothing lands. */
 export function rulesetItemTouchHarm(input: {
@@ -712,7 +712,7 @@ export function rollRulesetItemGate(input: {
   return { check, ...rollGateOutsideFight(definition, user, held, ask, input.roll) };
 }
 
-/** A check rolled outside a fight as a use's gate is (1.794): a fake's tell or a seller's manner. */
+/** A check rolled outside a fight as a use's gate is (1.801): a fake's tell or a seller's manner. */
 export const rollRulesetCheckOutsideFight = rollGateOutsideFight;
 
 /** A gate rolled as a check is outside a fight: the ruleset's own dice with the sheet's number, the
@@ -724,11 +724,11 @@ function rollGateOutsideFight(
   held: ReturnType<typeof rulesetSheetItems>,
   ask: NonNullable<ReturnType<typeof rulesetItemGateCheck>>,
   roll: (sides: number) => number,
-  /** A lean the check is made with besides what the sheet gives it (1.794): a tell's `advantageIf`. */
+  /** A lean the check is made with besides what the sheet gives it (1.801): a tell's `advantageIf`. */
   lean?: "advantage" | "disadvantage",
 ): Omit<NonNullable<RulesetItemUseSaid["gate"]>, "check"> {
   const resolution = definition.resolution;
-  // The sheet as it stands, for what a change reads off it (1.416).
+  // The sheet as it stands, for what a change reads off it (1.428).
   const evaluated = evaluateRulesetSheetLive(definition, user.build, user.live, held);
   const trained =
     ask.target?.type === "skill" && rulesetTierAddsProficiency(definition, evaluated.skillTiers[ask.target.id]);
@@ -843,7 +843,7 @@ export interface RulesetItemRecharge {
   item: string;
   now: number;
   max: number;
-  /** A further use's own uses (1.506), not the item's charges. */
+  /** A further use's own uses (1.518), not the item's charges. */
   uses?: true;
 }
 
@@ -876,12 +876,12 @@ export function rechargeRulesetItems(input: {
       return rolls.reduce((sum, face) => sum + face, 0) + (dice?.flat ?? 0) + (amount.flat ?? 0);
     };
     let next = stack;
-    // Each further use's own uses (1.506), on the rests its own recharge names.
+    // Each further use's own uses (1.518), on the rests its own recharge names.
     item.moreUses?.forEach((more, n) => {
       const own = more.uses;
       const key = String(n + 1);
       if (!own?.recharge?.rests.includes(input.rest)) return;
-      // Back to its stack's own count, rolled where it is (1.523).
+      // Back to its stack's own count, rolled where it is (1.535).
       const most = rulesetOwnUsesMax(own, stack.id, n + 1, item.moreUsesRolled);
       const before = Math.min(most, next.usesLeft?.[key] ?? most);
       if (before >= most) return;
@@ -893,7 +893,7 @@ export function rechargeRulesetItems(input: {
       const { usesLeft: _usesLeft, ...plain } = next;
       next = Object.keys(usesLeft).length > 0 ? { ...plain, usesLeft } : plain;
     });
-    // And each hit's own uses (1.521), under "h" and its place among the spends.
+    // And each hit's own uses (1.533), under "h" and its place among the spends.
     item.attack?.spends?.forEach((spend, n) => {
       const own = spend.uses;
       const key = `h${n + 1}`;
@@ -908,7 +908,7 @@ export function rechargeRulesetItems(input: {
       const { usesLeft: _usesLeft, ...plain } = next;
       next = Object.keys(usesLeft).length > 0 ? { ...plain, usesLeft } : plain;
     });
-    // Its count of uses since a rest (1.731), cleared by a rest it names.
+    // Its count of uses since a rest (1.743), cleared by a rest it names.
     const again = [item.use, ...(item.moreUses ?? []).map((more) => more.use)].some((one) =>
       one?.againBeforeRest?.rests.includes(input.rest),
     );
@@ -934,7 +934,7 @@ export function rechargeRulesetItems(input: {
   return { stacks: recharged.length > 0 || reset ? stacks : [...input.stacks], recharged, reset };
 }
 
-/** A stack whose charges came back counts its uses on none from nothing again (1.611). */
+/** A stack whose charges came back counts its uses on none from nothing again (1.623). */
 function withoutOveruse(stack: GameInventoryStack): GameInventoryStack {
   if (stack.usesLeft?.o === undefined) return stack;
   const { o: _o, ...others } = stack.usesLeft;
@@ -942,7 +942,7 @@ function withoutOveruse(stack: GameInventoryStack): GameInventoryStack {
   return Object.keys(others).length > 0 ? { ...plain, usesLeft: others } : plain;
 }
 
-/** How long a wait counted in game time runs, in minutes (1.543), its hours rolled where they are
+/** How long a wait counted in game time runs, in minutes (1.555), its hours rolled where they are
  *  dice. */
 function rulesetItemWaitMinutes(
   after: NonNullable<RulesetItemRechargeRule["after"]>,
@@ -957,7 +957,7 @@ function rulesetItemWaitMinutes(
 }
 
 /**
- * What `minutes` of game time passing brings back to the items in every bag (1.543): charges, or a
+ * What `minutes` of game time passing brings back to the items in every bag (1.555): charges, or a
  * use's own uses, whose `recharge` comes back `after` a wait. A count run out starts waiting the first
  * time game time passes, its wait rolled then; once it has waited it all, it gets back its `amount`
  * (all of them for `"max"`). A count that is no longer out (a rest or the Game Master gave some
@@ -973,13 +973,13 @@ export function passRulesetItemTime(input: {
   stacks: GameInventoryStack[];
   recharged: RulesetItemRecharge[];
   changed: boolean;
-  /** What vanished as its time ran out (1.747), by what it is called. */
+  /** What vanished as its time ran out (1.759), by what it is called. */
   vanished: Array<{ name: string; count: number; holder?: string }>;
 } {
   const recharged: RulesetItemRecharge[] = [];
   let changed = false;
   const minutes = Math.max(0, Math.floor(input.minutes));
-  // What was made to vanish counts the time down, and goes once it has run out (1.747): Creation.
+  // What was made to vanish counts the time down, and goes once it has run out (1.759): Creation.
   const vanished: Array<{ name: string; count: number; holder?: string }> = [];
   const lasting: GameInventoryStack[] = [];
   for (const stack of input.stacks) {
@@ -1029,7 +1029,7 @@ export function passRulesetItemTime(input: {
     if (counts.length === 0 && !stack.waits) return stack;
     let next = stack;
     const waits = { ...(stack.waits ?? {}) };
-    // What its call still keeps out past a fight (1.599): a wait from its departure starts after it.
+    // What its call still keeps out past a fight (1.611): a wait from its departure starts after it.
     const roundSeconds = input.definition.combat?.roundSeconds;
     const outRounds = stack.callRoll?.outRounds ?? 0;
     const stayMinutes = roundSeconds && outRounds > 0 ? Math.ceil((outRounds * roundSeconds) / 60) : 0;
@@ -1051,7 +1051,7 @@ export function passRulesetItemTime(input: {
         continue;
       }
       const wait = waits[count.key] ?? { waited: 0, for: rulesetItemWaitMinutes(count.rule.after!, input.roll) };
-      // Counted only from the departure of what it called (1.599).
+      // Counted only from the departure of what it called (1.611).
       const passing = count.rule.after?.fromDeparture ? minutes - stayed : minutes;
       if (passing <= 0) continue;
       const waited = Math.min(wait.for, wait.waited + passing);
@@ -1095,7 +1095,7 @@ export function passRulesetItemTime(input: {
   return { stacks: changed ? stacks : [...input.stacks], recharged, changed, vanished };
 }
 
-/** What vanished, in words for the Game Master (1.747): "Rope (2, Bram's) vanished". */
+/** What vanished, in words for the Game Master (1.759): "Rope (2, Bram's) vanished". */
 export function rulesetItemVanishedLine(
   vanished: ReadonlyArray<{ name: string; count: number; holder?: string }>,
 ): string {

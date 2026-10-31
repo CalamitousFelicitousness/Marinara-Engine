@@ -6,7 +6,7 @@
  *     hand with the turn's free interaction and shoots; with somebody beside it on a later turn, where
  *     a shot at somebody beside you is at disadvantage, it takes the sword back and swings.
  *   - A companion on the Engine's tactics shoots first the arrows that do more (clauses of their own,
- *     1.644), and keeps arrows that only slay one kind for that kind, even where every arrow it has
+ *     1.656), and keeps arrows that only slay one kind for that kind, even where every arrow it has
  *     carries clauses of its own (laptop 2026-10-26: Pip shot an Arrow of Undead Slaying at a Bandit
  *     Captain with four +1 arrows left).
  *   - The turn's free interaction already spent (on picking up what it dropped, 1.266), nothing else
@@ -183,7 +183,7 @@ try {
                 build: defaultRulesetSheetBuild(ember),
                 items: rulesetSheetItems(book, one.stacks, undefined),
               }
-            : // An opponent with a sheet of its own, carrying what it fights with (1.787).
+            : // An opponent with a sheet of its own, carrying what it fights with (1.794).
               {
                 id: one.id,
                 name: one.id,

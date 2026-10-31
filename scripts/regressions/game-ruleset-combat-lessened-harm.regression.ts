@@ -1,5 +1,5 @@
 /**
- * Damage lessened by a value off the sheet, and falls lessened (Capability API 1.400).
+ * Damage lessened by a value off the sheet, and falls lessened (Capability API 1.412).
  *
  *   - Deflect Missiles: 1d10 + Dexterity modifier + monk level off a ranged blow, spent by it; a melee
  *     blow is not lessened; never below 0.
@@ -35,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 400);
+  assert.ok(supportedCapabilityApi.minor >= 412);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -268,7 +268,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose damage modifier adds a value off the sheet (add) or lessens a fall (falls) requires schemaVersion 2 and capabilityApi 1.400 or newer";
+      "A ruleset whose damage modifier adds a value off the sheet (add) or lessens a fall (falls) requires schemaVersion 2 and capabilityApi 1.412 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -282,13 +282,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(399) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(400) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(399) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(411) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(412) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(411) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Lessened harm: Deflect Missiles takes 1d10 + Dex + level off an arrow and is spent, not off a club, never below 0; Slow Fall takes 5 x level off a fall and is spent, not off an arrow; gated at 1.400.",
+    "Lessened harm: Deflect Missiles takes 1d10 + Dex + level off an arrow and is spent, not off a club, never below 0; Slow Fall takes 5 x level off a fall and is spent, not off an arrow; gated at 1.412.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

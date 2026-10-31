@@ -239,7 +239,7 @@ type RulesetSheetEditorProps = {
   items?: ReadonlyArray<RulesetSheetItem>;
 };
 
-/** A ruleset sheet to fill in, in the player's language where the ruleset has a translation (1.803):
+/** A ruleset sheet to fill in, in the player's language where the ruleset has a translation (1.810):
  *  its words are shown translated, and every value written to the sheet stays the ruleset's own. */
 export function RulesetSheetEditor(props: RulesetSheetEditorProps) {
   const text = useRulesetDefinitionText(props.definition);
@@ -610,7 +610,7 @@ function SheetEditor({ definition, layerOptions, envelope, onChange, live, items
           />
         )}
 
-        {/* Fields held to a combined most and over it (1.659): an imported sheet, or one from before. */}
+        {/* Fields held to a combined most and over it (1.671): an imported sheet, or one from before. */}
         {rulesetSheetTotalsOver(definition, build).map((over) => (
           <p key={over.label} role="alert" className="text-xs text-[var(--destructive)]">
             {t("ui.rulesets.sheet.totalOver", over)}

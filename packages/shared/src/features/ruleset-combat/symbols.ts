@@ -1,5 +1,5 @@
 /**
- * The arithmetic of a `symbol-pool` fight (Capability API 1.783): the ruleset's own symbol dice
+ * The arithmetic of a `symbol-pool` fight (Capability API 1.382): the ruleset's own symbol dice
  * thrown for an attack, a save or a check, the exact spread of symbols a forecast reads, and the
  * spends the symbols left over buy.
  *
@@ -272,7 +272,7 @@ export interface RulesetSymbolSpendPick {
   times: number;
 }
 
-/** What one throw's spends can still do (1.783): how many more copies of a spend would land, given
+/** What one throw's spends can still do (1.382): how many more copies of a spend would land, given
  *  what has already been bought on this throw, and the record of buying them. The fight and its
  *  forecast hold one per throw, so what is priced is what lands. */
 export interface RulesetSymbolSpendBudget {
@@ -381,7 +381,7 @@ export function rulesetSymbolsLeft(
   return left;
 }
 
-/** The spends somebody choosing for themselves (1.382) is held to: what they named, in the order
+/** The spends somebody choosing for themselves (1.394) is held to: what they named, in the order
  *  they named it, each bought only as often as the symbols pay for it, its `max` allows and `budget`
  *  says it lands. Taken from `budget` as it goes, exactly as the Engine's own pick is. */
 export function rulesetChosenSymbolSpends(
@@ -411,7 +411,7 @@ export function rulesetChosenSymbolSpends(
   return [...bought].map(([spend, times]) => ({ spend, times }));
 }
 
-/** The spends a side choosing for itself may buy one more of (1.382), after `chosen`: its own, for
+/** The spends a side choosing for itself may buy one more of (1.394), after `chosen`: its own, for
  *  this outcome, paid for by what is left, under its `max`, and landing by `budget` as it stands once
  *  `chosen` has been taken from it. A spend worth nothing to the Engine may still be chosen. */
 export function rulesetSymbolSpendChoices(

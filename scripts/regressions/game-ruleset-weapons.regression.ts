@@ -596,7 +596,7 @@ try {
     assert.deepEqual([harm.damageType, harm.amount], ["cut", 6]);
   }
 
-  // ── No damage dice (1.498): a bonus alone, or nothing but what the hit puts on ──
+  // ── No damage dice (1.510): a bonus alone, or nothing but what the hit puts on ──
   {
     const blowgun = { ...axe, attack: { ...axe.attack!, damage: { bonus: 1, type: "pierce" } } };
     const net = {
@@ -636,9 +636,9 @@ try {
     );
     const pin = rulesetCombatant(thrown.state, "hound")!.tracked.find((one) => one.condition === "pinned");
     assert.deepEqual(pin?.checkEnds, { check: "brawn", difficulty: 10 }, JSON.stringify(thrown.events));
-    // Gated at 1.498; the example's own weapons, with their dice, are not.
+    // Gated at 1.510; the example's own weapons, with their dice, are not.
     const gate1458 =
-      "A ruleset whose items attack with no damage dice, or whose weapons put a condition on with any hit or one a check ends (an attack without damage dice, onHit atLeast 0 or checkEnds) requires schemaVersion 2 and capabilityApi 1.498 or newer";
+      "A ruleset whose items attack with no damage dice, or whose weapons put a condition on with any hit or one a check ends (an attack without damage dice, onHit atLeast 0 or checkEnds) requires schemaVersion 2 and capabilityApi 1.510 or newer";
     const at = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },

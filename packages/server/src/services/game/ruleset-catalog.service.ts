@@ -191,7 +191,7 @@ async function storedCatalog(
 /**
  * A ruleset's translation into a language: its strings, each its English display text word for word to
  * that text in the language, or null when none is kept in that language or the one it is a kind of ("pt"
- * for "pt-BR"). A catalog package's language pack (1.803), or the one language kept with an imported
+ * for "pt-BR"). A catalog package's language pack (1.810), or the one language kept with an imported
  * package file.
  */
 export async function openRulesetLocale(

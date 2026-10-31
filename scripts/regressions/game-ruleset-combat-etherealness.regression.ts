@@ -1,5 +1,5 @@
 /**
- * A creature's action that sends somebody, or itself, out of the fight (Capability API 1.672).
+ * A creature's action that sends somebody, or itself, out of the fight (Capability API 1.684).
  *
  *   - `dismisses` on a creature's `self` action with `"turns": true`: a ghost's Etherealness takes it
  *     off the board, still taking its turns, offered there only its way back (the condition's
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 672);
+  assert.ok(supportedCapabilityApi.minor >= 684);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -197,7 +197,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a creature's action that sends somebody, or the creature itself, out of the fight (a creature action's dismisses) requires schemaVersion 2 and capabilityApi 1.672 or newer";
+      "A ruleset with a creature's action that sends somebody, or the creature itself, out of the fight (a creature action's dismisses) requires schemaVersion 2 and capabilityApi 1.684 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -216,13 +216,13 @@ try {
         .find((one: { id: string }) => one.id === "creatures")
         .entries[0].creature.actions.push(etherealness());
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(671) as never, withGhost), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(672) as never, withGhost), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(671) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(683) as never, withGhost), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(684) as never, withGhost), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(683) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Etherealness: a creature away on its own action, offered only its way back, its riders along with it; gated at 1.672.",
+    "Etherealness: a creature away on its own action, offered only its way back, its riders along with it; gated at 1.684.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

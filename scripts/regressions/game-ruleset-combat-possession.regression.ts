@@ -1,5 +1,5 @@
 /**
- * A creature that goes into whom it lands on (Capability API 1.683): a ghost's Possession, "the ghost
+ * A creature that goes into whom it lands on (Capability API 1.695): a ghost's Possession, "the ghost
  * disappears, and the target is incapacitated and loses control of its body. The ghost now controls
  * the body ... The possession lasts until the body drops to 0 hit points".
  *
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 683);
+  assert.ok(supportedCapabilityApi.minor >= 695);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -226,7 +226,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a creature that goes into whom it lands on (dismisses.possesses) requires schemaVersion 2 and capabilityApi 1.683 or newer";
+      "A ruleset with a creature that goes into whom it lands on (dismisses.possesses) requires schemaVersion 2 and capabilityApi 1.695 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -240,12 +240,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(682) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(683) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(694) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(695) as never, fiveE()), gate);
   }
 
   console.log(
-    "Possession: the ghost goes into the knight, who fights for it, and comes out beside the body as it drops; gated at 1.683.",
+    "Possession: the ghost goes into the knight, who fights for it, and comes out beside the body as it drops; gated at 1.695.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

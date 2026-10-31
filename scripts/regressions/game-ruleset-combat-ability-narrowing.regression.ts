@@ -1,7 +1,7 @@
 /**
  * More conditions, and changes narrowed to an ability (Capability API 1.188).
  *
- *   - A sheet's conditions, a rest's cleared ones and the fight's own hold up to 640 (320 before 1.539, 160 before 1.269, 80 before that).
+ *   - A sheet's conditions, a rest's cleared ones and the fight's own hold up to 640 (320 before 1.551, 160 before 1.269, 80 before that).
  *   - A change to attacks may name `ability`: a gold dragon's Weakening Breath takes from Strength
  *     attacks and not from a bow, in the roll, its mode and the forecast.
  *   - A change to checks may name `abilities`: Rage's advantage on Strength checks reaches a grapple
@@ -351,8 +351,8 @@ try {
     damage.combat.conditions.push({ condition: "poisoned", modifiers: [{ to: "damage", flat: 2, ability: "str" }] });
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(187) as never, damage), gate, "damage by ability");
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(187) as never, JSON.parse(fiveE)), gate, "plain 5e");
-    // More than 320 (1.539).
-    const gate536 = "A ruleset with more than 320 conditions requires schemaVersion 2 and capabilityApi 1.539 or newer";
+    // More than 320 (1.551).
+    const gate536 = "A ruleset with more than 320 conditions requires schemaVersion 2 and capabilityApi 1.551 or newer";
     const wider = (count: number) => {
       const doc = JSON.parse(fiveE);
       for (let index = doc.sheet.live.conditions.length; index < count; index++) {
@@ -360,9 +360,9 @@ try {
       }
       return doc;
     };
-    assert.equal(getCapabilityPackageInstallIssue(manifest(538) as never, wider(321)), gate536, "321 conditions");
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(539) as never, wider(321)), gate536, "321 at 1.539");
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(538) as never, wider(320)), gate536, "320 before");
+    assert.equal(getCapabilityPackageInstallIssue(manifest(550) as never, wider(321)), gate536, "321 conditions");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(551) as never, wider(321)), gate536, "321 at 1.551");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(550) as never, wider(320)), gate536, "320 before");
   }
 
   console.log(

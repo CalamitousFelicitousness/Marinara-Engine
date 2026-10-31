@@ -1,5 +1,5 @@
 /**
- * A condition put on unless its applier already holds one (Capability API 1.727), and a sequence's
+ * A condition put on unless its applier already holds one (Capability API 1.739), and a sequence's
  * reach (no minor): a chain devil's Chain, "grappled (escape DC 14) if the devil isn't already
  * grappling a creature", its restraint ending with the grapple; its Multiattack of two chains, each
  * reaching 10 feet.
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 727);
+  assert.ok(supportedCapabilityApi.minor >= 739);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -169,7 +169,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a condition put on only while its applier holds none of some on anybody (applies[].unlessImposing) requires schemaVersion 2 and capabilityApi 1.727 or newer";
+      "A ruleset with a condition put on only while its applier holds none of some on anybody (applies[].unlessImposing) requires schemaVersion 2 and capabilityApi 1.739 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -183,13 +183,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(726) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(727) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(726) as never, fiveE(null)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(738) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(739) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(738) as never, fiveE(null)), gate);
   }
 
   console.log(
-    "Applies unless imposing: a chain devil grapples one at a time, its Multiattack reaching 10 feet chain by chain; gated at 1.727.",
+    "Applies unless imposing: a chain devil grapples one at a time, its Multiattack reaching 10 feet chain by chain; gated at 1.739.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

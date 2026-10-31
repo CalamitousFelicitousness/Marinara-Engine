@@ -1,5 +1,5 @@
 /**
- * A feature a rest offers (Capability API 1.776): `recovers.atRest`.
+ * A feature a rest offers (Capability API 1.788): `recovers.atRest`.
  *
  *   - A Short rest offers Arcane Recovery while it has a use left and a slot is spent, with the
  *     highest spent slots that fit under its levels picked already.
@@ -8,7 +8,7 @@
  *     offer, or more levels than it gives, refuses the lot.
  *   - The Game Master's rest tag takes it with use=, the highest that fit or recover= as picked; the
  *     rest stands when it gives nothing, and says why.
- *   - Checked at import, and the install gate asks for 1.776.
+ *   - Checked at import, and the install gate asks for 1.788.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -35,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 776);
+  assert.ok(supportedCapabilityApi.minor >= 788);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -196,13 +196,13 @@ try {
     restartRequired: false,
   });
   const gate =
-    "A ruleset with a feature a rest offers (recovers.atRest) requires schemaVersion 2 and capabilityApi 1.776 or newer";
-  assert.equal(getCapabilityPackageInstallIssue(manifest(775) as never, withRecovery()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(776) as never, withRecovery()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(775) as never, fiveE()), gate);
+    "A ruleset with a feature a rest offers (recovers.atRest) requires schemaVersion 2 and capabilityApi 1.788 or newer";
+  assert.equal(getCapabilityPackageInstallIssue(manifest(787) as never, withRecovery()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(788) as never, withRecovery()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(787) as never, fiveE()), gate);
 
   console.log(
-    "Rest recovery 1.776: a Short rest offers Arcane Recovery, takes it with the slots picked, refuses what it does not offer, and the gate asks for 1.776.",
+    "Rest recovery 1.788: a Short rest offers Arcane Recovery, takes it with the slots picked, refuses what it does not offer, and the gate asks for 1.788.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

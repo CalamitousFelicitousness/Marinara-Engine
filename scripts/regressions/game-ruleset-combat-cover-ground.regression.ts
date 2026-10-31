@@ -1,5 +1,5 @@
 /**
- * Cover only from what stands in the way (Capability API 1.757): `combat.cover.groundUnderTarget`.
+ * Cover only from what stands in the way (Capability API 1.769): `combat.cover.groundUnderTarget`.
  *
  *   - By default a target standing in a forest has half cover against an attack from the ground
  *     under it.
@@ -30,7 +30,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 757);
+  assert.ok(supportedCapabilityApi.minor >= 769);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -105,15 +105,15 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset that says whether the ground under a target gives cover (cover.groundUnderTarget) requires schemaVersion 2 and capabilityApi 1.757 or newer";
+      "A ruleset that says whether the ground under a target gives cover (cover.groundUnderTarget) requires schemaVersion 2 and capabilityApi 1.769 or newer";
     const doc = fiveE({ groundUnderTarget: false });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(756) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(757) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(756) as never, fiveE({})), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(768) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(769) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(768) as never, fiveE({})), gate);
   }
 
   console.log(
-    "Cover from the ground: a forest under the target is half cover unless the ruleset says only what stands in the way counts; gated at 1.757.",
+    "Cover from the ground: a forest under the target is half cover unless the ruleset says only what stands in the way counts; gated at 1.769.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

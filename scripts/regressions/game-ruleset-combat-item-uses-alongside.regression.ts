@@ -1,5 +1,5 @@
 /**
- * Item uses beside one another (Capability API 1.522).
+ * Item uses beside one another (Capability API 1.534).
  *
  *   - The Staff of Thunder and Lightning's Thunder and Lightning: its Lightning Strike at whom it is
  *     aimed, and its Thunderclap (`alongside`) on everybody its burst around the wielder catches, in
@@ -35,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 522);
+  assert.ok(supportedCapabilityApi.minor >= 534);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -193,7 +193,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with an item's use that sets off others beside it (moreUses alongside) requires schemaVersion 2 and capabilityApi 1.522 or newer";
+      "A ruleset with an item's use that sets off others beside it (moreUses alongside) requires schemaVersion 2 and capabilityApi 1.534 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -207,11 +207,11 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(521) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(522) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(533) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(534) as never, document()), gate);
     assert.notEqual(
       getCapabilityPackageInstallIssue(
-        manifest(521) as never,
+        manifest(533) as never,
         document((item) => delete item.moreUses[2].alongside),
       ),
       gate,
@@ -219,7 +219,7 @@ try {
   }
 
   console.log(
-    "Item uses alongside: Thunder and Lightning's bolt at whom it is aimed and its Thunderclap around the wielder in one action, spending only its own daily use; refusals and the gate at 1.522.",
+    "Item uses alongside: Thunder and Lightning's bolt at whom it is aimed and its Thunderclap around the wielder in one action, spending only its own daily use; refusals and the gate at 1.534.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

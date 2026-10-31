@@ -1,6 +1,6 @@
 /**
  * A call that sets down what it calls within some distance of its caller, on cells it sees
- * (Capability API 1.608): 5e's treant's Animate Trees, "one or two trees it can see within 60 feet
+ * (Capability API 1.620): 5e's treant's Animate Trees, "one or two trees it can see within 60 feet
  * of it".
  *
  *   - The trees wake within 60 feet of the treant, the cells nearest its foe first.
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 608);
+  assert.ok(supportedCapabilityApi.minor >= 620);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -199,7 +199,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a call that sets down what it calls within some distance of its caller (calls.within) requires schemaVersion 2 and capabilityApi 1.608 or newer";
+      "A ruleset with a call that sets down what it calls within some distance of its caller (calls.within) requires schemaVersion 2 and capabilityApi 1.620 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -213,12 +213,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(607) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(608) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(619) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(620) as never, fiveE()), gate);
   }
 
   console.log(
-    "calls.within: Animate Trees wakes its trees within 60 feet, nearest its foe; beside it without; only where it sees; gated at 1.608.",
+    "calls.within: Animate Trees wakes its trees within 60 feet, nearest its foe; beside it without; only where it sees; gated at 1.620.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

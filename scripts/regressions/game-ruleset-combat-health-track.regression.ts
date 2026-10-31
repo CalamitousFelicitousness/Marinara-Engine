@@ -1,5 +1,5 @@
 /**
- * A fight whose health is a PLAIN track that fills up (Capability API 1.784): `combat.health`
+ * A fight whose health is a PLAIN track that fills up (Capability API 1.383): `combat.health`
  * naming a track with neither levels nor boxes, as Genesys keeps Wounds, from 0 up to a threshold.
  *
  * It reads the way a wound track does, as what it has LEFT: the room above its value out of its
@@ -361,7 +361,7 @@ try {
     });
   }
 
-  // ── Health on a plain track needs 1.784 to install ──
+  // ── Health on a plain track needs 1.383 to install ──
   {
     const manifest = (minor: number) =>
       ({
@@ -377,15 +377,15 @@ try {
     const plain = { sheet: { live: { tracks: [{ id: "wounds", min: 0, max: 5 }] } } };
     for (const block of ["combat", "battle"]) {
       const ruleset = { ...plain, [block]: { health: { track: "wounds" } } } as never;
-      assert.match(getCapabilityPackageInstallIssue(manifest(783), ruleset) ?? "", issue, block);
-      assert.equal(getCapabilityPackageInstallIssue(manifest(784), ruleset), null, block);
+      assert.match(getCapabilityPackageInstallIssue(manifest(382), ruleset) ?? "", issue, block);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(383), ruleset), null, block);
     }
     // A wound track, or a pool, was health before.
     const wound = {
       sheet: { live: { tracks: [{ id: "harm", min: 0, max: 2, levels: [{ label: "a" }, { label: "b" }] }] } },
       combat: { health: { track: "harm" } },
     } as never;
-    assert.doesNotMatch(getCapabilityPackageInstallIssue(manifest(783), wound) ?? "", issue);
+    assert.doesNotMatch(getCapabilityPackageInstallIssue(manifest(382), wound) ?? "", issue);
   }
 
   console.info("game ruleset combat health track regressions passed.");

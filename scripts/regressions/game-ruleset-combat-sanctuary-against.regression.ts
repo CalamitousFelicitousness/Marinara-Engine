@@ -1,5 +1,5 @@
 /**
- * Casts that reach a foe, and what a sanctuary stops (Capability API 1.412).
+ * Casts that reach a foe, and what a sanctuary stops (Capability API 1.424).
  *
  *   - endsWhenHolder.castsAtFoes: a warded cleric keeps it casting a heal on a friend, and loses it
  *     casting at a foe, or with an area that catches one.
@@ -38,7 +38,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 412);
+  assert.ok(supportedCapabilityApi.minor >= 424);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -248,7 +248,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions end only on a cast that reaches a foe (castsAtFoes) or whose sanctuaries stop only attacks or casts (sanctuary.against) requires schemaVersion 2 and capabilityApi 1.412 or newer";
+      "A ruleset whose conditions end only on a cast that reaches a foe (castsAtFoes) or whose sanctuaries stop only attacks or casts (sanctuary.against) requires schemaVersion 2 and capabilityApi 1.424 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -262,8 +262,8 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(411) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(412) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(423) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(424) as never, document()), gate);
     const casting = document((doc) => {
       for (const rule of doc.combat.conditions) delete rule.sanctuary?.against;
       doc.catalogs.at(-1).entries[0].mechanics.applies = [
@@ -274,12 +274,12 @@ try {
         },
       ];
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(411) as never, casting), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(411) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(423) as never, casting), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(423) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Sanctuary against: castsAtFoes keeps a ward through a heal on a friend and ends it on a cast or an area that reaches a foe; Nature's Sanctuary stops attacks only, Sanctuary attacks and spells, never a creature's own harmful action; gated at 1.412.",
+    "Sanctuary against: castsAtFoes keeps a ward through a heal on a friend and ends it on a cast or an area that reaches a foe; Nature's Sanctuary stops attacks only, Sanctuary attacks and spells, never a creature's own harmful action; gated at 1.424.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

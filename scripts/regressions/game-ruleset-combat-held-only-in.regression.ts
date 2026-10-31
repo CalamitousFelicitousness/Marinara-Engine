@@ -1,5 +1,5 @@
 /**
- * A condition that holds only in some light (Capability API 1.592): a shadow's Sunlight Weakness.
+ * A condition that holds only in some light (Capability API 1.604): a shadow's Sunlight Weakness.
  *
  *   - `heldOnlyIn.light`: in sunlight it holds, with what it does; in dim light it is held off, not
  *     ended, and holds again once its holder is back in the sun.
@@ -28,7 +28,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 592);
+  assert.ok(supportedCapabilityApi.minor >= 604);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -97,7 +97,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a condition that holds only in some light (heldOnlyIn) requires schemaVersion 2 and capabilityApi 1.592 or newer";
+      "A ruleset with a condition that holds only in some light (heldOnlyIn) requires schemaVersion 2 and capabilityApi 1.604 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -111,13 +111,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(591) as never, weakness()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(592) as never, weakness()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(591) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(603) as never, weakness()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(604) as never, weakness()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(603) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Held only in: Sunlight Weakness holds in the sun, is held off in dim light and holds again; gated at 1.592.",
+    "Held only in: Sunlight Weakness holds in the sun, is held off in dim light and holds again; gated at 1.604.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -76,8 +76,8 @@ export function rulesetPositionOf(combatant: RulesetCombatant | undefined): Rule
 }
 
 /** What a condition's behavior is measured from (1.264): whoever put it on, standing on the board and
- *  not its holder; or, `from` the point (1.444), where it was put on from, as one cell standing there;
- *  or where it was last `steered` (1.451).
+ *  not its holder; or, `from` the point (1.456), where it was put on from, as one cell standing there;
+ *  or where it was last `steered` (1.463).
  *  Nothing when there is nothing to measure from. */
 export function rulesetBehaviorAnchor(
   state: RulesetEncounterState,
@@ -89,7 +89,7 @@ export function rulesetBehaviorAnchor(
   if ((behavior?.from === "point" || behavior?.from === "steered") && tracked?.at) {
     return { id: "", x: tracked.at.x, y: tracked.at.y } as unknown as RulesetCombatant;
   }
-  // Steered (1.451): nothing to measure from until it has been.
+  // Steered (1.463): nothing to measure from until it has been.
   if (behavior?.from === "steered") return undefined;
   const source = tracked?.source ? rulesetCombatant(state, tracked.source) : undefined;
   return source && source.id !== holder.id && rulesetPositionOf(source) && rulesetCombatStanding(source)
@@ -103,7 +103,7 @@ export function rulesetSpanOf(combatant: { span?: number } | undefined): number 
   return typeof span === "number" && Number.isInteger(span) && span > 1 ? Math.min(span, 6) : 1;
 }
 
-/** How somebody fits into a cell their whole space does not, between walls (1.668): as small as a
+/** How somebody fits into a cell their whole space does not, between walls (1.680): as small as a
  *  condition's `squeezesAs` says, freely, or squeezed to the size below their own at `costs` times a
  *  step, holding `condition`. Undefined where they fit whole, or cannot fit even so. */
 export function rulesetSqueezeAt(
@@ -342,7 +342,7 @@ function modeLeftOf(mover: RulesetCombatant, mode: RulesetMoveMode): number {
 }
 
 /** Whether a cell is solid to this mover, for stepping into it and for squeezing past its corner: water
- *  is not, to a swimmer or a flier (1.113), nor to somebody who runs across it (1.419). */
+ *  is not, to a swimmer or a flier (1.113), nor to somebody who runs across it (1.431). */
 export function rulesetCellSolidFor(grid: TacticalGrid, x: number, y: number, mover?: RulesetCombatant): boolean {
   if (!rulesetCellBlocked(grid, x, y)) return false;
   return !(
@@ -351,14 +351,14 @@ export function rulesetCellSolidFor(grid: TacticalGrid, x: number, y: number, mo
   );
 }
 
-/** Whether this mover may cross a cell here but never stop on it (1.419): water, to somebody who
+/** Whether this mover may cross a cell here but never stop on it (1.431): water, to somebody who
  *  runs across it and neither swims nor flies. */
 export function rulesetOnlyCrosses(grid: TacticalGrid, at: RulesetCombatCell, mover: RulesetCombatant): boolean {
   if (!mover.runsAcross || mover.walksOnLiquid || mover.speeds?.swim || mover.speeds?.fly) return false;
   return rulesetFootprintAt(at, rulesetSpanOf(mover)).some((cell) => isWater(grid, cell.x, cell.y));
 }
 
-/** Whether this combatant is under water (1.485): on a tile the ruleset's `underwater.terrain` names,
+/** Whether this combatant is under water (1.497): on a tile the ruleset's `underwater.terrain` names,
  *  not up in the air, and no flier without a swim speed. */
 export function rulesetUnderwater(
   definition: RulesetDefinition,
@@ -369,7 +369,7 @@ export function rulesetUnderwater(
   const grid = state?.board?.grid;
   if (!rule || !grid || !rulesetPositionOf(combatant) || rulesetAirborne(grid, combatant)) return false;
   if (combatant.speeds?.fly && !combatant.speeds.swim) return false;
-  // On the water, not in it (1.516): Water Walk.
+  // On the water, not in it (1.528): Water Walk.
   if (combatant.walksOnLiquid) return false;
   return rulesetFootprint(combatant).some((cell) => {
     const tile = grid.tiles[cell.y]?.[cell.x];
@@ -377,7 +377,7 @@ export function rulesetUnderwater(
   });
 }
 
-/** Whether an attack is one an underwater rule's `unless` spares (1.485): named in its label as a word,
+/** Whether an attack is one an underwater rule's `unless` spares (1.497): named in its label as a word,
  *  or of one of the qualities. */
 export function rulesetUnderwaterSpares(
   unless: { names?: string[]; qualities?: string[] } | undefined,
@@ -389,7 +389,7 @@ export function rulesetUnderwaterSpares(
   return !!unless.qualities?.some((quality) => action.qualities?.includes(quality));
 }
 
-/** Whom this mover drags along as they walk (1.484), those holding a `dragged` condition they put
+/** Whom this mover drags along as they walk (1.496), those holding a `dragged` condition they put
  *  on, and whether that halves their speed: anybody not `unlessSmaller` sizes smaller does. */
 export function rulesetDragging(
   definition: RulesetDefinition,
@@ -416,7 +416,7 @@ export function rulesetDragging(
   return out;
 }
 
-/** How far this combatant jumps now (1.486), in cells: a long jump and a high one, at their full
+/** How far this combatant jumps now (1.498), in cells: a long jump and a high one, at their full
  *  distance with a run-up walked this turn just before it, else as `standing` says; and whether it
  *  had one. Null in a fight with no jumping or no distance. */
 export function rulesetJumpReach(
@@ -442,7 +442,7 @@ export function rulesetJumpReach(
     entry.jumps ? [entry.jumps] : [],
   );
   const times = keys.reduce((most, one) => Math.max(most, one.times ?? 1), 1);
-  // A creature's own jump (1.703): a bulette's Standing Leap.
+  // A creature's own jump (1.715): a bulette's Standing Leap.
   const own = jumper.block?.jump;
   const span = (which: "long" | "high") => {
     const base =
@@ -463,7 +463,7 @@ export function rulesetJumpReach(
 }
 
 /**
- * Where this combatant may jump to now (1.486): a straight line in one of the eight directions, two
+ * Where this combatant may jump to now (1.498): a straight line in one of the eight directions, two
  * cells or more and no further than its long jump or what is left of its movement, each cell of it a
  * cell of movement. It goes over hard going, water and pits, over friends and ground no higher than
  * its high jump clears, never through a wall or a foe; it lands where it could stand, no more than a
@@ -474,7 +474,7 @@ export function rulesetJumpCells(
   definition: RulesetDefinition,
   state: RulesetEncounterState,
   actorId: string,
-  /** A leap onto others (1.712): only landings at least this many cells off, each in a space one
+  /** A leap onto others (1.724): only landings at least this many cells off, each in a space one
    *  or more others fill, foes too. */
   onto?: number,
 ): RulesetReachableCell[] {
@@ -533,7 +533,7 @@ export function rulesetJumpCells(
       const cells = rulesetFootprintAt({ x, y }, span);
       const open = cells.every((cell) => clears(cell.x, cell.y));
       if (held.some((one) => rulesetGapFrom({ x, y }, span, one.source) < one.away)) break;
-      // Onto others (1.712): landing among foes too, and nowhere else.
+      // Onto others (1.724): landing among foes too, and nowhere else.
       if (onto !== undefined) {
         if (!open && !cells.every((cell) => clears(cell.x, cell.y, true))) break;
         path.push({ x, y });
@@ -563,7 +563,7 @@ export function rulesetJumpCells(
   return out.sort((a, b) => a.cost - b.cost || a.y - b.y || a.x - b.x);
 }
 
-/** Whether landing here is landing on hard going (1.486): ground that costs more than a step, of
+/** Whether landing here is landing on hard going (1.498): ground that costs more than a step, of
  *  itself or by a lasting area on it. */
 export function rulesetHardLanding(
   grid: TacticalGrid,
@@ -578,13 +578,13 @@ export function rulesetHardLanding(
   );
 }
 
-/** Solid ground this mover walks through (1.482): Incorporeal Movement. */
+/** Solid ground this mover walks through (1.494): Incorporeal Movement. */
 export function rulesetThroughSolid(grid: TacticalGrid, x: number, y: number, mover: RulesetCombatant): boolean {
   return !!mover.passesObjects && inBounds(grid, x, y) && rulesetCellSolidFor(grid, x, y, mover);
 }
 
 /** A step into a cell another creature fills, priced as hard going `combat.sizes.passing.crowded`
- *  times over (1.482), from the step it would otherwise cost. */
+ *  times over (1.494), from the step it would otherwise cost. */
 export function rulesetCrowdedStep(
   definition: RulesetDefinition,
   state: RulesetEncounterState,
@@ -603,16 +603,16 @@ export function rulesetCrowdedStep(
 }
 
 /** What stepping into this cell costs this mover: a plain step over ground hard going of itself, for
- *  somebody who ignores it (1.419). */
+ *  somebody who ignores it (1.431). */
 function enterCostFor(grid: TacticalGrid, cell: RulesetCombatCell, mover?: RulesetCombatant): number {
   if (mover?.ignoresHardGround) return 1;
-  // Easy going on its own tiles (1.695): Ice Walk on ice and snow.
+  // Easy going on its own tiles (1.707): Ice Walk on ice and snow.
   const tile = grid.tiles[cell.y]?.[cell.x];
   if (tile !== undefined && mover?.easyGround?.includes(tile)) return 1;
   return rulesetCellEnterCost(grid, cell.x, cell.y);
 }
 
-/** Whether a mover's climb takes it into a cell (1.658): not one whose tile its climb is kept off, nor
+/** Whether a mover's climb takes it into a cell (1.670): not one whose tile its climb is kept off, nor
  *  slippery ground where it is kept off that. */
 function rulesetClimbsInto(
   grid: TacticalGrid,
@@ -627,7 +627,7 @@ function rulesetClimbsInto(
   return !(kept.slippery && slick?.has(`${to.x},${to.y}`));
 }
 
-/** The cells slippery ground covers (1.658), for a mover whose climb is kept off it. */
+/** The cells slippery ground covers (1.670), for a mover whose climb is kept off it. */
 export function rulesetSlickCells(state: RulesetEncounterState, mover: RulesetCombatant): Set<string> | undefined {
   if (!mover.climbNotOn?.slippery) return undefined;
   const slick = new Set<string>();
@@ -649,7 +649,7 @@ export function rulesetSlickCells(state: RulesetEncounterState, mover: RulesetCo
  * cell, water and heights included; a swimmer crosses water for one cell, and walks on land. Null
  * when no way it moves takes the step. Somebody who only walks gets exactly `rulesetStepCost`.
  * Ground hard going of itself costs a plain step to somebody who ignores it, and somebody who runs
- * across walks steps of any height as a climber does and water for one cell (1.419).
+ * across walks steps of any height as a climber does and water for one cell (1.431).
  */
 export function rulesetMoveStep(
   grid: TacticalGrid,
@@ -657,7 +657,7 @@ export function rulesetMoveStep(
   to: RulesetCombatCell,
   mover: RulesetCombatant,
   spent = 0,
-  /** Cells slippery ground covers (1.658), where a climb kept off it is no good. */
+  /** Cells slippery ground covers (1.670), where a climb kept off it is no good. */
   slick?: ReadonlySet<string>,
 ): { mode: RulesetMoveMode; cost: number } | null {
   const speeds = mover.speeds ?? {};
@@ -676,7 +676,7 @@ export function rulesetMoveStep(
     if (speeds.swim) options.push({ mode: "swim", cost: 1 });
     if (speeds.fly) options.push({ mode: "fly", cost: 1 });
     if (mover.runsAcross) options.push({ mode: "walk", cost: 1 });
-    // As on plain ground (1.516): a step, and the climb onto it.
+    // As on plain ground (1.528): a step, and the climb onto it.
     else if (mover.walksOnLiquid) options.push({ mode: "walk", cost: climb === null ? null : 1 + climb });
   } else if (!rulesetCellBlocked(grid, to.x, to.y)) {
     options.push({ mode: "walk", cost: mover.runsAcross ? enter : onFoot });
@@ -714,7 +714,7 @@ export function rulesetAreaCells(
   width = 1,
 ): RulesetCombatCell[] {
   const reach = Math.max(1, Math.round(size));
-  // A burst of no size is only its own cell (1.689): a Sphere of Annihilation.
+  // A burst of no size is only its own cell (1.701): a Sphere of Annihilation.
   if (shape === "burst") return burstCells(size === 0 ? 0 : reach, toward, grid);
   if (shape === "box") return boxCells(reach, origin, toward, grid);
   // A wall is shown run across the line from its maker; how it was really laid is the cast's.
@@ -821,7 +821,7 @@ export function rulesetWallShape(
   };
   const sideCells: RulesetCombatCell[] = [];
   const reach = side ? Math.max(1, Math.round(side.distance)) : 0;
-  // One laid only as a ring (1.589) is one whichever way it was asked for.
+  // One laid only as a ring (1.601) is one whichever way it was asked for.
   if ((asRing || area.ringOnly) && area.ring) {
     const radius = Math.max(1, Math.round(area.ring / 2));
     const inner = radius - thick + 1;
@@ -1049,7 +1049,7 @@ export function rulesetOpportunityAttack(combatant: RulesetCombatant): RulesetCo
   return rulesetBestWeapon(combatant, "melee");
 }
 
-/** Its best weapon strike of the kind (1.415): one that reaches for "melee", one that carries for
+/** Its best weapon strike of the kind (1.427): one that reaches for "melee", one that carries for
  *  "ranged", with the same bookkeeping an opportunity attack keeps. */
 export function rulesetBestWeapon(combatant: RulesetCombatant, kind: "melee" | "ranged"): RulesetCombatAction | null {
   let best: RulesetCombatAction | null = null;
@@ -1057,7 +1057,7 @@ export function rulesetBestWeapon(combatant: RulesetCombatant, kind: "melee" | "
   for (const action of combatant.actions) {
     if (kind === "melee" ? action.reach === undefined && action.range : !action.range || action.toHit === undefined)
       continue;
-    // Nor a strike again (1.415); and a blow or a shot is a weapon's, not a spell's: a cult fanatic's
+    // Nor a strike again (1.427); and a blow or a shot is a weapon's, not a spell's: a cult fanatic's
     // Inflict Wounds is no opportunity attack (playtest).
     if (
       action.strikeAgain ||
@@ -1114,7 +1114,7 @@ export function rulesetThreateningEnemies(
 ): Array<{ combatant: RulesetCombatant; at: RulesetCombatCell; reach: number; span?: number; moverSpan?: number }> {
   const opportunity = combat.opportunity;
   if (!opportunity || mover.flags.disengaged) return [];
-  // Flying out of reach (1.666): an owl's Flyby, with a flying speed to fly by on.
+  // Flying out of reach (1.678): an owl's Flyby, with a flying speed to fly by on.
   if (
     (mover.speeds?.fly ?? 0) > 0 &&
     combat.conditions?.some((rule) => rule.flyby) &&
@@ -1130,14 +1130,14 @@ export function rulesetThreateningEnemies(
   }> = [];
   for (const combatant of state.combatants) {
     if (combatant.side === mover.side || !rulesetCombatStanding(combatant)) continue;
-    // Or with a spare head's (1.537): a hydra's Reactive Heads.
+    // Or with a spare head's (1.549): a hydra's Reactive Heads.
     if ((combatant.budgets[opportunity.budget] ?? 0) < 1 && !combatant.heads?.spare) continue;
     // Nobody strikes through a sphere (1.314).
     if (rulesetSealedApart(definition, state, combatant, mover)) continue;
     const effects = rulesetCombatEffects(definition, combat, combatant, state);
-    // Nor one who may harm nobody (1.444).
+    // Nor one who may harm nobody (1.456).
     if (effects.has("cannot-act") || effects.has("cannot-react") || effects.has("cannot-harm")) continue;
-    // Nor one hanging on to somebody (1.663): carried along with the mover, or kept to its holder.
+    // Nor one hanging on to somebody (1.675): carried along with the mover, or kept to its holder.
     if (
       combat.conditions?.some((rule) => rule.attaches) &&
       state.combatants.some((holder) =>
@@ -1153,7 +1153,7 @@ export function rulesetThreateningEnemies(
     const strike = rulesetOpportunityAttack(combatant);
     if (!at || !strike) continue;
     const reach = Math.max(1, strike.reach ?? 1);
-    // Nor through a barrier that stops reach (1.582): Antilife Shell.
+    // Nor through a barrier that stops reach (1.594): Antilife Shell.
     if (rulesetReachBarred(definition, state, combatant, mover, strike)) continue;
     // Somebody up in the air too high above (or below) to be reached is no threat to them (1.114).
     const grid = state.board?.grid;
@@ -1187,9 +1187,9 @@ export function rulesetReachableCells(
   definition: RulesetDefinition,
   state: RulesetEncounterState,
   actorId: string,
-  /** Whoever it may walk into and through (1.390): those an engulf takes in. */
+  /** Whoever it may walk into and through (1.402): those an engulf takes in. */
   passes?: (combatant: RulesetCombatant) => boolean,
-  /** Walking carefully (1.676), at half speed on ground that spares slow walkers. */
+  /** Walking carefully (1.688), at half speed on ground that spares slow walkers. */
   careful = false,
 ): RulesetReachableCell[] {
   const combat = definition.combat;
@@ -1197,28 +1197,28 @@ export function rulesetReachableCells(
   const actor = rulesetCombatant(state, actorId);
   const from = rulesetPositionOf(actor);
   if (!combat || !grid || !actor || !from) return [];
-  // Levitating (1.382): up and down only, never across.
+  // Levitating (1.394): up and down only, never across.
   if (actor.levitating) return [];
-  // Inside somebody (1.390), even fallen (1.392): out is climbed, never walked.
+  // Inside somebody (1.402), even fallen (1.404): out is climbed, never walked.
   if (actor.insideOf) return [];
-  // Riding (1.483): the mount walks.
+  // Riding (1.495): the mount walks.
   if (actor.mountedOn) return [];
   const budget = Math.min(MOVEMENT_CEILING, Math.max(0, Math.floor(actor.movementLeft ?? 0)));
   if (budget < 1) return [];
 
   const blockers = new Set<string>();
   const occupied = new Set<string>();
-  // A space somebody lets them through as hard going (1.587).
+  // A space somebody lets them through as hard going (1.599).
   const hardGoing = new Set<string>();
-  // Into a foe's space and stopping there (1.491): Air Form. Only a friend's is somewhere not to stop.
+  // Into a foe's space and stopping there (1.503): Air Form. Only a friend's is somewhere not to stop.
   const stopsInFoes = rulesetActiveConditions(definition, combat, actor, state).some((entry) => entry.stopsInFoes);
-  // Sharing spaces (1.667): a swarm walks into and stops in anybody's, and anybody in its own.
+  // Sharing spaces (1.679): a swarm walks into and stops in anybody's, and anybody in its own.
   const shares = (one: RulesetCombatant) =>
     !!combat.conditions?.some((rule) => rule.sharesSpace) &&
     rulesetActiveConditions(definition, combat, one, state).some((entry) => entry.sharesSpace);
   const sharing = shares(actor);
   const friendly = new Set<string>();
-  // Through a foe far enough apart in size, or through larger ones or anybody (1.482).
+  // Through a foe far enough apart in size, or through larger ones or anybody (1.494).
   const apart = combat.sizes?.passing?.apart;
   const ownRank = rulesetSizeRank(combat, actor);
   const walksThrough = (combatant: RulesetCombatant) => {
@@ -1229,11 +1229,11 @@ export function rulesetReachableCells(
     return apart !== undefined && Math.abs(rank - ownRank) >= apart;
   };
   for (const combatant of state.combatants) {
-    // A prisoner (1.749) is out of the fight but still stands where it gave up (re-test 16).
+    // A prisoner (1.761) is out of the fight but still stands where it gave up (re-test 16).
     const prisoner = !!combatant.away?.surrendered && !!rulesetPositionOf(combatant);
     if (combatant.id === actor.id || (combatant.defeated && !prisoner)) continue;
-    // Inside somebody (1.390), they fill none of their own: whoever holds them fills it. Nor does a
-    // rider (1.483): their mount does.
+    // Inside somebody (1.402), they fill none of their own: whoever holds them fills it. Nor does a
+    // rider (1.495): their mount does.
     if (combatant.insideOf || combatant.mountedOn || passes?.(combatant)) continue;
     // Down and still in the fight, they block nobody but their space is still theirs: walked over,
     // never stopped on. So with a prisoner.
@@ -1244,13 +1244,13 @@ export function rulesetReachableCells(
       }
       continue;
     }
-    // A swarm's space is anybody's to walk into and stop in (1.667).
+    // A swarm's space is anybody's to walk into and stop in (1.679).
     if (shares(combatant)) continue;
-    // Moved through only by a foe strong enough, as hard going (1.587): the Arcane Hand.
+    // Moved through only by a foe strong enough, as hard going (1.599): the Arcane Hand.
     const passable = combatant.side !== actor.side ? combatant.block?.passableBy : undefined;
     const strong = passable ? (rulesetAbilityScore(definition, actor, passable.ability) ?? 0) > passable.above : false;
     const through = combatant.side !== actor.side && (passable ? strong : walksThrough(combatant));
-    // Nor does one that fills none of its space (1.587) keep anybody it lets by from stopping there.
+    // Nor does one that fills none of its space (1.599) keep anybody it lets by from stopping there.
     const fills = combatant.block?.fillsSpace !== false;
     // Every cell they fill (1.194).
     for (const at of rulesetFootprint(combatant)) {
@@ -1261,16 +1261,16 @@ export function rulesetReachableCells(
     }
   }
   const taken = sharing ? new Set<string>() : stopsInFoes ? friendly : occupied;
-  // Another's space costs as hard going (1.482), and solid ground does to one who walks through it.
+  // Another's space costs as hard going (1.494), and solid ground does to one who walks through it.
   const crowded = combat.sizes?.passing?.crowded;
-  // Dragging somebody they hold (1.484): every step costs double, unless all are much smaller.
+  // Dragging somebody they hold (1.496): every step costs double, unless all are much smaller.
   const dragging = rulesetDragging(definition, state, actor);
   const solidFor = (x: number, y: number) =>
     rulesetCellSolidFor(grid, x, y, actor) && !rulesetThroughSolid(grid, x, y, actor);
   const insideSolid = (x: number, y: number) => rulesetThroughSolid(grid, x, y, actor);
   // Somebody bigger than one cell moves the whole of themselves (1.194): a step is taken by their
   // top-left cell, and every cell they would fill must be open. The cost is the ground their
-  // top-left cell steps onto, the way the one cell of anybody else pays. Squeezed (1.668), their
+  // top-left cell steps onto, the way the one cell of anybody else pays. Squeezed (1.680), their
   // whole size still.
   const span = actor.squeezedFrom ?? rulesetSpanOf(actor);
   const fits = (x: number, y: number, set: ReadonlySet<string>, as = span) =>
@@ -1364,7 +1364,7 @@ export function rulesetReachableCells(
       const y = at.y + dy;
       const next = `${x},${y}`;
       if (solidFor(x, y) || blockers.has(next)) continue;
-      // Between walls too close for all of them, squeezed (1.668).
+      // Between walls too close for all of them, squeezed (1.680).
       const squeeze = span > 1 ? rulesetSqueezeAt(definition, state, actor, { x, y }) : undefined;
       if (span > 1 && !fits(x, y, blockers, squeeze?.span)) continue;
       // Somebody this combatant may not approach is not walked PAST either. A route that dips
@@ -1388,7 +1388,7 @@ export function rulesetReachableCells(
       )
         continue;
       if (within.some((one) => rulesetGapFrom({ x, y }, span, one.source) > one.ring)) continue;
-      // Kept out of a zone, or in it (1.439): Magic Circle, Hallow.
+      // Kept out of a zone, or in it (1.451): Magic Circle, Hallow.
       if (
         keptBy.some(({ cells, rule }) =>
           (rule.way ?? "in") === "in" ? cells.has(next) && !cells.has(key) : cells.has(key) && !cells.has(next),
@@ -1398,16 +1398,16 @@ export function rulesetReachableCells(
       // No squeezing between two solid corners: a step corner-wise needs one of its two sides open.
       if (dx !== 0 && dy !== 0 && solidFor(at.x + dx, at.y) && solidFor(at.x, at.y + dy)) continue;
       // The cheapest way they move that takes this step on what that way has left (1.113); through
-      // solid ground, two steps' worth (1.482).
+      // solid ground, two steps' worth (1.494).
       const plain = insideSolid(x, y) ? 2 : rulesetMoveStep(grid, at, { x, y }, actor, cheapest, slick)?.cost;
       if (plain === undefined) continue;
-      // Ground a lasting area makes hard going (1.173), and another's space (1.482).
+      // Ground a lasting area makes hard going (1.173), and another's space (1.494).
       const slowedStep = rulesetSlowedStep(grid, { x, y }, plain, slowed, at, actor);
       const crowdedStep =
         crowded !== undefined && occupied.has(next)
           ? Math.max(slowedStep, plain + Math.max(0, crowded - enterCostFor(grid, { x, y }, actor)))
           : slowedStep;
-      // Through a space let by as hard going (1.587), as difficult ground is.
+      // Through a space let by as hard going (1.599), as difficult ground is.
       const throughStep = hardGoing.has(next) ? Math.max(crowdedStep, plain * 2) : crowdedStep;
       const step = (dragging.halves ? throughStep * 2 : throughStep) * (squeeze?.costs ?? 1);
       const cost = cheapest + step;
@@ -1430,7 +1430,7 @@ export function rulesetReachableCells(
       // A friend can be walked past and not stood on, so their cell is searched through and never
       // offered as somewhere to stop.
       if (taken.has(next) || (span > 1 && !fits(x, y, taken, squeeze?.span))) continue;
-      // Run across and never stopped on (1.419).
+      // Run across and never stopped on (1.431).
       if (rulesetOnlyCrosses(grid, { x, y }, actor)) continue;
       if (
         driven.some((one) => {
@@ -1457,7 +1457,7 @@ export function rulesetReachableCells(
  * or a corner too tight to squeeze through, exactly as a walk would. Empty when there is nowhere to
  * go. A push is not a walk: it spends nothing and nobody strikes at it on the way.
  */
-/** The way somebody is pulled straight toward whoever pulls them (1.662), a cell at a time from
+/** The way somebody is pulled straight toward whoever pulls them (1.674), a cell at a time from
  *  their nearest cells to each other, stopping once beside them. Walls, filled cells and steep
  *  rises stop it as they stop a push: a balor's whip, a roper's Reel. */
 export function rulesetPullPath(
@@ -1529,7 +1529,7 @@ export function rulesetPushPath(
   pusherId: string,
   targetId: string,
   cells: number,
-  /** Pushed away from this cell rather than from the pusher (1.618): where a Bead of Force burst. */
+  /** Pushed away from this cell rather than from the pusher (1.630): where a Bead of Force burst. */
   fromCell?: RulesetCombatCell,
 ): RulesetCombatCell[] {
   const grid = state.board?.grid;
@@ -1704,8 +1704,8 @@ function provokedBy(
 }
 
 /** The cells a zone covers as the fight stands. None off a board, or for a caster with no cell. */
-/** Whom a zone keeps out (1.439): its rule's kinds, less those its caster left out as it was cast
- *  (1.653), Hallow's "You can exclude one or more of those types of creatures". */
+/** Whom a zone keeps out (1.451): its rule's kinds, less those its caster left out as it was cast
+ *  (1.665), Hallow's "You can exclude one or more of those types of creatures". */
 export function rulesetKeptOutIs(
   zone: RulesetCombatZone,
   rule: NonNullable<NonNullable<RulesetCombatAction["zone"]>["keepsOut"]>,
@@ -1717,7 +1717,7 @@ export function rulesetKeptOutIs(
   };
 }
 
-/** The zones that keep this combatant out, or in (1.439), each with its cells: Magic Circle and
+/** The zones that keep this combatant out, or in (1.451), each with its cells: Magic Circle and
  *  Hallow against the kinds they name. */
 export function rulesetKeptBy(
   definition: RulesetDefinition,
@@ -1734,8 +1734,8 @@ export function rulesetKeptBy(
   );
 }
 
-/** The zones that ward somebody against `from` (1.439): one that keeps `from` out, with them inside it
- *  and `from` outside; or one that keeps `from` in (`way: "out"`, 1.445), with `from` inside it and
+/** The zones that ward somebody against `from` (1.451): one that keeps `from` out, with them inside it
+ *  and `from` outside; or one that keeps `from` in (`way: "out"`, 1.457), with `from` inside it and
  *  them outside. */
 export function rulesetWardedFrom(
   definition: RulesetDefinition,
@@ -1754,7 +1754,7 @@ export function rulesetWardedFrom(
     .map(({ rule }) => rule);
 }
 
-/** Whether a zone keeps `from` reaching `target` with this blow (1.582): one that keeps them out
+/** Whether a zone keeps `from` reaching `target` with this blow (1.594): one that keeps them out
  *  and stops reach, with `target` inside it and `from` outside, against a melee blow with no more than
  *  the least reach that is not a spell. 5e's Antilife Shell, which a reach or ranged weapon passes. */
 export function rulesetReachBarred(
@@ -1778,13 +1778,13 @@ export function rulesetZoneCells(
 ): RulesetCombatCell[] {
   const cells = zoneCellsAsCast(state, caster, zone);
   const rules = caster.actions.find((entry) => entry.id === zone.actionId)?.zone;
-  // A gas, a fog or a wind (1.646), which a zone that seals the air keeps to one side of its edge.
+  // A gas, a fog or a wind (1.658), which a zone that seals the air keeps to one side of its edge.
   const airy = !!rules?.obscures?.dispersed || !!rules?.disperses || !!rules?.stages?.some((stage) => stage.disperses);
   return airy && cells.length > 0 ? sealedOff(state, caster, zone, cells) : cells;
 }
 
 /** A gas, a fog or a wind's cells on the side of every zone that seals the air its middle is on
- *  (1.646): a Fog Cloud outside a Cube of Force stops at its face, one inside stays in. */
+ *  (1.658): a Fog Cloud outside a Cube of Force stops at its face, one inside stays in. */
 function sealedOff(
   state: RulesetEncounterState,
   caster: RulesetCombatant,
@@ -1831,7 +1831,7 @@ function zoneCellsAsCast(
     return rulesetAreaCells(action.area.shape, action.area.size, at, toward, grid, action.area.width);
   }
   // Around every cell its caster (or holder) fills (1.194), each cell once, as wide as it has spread
-  // (1.624).
+  // (1.636).
   const cells = new Map<string, RulesetCombatCell>();
   for (const from of rulesetFootprint(holder ?? caster)) {
     for (const cell of rulesetAreaCells("burst", action.area.size + (zone.widened ?? 0), from, from, grid))
@@ -1879,7 +1879,7 @@ export function rulesetZoneCatches(
 ): boolean {
   if (combatant.defeated) return false;
   if (zone.anchor === "caster" && combatant.id === caster.id) return false;
-  // Left by an action that never hinders them (1.691): a web, to a spider.
+  // Left by an action that never hinders them (1.703): a web, to a spider.
   if (rulesetUnhinderedBy(combatant, [action.id, action.label])) return false;
   const sameSide = combatant.side === caster.side;
   if (action.area?.friendlyFire === false && sameSide) return false;
@@ -1888,12 +1888,12 @@ export function rulesetZoneCatches(
   return true;
 }
 
-/** Whether an action, by its id or label, never hinders this combatant (1.691): Web Walker. */
+/** Whether an action, by its id or label, never hinders this combatant (1.703): Web Walker. */
 export function rulesetUnhinderedBy(combatant: RulesetCombatant, action: readonly (string | undefined)[]): boolean {
   return rulesetNamesAction(combatant.unhinderedBy, action);
 }
 
-/** Whether a list of names, in lower case, names an action by its id or label (1.691). */
+/** Whether a list of names, in lower case, names an action by its id or label (1.703). */
 export function rulesetNamesAction(
   names: readonly string[] | undefined,
   action: readonly (string | undefined)[],
@@ -1916,7 +1916,7 @@ export interface RulesetSlowedCell {
 export function rulesetSlowedCells(
   state: RulesetEncounterState,
   mover: RulesetCombatant,
-  /** Walking carefully (1.676): ground that spares slow walkers costs double for them. */
+  /** Walking carefully (1.688): ground that spares slow walkers costs double for them. */
   careful = false,
 ): Map<string, RulesetSlowedCell> {
   const slowed = new Map<string, RulesetSlowedCell>();
@@ -1924,12 +1924,12 @@ export function rulesetSlowedCells(
     for (const zone of caster.zones ?? []) {
       const action = caster.actions.find((entry) => entry.id === zone.actionId);
       const rule = action?.zone;
-      // Hard going in the stage it is at (1.544).
+      // Hard going in the stage it is at (1.556).
       const staged = zone.stage !== undefined && !!rule?.stages?.[zone.stage]?.difficult;
       const slowly = careful && !!rule?.spareSlowWalkers;
       if (!rule || !(rule.difficult || rule.costTimes || rule.halvesSpeed || staged || slowly)) continue;
       if (!rulesetZoneCatches(caster, zone, action, mover)) continue;
-      // Its hard going easy for them (1.695): Ice Walk in Sleet Storm.
+      // Its hard going easy for them (1.707): Ice Walk in Sleet Storm.
       if (rulesetNamesAction(mover.easyGround, [action.id, action.label])) continue;
       const times = rule.costTimes ?? (rule.difficult || staged ? 2 : 1);
       // Hard going only toward its caster (1.182): kept apart, and priced by the step.
@@ -1955,7 +1955,7 @@ export function rulesetSlowedCells(
  *  for ground that was already hard going: difficult terrain does not stack (1.173). Halved speed is
  *  on top of that, as the step costs double again (1.175). Ground hard going only toward a caster
  *  counts when the step, from `from`, brings the mover nearer them (1.182). Ground the mover ignores
- *  was never hard going for them, so an area's is charged in full (1.419). */
+ *  was never hard going for them, so an area's is charged in full (1.431). */
 export function rulesetSlowedStep(
   grid: TacticalGrid,
   cell: RulesetCombatCell,

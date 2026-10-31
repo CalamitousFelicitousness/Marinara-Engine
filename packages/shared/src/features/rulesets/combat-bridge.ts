@@ -134,7 +134,7 @@ function livePool(live: ReturnType<typeof readRulesetLive>, id: string) {
 /**
  * The health a `battle` block names, on whichever shape the ruleset gave it.
  *
- * A pool is its value out of its maximum. A WOUND TRACK, or a plain track that fills up (1.784),
+ * A pool is its value out of its maximum. A WOUND TRACK, or a plain track that fills up (1.383),
  * is the levels it has LEFT out of its length, which is the only reading that keeps the share honest: a share of a track is a fraction
  * of its length, a full track is zero, and an unmarked one is the whole of it. That is also exactly
  * what `rulesetCombatHealth` reports, so the two seams cannot come to different answers about
@@ -483,7 +483,7 @@ function healthOp(
   if (!("track" in health)) return poolOp(health.pool, delta, "damage");
   const declared = definition.sheet.live.tracks.find((entry) => entry.id === health.track);
   if (!declared) return null;
-  // A plain track that fills up (1.784) has no kinds and moves by the number.
+  // A plain track that fills up (1.383) has no kinds and moves by the number.
   const lightest = [...(declared.kinds ?? [])].sort((a, b) => a.severity - b.severity)[0];
   if (declared.kinds && !lightest) return null;
   // Fewer levels left is harm, so the sign turns over on the way to a number of marks. A heal names

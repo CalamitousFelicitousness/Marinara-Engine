@@ -1,5 +1,5 @@
 /**
- * An area that pushes out whoever saved (Capability API 1.618): 5e's Bead of Force, "Creatures that
+ * An area that pushes out whoever saved (Capability API 1.630): 5e's Bead of Force, "Creatures that
  * succeeded on the save ... are pushed away from the center of the sphere until they are no longer
  * inside it."
  *
@@ -36,7 +36,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 618);
+  assert.ok(supportedCapabilityApi.minor >= 630);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -191,7 +191,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with an area that pushes out whoever saved (pushesOutSaved) requires schemaVersion 2 and capabilityApi 1.618 or newer";
+      "A ruleset with an area that pushes out whoever saved (pushesOutSaved) requires schemaVersion 2 and capabilityApi 1.630 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -205,11 +205,11 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(617) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(618) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(629) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(630) as never, document()), gate);
   }
 
-  console.log("Horn of Blasting: glass saves at disadvantage and takes 10d6 instead of 5d6; gated at 1.616.");
+  console.log("Horn of Blasting: glass saves at disadvantage and takes 10d6 instead of 5d6; gated at 1.628.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

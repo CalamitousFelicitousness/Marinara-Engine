@@ -1,5 +1,5 @@
 /**
- * Sequence steps rolled for, made after another's hit, and left out at will (Capability API 1.630).
+ * Sequence steps rolled for, made after another's hit, and left out at will (Capability API 1.642).
  *
  *   - A grick's beak follows its tentacles only when they hit, at the one they hit, and takes no
  *     target of its own.
@@ -37,7 +37,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 630);
+  assert.ok(supportedCapabilityApi.minor >= 642);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -210,7 +210,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a sequence step rolled for, made after another's hit or left out at will (sequence[].dice, ifHit, optional) requires schemaVersion 2 and capabilityApi 1.630 or newer";
+      "A ruleset with a sequence step rolled for, made after another's hit or left out at will (sequence[].dice, ifHit, optional) requires schemaVersion 2 and capabilityApi 1.642 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -224,12 +224,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(629) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(630) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(641) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(642) as never, fiveE()), gate);
   }
 
   console.log(
-    "Sequence steps: a grick's beak follows a tentacle hit at the one hit, a violet fungus rolls 1d4 touches, a gibbering mouther may leave its spittle out as a mode; import refuses bad steps; gated at 1.630.",
+    "Sequence steps: a grick's beak follows a tentacle hit at the one hit, a violet fungus rolls 1d4 touches, a gibbering mouther may leave its spittle out as a mode; import refuses bad steps; gated at 1.642.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

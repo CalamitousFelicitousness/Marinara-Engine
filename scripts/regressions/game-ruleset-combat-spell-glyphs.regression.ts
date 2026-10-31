@@ -1,5 +1,5 @@
 /**
- * Spell glyphs (Capability API 1.441).
+ * Spell glyphs (Capability API 1.453).
  *
  *   - Glyph of Warding cast at 3rd level with a spell stored: its caster's own spells of the 1st to
  *     the 3rd level are offered, both are paid for, and whoever sets it off takes the stored spell in
@@ -41,7 +41,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 441);
+  assert.ok(supportedCapabilityApi.minor >= 453);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -292,7 +292,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose glyphs store one of their caster's own entries (detonates stores) requires schemaVersion 2 and capabilityApi 1.441 or newer";
+      "A ruleset whose glyphs store one of their caster's own entries (detonates stores) requires schemaVersion 2 and capabilityApi 1.453 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -317,13 +317,13 @@ try {
         entries: [spell("glyph", glyphMechanics(), 3)],
       });
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(440) as never, withGlyph), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(441) as never, withGlyph), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(440) as never, plainGlyph), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(452) as never, withGlyph), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(453) as never, withGlyph), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(452) as never, plainGlyph), gate);
   }
 
   console.log(
-    "Spell glyphs: a stored spell paid for with the glyph is cast at whoever sets it off, or centred on them; too high a spell is refused; gated at 1.441.",
+    "Spell glyphs: a stored spell paid for with the glyph is cast at whoever sets it off, or centred on them; too high a spell is refused; gated at 1.453.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

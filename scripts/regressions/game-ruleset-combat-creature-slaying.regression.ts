@@ -1,6 +1,6 @@
 /**
  * A creature's slaying held to the low, and a failed save that drops to no health (Capability API
- * 1.665).
+ * 1.677).
  *
  *   - `slaysHealthAtMost`: a solar's Slaying Longbow slays a target with 190 health or less that fails
  *     its save; one with more takes the arrow as if it had saved.
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 665);
+  assert.ok(supportedCapabilityApi.minor >= 677);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -158,7 +158,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a creature's slaying held to a health, or its failed save dropping to no health (slaysHealthAtMost, dropsOnFailedSave on a creature), requires schemaVersion 2 and capabilityApi 1.665 or newer";
+      "A ruleset with a creature's slaying held to a health, or its failed save dropping to no health (slaysHealthAtMost, dropsOnFailedSave on a creature), requires schemaVersion 2 and capabilityApi 1.677 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -176,12 +176,12 @@ try {
     withGlare.catalogs
       .find((one: { holds?: string }) => one.holds === "creatures")
       .entries[0].creature.actions.push(glare);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(664) as never, withGlare), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(665) as never, withGlare), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(664) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(676) as never, withGlare), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(677) as never, withGlare), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(676) as never, document()), gate);
   }
 
-  console.log("Creature slaying: held to a health, and a failed save dropping to no health; gated at 1.665.");
+  console.log("Creature slaying: held to a health, and a failed save dropping to no health; gated at 1.677.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

@@ -29,7 +29,7 @@ import {
   type RulesetCellChoice,
 } from "./ruleset-combat-board";
 
-/** The order a menu reads in: what a symbol throw's leftovers buy (1.382), then where you go, what
+/** The order a menu reads in: what a symbol throw's leftovers buy (1.394), then where you go, what
  *  you swing, what you cast, what a stat block can do, the contests it may start, the moves the kind
  *  implements, and finally ending the turn. Spends are only ever asked in a window of their own, so
  *  on a turn walking comes first: a turn on a board usually starts with it, and it may be taken
@@ -59,7 +59,7 @@ const MOVE_OPTION_WORDS: Record<
   "walk" | "walkCarefully" | "stand" | "climbOut" | "flyUp" | "flyDown" | "takeOff" | "land"
 > = {
   [RULESET_MOVE_OPTION]: "walk",
-  // A careful walk over caltrops (1.676).
+  // A careful walk over caltrops (1.688).
   [RULESET_CAREFUL_OPTION]: "walkCarefully",
   [RULESET_STAND_OPTION]: "stand",
   [RULESET_CLIMB_OUT_OPTION]: "climbOut",
@@ -109,9 +109,9 @@ export interface RulesetMenuStep {
   spared?: string[];
   /** Who it could heighten, while that is picked (1.255). */
   heighten?: { ids: string[] };
-  /** Where it is being stored instead of done (1.511), while what pays for it is picked. */
+  /** Where it is being stored instead of done (1.523), while what pays for it is picked. */
   storesIn?: { holderId: string; item?: number };
-  /** How many levels up its target is lifted, while where it is moved to is picked (1.552). */
+  /** How many levels up its target is lifted, while where it is moved to is picked (1.564). */
   rises?: number;
   /** Where a walk on a touch screen would end, tapped once and waiting for a second tap to go. */
   to?: { x: number; y: number };
@@ -145,7 +145,7 @@ export function rulesetMenuGroups(options: DirectedRulesetOption[] | undefined):
   // The first of a spell's variants stands for the rest when the spell itself is not offered.
   const standsFor = new Set<string>();
   for (const kind of RULESET_MENU_KINDS) {
-    // A spell's variants (1.756) sit under one button: its own while it is offered, else the first
+    // A spell's variants (1.768) sit under one button: its own while it is offered, else the first
     // of them (Command, whose plain cast is one of its ways). One Magic Circle, not twelve.
     const found = (options ?? []).filter((option) => {
       if (option.kind !== kind) return false;
@@ -196,7 +196,7 @@ export function rulesetMenuGroups(options: DirectedRulesetOption[] | undefined):
   return groups;
 }
 
-/** The variants offered with an option (1.756), itself first; just itself when it has none. For the
+/** The variants offered with an option (1.768), itself first; just itself when it has none. For the
  *  variant that stands for a spell that is not offered itself, every way of that spell. */
 export function rulesetMenuVariants(
   options: DirectedRulesetOption[] | undefined,
@@ -245,7 +245,7 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
   // A strike with what a spell called up, told apart from casting the spell again (Spiritual Weapon).
   if (option.id.startsWith(RULESET_SUMMON_OPTION_PREFIX))
     return t("game.combat.ruleset.menu.summonStrike", { name: option.label });
-  // The Engine's own pick for what is left of a symbol throw (1.382), named by what it buys.
+  // The Engine's own pick for what is left of a symbol throw (1.394), named by what it buys.
   if (option.symbolSpend?.engine) return t("game.combat.ruleset.menu.engineSpends", { spends: option.label });
   // Walking and getting back up are the board's own two moves, named by this Engine for the same
   // reason the standard actions are: the closed list is the Engine's vocabulary, not the file's.
@@ -257,10 +257,10 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
       return t("game.combat.ruleset.menu.turnZone", { zone: option.label });
     if (option.id.startsWith(RULESET_ZONE_OPTION_PREFIX))
       return t("game.combat.ruleset.menu.moveZone", { zone: option.label });
-    // Moving one anybody near may move on a check (1.681).
+    // Moving one anybody near may move on a check (1.693).
     if (option.id.startsWith(RULESET_ZONE_CHECK_OPTION_PREFIX))
       return t("game.combat.ruleset.menu.controlZone", { zone: option.label });
-    // Mounting a creature, named by it, and getting down (1.483).
+    // Mounting a creature, named by it, and getting down (1.495).
     if (option.id.startsWith(RULESET_MOUNT_OPTION_PREFIX) && option.mounts)
       return t("game.combat.ruleset.board.mount", { name: option.mounts });
     if (option.id === RULESET_DISMOUNT_OPTION) return t("game.combat.ruleset.board.dismount");
@@ -276,7 +276,7 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
   // A concentration entry made again (1.310): Vampiric Touch's later touches.
   if (option.again) return t("game.combat.ruleset.menu.again", { label: option.label });
   if (option.sustain) return t("game.combat.ruleset.menu.sustain", { label: option.label });
-  // Pulling one's blows (1.707) says what the next blow does, not which way a switch is flipped.
+  // Pulling one's blows (1.719) says what the next blow does, not which way a switch is flipped.
   if (option.knocksOut)
     return t(option.on ? "game.combat.ruleset.menu.strikeToKill" : "game.combat.ruleset.menu.knockOut");
   // A switch says which way it turns the item, which is the Engine's own word too.
@@ -290,7 +290,7 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
   }
   // Picking up what was dropped (1.266) is the Engine's own move too.
   if (option.pickUp) return t("game.combat.ruleset.menu.pickUp", { item: option.label });
-  // Slipping free of what holds them (1.473).
+  // Slipping free of what holds them (1.485).
   if (option.slip) return t("game.combat.ruleset.menu.slip", { condition: option.label });
   // Averting the eyes from a gaze (1.268), and looking again.
   if (option.avert)
@@ -306,7 +306,7 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
       },
     );
   if (option.readied) return t("game.combat.ruleset.menu.readied", { option: option.label });
-  // A trap disarmed (1.656), by name.
+  // A trap disarmed (1.668), by name.
   if (option.disarms) return t("game.combat.ruleset.menu.disarm", { zone: option.label });
   if (option.kind !== "standard") return option.label;
   const standard = t(`game.combat.ruleset.standard.${option.label}`, { defaultValue: option.label });
@@ -645,7 +645,7 @@ export function rulesetPicksStep(
   }
   const heighten = rulesetHeightenPick(view, step, targets, cell);
   if (heighten) return { ...held, stage: "heighten", heighten };
-  // Where its target is moved to, picked on the board (1.552): Telekinesis.
+  // Where its target is moved to, picked on the board (1.564): Telekinesis.
   if (rulesetCarryCells(step.option, targets).length > 0) return { ...held, stage: "carry" };
   return null;
 }
@@ -723,7 +723,7 @@ export interface RulesetSpendCarried {
  *  for ever. A refusal is not counted: the rules answered it, and it waits for the fight to move. */
 export const RULESET_SPEND_CARRY_TRIES = 3;
 
-/** Whether this browser's choice of picking its own symbol spends (1.382) is carried into the fight
+/** Whether this browser's choice of picking its own symbol spends (1.394) is carried into the fight
  *  on screen now. Null while it waits: no fight in symbol dice, a fight already over, a step in
  *  flight, a decision standing open (which would refuse the command), or this fight already carried.
  *  One the rules refused is tried again once the fight has moved past that revision; one lost on

@@ -1,6 +1,6 @@
 /**
  * What an entry puts on going on what it calls, and called objects that take no turns (Capability
- * API 1.466).
+ * API 1.478).
  *
  *   - Antipathy cast on an object: the object comes, takes no turn and keeps no side standing; its
  *     condition remembers the kind named, and its aura asks only that kind its save. Nobody it is
@@ -38,7 +38,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 466);
+  assert.ok(supportedCapabilityApi.minor >= 478);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -212,7 +212,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose entries put what they apply on what they call, or call what takes no turns (appliesToCalled, initiative none), requires schemaVersion 2 and capabilityApi 1.466 or newer";
+      "A ruleset whose entries put what they apply on what they call, or call what takes no turns (appliesToCalled, initiative none), requires schemaVersion 2 and capabilityApi 1.478 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -226,14 +226,14 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(465) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(466) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(477) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(478) as never, document()), gate);
     const turnsOnly = document({ appliesToCalled: undefined });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(465) as never, turnsOnly), gate, "initiative none alone");
+    assert.equal(getCapabilityPackageInstallIssue(manifest(477) as never, turnsOnly), gate, "initiative none alone");
   }
 
   console.log(
-    "Applies to called: Antipathy cast on an object that takes no turn, its aura reaching only the kind named; gated at 1.466.",
+    "Applies to called: Antipathy cast on an object that takes no turn, its aura reaching only the kind named; gated at 1.478.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

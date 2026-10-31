@@ -1,8 +1,8 @@
 /**
- * A knight's Leadership (Capability API 1.595).
+ * A knight's Leadership (Capability API 1.607).
  *
  *   - An aura's `seenByHolder`: it reaches only whoever its holder can see.
- *   - Its `targetTypes.understands` (1.548) reads the holder's languages: an ally who shares none is
+ *   - Its `targetTypes.understands` (1.560) reads the holder's languages: an ally who shares none is
  *     left out.
  *   - `endsWhenHolder.incapacitated`, on the combat condition or on what applied it: it comes off
  *     once its holder holds anything with `cannot-act`.
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 595);
+  assert.ok(supportedCapabilityApi.minor >= 607);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -158,7 +158,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a condition that ends when its holder is incapacitated, or an aura only its holder's seen get (endsWhenHolder.incapacitated, aura.seenByHolder), requires schemaVersion 2 and capabilityApi 1.595 or newer";
+      "A ruleset with a condition that ends when its holder is incapacitated, or an aura only its holder's seen get (endsWhenHolder.incapacitated, aura.seenByHolder), requires schemaVersion 2 and capabilityApi 1.607 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -172,15 +172,15 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(594) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(606) as never, fiveE()), gate);
     const { seenByHolder: _unused, ...plain } = aura;
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(594) as never, fiveE({ downed: true }, plain)), gate);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(594) as never, fiveE({ downed: true })), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(595) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(606) as never, fiveE({ downed: true }, plain)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(606) as never, fiveE({ downed: true })), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(607) as never, fiveE()), gate);
   }
 
   console.log(
-    "Leadership: reaches whom its holder sees and who understands it, ends when its holder is incapacitated; gated at 1.595.",
+    "Leadership: reaches whom its holder sees and who understands it, ends when its holder is incapacitated; gated at 1.607.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

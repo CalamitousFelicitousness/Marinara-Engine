@@ -1,5 +1,5 @@
 /**
- * Harm dealt back on a hit (Capability API 1.495).
+ * Harm dealt back on a hit (Capability API 1.507).
  *
  *   - Fire Shield: a melee hit from within 5 feet costs the hitter 2d8 fire, no save, after the blow.
  *   - Not a ranged hit, nor a melee one from farther off, nor a miss.
@@ -30,7 +30,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 495);
+  assert.ok(supportedCapabilityApi.minor >= 507);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -139,7 +139,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions harm whoever hits their holder, only so near, or with no save (whenHit harms, within, or no save) requires schemaVersion 2 and capabilityApi 1.495 or newer";
+      "A ruleset whose conditions harm whoever hits their holder, only so near, or with no save (whenHit harms, within, or no save) requires schemaVersion 2 and capabilityApi 1.507 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -155,15 +155,15 @@ try {
     });
     const doc = JSON.parse(fiveEText) as Record<string, any>;
     doc.combat.conditions[0].whenHit = shield;
-    assert.equal(getCapabilityPackageInstallIssue(manifest(494) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(495) as never, doc), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(506) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(507) as never, doc), gate);
     const old = JSON.parse(fiveEText) as Record<string, any>;
     old.combat.conditions[0].whenHit = { save: { save: "con_save" }, applies: [{ condition: "prone" }] };
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(494) as never, old), gate, "1.476's shape");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(506) as never, old), gate, "1.488's shape");
   }
 
   console.log(
-    "Hit back: Fire Shield burns a melee hitter within 5 feet for 2d8 with no save after the blow, not a far or ranged one or a miss; applies with no save; gated at 1.495.",
+    "Hit back: Fire Shield burns a melee hitter within 5 feet for 2d8 with no save after the blow, not a far or ranged one or a miss; applies with no save; gated at 1.507.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

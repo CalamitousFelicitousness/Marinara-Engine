@@ -1165,7 +1165,7 @@ export function generatedPartyMemberToCombatant(
     ...(member.surprised === true ? { surprised: true } : {}),
     // Where the story put them (2026-10-24), read by a ruleset fight only.
     ...(member.start ? { start: member.start } : {}),
-    // What they set up before it (1.449), read by a ruleset fight only.
+    // What they set up before it (1.461), read by a ruleset fight only.
     ...(Array.isArray(member.standing) && member.standing.length ? { standing: member.standing } : {}),
   };
 }
@@ -8414,7 +8414,7 @@ function GameSurfaceComponent({
     [activeChatId, commitInventory, inventoryRefusal, localizeUi],
   );
 
-  /** One stack turned into another of its forms (1.562), 0 as it was made. */
+  /** One stack turned into another of its forms (1.574), 0 as it was made. */
   const handleFormInventoryStack = useCallback(
     async (stackId: string, form: number) => {
       if (!activeChatId) return null;
@@ -9231,7 +9231,7 @@ function GameSurfaceComponent({
   // (settings drawer) ?? wizard setup choice ?? legacy default "classic". An id
   // this client has not registered plays as classic (#8109).
   const combatSetupConfig = chatMeta.gameSetupConfig as Record<string, unknown> | undefined;
-  // A style the game's ruleset leaves out (`combat.styles`, 1.778) plays as the first it lists; a fight
+  // A style the game's ruleset leaves out (`combat.styles`, 1.379) plays as the first it lists; a fight
   // already pinned keeps its own.
   const effectiveCombatStyle: GameCombatStyle = resolveCombatStyle(
     combatPinnedStyle ??
@@ -9419,7 +9419,7 @@ function GameSurfaceComponent({
   /** The Use button. One of the ruleset's items with a `use` is used by the Engine first: what it does
    *  to whoever carries it lands on their sheet, it is spent, and the Game Master is told what happened
    *  in an `[item_used]` block. Anything else is simply said, and the Game Master decides. */
-  // Looking an item over before trusting it (1.794): said, and the Game Master's inspect tag rolls it.
+  // Looking an item over before trusting it (1.801): said, and the Game Master's inspect tag rolls it.
   const inventorySpotsFakes =
     gameRuleset.status === "ok" &&
     (!!gameRuleset.definition.items?.revealsFakes?.length ||
@@ -9474,7 +9474,7 @@ function GameSurfaceComponent({
           error instanceof ApiError && error.payload && typeof error.payload === "object"
             ? (error.payload as { reason?: unknown }).reason
             : undefined;
-        // Drawn as it is used (1.800), with what holds the slots it needs named.
+        // Drawn as it is used (1.807), with what holds the slots it needs named.
         const heldBy =
           error instanceof ApiError && error.payload && typeof error.payload === "object"
             ? (error.payload as { heldBy?: unknown }).heldBy
@@ -11369,7 +11369,7 @@ function GameSurfaceComponent({
               diceFrom?: Record<string, number>,
               recover?: Array<{ name: string; recover: RulesetUseRecover[] }>,
             ) => handleRulesetRest(cardTitle, rest, diceFrom, recover),
-            // What a rest offers to use as it ends (1.776), read off the server's sheet.
+            // What a rest offers to use as it ends (1.788), read off the server's sheet.
             onRestOffers: async (rest: string) =>
               activeChatId
                 ? (
@@ -13936,7 +13936,7 @@ function GameSurfaceComponent({
                     data-game-float="map-and-party"
                     className={cn(
                       // On a phone it stops short of the control-button rows in the right half of the chat.
-                      "pointer-events-auto absolute left-3 right-[calc(50%+1.628rem)] z-20 flex min-w-0 items-start gap-2 md:right-auto",
+                      "pointer-events-auto absolute left-3 right-[calc(50%+1.640rem)] z-20 flex min-w-0 items-start gap-2 md:right-auto",
                       gameRuleset?.status === "ok" &&
                         gameRuleset.definition.clocks &&
                         Boolean(gameSnapshot?.rulesetClocks?.length) &&

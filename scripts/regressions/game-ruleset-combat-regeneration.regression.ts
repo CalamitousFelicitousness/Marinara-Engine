@@ -1,5 +1,5 @@
 /**
- * Health regained as a turn starts (Capability API 1.383).
+ * Health regained as a turn starts (Capability API 1.395).
  *
  *   - A creature's `regenerates`: a troll's 10 at the start of its turn, none at the start of the
  *     turn after fire or acid harmed it.
@@ -37,7 +37,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 383);
+  assert.ok(supportedCapabilityApi.minor >= 395);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -235,7 +235,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with regeneration on a condition, a level or a creature requires schemaVersion 2 and capabilityApi 1.383 or newer";
+      "A ruleset with regeneration on a condition, a level or a creature requires schemaVersion 2 and capabilityApi 1.395 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -249,13 +249,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(382) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(383) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(382) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(394) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(395) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(394) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Regeneration: a troll's 10 as its turn starts, none after fire, down but not out at 0 and out when it cannot; Survivor's 5 + Con at half or less; gated at 1.383.",
+    "Regeneration: a troll's 10 as its turn starts, none after fire, down but not out at 0 and out when it cannot; Survivor's 5 + Con at half or less; gated at 1.395.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

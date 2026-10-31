@@ -1,5 +1,5 @@
 /**
- * Weapons that corrode on hitting a creature (Capability API 1.538).
+ * Weapons that corrode on hitting a creature (Capability API 1.550).
  *
  *   - A rust monster's Rust Metal: a metal sword that hits it deals its damage, then deals 1 less from
  *     then on; the penalty is written back to its stack and read again in the next fight; at 5 the
@@ -39,7 +39,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 538);
+  assert.ok(supportedCapabilityApi.minor >= 550);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -215,7 +215,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a creature that corrodes the weapons hitting it (corrodesWeapons) requires schemaVersion 2 and capabilityApi 1.538 or newer";
+      "A ruleset with a creature that corrodes the weapons hitting it (corrodesWeapons) requires schemaVersion 2 and capabilityApi 1.550 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -229,12 +229,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(537) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(538) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(549) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(550) as never, document()), gate);
   }
 
   console.log(
-    "Corrodes weapons: a metal sword deals its damage then 1 less, kept on its stack into the next fight, destroyed at 5; magical and wooden ones are spared; metal arrows are not won back; gated at 1.538.",
+    "Corrodes weapons: a metal sword deals its damage then 1 less, kept on its stack into the next fight, destroyed at 5; magical and wooden ones are spared; metal arrows are not won back; gated at 1.550.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

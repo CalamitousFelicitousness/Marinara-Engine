@@ -1,5 +1,5 @@
 /**
- * What an item asks of its bearer or user (Capability API 1.654): 5e's attunement "by a cleric", a
+ * What an item asks of its bearer or user (Capability API 1.666): 5e's attunement "by a cleric", a
  * spell scroll read only by a class whose list has the spell, and the rogue's Use Magic Device, "you
  * ignore all class, race, and level requirements on the use of magic items".
  *
@@ -37,7 +37,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 654);
+  assert.ok(supportedCapabilityApi.minor >= 666);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -191,7 +191,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose items ask something of their bearer or user (binds.needs, userNeeds or items.needsWaivedBy) requires schemaVersion 2 and capabilityApi 1.654 or newer";
+      "A ruleset whose items ask something of their bearer or user (binds.needs, userNeeds or items.needsWaivedBy) requires schemaVersion 2 and capabilityApi 1.666 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -205,13 +205,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(653) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(654) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(653) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(665) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(666) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(665) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Item needs: a talisman bound by a non-cleric reads as not worn, a cleric's scroll is read by clerics alone, and Use Magic Device waives both; gated at 1.654.",
+    "Item needs: a talisman bound by a non-cleric reads as not worn, a cleric's scroll is read by clerics alone, and Use Magic Device waives both; gated at 1.666.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

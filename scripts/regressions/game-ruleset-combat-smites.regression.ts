@@ -1,5 +1,5 @@
 /**
- * Smites (Capability API 1.490).
+ * Smites (Capability API 1.502).
  *
  *   - `endsAfter: "own-hit"`: a miss leaves it on; the next weapon hit takes its damage and ends it.
  *   - A condition's `onHit`: what its holder's weapon hit puts on whoever it hit (Branding Smite's
@@ -31,7 +31,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 490);
+  assert.ok(supportedCapabilityApi.minor >= 502);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -158,7 +158,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions end on their holder's next hit or put something on whoever it hits (endsAfter own-hit, a condition's onHit) requires schemaVersion 2 and capabilityApi 1.490 or newer";
+      "A ruleset whose conditions end on their holder's next hit or put something on whoever it hits (endsAfter own-hit, a condition's onHit) requires schemaVersion 2 and capabilityApi 1.502 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -174,21 +174,21 @@ try {
     });
     const only = JSON.parse(fiveEText) as Record<string, any>;
     only.combat.conditions[0].onHit = onHit;
-    assert.equal(getCapabilityPackageInstallIssue(manifest(489) as never, only), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(490) as never, only), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(501) as never, only), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(502) as never, only), gate);
     assert.equal(
       getCapabilityPackageInstallIssue(
-        manifest(489) as never,
+        manifest(501) as never,
         JSON.parse(fiveEText),
         new Map([["catalogs/spells.json", { entries: [{ mechanics: { applies: [{ endsAfter: "own-hit" }] } }] }]]),
       ),
       gate,
     );
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(489) as never, JSON.parse(fiveEText)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(501) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Smites: a miss keeps the smite, the next weapon hit takes its damage, puts its glow on the one hit and ends it; gated at 1.490.",
+    "Smites: a miss keeps the smite, the next weapon hit takes its damage, puts its glow on the one hit and ends it; gated at 1.502.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

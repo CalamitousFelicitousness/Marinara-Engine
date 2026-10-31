@@ -1,8 +1,8 @@
 /**
- * What an item does only while something of it is left (Capability API 1.719): a Helm of Brilliance.
+ * What an item does only while something of it is left (Capability API 1.731): a Helm of Brilliance.
  *
  *   - An item effect's `whileLeft` lines name its parts that hold only while the item has charges
- *     left, or while a further use counting its own uses (1.506) has any.
+ *     left, or while a further use counting its own uses (1.518) has any.
  *   - On the sheet read as the stack keeps them; in a fight as the fight spends them.
  *   - Import refusals and the install gate.
  */
@@ -32,7 +32,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 719);
+  assert.ok(supportedCapabilityApi.minor >= 731);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -139,7 +139,7 @@ try {
   refused(fiveE(helm([{ keys: ["resist"], uses: "Prismatic Spray" }])), /No further use "Prismatic Spray"/);
   refused(fiveE({ ...helm(), charges: undefined }), /The item has no charges to hold it/);
   const gate =
-    "A ruleset with an item's effect that holds only while charges or uses are left (whileLeft) requires schemaVersion 2 and capabilityApi 1.719 or newer";
+    "A ruleset with an item's effect that holds only while charges or uses are left (whileLeft) requires schemaVersion 2 and capabilityApi 1.731 or newer";
   const manifest = (minor: number) => ({
     schemaVersion: 2,
     capabilityApi: { major: 1, minor },
@@ -153,12 +153,12 @@ try {
     permissions: [],
     restartRequired: false,
   });
-  assert.equal(getCapabilityPackageInstallIssue(manifest(718) as never, fiveE()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(719) as never, fiveE()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(718) as never, JSON.parse(fiveEText)), gate);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(730) as never, fiveE()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(731) as never, fiveE()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(730) as never, JSON.parse(fiveEText)), gate);
 
   console.log(
-    "Helm of Brilliance: fire resistance while a ruby is left, its light while a diamond is, on the sheet and in a fight; gated at 1.719.",
+    "Helm of Brilliance: fire resistance while a ruby is left, its light while a diamond is, on the sheet and in a fight; gated at 1.731.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

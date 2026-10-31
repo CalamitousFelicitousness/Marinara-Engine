@@ -1,5 +1,5 @@
 /**
- * A condition that gives cover against its holder (Capability API 1.575).
+ * A condition that gives cover against its holder (Capability API 1.587).
  *
  *   - `coverFor: { tier: "half", who: "caller" }`: Arcane Hand's Interposing Hand. The creature the
  *     hand stands before attacks the hand's caster through half cover, and the caster's saves against
@@ -35,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 575);
+  assert.ok(supportedCapabilityApi.minor >= 587);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -157,7 +157,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a condition that gives cover against its holder (coverFor) requires schemaVersion 2 and capabilityApi 1.575 or newer";
+      "A ruleset with a condition that gives cover against its holder (coverFor) requires schemaVersion 2 and capabilityApi 1.587 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -171,12 +171,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(574) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(575) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(586) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(587) as never, document()), gate);
   }
 
   console.log(
-    "Condition coverFor: half cover for the applier's caller (or the applier) against the holder, attacks and saves, while the applier stands; on or off a board; refused without cover; gated at 1.575.",
+    "Condition coverFor: half cover for the applier's caller (or the applier) against the holder, attacks and saves, while the applier stands; on or off a board; refused without cover; gated at 1.587.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

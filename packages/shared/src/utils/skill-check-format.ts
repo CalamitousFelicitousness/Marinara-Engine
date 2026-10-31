@@ -205,7 +205,7 @@ export interface SkillCheckTagExtras {
   symbolFaces?: string[][];
   criticalSuccess?: boolean;
   criticalFailure?: boolean;
-  /** `for="climb"` (1.739): what the check was made for, which a change narrowed to it read. */
+  /** `for="climb"` (1.751): what the check was made for, which a change narrowed to it read. */
   for?: string;
 }
 

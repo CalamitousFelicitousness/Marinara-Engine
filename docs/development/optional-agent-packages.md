@@ -88,7 +88,7 @@ this page. Package builds declare matching structural types instead of importing
 | `capabilityApi`           | The Engine's `supportedCapabilityApi`, for example `{ major: 1, minor: 341 }`.                                                                                                           |
 | `stores`                  | The live zustand stores `ui`, `chat`, `agent`, `sidecar`, `dialog`, `gallery`, `encounter`, `gameState` and `backfill`. `chat` includes the pending spatial transition slice.            |
 | `services.tts`            | The `lib/tts-service.ts` module (`ttsService`, `playWhenAvailable`, ...).                                                                                                                |
-| `services.audio`          | From capability API 1.381, the `lib/audio-service.ts` module: independent music/SFX players, the shared asset manifest and default music selection. See [Package audio](#package-audio). |
+| `services.audio`          | From capability API 1.393, the `lib/audio-service.ts` module: independent music/SFX players, the shared asset manifest and default music selection. See [Package audio](#package-audio). |
 | `services.dialogs`        | The `lib/app-dialogs.ts` module (`showAlertDialog`, `showConfirmDialog`, `showPromptDialog`, `showChoiceDialog`).                                                                        |
 | `services.imageDownloads` | From capability API 1.385, the gallery's existing `downloadUrlToDevice`, `shouldUseIosImageShare`, `prepareImageSave` and `savePreparedImageToDevice` helpers.                           |
 | `modules`                 | Library modules, keyed by bare specifier (below).                                                                                                                                        |
@@ -768,7 +768,7 @@ The base keeps the package manager, catalog client, generic agent pipeline contr
 
 ## Trust and installation
 
-The official catalog is a schema-validated, versioned JSON document fetched over HTTPS. Each release entry includes immutable artifact URLs, SHA-256 digests, byte sizes, engine compatibility, permissions, and whether its runtime requires a restart. A ruleset entry may also list `locales`, its language packs by language (Capability API 1.803), each with its own URL, SHA-256 digest and byte size and the store card's translated name and description. The Engine fetches only the pack in its current language after installing the ruleset, and again when its language changes (`POST /api/capability-packages/rulesets/language`, sent by the page as it opens and on each change), keeping it with the installed version and removing the others; see [Writing Rulesets](../extending/writing-rulesets.md).
+The official catalog is a schema-validated, versioned JSON document fetched over HTTPS. Each release entry includes immutable artifact URLs, SHA-256 digests, byte sizes, engine compatibility, permissions, and whether its runtime requires a restart. A ruleset entry may also list `locales`, its language packs by language (Capability API 1.810), each with its own URL, SHA-256 digest and byte size and the store card's translated name and description. The Engine fetches only the pack in its current language after installing the ruleset, and again when its language changes (`POST /api/capability-packages/rulesets/language`, sent by the page as it opens and on each change), keeping it with the installed version and removing the others; see [Writing Rulesets](../extending/writing-rulesets.md).
 
 Updates need the user's consent: apart from one-time migrations that keep an upgraded install's former built-ins (see [Compatibility migration](#compatibility-migration)), startup never downloads or installs a package. `GET /api/capability-packages/updates/pending` lists each installed official package whose catalog version is newer and compatible with the running Engine and capability API, leaving out a version the user already declined. The client shows them in one **Agent updates available** prompt. **Update all** installs each through the normal installation pipeline, pinned to the offered version and artifact SHA-256. **Not now** records the declined versions in `DATA_DIR/capability-packages/update-decisions-v1.json` (`POST /api/capability-packages/updates/decline`), so that version is not offered again, while a newer one is. **Update** stays available in **Download Agents** either way. Failures are isolated per package. Existing files and registry state remain usable when the catalog is offline or verification fails, and server-runtime readiness failures use the previous-version rollback path.
 
@@ -2068,11 +2068,11 @@ Shared request/result types are exported by `@marinara-engine/shared`. Keep pack
 
 ### Package audio
 
-From capability API **1.782**, `__MARINARA_HOST__.services.audio` provides Engine-owned playback and
+From capability API **1.381**, `__MARINARA_HOST__.services.audio` provides Engine-owned playback and
 asset selection. Declare that minor in the package manifest, and update the Engine alongside the package.
 Speech remains in `services.tts`; music and sound effects use `services.audio`.
 `services.tts.ttsService.speakSequence(requests, id?, options?)` accepts `options.audioConnectionId`
-from 1.782, applying that selected speech connection to every chunk while retaining each request's
+from 1.381, applying that selected speech connection to every chunk while retaining each request's
 voice. Leave it undefined for the normal default, or pass `""` to explicitly use legacy TTS settings.
 An unknown, deleted, quarantined or non-speech `audioConnectionId` is ignored and normal speech
 resolution runs: the saved speech selection, then the default/fallback connection, then legacy settings.

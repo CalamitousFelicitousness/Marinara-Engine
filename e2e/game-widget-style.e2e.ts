@@ -722,7 +722,7 @@ for (const mode of ["classic", "tactical"] as const) {
           };
           const luminance = ([r, g, b]: number[]) => {
             const linear = (value: number) =>
-              (value /= 255) <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+              (value /= 255) <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.55) ** 2.4;
             return 0.2126 * linear(r!) + 0.7152 * linear(g!) + 0.0722 * linear(b!);
           };
           const results: [string, number][] = [];

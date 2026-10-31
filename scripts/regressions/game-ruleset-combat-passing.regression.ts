@@ -1,5 +1,5 @@
 /**
- * Walking through other creatures and solid ground (Capability API 1.482).
+ * Walking through other creatures and solid ground (Capability API 1.494).
  *
  *   - `combat.sizes.passing`: a foe two sizes apart is walked through, never stopped in, and every
  *     cell another creature fills costs as hard going; one of the same size still blocks.
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 482);
+  assert.ok(supportedCapabilityApi.minor >= 494);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -189,7 +189,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose movers walk through other creatures or solid ground (sizes passing, passesCreatures, passesObjects) requires schemaVersion 2 and capabilityApi 1.482 or newer";
+      "A ruleset whose movers walk through other creatures or solid ground (sizes passing, passesCreatures, passesObjects) requires schemaVersion 2 and capabilityApi 1.494 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -213,14 +213,14 @@ try {
         (one: { condition: string }) => one.condition !== "nimble" && one.condition !== "incorporeal",
       );
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(481) as never, fiveE({ apart: 2 })), gate);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(481) as never, onlyCore), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(482) as never, fiveE({ apart: 2 })), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(481) as never, none), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(493) as never, fiveE({ apart: 2 })), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(493) as never, onlyCore), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(494) as never, fiveE({ apart: 2 })), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(493) as never, none), gate);
   }
 
   console.log(
-    "Passing: a foe two sizes apart walked through, a crowded cell at double cost; Halfling Nimbleness through a larger foe; Incorporeal Movement through anybody and walls, hurt ending a turn inside one; gated at 1.482.",
+    "Passing: a foe two sizes apart walked through, a crowded cell at double cost; Halfling Nimbleness through a larger foe; Incorporeal Movement through anybody and walls, hurt ending a turn inside one; gated at 1.494.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -129,7 +129,7 @@ export interface GmPromptContext {
   }>;
   /** Each bag's totals, the player's first (no `holder`). Read instead of `playerInventory` once
    *  anybody but the player carries something, so the Game Master knows who holds what. */
-  /** Whose name the player's own bag goes by when it is not the player's (1.776 playtest): the first
+  /** Whose name the player's own bag goes by when it is not the player's (1.788 playtest): the first
    *  character card of a game with no persona, which plays as the player. */
   playerBagName?: string;
   /** The party members who have not taken their ruleset's starting gear yet (laptop v3 2026-10-26: the
@@ -1068,7 +1068,7 @@ function renderRulesetKindCheckLine(
         contextualLists.length ? ` (${contextualLists.join(", ")})` : ""
       } applies to this particular roll, add apply="Its name" to that check, several separated by ";". Name only what the situation makes apply: having it is not enough. The engine works out what it does and what it costs.`,
     );
-  // What checks are made for (1.739), where something changes only a check made for it: Gloves of
+  // What checks are made for (1.751), where something changes only a check made for it: Gloves of
   // Swimming and Climbing.
   const purposes = new Set<string>();
   const findPurposes = (value: unknown, depth: number): void => {
@@ -1463,7 +1463,7 @@ function renderRulesetKindCheckLine(
   ].join(" ");
 }
 
-/** Whether any condition the ruleset applies wears off faster while its holder rests (1.743), read
+/** Whether any condition the ruleset applies wears off faster while its holder rests (1.755), read
  *  once per ruleset. */
 const restingDaysRead = new WeakMap<object, boolean>();
 function countsRestingDays(ruleset: import("@marinara-engine/shared").RulesetDefinition): boolean {
@@ -1531,13 +1531,13 @@ function renderRulesetSheetSection(
           `- [sheet: who="party" op="rest" rest="Rest"] - rests: ${names(ruleset.rests)}. Write it in the same reply whenever the story says they rest; a rest told without it restores nothing.`,
         ]
       : []),
-    // Days of game time (1.432): rows that recharge after so many days count them.
+    // Days of game time (1.444): rows that recharge after so many days count them.
     ...(ruleset.sheet.lists.some((list) => list.pools?.rechargeDays)
       ? [
           `- [sheet: who="Name" op="pass" days="N"] - when N days of game time pass for them; what recharges after days (${[...new Set(ruleset.sheet.lists.flatMap((list) => Object.entries(list.pools?.rechargeDays ?? {}).map(([value, days]) => `${value}: ${days} days`)))].join(", ")}) comes back once they have.`,
         ]
       : []),
-    // Days spent resting (1.743): what wears off faster while its holder rests, Wish's stress.
+    // Days spent resting (1.755): what wears off faster while its holder rests, Wish's stress.
     ...(countsRestingDays(ruleset)
       ? [
           `- [sheet: who="Name" op="pass" days="N" resting="yes"] - N days they spent resting and doing nothing more than light activity; some conditions wear off faster for it.`,
@@ -1555,7 +1555,7 @@ function renderRulesetSheetSection(
           `- Add pool="Pool" to that to spend from one pool only (${[...new Set(ruleset.rests.flatMap((rest) => (Array.isArray(rest.dice) ? rest.dice.map((entry) => entry.pool) : [])))].join(", ")}); without it they come from the first pool that has any.`,
         ]
       : []),
-    // A feature a rest offers as it ends (1.776): Arcane Recovery, used from the tag as well as the sheet.
+    // A feature a rest offers as it ends (1.788): Arcane Recovery, used from the tag as well as the sheet.
     ...(() => {
       const offered = (ruleset.catalogs ?? [])
         .flatMap((catalog) => catalog.entries ?? [])
@@ -1580,7 +1580,7 @@ function renderRulesetSheetSection(
     ...(ruleset.catalogs?.some((catalog) => catalog.holds === "rows")
       ? [
           `- [sheet: who="Name" op="use" name="Name on the sheet"] - pays what that ability costs. Add pool="Pool" to pay from a higher pool of the same group.`,
-          // A call that stays (1.790): a familiar, kept on its caller's sheet until it is lost.
+          // A call that stays (1.797): a familiar, kept on its caller's sheet until it is lost.
           ...(ruleset.combat
             ? [
                 `- For an ability used outside a fight that calls a creature to stay with them, add as="Creature" (and its creature type after a comma where they pick one, as="Name, Type"). It stays on their sheet ("With them") and joins every fight they are in. [sheet: who="Name" op="dismiss" name="Ability or creature"] when it is sent away or killed outside a fight.`,
@@ -1589,7 +1589,7 @@ function renderRulesetSheetSection(
             : []),
         ]
       : []),
-    // A ritual (1.799) pays no pool (laptop 2026-10-26: a ritual Detect Magic spent a slot).
+    // A ritual (1.806) pays no pool (laptop 2026-10-26: a ritual Detect Magic spent a slot).
     ...(() => {
       const marked = ruleset.sheet.lists.flatMap((list) => {
         const column = list.ritual ? list.columns.find((one) => one.id === list.ritual) : undefined;
@@ -1614,7 +1614,7 @@ function renderRulesetSheetSection(
           ]
         : [];
     })(),
-    // What a use gives back that its user picks (1.397): Arcane Recovery's slots.
+    // What a use gives back that its user picks (1.409): Arcane Recovery's slots.
     ...(ruleset.catalogs?.some((catalog) => catalog.entries?.some((entry) => entry.mechanics?.recovers))
       ? [
           `- For an ability that recovers spent pools (such as ${
@@ -2198,7 +2198,7 @@ export function buildGmFormatReminder(
         ? []
         : [
             `- [inventory: action="add|remove|give" item="Item A, Item B" count="3" who="Name" to="Name"] - every real item gain or loss, keep names short and use count/quantity for stacked items. An add is only for what the story puts in their hands in this reply: found, looted, bought, made, or given by someone there (something made or gathered on a check is added in the reply that tells it succeeded, finished); never to hand a character something they need right now that the story never gave them. Everyone in the party carries their own things: who is whose bag an item goes into or comes out of, and leaving it out means the player (a remove without who then takes from the rest of the party once the player has none). A give hands items from who to to. An item listed as "Nickname (Name)" is one item: write either name in item, never both. An item that comes in kinds is written by the full name of the kind the story gives (an arrow of undead slaying, never the family's bare name), or it does nothing of that kind. Never write result, reason or now yourself: the Engine adds them, and a refused one did not happen.`,
-            // Things made to last only so long (1.747), counted on the game's clock: Creation's.
+            // Things made to last only so long (1.759), counted on the game's clock: Creation's.
             ...(ctx.ruleset
               ? [
                   `  Something made to last only so long (a conjured or created object): add lasts="10 minutes", "12 hours" or "1 day" to the add, and it vanishes from the bag once that much game time has passed.`,

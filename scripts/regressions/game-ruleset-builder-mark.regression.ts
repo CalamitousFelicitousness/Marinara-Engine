@@ -1,4 +1,4 @@
-/** Capability API 1.754: a builder step that marks rows already on a list, ticking a boolean column:
+/** Capability API 1.766: a builder step that marks rows already on a list, ticking a boolean column:
  *  a wizard's prepared spells out of the spellbook an earlier step wrote. */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -165,13 +165,13 @@ try {
     restartRequired: false,
   });
   const gate =
-    "A ruleset with a builder step that marks rows (kind mark) requires schemaVersion 2 and capabilityApi 1.754 or newer";
-  assert.equal(getCapabilityPackageInstallIssue(manifest(753) as never, fixture()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(754) as never, fixture()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(753) as never, base()), gate, "nothing without the step");
+    "A ruleset with a builder step that marks rows (kind mark) requires schemaVersion 2 and capabilityApi 1.766 or newer";
+  assert.equal(getCapabilityPackageInstallIssue(manifest(765) as never, fixture()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(766) as never, fixture()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(765) as never, base()), gate, "nothing without the step");
 
   console.log(
-    "mark: a wizard prepares spells out of the spellbook, up to a sheet value; unmarking clears only its own ticks; refusals; gated at 1.754.",
+    "mark: a wizard prepares spells out of the spellbook, up to a sheet value; unmarking clears only its own ticks; refusals; gated at 1.766.",
   );
 } finally {
   for (const [key, value] of Object.entries(previous)) {

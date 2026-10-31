@@ -33,7 +33,7 @@ export interface RulesetBudgetMark {
  *  Bonus action and Reaction is A, B and R in rose, amber and violet. */
 export function rulesetBudgetMarks(
   definition: RulesetDefinition | undefined,
-  /** The ruleset's own words in the player's language (1.798): its labels, and the letter read off one. */
+  /** The ruleset's own words in the player's language (1.805): its labels, and the letter read off one. */
   text: (english: string) => string = (english) => english,
 ): RulesetBudgetMark[] {
   const budgets = definition?.combat?.economy.budgets ?? [];

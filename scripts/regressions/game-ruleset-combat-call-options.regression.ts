@@ -1,6 +1,6 @@
 /**
- * A creature's call with options, kept for rounds and by its caller (Capability API 1.433), and sent
- * away as an action (1.436).
+ * A creature's call with options, kept for rounds and by its caller (Capability API 1.445), and sent
+ * away as an action (1.448).
  *
  *   - Summon Demon: a vrock picks 2d4 dretches or another vrock, one use a day shared by both; they
  *     leave once a minute has passed, or as soon as the vrock that called them is out, and never
@@ -35,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 436);
+  assert.ok(supportedCapabilityApi.minor >= 448);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -67,7 +67,7 @@ try {
       budget: "action",
       uses: { per: "day", count: 1 },
       calls,
-      // Its 30 percent, carried from the catalog (1.428); a roll of 10 answers it.
+      // Its 30 percent, carried from the catalog (1.440); a roll of 10 answers it.
       chance: { sides: 100, atMost: 30 },
     };
     doc.catalogs
@@ -178,7 +178,7 @@ try {
     const dretches = summon(fight(), "call-0").taken.state;
     assert.equal(here(dretches).length, 8);
     assert.ok(here(dretches).every((name) => name.startsWith("Dretch")));
-    // Sent away as an action (1.436), offered only while they are here; the called vrock has none.
+    // Sent away as an action (1.448), offered only while they are here; the called vrock has none.
     assert.ok(!called.actions.some((one) => one.switches), "nothing to dismiss of its own");
     const dismissing = structuredClone(state);
     who(dismissing, "vrock").budgets.action = 1;
@@ -280,7 +280,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose creatures call others by options, for rounds or bound to their caller (calls) requires schemaVersion 2 and capabilityApi 1.433 or newer";
+      "A ruleset whose creatures call others by options, for rounds or bound to their caller (calls) requires schemaVersion 2 and capabilityApi 1.445 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -295,18 +295,18 @@ try {
       restartRequired: false,
     });
     const kept = fiveE({ ...summonDemon, dismissible: undefined });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(432) as never, kept), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(433) as never, kept), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(444) as never, kept), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(445) as never, kept), gate);
     const plain = fiveE({ creature: "creatures/dretch", count: { flat: 1 } });
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(432) as never, plain), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(444) as never, plain), gate);
     const dismissGate =
-      "A ruleset whose creatures may send away those they called as an action (dismissible) requires schemaVersion 2 and capabilityApi 1.436 or newer";
-    assert.equal(getCapabilityPackageInstallIssue(manifest(435) as never, fiveE()), dismissGate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(436) as never, fiveE()), dismissGate);
+      "A ruleset whose creatures may send away those they called as an action (dismissible) requires schemaVersion 2 and capabilityApi 1.448 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(447) as never, fiveE()), dismissGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(448) as never, fiveE()), dismissGate);
   }
 
   console.log(
-    "Call options: Summon Demon picks dretches or a vrock on one use a day; they leave after a minute or with their caller and call nobody; gated at 1.433, dismissed as an action at 1.436.",
+    "Call options: Summon Demon picks dretches or a vrock on one use a day; they leave after a minute or with their caller and call nobody; gated at 1.445, dismissed as an action at 1.448.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

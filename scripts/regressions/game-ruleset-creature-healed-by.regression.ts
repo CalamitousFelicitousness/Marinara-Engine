@@ -1,5 +1,5 @@
 /**
- * Damage that heals a creature instead (Capability API 1.528).
+ * Damage that heals a creature instead (Capability API 1.540).
  *
  *   - A flesh golem's Lightning Absorption: lightning deals it nothing and gives back as much as it
  *     would have dealt, never past its maximum; slashing still hurts.
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 528);
+  assert.ok(supportedCapabilityApi.minor >= 540);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -143,7 +143,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a creature healed by a damage type (healedBy) requires schemaVersion 2 and capabilityApi 1.528 or newer";
+      "A ruleset with a creature healed by a damage type (healedBy) requires schemaVersion 2 and capabilityApi 1.540 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -157,12 +157,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(527) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(528) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(539) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(540) as never, fiveE()), gate);
   }
 
   console.log(
-    "Healed by: a flesh golem cut by slashing takes it, struck by lightning takes none and regains as much, never past its maximum; gated at 1.528.",
+    "Healed by: a flesh golem cut by slashing takes it, struck by lightning takes none and regains as much, never past its maximum; gated at 1.540.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

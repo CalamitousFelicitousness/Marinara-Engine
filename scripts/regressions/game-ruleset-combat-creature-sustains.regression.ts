@@ -1,7 +1,7 @@
 /**
- * A creature's action kept up on its later turns (Capability API 1.714): a harpy's Luring Song.
+ * A creature's action kept up on its later turns (Capability API 1.726): a harpy's Luring Song.
  *
- *   - A creature action's `sustains`, as a catalog entry's (1.418): once what it put on is on, a
+ *   - A creature action's `sustains`, as a catalog entry's (1.430): once what it put on is on, a
  *     bonus action keeps it up, its rounds started again, with no save.
  *   - Copied off its catalog entry into its block; import refusals and the install gate.
  */
@@ -31,7 +31,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 714);
+  assert.ok(supportedCapabilityApi.minor >= 726);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -204,7 +204,7 @@ try {
     refused(doc, /"sustains" starts again the rounds of what it puts on/);
   }
   const gate =
-    "A ruleset with a creature's action kept up on later turns (actions[].sustains) requires schemaVersion 2 and capabilityApi 1.714 or newer";
+    "A ruleset with a creature's action kept up on later turns (actions[].sustains) requires schemaVersion 2 and capabilityApi 1.726 or newer";
   const manifest = (minor: number) => ({
     schemaVersion: 2,
     capabilityApi: { major: 1, minor },
@@ -218,12 +218,12 @@ try {
     permissions: [],
     restartRequired: false,
   });
-  assert.equal(getCapabilityPackageInstallIssue(manifest(713) as never, fiveE()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(714) as never, fiveE()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(713) as never, JSON.parse(fiveEText)), gate);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(725) as never, fiveE()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(726) as never, fiveE()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(725) as never, JSON.parse(fiveEText)), gate);
 
   console.log(
-    "Luring Song: a creature's action kept up with a bonus action, its rounds started again, no save; gated at 1.714.",
+    "Luring Song: a creature's action kept up with a bonus action, its rounds started again, no save; gated at 1.726.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -1,5 +1,5 @@
 /**
- * Conditions cut away (Capability API 1.518).
+ * Conditions cut away (Capability API 1.530).
  *
  *   - A net, "dealing 5 slashing damage to the net (AC 10) also frees the creature": a slashing blow
  *     at it is offered, rolls against 10, and only its slashing wears the net down; what is left
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 518);
+  assert.ok(supportedCapabilityApi.minor >= 530);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -132,7 +132,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions may be struck at and cut away (cutFree) requires schemaVersion 2 and capabilityApi 1.518 or newer";
+      "A ruleset whose conditions may be struck at and cut away (cutFree) requires schemaVersion 2 and capabilityApi 1.530 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -146,13 +146,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(517) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(518) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(517) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(529) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(530) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(529) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Cut free: a slashing blow is offered against a net at AC 10, its 5 worn down across blows, its holder freed at none; bludgeoning is not offered; gated at 1.518.",
+    "Cut free: a slashing blow is offered against a net at AC 10, its 5 worn down across blows, its holder freed at none; bludgeoning is not offered; gated at 1.530.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

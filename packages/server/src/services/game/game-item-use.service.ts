@@ -58,7 +58,7 @@ export type GameItemUseResult =
       status: 404 | 409;
       error: string;
       reason?: RulesetItemUseRefusal | "no-ruleset" | "no-state";
-      /** For `slots-full` (1.800): what holds the slots the item needs to be drawn, by name. */
+      /** For `slots-full` (1.807): what holds the slots the item needs to be drawn, by name. */
       heldBy?: string[];
     };
 
@@ -110,7 +110,7 @@ export function gameInventoryRestRecharge(
   };
 }
 
-/** The priced materials a turn's casts used up (1.777), taken off the stacks they came out of. */
+/** The priced materials a turn's casts used up (1.789), taken off the stacks they came out of. */
 export function gameInventoryMaterialsTaken(
   materials: ReadonlyArray<RulesetMaterialTaken>,
 ): (stacks: GameInventoryStack[]) => GameInventoryStack[] {
@@ -133,9 +133,9 @@ function useForCarrier(
   stackId: string,
   live: RulesetLiveStates,
   roll: (sides: number) => number,
-  /** One of its further uses (1.267, 1.506), by its place in `moreUses` from 1. */
+  /** One of its further uses (1.267, 1.518), by its place in `moreUses` from 1. */
   more?: number,
-  /** How long what it makes lasts (1.747), by its place in `makesItems.lasts` from 1. */
+  /** How long what it makes lasts (1.759), by its place in `makesItems.lasts` from 1. */
   lasts?: number,
 ): { outcome: RulesetItemUseOutcome; live: RulesetLiveStates; revealed?: string } {
   const stack = stacks.find((each) => each.id === stackId);
@@ -290,9 +290,9 @@ export async function useGameRulesetItem(
   chatId: string,
   stackId: string,
   roll: (sides: number) => number = rollDieSecurely,
-  /** One of its further uses (1.267, 1.506), by its place in `moreUses` from 1. */
+  /** One of its further uses (1.267, 1.518), by its place in `moreUses` from 1. */
   more?: number,
-  /** How long what it makes lasts (1.747), by its place in `makesItems.lasts` from 1. */
+  /** How long what it makes lasts (1.759), by its place in `makesItems.lasts` from 1. */
   lasts?: number,
 ): Promise<GameItemUseResult> {
   // Read before the chat's queue is held, as every other inventory change reads them.
@@ -330,7 +330,7 @@ export async function useGameRulesetItem(
   } catch (error) {
     if (!(error instanceof ItemUseRefused)) throw error;
     if (error.reason === "no-stack") return { ok: false, status: 404, error: "No such stack", reason: "no-stack" };
-    // Drawn as it is used (1.800), with its slots held by what is not put away for it.
+    // Drawn as it is used (1.807), with its slots held by what is not put away for it.
     if (error.reason === "slots-full")
       return {
         ok: false,
@@ -381,7 +381,7 @@ export async function restGameRulesetCharacter(
   roll: (sides: number) => number = rollDieSecurely,
   /** The dice spent to heal first, by pool: the hit dice a Short rest asks for. */
   diceFrom?: Record<string, number>,
-  /** The features the player chose to use as it ends (1.776), with what each gives back. */
+  /** The features the player chose to use as it ends (1.788), with what each gives back. */
   recover?: ReadonlyArray<{ name: string; recover: RulesetUseRecover[] }>,
 ): Promise<GameRestResult> {
   const context = await loadGameRulesetSheetContext(db, chatId);
@@ -418,7 +418,7 @@ export async function restGameRulesetCharacter(
           held,
         );
         if (!rested.ok) throw new RestRefused(rested.reason);
-        // What the player chose to use as it ends (1.776): Arcane Recovery's slots, after the rest.
+        // What the player chose to use as it ends (1.788): Arcane Recovery's slots, after the rest.
         if (recover?.length) {
           const used = applyRulesetRestRecoveries(
             context.definition,
@@ -553,7 +553,7 @@ class RestRefused extends Error {
   }
 }
 
-/** The features a rest offers this character to use as it ends (1.776), read off their sheet as it
+/** The features a rest offers this character to use as it ends (1.788), read off their sheet as it
  *  stands: what the rest dialog lists, each with what it would give back by itself. */
 export async function gameRulesetRestOffers(
   db: DB,

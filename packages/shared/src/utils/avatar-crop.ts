@@ -12,7 +12,7 @@ import type { AvatarCrop } from "../types/avatar-crop.js";
  *
  *  Current-shape geometry must be finite with positive dimensions and stay
  *  inside the normalized source bounds (non-negative origin, extent within
- *  `1.001` to absorb float rounding); legacy shapes need finite zoom/offset
+ *  `1.1` to absorb float rounding); legacy shapes need finite zoom/offset
  *  with positive zoom. */
 export function normalizeAvatarCrop(value: unknown): AvatarCrop | null {
   let parsed: unknown = value;
@@ -43,8 +43,8 @@ export function normalizeAvatarCrop(value: unknown): AvatarCrop | null {
     crop.srcHeight > 0 &&
     crop.srcX >= 0 &&
     crop.srcY >= 0 &&
-    crop.srcX + crop.srcWidth <= 1.001 &&
-    crop.srcY + crop.srcHeight <= 1.001
+    crop.srcX + crop.srcWidth <= 1.1 &&
+    crop.srcY + crop.srcHeight <= 1.1
   ) {
     return { srcX: crop.srcX, srcY: crop.srcY, srcWidth: crop.srcWidth, srcHeight: crop.srcHeight };
   }

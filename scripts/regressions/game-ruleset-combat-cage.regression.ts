@@ -1,5 +1,5 @@
 /**
- * A cage (Capability API 1.589): 5e's Forcecage.
+ * A cage (Capability API 1.601): 5e's Forcecage.
  *
  *   - `area.ringOnly`: a wall that may be laid as a ring is always laid as one.
  *   - Zone `blocks: ["spells"]`, a wall or not: no spell is cast into, out of or across it. A spell
@@ -39,7 +39,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 589);
+  assert.ok(supportedCapabilityApi.minor >= 601);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -277,7 +277,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      'A ruleset with a wall laid only as a ring (area.ringOnly) or a zone that blocks spells (zone.blocks "spells") requires schemaVersion 2 and capabilityApi 1.589 or newer';
+      'A ruleset with a wall laid only as a ring (area.ringOnly) or a zone that blocks spells (zone.blocks "spells") requires schemaVersion 2 and capabilityApi 1.601 or newer';
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -291,14 +291,14 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(588) as never, fiveE([box])), gate);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(588) as never, fiveE([bars])), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(589) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(588) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(600) as never, fiveE([box])), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(600) as never, fiveE([bars])), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(601) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(600) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Cage: a wall laid only as a ring; a box that stops spells cast into, out of or across it, not a bow; gated at 1.589.",
+    "Cage: a wall laid only as a ring; a box that stops spells cast into, out of or across it, not a bow; gated at 1.601.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

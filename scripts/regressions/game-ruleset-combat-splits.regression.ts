@@ -1,5 +1,5 @@
 /**
- * Splitting in two (Capability API 1.462).
+ * Splitting in two (Capability API 1.474).
  *
  *   - Black Pudding: slashing that leaves it standing with 10 or more splits it, each half its health
  *     and one size smaller, the second beside it and acting right after it; lightning splits a
@@ -37,7 +37,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 462);
+  assert.ok(supportedCapabilityApi.minor >= 474);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -206,7 +206,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose creatures split in two when harmed (splits) requires schemaVersion 2 and capabilityApi 1.462 or newer";
+      "A ruleset whose creatures split in two when harmed (splits) requires schemaVersion 2 and capabilityApi 1.474 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -220,12 +220,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(461) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(462) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(473) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(474) as never, fiveE()), gate);
   }
 
   console.log(
-    "Splits: a Black Pudding split by slashing or lightning into two of half its health, a size smaller, beside it and after it, immune to it or not; not by fire, under 10 or below Medium; gated at 1.462.",
+    "Splits: a Black Pudding split by slashing or lightning into two of half its health, a size smaller, beside it and after it, immune to it or not; not by fire, under 10 or below Medium; gated at 1.474.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

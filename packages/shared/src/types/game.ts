@@ -41,7 +41,7 @@ export type BuiltInGameCombatStyle = (typeof BUILT_IN_GAME_COMBAT_STYLES)[number
 export type GameCombatStyle = BuiltInGameCombatStyle | (string & {});
 
 /** The shape of a combat style id, built-in or registered: what a game's setup and a ruleset's
- *  `combat.styles` (Capability API 1.778) may name. */
+ *  `combat.styles` (Capability API 1.379) may name. */
 export const GAME_COMBAT_STYLE_ID_PATTERN = /^[a-z][a-z0-9_-]{0,47}$/;
 
 /** Status of a game session. */
@@ -517,7 +517,7 @@ export interface SkillCheckResult {
    * ignored. Only a ruleset game sets them.
    */
   withAbility?: string;
-  /** What the check was made for (1.739), as its tag's `for=` said. */
+  /** What the check was made for (1.751), as its tag's `for=` said. */
   purpose?: string;
   bonusDice?: number;
   /**

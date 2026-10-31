@@ -1,5 +1,5 @@
 /**
- * Wish's stress (Capability API 1.633).
+ * Wish's stress (Capability API 1.645).
  *
  *   - `harms.at: "casts"`: each spell its holder casts deals 1d10 necrotic per level it was cast at
  *     (`perLevel`), past resistance (`unblockable`); a catalog it does not name, nothing.
@@ -36,7 +36,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 633);
+  assert.ok(supportedCapabilityApi.minor >= 645);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -202,7 +202,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with harm for casting, a condition put on by chance or an entry stopped by name (harms.at casts, applies[].chance, forbids.entries) requires schemaVersion 2 and capabilityApi 1.633 or newer";
+      "A ruleset with harm for casting, a condition put on by chance or an entry stopped by name (harms.at casts, applies[].chance, forbids.entries) requires schemaVersion 2 and capabilityApi 1.645 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -216,12 +216,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(632) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(633) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(644) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(645) as never, document()), gate);
   }
 
   console.log(
-    "Casting stress: 1d10 per level cast, past resistance; a lost Wish not offered; lost on 33 in 100; gated at 1.633.",
+    "Casting stress: 1d10 per level cast, past resistance; a lost Wish not offered; lost on 33 in 100; gated at 1.645.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

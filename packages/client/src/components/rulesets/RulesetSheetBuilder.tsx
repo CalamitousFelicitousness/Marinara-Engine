@@ -308,7 +308,7 @@ export function RulesetSheetBuilder({
   gearNote?: boolean;
 }) {
   const { t } = useUiTranslation();
-  // The ruleset's own words in the player's language (1.803): shown only, never written to the sheet.
+  // The ruleset's own words in the player's language (1.810): shown only, never written to the sheet.
   const rt = useRulesetText();
   const builder = definition.sheet.builder!;
   const [stepId, setStepId] = useState(builder.steps[0]!.id);
@@ -485,7 +485,7 @@ export function RulesetSheetBuilder({
   };
   const infoBaseId = useId();
 
-  // A rows step that asks for a count of rows (1.791, 5e's hit point rolls: one per level after 1st)
+  // A rows step that asks for a count of rows (1.798, 5e's hit point rolls: one per level after 1st)
   // starts with that many when it is shown, each as "add row" makes it; it never takes a row away,
   // and a row the player removes there stays removed until the step is shown again. A character being
   // described is not written to by looking at it. 5e ship-readiness re-test 2026-10-24.
@@ -763,7 +763,7 @@ export function RulesetSheetBuilder({
               const replaces =
                 !!entry.exclusive &&
                 options.some((other) => other.exclusive === entry.exclusive && picked.includes(other.id));
-              // Taken without asking (1.753): only a choice within an `exclusive` group is the player's.
+              // Taken without asking (1.765): only a choice within an `exclusive` group is the player's.
               const locked = !!current.takesAll && !entry.exclusive;
               // Already on the sheet from somewhere else (a domain spell a later step grants): no pick.
               // A step that names its pick in a field (a class, a race) is held only by that pick: a
@@ -1085,7 +1085,7 @@ export function RulesetSheetBuilder({
 
   // Named rows (1.154): the player's own rows are edited where they sit in the list, so two rows with
   // the same name stay two rows. Rows a pick wrote are shown and left to the pick.
-  // Rows already on a list, marked to tick one of their columns (1.754): a wizard's prepared spells.
+  // Rows already on a list, marked to tick one of their columns (1.766): a wizard's prepared spells.
   const markStep = (current: StepOf<"mark">) => {
     const list = definition.sheet.lists.find((each) => each.id === current.list);
     const name = list?.columns.find((column) => column.type === "text")?.id;
@@ -1159,7 +1159,7 @@ export function RulesetSheetBuilder({
       }),
     );
     const complete = own.filter(({ row }) => !(current.required ?? []).some((id) => blank(row[id]))).length;
-    // The rows the step waits on: its min, or what its countFrom asks for when that is more (1.791).
+    // The rows the step waits on: its min, or what its countFrom asks for when that is more (1.798).
     const wanted = rulesetBuilderRowsMin(definition, current, build);
     // A catalog to copy rows from (1.159): each copy is the player's own row, priced on its own.
     const copies = current.from
@@ -2286,7 +2286,7 @@ export function RulesetSheetBuilder({
                       ` · ${t("game.ruleset.sheet.poolLevel", { level: poolLevels[pool.key]! })}`}
                   </dt>
                   <dd className="text-xs font-semibold tabular-nums text-[var(--foreground)]">
-                    {/* A tally counts uses (1.793), as the game sheet says it (ship readiness 2026-10-25:
+                    {/* A tally counts uses (1.800), as the game sheet says it (ship readiness 2026-10-25:
                         Relentless Rage read "20"). */}
                     {pool.tally
                       ? t("game.ruleset.sheet.tallyUsed", { count: 0 })

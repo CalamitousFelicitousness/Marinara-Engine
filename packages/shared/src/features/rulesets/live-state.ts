@@ -84,35 +84,35 @@ export interface RulesetLiveState {
   /** What each condition's rests took off health's maximum for good (1.261), keyed by condition
    *  id, for one that gives it back when it is cured (`restoredWhenCured`). */
   lowered?: Record<string, number>;
-  /** What each condition raises health's maximum by while it is held (1.460), keyed by condition
+  /** What each condition raises health's maximum by while it is held (1.472), keyed by condition
    *  id: 5e's Aid. Dropped once the condition is. */
   raised?: Record<string, number>;
-  /** Abilities raised for good (1.503), by ability id: onto the score, and onto its most. */
+  /** Abilities raised for good (1.515), by ability id: onto the score, and onto its most. */
   abilities?: Record<string, { score: number; max: number }>;
   /** Whom an entry used once a creature until a rest went to (1.304), by name, keyed `rest|action`:
    *  that rest clears its lists. */
   usedOn?: Record<string, string[]>;
-  /** Days of game time counted since each spent row whose recharge takes days was spent (1.432),
+  /** Days of game time counted since each spent row whose recharge takes days was spent (1.444),
    *  keyed by pool. */
   waited?: Record<string, number>;
-  /** Saves made as days pass (1.513), keyed by the condition they end: which save, against what,
+  /** Saves made as days pass (1.525), keyed by the condition they end: which save, against what,
    *  how many days apart, and the days counted toward the next. Feeblemind's, every 30 days. */
   daySaves?: Record<string, RulesetLiveDaySave>;
-  /** Days left of each condition that lasts so many (1.650), keyed by condition: Quivering Palm's. */
+  /** Days left of each condition that lasts so many (1.662), keyed by condition: Quivering Palm's. */
   dayClocks?: Record<string, number>;
-  /** How many days each day its holder rests counts as, against `dayClocks` (1.743): Wish's stress's 2. */
+  /** How many days each day its holder rests counts as, against `dayClocks` (1.755): Wish's stress's 2. */
   dayRests?: Record<string, number>;
-  /** The inventory stack whose item keeps each condition on while it is worn (1.651), keyed by
+  /** The inventory stack whose item keeps each condition on while it is worn (1.663), keyed by
    *  condition: Armor of Invulnerability's. */
   wornFrom?: Record<string, string>;
-  /** The one entry or creature action each condition wards its holder off (1.745), keyed by
+  /** The one entry or creature action each condition wards its holder off (1.757), keyed by
    *  condition, as it was picked: Wish's. */
   wardsOff?: Record<string, string>;
-  /** What each entry used outside a fight called and keeps (1.790), keyed by the entry's name: the
+  /** What each entry used outside a fight called and keeps (1.797), keyed by the entry's name: the
    *  creature it called, as it was named ("" for its only one). It joins every fight its caller is
    *  in until it is dismissed or killed: Find Familiar's familiar. */
   called?: Record<string, string>;
-  /** The shape an entry used outside a fight put its user in and keeps them in (1.793): the entry's
+  /** The shape an entry used outside a fight put its user in and keeps them in (1.800): the entry's
    *  name, the form's, and the form's own health once a fight has taken some. They start every fight
    *  in it until it ends: a druid's Wild Shape. */
   shaped?: RulesetLiveShaped;
@@ -134,7 +134,7 @@ export interface RulesetLiveRested {
   fresh?: true;
 }
 
-/** A shape kept on a sheet from a use outside a fight (1.793). */
+/** A shape kept on a sheet from a use outside a fight (1.800). */
 export interface RulesetLiveShaped {
   entry: string;
   as: string;
@@ -143,16 +143,16 @@ export interface RulesetLiveShaped {
   max?: number;
 }
 
-/** A save a held condition is made against as days pass (Capability API 1.513). */
+/** A save a held condition is made against as days pass (Capability API 1.525). */
 export interface RulesetLiveDaySave {
   save: string;
   difficulty: number;
   every: number;
   waited?: number;
-  /** The saves it takes to end it (1.737), and how many have been made: Pale tincture's seven. */
+  /** The saves it takes to end it (1.749), and how many have been made: Pale tincture's seven. */
   successes?: number;
   made?: number;
-  /** Dealt to health on each failed save (1.737), its damage kept off healing while it holds when
+  /** Dealt to health on each failed save (1.749), its damage kept off healing while it holds when
    *  `keeps`. */
   harm?: { dice?: string; flat?: number; type?: string };
   keeps?: true;
@@ -233,7 +233,7 @@ const liveAbilityRaiseSchema = z
 const liveDayClock = z.number().int().min(1).max(3650);
 const liveDayRest = z.number().int().min(2).max(7);
 const liveStackId = z.string().min(1).max(MAX_LIVE_KEY_LENGTH);
-/** The creature a kept call called (1.790), by name: "" for an entry that calls only one. */
+/** The creature a kept call called (1.797), by name: "" for an entry that calls only one. */
 const liveCalledValue = z.string().max(MAX_LIVE_KEY_LENGTH);
 const MAX_LIVE_CALLED = 20;
 const liveRestedSchema = z
@@ -282,7 +282,7 @@ export const rulesetLiveStateSchema = z
     states: boundedRecord(liveStateValue, MAX_LIVE_STATES, "states").optional(),
     lowered: boundedRecord(liveNumber, MAX_LIVE_CONDITIONS, "lowered maximums").optional(),
     raised: boundedRecord(liveNumber.min(0), MAX_LIVE_CONDITIONS, "raised maximums").optional(),
-    /** Abilities raised for good, by ability id (1.503): onto the score, and onto its most. */
+    /** Abilities raised for good, by ability id (1.515): onto the score, and onto its most. */
     abilities: boundedRecord(liveAbilityRaiseSchema, MAX_LIVE_CONDITIONS, "raised abilities").optional(),
     usedOn: boundedRecord(liveUsedOnNames, MAX_LIVE_USED_ON, "used-on lists").optional(),
     waited: boundedRecord(liveNumber, MAX_LIVE_POOLS, "days waited").optional(),
@@ -335,7 +335,7 @@ export interface RulesetLivePoolSpec {
   startAt?: number;
   recharge?: string;
   listId?: string;
-  /** Counted up rather than spent (1.793): its row's `tallyColumn` is set, and it reads as how many
+  /** Counted up rather than spent (1.800): its row's `tallyColumn` is set, and it reads as how many
    *  times it has been used, `max - value`. */
   tally?: true;
 }
@@ -482,7 +482,7 @@ export interface ResolvedRulesetLive {
     /** The value's display text. */
     valueLabel: string;
   }>;
-  /** Abilities raised for good (1.503), by ability id. */
+  /** Abilities raised for good (1.515), by ability id. */
   abilityRaises?: Readonly<Record<string, { score: number; max: number }>>;
 }
 
@@ -907,34 +907,34 @@ function normalizeLiveState(state: RulesetLiveState): RulesetLiveState {
   if (state.conditions && state.conditions.length > 0) normalized.conditions = state.conditions;
   if (state.states && Object.keys(state.states).length > 0) normalized.states = state.states;
   if (state.lowered && Object.keys(state.lowered).length > 0) normalized.lowered = state.lowered;
-  // A raise lasts while its condition does (1.460).
+  // A raise lasts while its condition does (1.472).
   const held = new Set(state.conditions ?? []);
   const raised = Object.entries(state.raised ?? {}).filter(([condition, amount]) => held.has(condition) && amount > 0);
   if (raised.length > 0) normalized.raised = Object.fromEntries(raised);
-  // Raised for good (1.503): kept through every other change to the sheet.
+  // Raised for good (1.515): kept through every other change to the sheet.
   if (state.abilities && Object.keys(state.abilities).length > 0) normalized.abilities = state.abilities;
   if (state.usedOn && Object.keys(state.usedOn).length > 0) normalized.usedOn = state.usedOn;
   if (state.waited && Object.keys(state.waited).length > 0) normalized.waited = state.waited;
-  // A save made as days pass (1.513) lasts while what it ends does.
+  // A save made as days pass (1.525) lasts while what it ends does.
   const daySaves = Object.entries(state.daySaves ?? {}).filter(([condition]) => held.has(condition));
   if (daySaves.length > 0) normalized.daySaves = Object.fromEntries(daySaves);
-  // So do the days a condition lasts (1.650).
+  // So do the days a condition lasts (1.662).
   const dayClocks = Object.entries(state.dayClocks ?? {}).filter(([condition]) => held.has(condition));
   if (dayClocks.length > 0) normalized.dayClocks = Object.fromEntries(dayClocks);
-  // And what resting counts against them (1.743).
+  // And what resting counts against them (1.755).
   const dayRests = Object.entries(state.dayRests ?? {}).filter(
     ([condition]) => held.has(condition) && state.dayClocks?.[condition] !== undefined,
   );
   if (dayRests.length > 0) normalized.dayRests = Object.fromEntries(dayRests);
-  // And the item that keeps one on (1.651).
+  // And the item that keeps one on (1.663).
   const wornFrom = Object.entries(state.wornFrom ?? {}).filter(([condition]) => held.has(condition));
   if (wornFrom.length > 0) normalized.wornFrom = Object.fromEntries(wornFrom);
-  // And what one wards off (1.745).
+  // And what one wards off (1.757).
   const wardsOff = Object.entries(state.wardsOff ?? {}).filter(([condition]) => held.has(condition));
   if (wardsOff.length > 0) normalized.wardsOff = Object.fromEntries(wardsOff);
-  // What a kept call called (1.790) stays until it is dismissed or killed.
+  // What a kept call called (1.797) stays until it is dismissed or killed.
   if (state.called && Object.keys(state.called).length > 0) normalized.called = state.called;
-  // And a kept shape (1.793) until it ends.
+  // And a kept shape (1.800) until it ends.
   if (state.shaped) normalized.shaped = state.shaped;
   // Stable at no health, until health or a blow says otherwise.
   if (state.stable) normalized.stable = true;
@@ -951,7 +951,7 @@ function resolveLive(
   items?: ReadonlyArray<RulesetSheetItem>,
 ): ResolvedRulesetLive {
   const active = new Set(state.conditions ?? []);
-  // Health's maximum raised by what its conditions raise it by (1.460): Aid.
+  // Health's maximum raised by what its conditions raise it by (1.472): Aid.
   const health = definition.combat?.health;
   const healthKey = health && "pool" in health ? health.pool : undefined;
   const raisedBy = Object.entries(state.raised ?? {}).reduce(
@@ -1058,7 +1058,7 @@ function resolveLive(
   };
 }
 
-/** A live state with abilities raised for good (1.503): `by` onto each score, `max` onto its most. */
+/** A live state with abilities raised for good (1.515): `by` onto each score, `max` onto its most. */
 export function raiseRulesetLiveAbilities(
   stored: unknown,
   raises: Readonly<Record<string, { by: number; max?: number }>>,
@@ -1072,7 +1072,7 @@ export function raiseRulesetLiveAbilities(
   return { ...state, abilities };
 }
 
-/** A live state with a save its holder makes against `condition` as days pass (1.513), counted from
+/** A live state with a save its holder makes against `condition` as days pass (1.525), counted from
  *  nothing: written as a fight that put it on is over. */
 export function rulesetLiveWithDaySave(
   stored: unknown,
@@ -1083,8 +1083,8 @@ export function rulesetLiveWithDaySave(
   return { ...state, daySaves: { ...state.daySaves, [condition]: { ...save } } };
 }
 
-/** A live state with `condition` lasting `days` more (1.650), counted down as days pass: written as
- *  a fight that put it on is over. With `restingCounts` (1.743), each day its holder rests counts as
+/** A live state with `condition` lasting `days` more (1.662), counted down as days pass: written as
+ *  a fight that put it on is over. With `restingCounts` (1.755), each day its holder rests counts as
  *  that many. */
 export function rulesetLiveWithDayClock(
   stored: unknown,
@@ -1104,7 +1104,7 @@ export function rulesetLiveWithDayClock(
   return next;
 }
 
-/** A live state with `condition` warding its holder off one entry or creature action (1.745),
+/** A live state with `condition` warding its holder off one entry or creature action (1.757),
  *  written as a fight that put it on is over. */
 export function rulesetLiveWithWardsOff(stored: unknown, condition: string, pick: string): RulesetLiveState {
   const state = readStoredLiveStateAsIs(stored);
@@ -1112,13 +1112,13 @@ export function rulesetLiveWithWardsOff(stored: unknown, condition: string, pick
 }
 
 /** A live state with `condition` kept on only while the item on inventory stack `stackId` is worn
- *  (1.651). */
+ *  (1.663). */
 export function rulesetLiveWithWornFrom(stored: unknown, condition: string, stackId: string): RulesetLiveState {
   const state = readStoredLiveStateAsIs(stored);
   return { ...state, wornFrom: { ...state.wornFrom, [condition]: stackId } };
 }
 
-/** A live state without what only a worn item kept on (1.651) once that item is not worn: `worn` is
+/** A live state without what only a worn item kept on (1.663) once that item is not worn: `worn` is
  *  the inventory stacks worn now. Says which conditions came off; the state as it was when none did. */
 export function rulesetLiveWornOff(
   stored: unknown,
@@ -1142,7 +1142,7 @@ export function rulesetLiveWornOff(
   };
 }
 
-/** Whether a sheet meets what an item asks of whoever binds or uses it (1.654), or the ruleset's
+/** Whether a sheet meets what an item asks of whoever binds or uses it (1.666), or the ruleset's
  *  `items.needsWaivedBy` waives it: read off what the sheet is without its items. */
 export function rulesetItemNeedsMet(
   definition: RulesetDefinition,
@@ -1155,7 +1155,7 @@ export function rulesetItemNeedsMet(
   const read = (ref: RulesetValueRef) => resolveRulesetValueRef(definition, build, ref, evaluated);
   const waiver = definition.items?.needsWaivedBy;
   if (waiver && read(waiver) > 0) return true;
-  // Every one, or any one where the item says so (1.678).
+  // Every one, or any one where the item says so (1.690).
   const met = (need: (typeof needs)[number]) => {
     const value = read(need.value);
     return (need.atLeast === undefined || value >= need.atLeast) && (need.atMost === undefined || value <= need.atMost);
@@ -1163,7 +1163,7 @@ export function rulesetItemNeedsMet(
   return any ? needs.some(met) : needs.every(met);
 }
 
-/** The items as worn as they are: one bound whose `binds.needs` the sheet does not meet (1.654)
+/** The items as worn as they are: one bound whose `binds.needs` the sheet does not meet (1.666)
  *  reads as not worn. The same list when every one meets them. */
 export function rulesetItemsMeetingNeeds<T extends RulesetSheetItem>(
   definition: RulesetDefinition,
@@ -1174,7 +1174,7 @@ export function rulesetItemsMeetingNeeds<T extends RulesetSheetItem>(
   if (!items.some((held) => held.worn && (held.item.binds?.needs || held.item.statsIf || held.truly?.item.statsIf)))
     return items;
   const evaluated = evaluateRulesetSheetLive(definition, build, stored);
-  // What a worn item adds to its stats while its wearer meets a line's needs (1.687).
+  // What a worn item adds to its stats while its wearer meets a line's needs (1.699).
   const withStats = (item: RulesetSheetItem["item"]): RulesetSheetItem["item"] => {
     const met = (item.statsIf ?? []).filter((line) =>
       rulesetItemNeedsMet(definition, build, evaluated, line.needs, line.needsAny),
@@ -1205,7 +1205,7 @@ export function rulesetItemsMeetingNeeds<T extends RulesetSheetItem>(
 }
 
 /**
- * A live track read as health (1.784): what it has LEFT out of its length. A wound track's left is
+ * A live track read as health (1.383): what it has LEFT out of its length. A wound track's left is
  * its levels still clear; a plain track fills from its floor up to its maximum, so its left is the
  * room still above its value, and a full one is a combatant with nothing left. Neither carries a
  * buffer, so `temp` is always 0.
@@ -1220,7 +1220,7 @@ export function rulesetTrackHealth(track: ResolvedRulesetLive["tracks"][number])
   return { value: Math.max(0, track.max - track.value), max: Math.max(0, track.max - track.min), temp: 0 };
 }
 
-/** The sheet op that moves a health track by `delta` levels LEFT (1.784): fewer left is harm. A
+/** The sheet op that moves a health track by `delta` levels LEFT (1.383): fewer left is harm. A
  *  plain track moves by the number, the other way round; a wound track is marked with `kind`, or has
  *  one mark cleared per level given back, which names no kind. */
 export function rulesetTrackHealthOp(track: RulesetLiveTrack, delta: number, kind: string): RulesetSheetOp | null {
@@ -1266,7 +1266,7 @@ export function evaluateRulesetSheetLive(
   stored?: unknown,
   /** The items the character holds, which an `itemStat` reads; none outside a game. */
   items?: ReadonlyArray<RulesetSheetItem>,
-  /** Conditions a fight has on them besides the sheet's own (1.502), for what they do to abilities. */
+  /** Conditions a fight has on them besides the sheet's own (1.514), for what they do to abilities. */
   conditions?: readonly string[],
 ): ReturnType<typeof evaluateRulesetSheet> {
   return rulesetPlanMemo(["evaluateRulesetSheetLive", definition, build, stored, items, conditions?.join("|")], () =>
@@ -1283,9 +1283,9 @@ function evaluateSheetLive(
   items?: ReadonlyArray<RulesetSheetItem>,
   conditions?: readonly string[],
 ): ReturnType<typeof evaluateRulesetSheet> {
-  // What an item asks of its bearer (1.654): bound without it, it reads as not worn.
+  // What an item asks of its bearer (1.666): bound without it, it reads as not worn.
   items = items ? rulesetItemsMeetingNeeds(definition, build, stored, items) : items;
-  // What only a worn item kept on (1.651) is not held once that item is not worn.
+  // What only a worn item kept on (1.663) is not held once that item is not worn.
   const live = readRulesetLive(
     definition,
     build,
@@ -1295,7 +1295,7 @@ function evaluateSheetLive(
       : stored,
     items,
   );
-  // What the conditions they hold do to their abilities (1.502): the sheet's own, and the fight's.
+  // What the conditions they hold do to their abilities (1.514): the sheet's own, and the fight's.
   const held = new Set([
     ...live.conditions.filter((condition) => condition.active).map((condition) => condition.id),
     ...(conditions ?? []),
@@ -1305,7 +1305,7 @@ function evaluateSheetLive(
         entry.abilities && held.has(entry.condition) ? [entry.abilities] : [],
       )
     : [];
-  // And to their derived values (1.649): Bull's Strength's carrying capacity.
+  // And to their derived values (1.661): Bull's Strength's carrying capacity.
   const conditionDerived = held.size
     ? (definition.combat?.conditions ?? []).flatMap((entry) =>
         entry.derivedChanges && held.has(entry.condition) ? [entry.derivedChanges] : [],
@@ -1339,7 +1339,7 @@ export type RulesetSheetOp =
       seals?: true;
       /** On `damage` that `seals`: not even a rest gives it back, only something that unseals (1.203). */
       lasting?: true;
-      /** On `damage`: dealt by this condition, which keeps it off healing while it holds (1.737),
+      /** On `damage`: dealt by this condition, which keeps it off healing while it holds (1.749),
        *  given back as it ends. */
       keptBy?: string;
       /** On `restore`: what only a rest gives back is given back too (1.201), and then `amount` may
@@ -1362,7 +1362,7 @@ export type RulesetSheetOp =
    *  already beyond it. */
   | { op: "track"; track: string; to?: number; by?: number; upTo?: number }
   | { op: "condition"; condition: string; active: boolean }
-  /** Health's maximum raised by `amount` while `condition` is held, and health with it (1.460), in
+  /** Health's maximum raised by `amount` while `condition` is held, and health with it (1.472), in
    *  place of what it raised it by before. */
   | { op: "raise"; condition: string; amount: number }
   /** Sets a live state to one of its values, named by the value or its label. */
@@ -1380,13 +1380,13 @@ export type RulesetSheetOp =
       /** How many of each pool's dice to spend first, by pool: a multiclass player's Short rest, which
        *  picks from each of their hit dice. Taken in the rest's own order of pools, before `dice`. */
       diceFrom?: Readonly<Record<string, number>>;
-      /** A feature the rest offers to use as it ends (1.776), named on the Game Master's tag: 5e's
+      /** A feature the rest offers to use as it ends (1.788), named on the Game Master's tag: 5e's
        *  Arcane Recovery. `recover` is what it gives back; without it, the highest spent that fit. */
       use?: string;
       recover?: ReadonlyArray<{ pool: string; count: number }>;
     }
-  /** Days of game time pass (1.432): a spent row whose recharge takes days counts them, and fills
-   *  again once they reach its count. `resting` (1.743): spent resting, so a condition whose days
+  /** Days of game time pass (1.444): a spent row whose recharge takes days counts them, and fills
+   *  again once they reach its count. `resting` (1.755): spent resting, so a condition whose days
    *  count more while its holder rests counts them so. */
   | { op: "pass"; days: number; resting?: true }
   /** Uses something the character picked from a catalog, paying everything it costs. Resolved by
@@ -1396,12 +1396,12 @@ export type RulesetSheetOp =
       name: string;
       pool?: string;
       recover?: RulesetUseRecover[];
-      /** The creature it calls (1.790), by name, for an entry used outside a fight whose call stays. */
+      /** The creature it calls (1.797), by name, for an entry used outside a fight whose call stays. */
       as?: string;
-      /** Used as a ritual (1.799): a row its list's `ritual` column ticks pays none of its pools. */
+      /** Used as a ritual (1.806): a row its list's `ritual` column ticks pays none of its pools. */
       ritual?: true;
     }
-  /** Sends away what an entry used outside a fight called and kept (1.790), by the entry's name or
+  /** Sends away what an entry used outside a fight called and kept (1.797), by the entry's name or
    *  the creature's: a familiar dismissed or lost. */
   | { op: "dismiss"; name: string }
   /** Ticks an entry's row in its list's prepared mark (`display.mark`, 1.378), or clears it with
@@ -1410,7 +1410,7 @@ export type RulesetSheetOp =
    *  `applyRulesetPrepare`, because it needs the catalogs. */
   | { op: "prepare" | "unprepare"; name: string };
 
-/** A pool a use gives back (1.397) and how many of it: one of the spell slots Arcane Recovery picks. */
+/** A pool a use gives back (1.409) and how many of it: one of the spell slots Arcane Recovery picks. */
 export interface RulesetUseRecover {
   pool: string;
   count: number;
@@ -1422,7 +1422,7 @@ export type RulesetSheetRefusal =
   | "insufficient"
   | "bad-amount"
   | `bad-amount: ${string}`
-  /** A priced material (1.777) its user does not carry, by what the entry says it is. */
+  /** A priced material (1.789) its user does not carry, by what the entry says it is. */
   | `no-material: ${string}`
   | "advancement-disabled"
   | "save-failed"
@@ -1454,7 +1454,7 @@ export type RulesetSheetRefusal =
   /** A pool only a rest gives back, restored by a bare command with no rest that gives it back
    *  (laptop 2026-10-26: a cleric's spell slots back on a short rest that restores none). */
   | "rest-only"
-  /** A use as a ritual (1.799) of a row its list's `ritual` column does not tick. */
+  /** A use as a ritual (1.806) of a row its list's `ritual` column does not tick. */
   | "not-ritual"
   /** A use of an entry the sheet does not hold but could prepare, and how to. */
   | `not-prepared: ${string}`
@@ -1650,7 +1650,7 @@ function advanceBuild(
         typeof storedValue === "number" && Number.isFinite(storedValue) ? storedValue : defaults[group][entry.id];
       const value = op.by === undefined ? number(op.to) : number(previous) + op.by;
       const integer = !("type" in entry) || entry.integer;
-      // Held with the others it is totalled with (1.659): 5e's class levels.
+      // Held with the others it is totalled with (1.671): 5e's class levels.
       const most = field
         ? Math.max(Math.min(entry.max, rulesetFieldMax(definition, build, entry.id)), entry.min)
         : entry.max;
@@ -1821,7 +1821,7 @@ export function applyRulesetSheetOp(
     );
     return `, ${pool.label}'s maximum back up by ${back}`;
   };
-  /** Damage a condition deals its holder's health as days pass (1.737), and what of it the condition
+  /** Damage a condition deals its holder's health as days pass (1.749), and what of it the condition
    *  keeps off healing while it holds. Says how much it took. */
   const dayHarm = (condition: string, harm: { dice?: string; flat?: number; type?: string }, keeps: boolean) => {
     const rule = definition.combat?.health;
@@ -1848,7 +1848,7 @@ export function applyRulesetSheetOp(
       next.lowered = { ...next.lowered, [condition]: (own(next.lowered, condition) ?? 0) + sealed - sealedBefore };
     return amount;
   };
-  /** What a condition deals as it ends this way as days pass (1.245, 1.738), its save for half rolled
+  /** What a condition deals as it ends this way as days pass (1.245, 1.750), its save for half rolled
    *  off the sheet: Midnight tears at midnight. Spared by holding what its `unless` names. Says what
    *  happened as ", …". */
   const endHarm = (condition: string, how: "expired" | "save"): string => {
@@ -1989,7 +1989,7 @@ export function applyRulesetSheetOp(
     const lasting =
       (op.seals && op.lasting) || kept ? Math.min(sealed, pool.lasting + (pool.value - value)) : pool.lasting;
     setPool(pool, value, temp, sealed, lasting);
-    // Kept off healing by the condition that dealt it (1.737), and given back as it ends.
+    // Kept off healing by the condition that dealt it (1.749), and given back as it ends.
     if (kept && sealed > pool.sealed)
       next.lowered = { ...next.lowered, [op.keptBy!]: (own(next.lowered, op.keptBy!) ?? 0) + sealed - pool.sealed };
     return done(poolNow(pool, value, temp));
@@ -2031,7 +2031,7 @@ export function applyRulesetSheetOp(
     else active.delete(condition.id);
     next.conditions = [...active].slice(0, MAX_LIVE_CONDITIONS);
     const restored = !op.active && was ? giveBackLowered(condition.id) : "";
-    // A shape's condition taken off ends the shape it held them in (1.793), as `dismiss` does, so
+    // A shape's condition taken off ends the shape it held them in (1.800), as `dismiss` does, so
     // the next fight does not start them in a form the story already ended.
     const ended =
       !op.active &&
@@ -2072,8 +2072,8 @@ export function applyRulesetSheetOp(
     return done(`${entry.label} ${own(entry.valueLabels, value) ?? value}`);
   }
 
-  // What a kept call called (1.790), sent away by the entry's name or the creature's; or a kept
-  // shape (1.793) ended, by the entry's name or the form's.
+  // What a kept call called (1.797), sent away by the entry's name or the creature's; or a kept
+  // shape (1.800) ended, by the entry's name or the form's.
   if (op.op === "dismiss") {
     const wanted = typeof op.name === "string" ? op.name.trim() : "";
     const shape = next.shaped;
@@ -2105,7 +2105,7 @@ export function applyRulesetSheetOp(
     return done(value ? `${field.label}: ${value}` : `${field.label} cleared`);
   }
 
-  // Days of game time (1.432): what recharges after so many days counts them.
+  // Days of game time (1.444): what recharges after so many days counts them.
   if (op.op === "pass") {
     if (!Number.isInteger(op.days) || op.days < 1 || op.days > 3650) return { ok: false, reason: "bad-amount" };
     const back: string[] = [];
@@ -2127,7 +2127,7 @@ export function applyRulesetSheetOp(
       } else waited[pool.key] = counted;
       next.waited = waited;
     }
-    // A condition saved against as days pass (1.513): once each so many, until the first success.
+    // A condition saved against as days pass (1.525): once each so many, until the first success.
     const held = new Set(next.conditions ?? []);
     const daySaves = { ...next.daySaves };
     for (const [condition, owed] of Object.entries(daySaves)) {
@@ -2147,7 +2147,7 @@ export function applyRulesetSheetOp(
           })
         : 0;
       const { dice } = definition.resolution as { dice: { count: number; sides: number } };
-      // So many made to end it (1.737), counted across the days: Pale tincture's seven.
+      // So many made to end it (1.749), counted across the days: Pale tincture's seven.
       const needs = owed.successes ?? 1;
       let made = owed.made ?? 0;
       let ended = false;
@@ -2162,7 +2162,7 @@ export function applyRulesetSheetOp(
         if (success) made += 1;
         ended = made >= needs;
         rolled.push({ total, success });
-        // What a failed day's save deals (1.737), kept off healing while it holds when it `keeps`.
+        // What a failed day's save deals (1.749), kept off healing while it holds when it `keeps`.
         if (!success && owed.harm) took += dayHarm(condition, owed.harm, owed.keeps === true);
       }
       const named = `${label}: ${save?.label ?? owed.save}`;
@@ -2190,13 +2190,13 @@ export function applyRulesetSheetOp(
         delete daySaves[condition];
         const restored = giveBackLowered(condition);
         if (restored) back.push(restored.slice(2));
-        // What it leaves as a save ends it (1.738).
+        // What it leaves as a save ends it (1.750).
         const left = endHarm(condition, "save");
         if (left) back.push(`${label} ends${left}`);
       } else daySaves[condition] = { ...owed, waited: counted, ...(made > 0 ? { made } : {}) };
     }
     next.daySaves = daySaves;
-    // A condition that lasts so many days (1.650) comes off once they have passed.
+    // A condition that lasts so many days (1.662) comes off once they have passed.
     const dayClocks = { ...next.dayClocks };
     const dayRests = { ...next.dayRests };
     for (const [condition, left] of Object.entries(dayClocks)) {
@@ -2205,7 +2205,7 @@ export function applyRulesetSheetOp(
         delete dayRests[condition];
         continue;
       }
-      // Days spent resting count more where it says so (1.743): Wish's stress, two a day.
+      // Days spent resting count more where it says so (1.755): Wish's stress, two a day.
       const counted = op.resting && dayRests[condition] ? op.days * dayRests[condition] : op.days;
       if (left > counted) {
         dayClocks[condition] = left - counted;
@@ -2229,7 +2229,7 @@ export function applyRulesetSheetOp(
   if (op.op !== "rest") return { ok: false, reason: "malformed" };
   const rest = definition.rests.find((entry) => sameName(entry.id, op.rest) || sameName(entry.label, op.rest));
   if (!rest) return { ok: false, reason: "unknown-rest" };
-  // No benefit from it while the sheet holds a condition that bars it (1.709): a rakshasa's curse.
+  // No benefit from it while the sheet holds a condition that bars it (1.721): a rakshasa's curse.
   const heldNow = new Set(next.conditions ?? []);
   const barred = (definition.combat?.conditions ?? []).find(
     (entry) =>
@@ -2295,7 +2295,7 @@ export function applyRulesetSheetOp(
   }
 
   // A rest does exactly what the definition says and nothing else: no implied healing, and no
-  // temporary buffers dropped unless its `clear.temp` says so (1.796).
+  // temporary buffers dropped unless its `clear.temp` says so (1.803).
   const values = new Map(resolved.pools.map((pool) => [pool.key, { pool, value: pool.value, temp: pool.temp }]));
   const trackValues = new Map(resolved.tracks.map((track) => [track.id, { track, value: track.value }]));
   const changes: string[] = [];
@@ -2304,7 +2304,7 @@ export function applyRulesetSheetOp(
   const restHealth = restHealthRule && "pool" in restHealthRule ? restHealthRule.pool : undefined;
   let restEvaluated: ReturnType<typeof evaluateRulesetSheet> | undefined;
   for (const step of rest.restore) {
-    // Only while a value off the sheet says so (1.421).
+    // Only while a value off the sheet says so (1.433).
     if (step.when) {
       restEvaluated ??= evaluateRulesetSheet(definition, build);
       const value = resolveRulesetValueRef(definition, build, step.when.value, restEvaluated);
@@ -2368,7 +2368,7 @@ export function applyRulesetSheetOp(
       if (step.poolGroup !== undefined) return pool.group === step.poolGroup;
       if (step.listPools === undefined) return false;
       if (pool.listId !== step.listPools) return false;
-      // One row by name (1.421).
+      // One row by name (1.433).
       if (step.row !== undefined && !sameName(pool.label, step.row)) return false;
       return !step.recharge || (pool.recharge !== undefined && step.recharge.includes(pool.recharge));
     });
@@ -2408,7 +2408,7 @@ export function applyRulesetSheetOp(
       setPool(target.pool, value, target.temp);
     }
   }
-  // Temporary points it clears (1.796): 5e's temporary hit points at a long rest.
+  // Temporary points it clears (1.803): 5e's temporary hit points at a long rest.
   if (rest.clear.temp) {
     for (const pool of resolved.pools) {
       const now = values.get(pool.key);
@@ -2505,7 +2505,7 @@ export function applyRulesetSheetOp(
     const back = giveBackLowered(id);
     if (back) changes.push(back.slice(2));
   }
-  // What it puts on as it ends (1.413): Tranquility, on a sheet its `when` holds for.
+  // What it puts on as it ends (1.425): Tranquility, on a sheet its `when` holds for.
   if (rest.puts?.length) {
     const evaluated = evaluateRulesetSheetLive(definition, build, next, items);
     for (const put of rest.puts) {
@@ -2556,7 +2556,7 @@ export function rulesetEntryNamed(
       ok: true;
       ref: string;
       entry: RulesetCatalogEntry;
-      /** The entry its row stands for (1.480), when another's: Pact of the Chain's Find Familiar. */
+      /** The entry its row stands for (1.492), when another's: Pact of the Chain's Find Familiar. */
       standsFor?: RulesetCatalogEntry;
     }
   | { ok: false; reason: RulesetSheetRefusal } {
@@ -2595,7 +2595,7 @@ export type RulesetUsePlan =
       ok: true;
       label: string;
       steps: RulesetUseStep[];
-      /** A priced material the entry needs its user to carry (1.777), for the caller to look for. */
+      /** A priced material the entry needs its user to carry (1.789), for the caller to look for. */
       material?: NonNullable<RulesetCatalogMechanics["material"]>;
     }
   | { ok: false; reason: RulesetSheetRefusal };
@@ -2611,7 +2611,7 @@ export function rulesetEntryNameColumn(definition: RulesetDefinition, list: Rule
 }
 
 /**
- * What a Game Master's `use` of an entry heals its user outside a fight (1.775): an entry whose
+ * What a Game Master's `use` of an entry heals its user outside a fight (1.787): an entry whose
  * mechanics heal `self` with `outsideFight`, rolled with `roll` (each die its average without one)
  * plus its `amountAdd`, onto the sheet's health. Null for an entry that does not, or a sheet with no
  * health pool to heal.
@@ -2655,7 +2655,7 @@ export function rulesetUseHealOutsideFight(
 const MAX_KEPT_CALL_NAMES = 6;
 
 /**
- * The call a Game Master's `use` of an entry outside a fight keeps (1.790): an entry set up before a
+ * The call a Game Master's `use` of an entry outside a fight keeps (1.797): an entry set up before a
  * fight (`beforeFight`) that calls somebody, whose creature stays on its user's sheet and joins every
  * fight they are in until it is dismissed or killed. Find Familiar's familiar. Null for an entry that
  * keeps none. The creature is the one `as` names, checked against what it calls where the catalog it
@@ -2724,7 +2724,7 @@ export function rulesetUseKeptCall(
   return { ok: true, entry, as: type ? `${named}, ${type.label}` : named };
 }
 
-/** The name of another row on the sheet whose entry keeps a call of `creature` (1.791), so a refusal
+/** The name of another row on the sheet whose entry keeps a call of `creature` (1.798), so a refusal
  *  can point a Game Master at it: the Imp a warlock calls through "Find Familiar (Pact of the Chain)"
  *  and not the plain spell. */
 function rulesetSheetEntryCalling(
@@ -2758,7 +2758,7 @@ function rulesetSheetEntryCalling(
 }
 
 /**
- * The shape a Game Master's `use` of an entry outside a fight keeps its user in (1.793): an entry that
+ * The shape a Game Master's `use` of an entry outside a fight keeps its user in (1.800): an entry that
  * changes its user's own shape (`forms`, aimed at `self`), whose form stays on their sheet and starts
  * every fight they are in until it ends. A druid's Wild Shape. Null for an entry that changes no shape
  * of its user's. The form is the one `as` names, checked against the forms it offers where the catalog
@@ -2864,18 +2864,18 @@ export function rulesetUseKeptForm(
   return { ok: true, shaped: { entry, as: named } };
 }
 
-/** The shape a use outside a fight keeps its user in (1.793), as the sheet stores it. */
+/** The shape a use outside a fight keeps its user in (1.800), as the sheet stores it. */
 export function rulesetKeptForm(stored: unknown): RulesetLiveShaped | undefined {
   return readStoredLiveStateAsIs(stored).shaped;
 }
 
-/** What each entry used outside a fight called and keeps (1.790), as the sheet stores it. */
+/** What each entry used outside a fight called and keeps (1.797), as the sheet stores it. */
 export function rulesetKeptCalls(stored: unknown): Array<{ entry: string; as: string }> {
   return Object.entries(readStoredLiveStateAsIs(stored).called ?? {}).map(([entry, as]) => ({ entry, as }));
 }
 
-/** Whether a row this entry wrote is ticked in its list's `ritual` column (1.799), so it may be used
- *  outside a fight as a ritual, by a sheet its list's `ritualNeeds` allows (1.801). */
+/** Whether a row this entry wrote is ticked in its list's `ritual` column (1.806), so it may be used
+ *  outside a fight as a ritual, by a sheet its list's `ritualNeeds` allows (1.808). */
 export function rulesetRowIsRitual(definition: RulesetDefinition, build: RulesetSheetBuild, ref: string): boolean {
   const holds = (needs: readonly string[]) =>
     Object.values(build.lists ?? {}).some(
@@ -2941,8 +2941,8 @@ export function rulesetRestOnlyPool(
   return { key: found.key, label: found.label, ...(found.group ? { group: found.group } : {}), rests };
 }
 
-/** The entries on a sheet whose use gives back spent pools of this group (1.397): Arcane Recovery
- *  for spell slots. With the rest each is offered at (1.776), where it is. */
+/** The entries on a sheet whose use gives back spent pools of this group (1.409): Arcane Recovery
+ *  for spell slots. With the rest each is offered at (1.788), where it is. */
 export function rulesetRecoveriesOfGroup(
   definition: RulesetDefinition,
   build: RulesetSheetBuild,
@@ -2999,7 +2999,7 @@ export function planRulesetUse(
   const found = rulesetEntryNamed(definition, build, catalogs, wanted);
   if (!found.ok) return found;
   const { ref, entry } = found;
-  // As a ritual (1.799): only a row its list's `ritual` column ticks, and then it pays none of its
+  // As a ritual (1.806): only a row its list's `ritual` column ticks, and then it pays none of its
   // pools, slots or counters; a priced material it still needs (laptop 2026-10-26: a ritual Detect
   // Magic spent a slot).
   if (op.ritual && !rulesetRowIsRitual(definition, build, ref)) return { ok: false, reason: "not-ritual" };
@@ -3121,7 +3121,7 @@ export function planRulesetUse(
       if (pool && !running.has(pool.key)) spend(pool, uses);
     }
   }
-  // Spent pools it gives back, as many levels as its user's sheet allows (1.397): Arcane Recovery.
+  // Spent pools it gives back, as many levels as its user's sheet allows (1.409): Arcane Recovery.
   const recovers = entry.mechanics?.recovers;
   if (op.recover?.length && !recovers) return { ok: false, reason: `bad-amount: ${entry.label} recovers nothing` };
   if (recovers) {
@@ -3155,7 +3155,7 @@ export function planRulesetUse(
     if (levels > upTo) {
       return { ok: false, reason: `bad-amount: ${entry.label} recovers ${upTo} levels at most, not ${levels}` };
     }
-    // As many pools in all as it says, at most (1.643).
+    // As many pools in all as it says, at most (1.655).
     const total = op.recover.reduce((sum, one) => sum + one.count, 0);
     if (recovers.count !== undefined && total > recovers.count) {
       return { ok: false, reason: `bad-amount: ${entry.label} recovers ${recovers.count} at most, not ${total}` };
@@ -3169,7 +3169,7 @@ export function planRulesetUse(
   };
 }
 
-/** What an item's `recovers` gives back by itself (1.643): one at a time, the highest-level spent
+/** What an item's `recovers` gives back by itself (1.655): one at a time, the highest-level spent
  *  pool of its group no higher than `most` whose level still fits under `upTo`, up to `count` of
  *  them. A Pearl of Power's one slot of 3rd level or lower. Pool keys, one per pool given back. */
 export function rulesetRecoverPicks(
@@ -3208,7 +3208,7 @@ export function rulesetRecoverPicks(
   return picks;
 }
 
-/** A feature a rest offers to use as it ends (Capability API 1.776): its `recovers.atRest` names the
+/** A feature a rest offers to use as it ends (Capability API 1.788): its `recovers.atRest` names the
  *  rest. 5e's Arcane Recovery and Natural Recovery on a Short rest. */
 export interface RulesetRestRecovery {
   /** The entry's name, as a `use` names it. */
@@ -3225,7 +3225,7 @@ export interface RulesetRestRecovery {
   picks: RulesetUseRecover[];
 }
 
-/** The features a rest offers to use as it ends (1.776): every entry on the sheet whose `recovers`
+/** The features a rest offers to use as it ends (1.788): every entry on the sheet whose `recovers`
  *  names this rest in `atRest`, that has a use left and something spent to give back. */
 export function rulesetRestRecoveries(
   definition: RulesetDefinition,
@@ -3298,7 +3298,7 @@ export function rulesetRestRecoveries(
   return offers;
 }
 
-/** The features a player chose to use as a rest ends (1.776), each a `use` with what it gives back,
+/** The features a player chose to use as a rest ends (1.788), each a `use` with what it gives back,
  *  all or nothing: one this rest does not offer, or a use that is refused, refuses them all. */
 export function applyRulesetRestRecoveries(
   definition: RulesetDefinition,
@@ -3451,7 +3451,7 @@ function rulesetSpendRestDice(
     if (sides < 1) return { ok: false, reason: "malformed" };
     const addRead = step.entry.add ? resolveRulesetValueRef(definition, build, step.entry.add, evaluated) : 0;
     const add = Number.isFinite(addRead) ? Math.trunc(addRead) : 0;
-    // Each die's healing made more (1.675): a Periapt of Wound Closure doubles it.
+    // Each die's healing made more (1.687): a Periapt of Wound Closure doubles it.
     const timesRead = step.entry.times ? resolveRulesetValueRef(definition, build, step.entry.times, evaluated) : 1;
     const times = Number.isFinite(timesRead) ? Math.max(1, timesRead) : 1;
     // One die at a time, until the pool it heals is full.

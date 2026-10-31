@@ -1,5 +1,5 @@
 /**
- * What untrained adds, off the sheet (Capability API 1.406).
+ * What untrained adds, off the sheet (Capability API 1.418).
  *
  *   - Jack of All Trades: an untrained skill adds half the proficiency bonus from 2nd bard level, a
  *     trained one does not, and a raw ability check adds it through the ability's `checkAdd`.
@@ -31,7 +31,7 @@ const [{ buildSkillCheckRulesetContext, resolveSkillCheckWithContext }, { getCap
   ]);
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 406);
+  assert.ok(supportedCapabilityApi.minor >= 418);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -147,7 +147,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose untrained skills or saves add a value off the sheet (untrained add) or whose abilities add to their checks (checkAdd) requires schemaVersion 2 and capabilityApi 1.406 or newer";
+      "A ruleset whose untrained skills or saves add a value off the sheet (untrained add) or whose abilities add to their checks (checkAdd) requires schemaVersion 2 and capabilityApi 1.418 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -161,11 +161,11 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(405) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(406) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(405) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(417) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(418) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(417) as never, JSON.parse(fiveEText)), gate);
 
-    // Up to 40 combat levels, more than 20 gated at 1.406.
+    // Up to 40 combat levels, more than 20 gated at 1.418.
     const many = (count: number) =>
       document((doc) => {
         doc.combat.levels = Array.from({ length: count }, (_, at) => ({
@@ -177,20 +177,20 @@ try {
     parsed(many(40));
     refused(many(41), /levels/);
     const levelsGate =
-      "A ruleset with more than 20 combat levels requires schemaVersion 2 and capabilityApi 1.406 or newer";
+      "A ruleset with more than 20 combat levels requires schemaVersion 2 and capabilityApi 1.418 or newer";
     const plain = (count: number) => {
       const doc = many(count);
       for (const skill of doc.sheet.skills) delete skill.untrained;
       for (const ability of doc.sheet.abilities) delete ability.checkAdd;
       return doc;
     };
-    assert.equal(getCapabilityPackageInstallIssue(manifest(405) as never, plain(21)), levelsGate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(405) as never, plain(20)), levelsGate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(406) as never, plain(21)), levelsGate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(417) as never, plain(21)), levelsGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(417) as never, plain(20)), levelsGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(418) as never, plain(21)), levelsGate);
   }
 
   console.log(
-    "Untrained add: Jack of All Trades adds half proficiency to untrained skills and raw ability checks, on the sheet, outside a fight and in a contest; refuses skill reads; up to 40 combat levels; gated at 1.406.",
+    "Untrained add: Jack of All Trades adds half proficiency to untrained skills and raw ability checks, on the sheet, outside a fight and in a contest; refuses skill reads; up to 40 combat levels; gated at 1.418.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

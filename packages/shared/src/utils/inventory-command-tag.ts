@@ -36,7 +36,7 @@ export type InventoryTagAction =
   | "sell"
   /** A fake shown for what it truly is (Capability API 1.79). */
   | "reveal"
-  /** A character looks an item over before trusting it (Capability API 1.794). */
+  /** A character looks an item over before trusting it (Capability API 1.801). */
   | "inspect";
 
 const INVENTORY_TAG_ACTIONS: readonly InventoryTagAction[] = [
@@ -76,16 +76,16 @@ export interface InventoryTagRequest {
   /** An add that proposes an item of the ruleset: the parts the Game Master gave it. */
   proposal?: Omit<GameInventoryItemProposal, "name">;
   /** A buy's price level and seller, as the Game Master named them (#6917); an inspection's seller,
-   *  whose ware is looked at (1.794). */
+   *  whose ware is looked at (1.801). */
   level?: string;
   seller?: string;
-  /** An inspection's way of seeing through fakes, cast on the item (1.794). */
+  /** An inspection's way of seeing through fakes, cast on the item (1.801). */
   with?: string;
-  /** An add that vanishes after so many minutes of game time (Capability API 1.747): 5e's Creation. */
+  /** An add that vanishes after so many minutes of game time (Capability API 1.759): 5e's Creation. */
   lasts?: number;
 }
 
-/** The most a thing made to vanish lasts, in minutes (1.747): ten years. */
+/** The most a thing made to vanish lasts, in minutes (1.759): ten years. */
 const MOST_LASTS_MINUTES = 5_256_000;
 const LASTS_UNITS: ReadonlyArray<[RegExp, number]> = [
   [/^(?:m|mins?|minutes?)$/, 1],
@@ -94,7 +94,7 @@ const LASTS_UNITS: ReadonlyArray<[RegExp, number]> = [
   [/^(?:w|weeks?)$/, 10080],
 ];
 
-/** How long an add lasts (1.747), in minutes: "10 minutes", "12 hours", "1 day", "2 weeks", or a bare
+/** How long an add lasts (1.759), in minutes: "10 minutes", "12 hours", "1 day", "2 weeks", or a bare
  *  number of minutes. Undefined when it says nothing it can read. */
 export function readInventoryLasts(text: string | undefined): number | undefined {
   const match = /^(\d{1,7})\s*([a-z]*)$/i.exec(text?.trim().toLowerCase() ?? "");
@@ -105,7 +105,7 @@ export function readInventoryLasts(text: string | undefined): number | undefined
   return Math.min(MOST_LASTS_MINUTES, count * unit);
 }
 
-/** Minutes said the way a person would (1.747): "1 day", "12 hours", "10 minutes". */
+/** Minutes said the way a person would (1.759): "1 day", "12 hours", "10 minutes". */
 export function inventoryLastsWords(minutes: number): string {
   const [count, unit] =
     minutes % 1440 === 0 ? [minutes / 1440, "day"] : minutes % 60 === 0 ? [minutes / 60, "hour"] : [minutes, "minute"];
@@ -349,9 +349,9 @@ export function serializeInventoryTag(
         /** A fake shown for what it truly is: its true name (a reveal, or a sale an honest buyer saw
          *  through). */
         revealed?: string;
-        /** How long an add lasts before it vanishes, in minutes (1.747). */
+        /** How long an add lasts before it vanishes, in minutes (1.759). */
         lasts?: number;
-        /** What an inspection found (1.794): fake, named, genuine or unsure. */
+        /** What an inspection found (1.801): fake, named, genuine or unsure. */
         found?: string;
       }
     | { raw: string },
@@ -404,7 +404,7 @@ export interface ResolvedInventoryTag {
   stock?: boolean;
   /** A fake's true name, once it is shown for what it is (1.79). */
   revealed?: string;
-  /** What an inspection found (1.794). */
+  /** What an inspection found (1.801). */
   found?: "fake" | "named" | "genuine" | "unsure";
   /** What the Engine said about it: an inspection's roll and finding, a held buy's warning. */
   note?: string;
@@ -441,7 +441,7 @@ export function readResolvedInventoryTagBody(body: string): ResolvedInventoryTag
     ...(result === "ok" && Number.isFinite(now) ? { now } : {}),
     ...(reason && result !== "ok" ? { reason } : {}),
     ...(price && result === "ok" && (action === "buy" || action === "sell") ? { price } : {}),
-    // A buy held for a warning keeps its seller too (1.794), for the day's count of them.
+    // A buy held for a warning keeps its seller too (1.801), for the day's count of them.
     ...(values.get("seller")?.trim() && (result === "ok" || reason === "held")
       ? { seller: values.get("seller")!.trim() }
       : {}),

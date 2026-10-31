@@ -122,7 +122,7 @@ export function RulesetTurnOrder({
   onControl: (id: string, controller: CombatController) => void;
   /** Every companion at once (Alyssa 2026-10-26: "let this toggle be easy to find"). */
   onControlCompanions?: (controller: CombatController) => void;
-  /** Whether the player picks their own symbol spends (1.382), in a fight that has them. */
+  /** Whether the player picks their own symbol spends (1.394), in a fight that has them. */
   onSpends?: (choose: boolean) => void;
   locked: boolean;
 }) {

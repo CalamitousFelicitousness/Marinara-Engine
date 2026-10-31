@@ -487,6 +487,12 @@ function matchClose(s: string, open: number): number {
   return -1;
 }
 
+/** The value of a "Name:" / "**Full name and age:**" line. The line prefix skips no newlines: a blank-line run
+ *  would be rescanned from each of its lines. The padding after the separator is one whitespace run, not two around
+ *  the optional "**", which backtrack quadratically. `matchAll` copies it, so sharing the global flag is safe. */
+const NAME_LINE_RE =
+  /^(?:[^\S\n]|[>*•+\-[{])*(?:\*\*)?(?:full\s+)?name(?:\s+and\s+age)?\**\s*[:=(]\s*(?:\*+\s*)?["“]?([^\n"“”(),;\]]{1,60})/gim;
+
 /** Collects the character's own name words so "Arya's Appearance" normalises to "appearance". */
 function collectNames(cardName: string, text: string): Set<string> {
   const names = new Set<string>();
@@ -499,11 +505,7 @@ function collectNames(cardName: string, text: string): Set<string> {
   };
   const lead = (cardName.split(/[|\-–—:(\[,!?♡]/)[0] ?? "").trim();
   for (const word of lead.split(/\s+/).slice(0, 3)) if (/^\p{Lu}/u.test(word)) add(word);
-  // The line prefix skips no newlines: a blank-line run would be rescanned from each of its lines. The padding
-  // after the separator is one whitespace run, not two around the optional "**", which backtrack quadratically.
-  const nameRe =
-    /^(?:[^\S\n]|[>*•+\-[{])*(?:\*\*)?(?:full\s+)?name(?:\s+and\s+age)?\**\s*[:=(]\s*(?:\*+\s*)?["“]?([^\n"“”(),;\]]{1,60})/gim;
-  for (const m of text.matchAll(nameRe)) for (const word of m[1]!.split(/\s+/).slice(0, 4)) add(word);
+  for (const m of text.matchAll(NAME_LINE_RE)) for (const word of m[1]!.split(/\s+/).slice(0, 4)) add(word);
   const wppRe = /\b[Cc]haracter\(\s*"?([^"),]{1,40})/g;
   for (const m of text.matchAll(wppRe)) for (const word of m[1]!.split(/\s+/)) add(word);
   return names;
@@ -1388,11 +1390,8 @@ function skipReason(name: string, before: DescriptionSplitFields, force: boolean
   if (GAME_TEXT.some((re) => re.test(head)))
     return "the card looks like a narrator, game, world or multi-character card";
   const nameValues = new Set<string>();
-  for (const m of before.description.matchAll(
-    /^(?:[^\S\n]|[>*•+\-[{])*(?:\*\*)?(?:full\s+)?name(?:\s+and\s+age)?\**\s*[:=(]\s*(?:\*+\s*)?["“]?([^\n"“”(),;\]]{1,40})/gim,
-  )) {
+  for (const m of before.description.matchAll(NAME_LINE_RE))
     nameValues.add(m[1]!.trim().toLowerCase().split(/\s+/)[0]!);
-  }
   if (nameValues.size >= 2) return `the card describes several characters (${[...nameValues].join(", ")})`;
   if (/^\s*\p{Lu}\p{Ll}+\s+(?:and|&)\s+\p{Lu}\p{Ll}+/u.test(name)) return "the name looks like two characters";
   return null;

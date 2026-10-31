@@ -66,7 +66,7 @@ Some more examples you can type:
 - `2d6+3` rolls two 6-sided dice and adds 3.
 - `4d6kh3` rolls four 6-sided dice and keeps the highest three. `kl` keeps the lowest, and `dh` and `dl` drop the highest or lowest instead, so `2d20kl1` is a roll with disadvantage and `4d6dl1+2` drops the lowest die and adds 2. Every die thrown is recorded, and only the kept ones are added up.
 
-There are two hard limits. You can roll at most 100 dice at once, and each die can have at most 1000 sides. If you ask for more, the app trims your request down to those limits instead of refusing it, and the result card shows the trimmed notation, so typing `500d6` gives you a `100d6` card for the hundred dice it actually rolled. If your text is not valid dice notation, meaning `NdM` or a bare `dM` like `d20`, the roll fails and you get an error that names the expected format.
+There are two hard limits. You can roll at most 100 dice at once, and each die can have at most 1000 sides. If a plain roll asks for more, the app trims it down to those limits instead of refusing it, and the result card shows the trimmed notation, so typing `500d6` gives you a `100d6` card for the hundred dice it actually rolled. A keep or drop roll past the limits, such as `101d6kh3`, is refused with an out-of-range error instead, because trimming the dice would change which ones are kept. If your text is not valid dice notation, meaning `NdM` or a bare `dM` like `d20`, optionally followed by `kh`, `kl`, `dh` or `dl` and a number, the roll fails and you get an error that names the expected format.
 
 ### Symbol dice by name
 
@@ -114,7 +114,7 @@ Success pools must state both the per-die threshold and the number of successes 
 
 This is the pool a game with **no ruleset** gets, and it is unchanged. A game that carries a ruleset built on dice pools is a different thing, with rules the engine actually holds; see [Checks on a ruleset](rulesets.md#checks-on-a-ruleset).
 
-Unsupported requests such as `4d6kh3`, `3d6!`, or `4dF` are not rolled. The engine logs the unsupported notation and removes invented numbers from check records. These outcomes remain open; the engine does not silently substitute a different dice system.
+A check's `dice=` attribute takes plain `NdM` only. Requests there such as `4d6kh3`, `3d6!`, or `4dF` are not rolled. The engine logs the unsupported notation and removes invented numbers from check records. These outcomes remain open; the engine does not silently substitute a different dice system.
 
 ### Advantage and disadvantage
 

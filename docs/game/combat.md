@@ -14,7 +14,7 @@ In a game whose ruleset resolves its own fights, such as 5e (SRD 5.1), the fight
 
 Tactical combat places your party and enemies on a battlefield. Select a party unit, inspect its movement range, choose a destination and action, then confirm. Who acts when depends on the battle's **Turn order** (see [Turn order](#turn-order)). Attack forecasts show expected consequences before you commit.
 
-When creating a Tactical game, optional battlefield settings let you choose a seed, a size and terrain guidance for the GM. Leave the seed blank for a generated seed. A seed is a whole number from 0 to 4294967295, including zero. It reproduces the board when the encounter's combatants, terrain brief and other generation inputs are the same; it does not force the GM to generate the same story or enemies.
+There are no battlefield settings to fill in when you create a game. Each fight gets a board of its own, generated from a new seed and from the GM's brief for that scene.
 
 The GM supplies the scene's environment, formation and a short terrain brief. The engine then creates the exact tiles and spawn positions. Briefs can request terrain patches and barriers near the center or an edge of the map. Terrain guidance is a request to the GM, not a guarantee that every word becomes a tile. The accepted battlefield is saved, so refreshing restores that board rather than generating another one.
 

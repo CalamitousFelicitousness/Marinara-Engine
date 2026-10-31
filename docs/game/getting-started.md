@@ -31,7 +31,7 @@ When you create a Game Mode chat, a **setup wizard** opens. It has seven steps. 
 The seven steps are:
 
 1. **Connection.** Choose the **Game Mode**: **Overworld RPG** or **Classic**. Overworld RPG is not ready yet, so for now new games start as **Classic**. See [Classic or Overworld RPG](#classic-or-overworld-rpg). Set the game name, pick the GM connection, and optionally set a scene-effects connection. Scene effects default to **Local Model (Gemma)**.
-2. **World.** Set the genre, setting, tone, difficulty, content rating, and language. The ideas offered under the setting, and later under the goals, come from different kinds of setting, a new mix each time the wizard opens. Choose **Classic** or **Tactical** under **Combat Preference**. Tactical games also offer optional battlefield seed, size and terrain guidance. When a Game Mode ruleset is installed, a **Rules** choice appears below it: keep **Marinara's own rules**, or pick the ruleset. See [Choosing rules](#choosing-rules). On the Overworld RPG, below that are the **Setting kit** and **Your world**. See [Choosing a setting kit](#choosing-a-setting-kit) and [Making a world](#making-a-world).
+2. **World.** Set the genre, setting, tone, difficulty, content rating, and language. The ideas offered under the setting, and later under the goals, come from different kinds of setting, a new mix each time the wizard opens. Choose **Classic** or **Tactical** under **Combat Preference**. When a Game Mode ruleset is installed, a **Rules** choice appears below it: keep **Marinara's own rules**, or pick the ruleset. See [Choosing rules](#choosing-rules). On the Overworld RPG, below that are the **Setting kit** and **Your world**. See [Choosing a setting kit](#choosing-a-setting-kit) and [Making a world](#making-a-world).
 3. **Party.** Pick your persona (the character you play), the **Game Master Mode**, and any party members. **GM intro message** sets the game's first message. See [The GM intro message](#the-gm-intro-message).
 4. **Goals.** Tell the GM what you want from the adventure.
 5. **Lorebooks.** Attach any lorebooks whose facts the GM should treat as canon. A lorebook is a set of background world facts. See [Lorebooks](../lorebooks/overview.md).
@@ -40,7 +40,7 @@ The seven steps are:
 
 When you finish, click **Start Game**.
 
-For Tactical games, leaving the battlefield options blank lets the GM choose a scene-appropriate brief and the engine generate a board. A fixed seed makes generation repeatable for the same encounter inputs; terrain guidance asks the GM for features such as a ruined wall or forest clearing. See [Combat](combat.md#tactical-battles-and-terrain) for movement rules, terrain bonuses and generation failures.
+In a Tactical game, the GM writes a short brief for each fight's scene and the engine generates a board from it. See [Combat](combat.md#tactical-battles-and-terrain) for movement rules, terrain bonuses and generation failures.
 
 ### Classic or Overworld RPG
 

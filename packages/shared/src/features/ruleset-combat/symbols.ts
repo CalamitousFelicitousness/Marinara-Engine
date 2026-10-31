@@ -381,7 +381,7 @@ export function rulesetSymbolsLeft(
   return left;
 }
 
-/** The spends somebody choosing for themselves (1.394) is held to: what they named, in the order
+/** The spends somebody choosing for themselves (1.382) is held to: what they named, in the order
  *  they named it, each bought only as often as the symbols pay for it, its `max` allows and `budget`
  *  says it lands. Taken from `budget` as it goes, exactly as the Engine's own pick is. */
 export function rulesetChosenSymbolSpends(
@@ -411,7 +411,7 @@ export function rulesetChosenSymbolSpends(
   return [...bought].map(([spend, times]) => ({ spend, times }));
 }
 
-/** The spends a side choosing for itself may buy one more of (1.394), after `chosen`: its own, for
+/** The spends a side choosing for itself may buy one more of (1.382), after `chosen`: its own, for
  *  this outcome, paid for by what is left, under its `max`, and landing by `budget` as it stands once
  *  `chosen` has been taken from it. A spend worth nothing to the Engine may still be chosen. */
 export function rulesetSymbolSpendChoices(

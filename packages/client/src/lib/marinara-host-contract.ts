@@ -125,7 +125,7 @@ export interface MarinaraHostV1 {
       typeof import("./file-download"),
       "downloadUrlToDevice" | "prepareImageSave" | "savePreparedImageToDevice" | "shouldUseIosImageShare"
     >;
-    /** Capability API 1.393: independent package audio players and the shared asset selector. */
+    /** Capability API 1.381: independent package audio players and the shared asset selector. */
     readonly audio: typeof import("./audio-service");
     /** The module namespace of lib/tts-service.ts (ttsService, playWhenAvailable, ...). */
     readonly tts: typeof import("./tts-service");

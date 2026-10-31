@@ -2240,7 +2240,7 @@ export function rulesetSymbolSpendBudget(
   };
 }
 
-/** Where a held symbol throw (1.394) stands for the side `by` choosing its own spends: what it has
+/** Where a held symbol throw (1.382) stands for the side `by` choosing its own spends: what it has
  *  chosen so far, what it may still buy one more of, and the Engine's own pick for what it has not
  *  spent. Read from the fight as it stands, the attacker's spends bought first, exactly as the throw
  *  will be spent once the window closes. */

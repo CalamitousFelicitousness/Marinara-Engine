@@ -481,7 +481,7 @@ interface GameCombatUIProps {
       onChoose: (optionId: string, targetIds: string[], payWith?: string) => void;
       onFlee: () => void;
       onYield?: () => void;
-      /** Whether the player picks their own symbol spends (1.394). */
+      /** Whether the player picks their own symbol spends (1.382). */
       onSpends?: (choose: boolean) => void;
       /** A carried item taken in hand, and the stack a weapon shoots first (2026-10-26). */
       onDraw?: (unitId: string, item: number) => void;

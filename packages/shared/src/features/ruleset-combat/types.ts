@@ -2735,7 +2735,7 @@ export interface RulesetEncounterState {
   /** One up per window ever opened in this fight, so no two windows share an id and an answer
    *  written for a closed one is refused rather than spent on the one that replaced it. */
   windows?: number;
-  /** Who picks the spends of their own symbol throws (1.394) rather than leaving it to the Engine:
+  /** Who picks the spends of their own symbol throws (1.382) rather than leaving it to the Engine:
    *  a throw that leaves them something to buy holds the fight in a `spend` window until they have
    *  chosen. The Engine's pick is what everybody else gets. */
   askSpends?: string[];
@@ -2791,7 +2791,7 @@ export interface RulesetCombatWindow {
 
 /** What a window is for. `reaction` is somebody spending a budget out of turn; `signature` is a
  *  block buying one of its own actions with its points between two turns; `spend` is somebody
- *  choosing what a symbol throw's leftover symbols buy (1.394). */
+ *  choosing what a symbol throw's leftover symbols buy (1.382). */
 export type RulesetWindowKind = "reaction" | "signature" | "spend";
 
 /** What opened the window. The fight reads it to build the menu, and a caller reads it to say why
@@ -2875,7 +2875,7 @@ export type RulesetWindowTrigger =
   /** What somebody readied waits for has happened (1.288): `sourceId` came where it can be reached
    *  (`comes`, before the rest of their walk) or has just used something (`acts`). */
   | { kind: "readied"; sourceId: string; on: RulesetReadyOn }
-  /** A symbol throw (1.394) has left the one being asked symbols they may spend: `by` is the side
+  /** A symbol throw (1.382) has left the one being asked symbols they may spend: `by` is the side
    *  they spend for, `hit` whether the throw landed. `sourceId` made the throw at `targetIds`. */
   | {
       kind: "spend";
@@ -3074,7 +3074,7 @@ export interface RulesetHeldAddition {
   drain?: number;
 }
 
-/** One spend somebody chose for a symbol throw (1.394), by the ruleset's spend id. */
+/** One spend somebody chose for a symbol throw (1.382), by the ruleset's spend id. */
 export interface RulesetSymbolSpendChoice {
   spend: string;
   times: number;
@@ -4595,7 +4595,7 @@ export interface RulesetCombatOption {
   ready?: { optionId: string; label: string; on: RulesetReadyOn };
   /** What its holder readied, offered when it happens (1.288). */
   readied?: true;
-  /** In a `spend` window (1.394): one more of this spend, bought with `cost`, or `engine`, the
+  /** In a `spend` window (1.382): one more of this spend, bought with `cost`, or `engine`, the
    *  Engine's own pick for whatever is still unspent (`picks`). */
   symbolSpend?: { spend?: string; engine?: true; picks?: RulesetSymbolSpendChoice[] };
   /** A legendary action that moves after what it does (1.285): `cells` are where it may then go,

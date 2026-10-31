@@ -273,7 +273,7 @@ export function RulesetCombatMenu({
   const distance = view.grid?.distance;
   const nameOf = (id: string | undefined) => view.combatants.find((combatant) => combatant.id === id)?.name ?? "";
   const actorName = nameOf(view.actorId);
-  // Letting a spend window go by keeps what was chosen and buys nothing more (1.394).
+  // Letting a spend window go by keeps what was chosen and buys nothing more (1.382).
   const passKey = (otherwise: string) =>
     view.window?.kind === "spend" ? "game.combat.ruleset.menu.spendDone" : otherwise;
   const groups = useMemo(() => rulesetMenuGroups(view.options), [view.options]);

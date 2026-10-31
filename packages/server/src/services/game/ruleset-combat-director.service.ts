@@ -289,7 +289,7 @@ export interface RulesetFightState {
   players?: Record<string, DirectedRulesetPlayer>;
   /** The set-ups already called out (`<target>:<way>`), so each is said once while it stands. */
   calledOut?: string[];
-  /** The player chooses what their own symbol throws buy (1.394): every party member they play is
+  /** The player chooses what their own symbol throws buy (1.382): every party member they play is
    *  asked, and the Engine picks for everybody else. */
   chooseSpends?: boolean;
   /** The opponents the client marked as bosses, which is what routes a turn to the Game Master. */

@@ -2913,7 +2913,7 @@ function drawn(...rows: string[]): TacticalGrid {
 
 // ── The menu groups, the movement group first on a turn ──
 {
-  // A symbol throw's spends (1.394) are only ever asked in a window of their own, so they lead it.
+  // A symbol throw's spends (1.382) are only ever asked in a window of their own, so they lead it.
   assert.deepEqual(
     [...RULESET_MENU_KINDS],
     ["spend", "move", "attack", "reload", "ability", "item", "switch", "block", "contest", "standard", "end-turn"],

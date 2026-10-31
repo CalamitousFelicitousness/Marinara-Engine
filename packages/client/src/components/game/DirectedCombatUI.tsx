@@ -93,7 +93,7 @@ export function DirectedCombatUI(props: Props) {
   }, []);
   // Leaving ends the fight for good, so it asks once more first, as the menu's own Leave does.
   const [leaving, setLeaving] = useState(false);
-  // Whether the player picks their own symbol spends (1.394) is this browser's, carried into each new
+  // Whether the player picks their own symbol spends (1.382) is this browser's, carried into each new
   // fight once, as it opens: the fight starts with the Engine picking.
   const spendsCarried = useRef<RulesetSpendCarried | null>(null);
   const [preferSpends, setPreferSpends] = useState(readSpendChoice);

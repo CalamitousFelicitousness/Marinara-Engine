@@ -3,7 +3,7 @@ import { cn } from "../../lib/utils";
 
 const SPEND_CHOICE_KEY = "marinara.combat.chooseSpends";
 
-/** Whether this browser's player last chose to pick their own symbol spends (1.394). */
+/** Whether this browser's player last chose to pick their own symbol spends (1.382). */
 export function readSpendChoice(): boolean {
   try {
     return window.localStorage.getItem(SPEND_CHOICE_KEY) === "1";
@@ -21,7 +21,7 @@ export function writeSpendChoice(choose: boolean): void {
   }
 }
 
-/** The player picks what their own symbol throws buy (1.394), or leaves it to the Engine, which
+/** The player picks what their own symbol throws buy (1.382), or leaves it to the Engine, which
  *  picks for everybody else either way. Shown only in a fight thrown in symbol dice. */
 export function RulesetSpendToggle({
   choose,

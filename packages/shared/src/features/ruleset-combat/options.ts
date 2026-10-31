@@ -6348,12 +6348,12 @@ function rulesetSignatureCasts(
  *  takes, so passing is a choice the fight records rather than a timeout. */
 export const RULESET_PASS_OPTION = "pass";
 
-/** In a `spend` window (1.394): the Engine's own pick for whatever symbols are still unspent. A
+/** In a `spend` window (1.382): the Engine's own pick for whatever symbols are still unspent. A
  *  spend's own option is `RULESET_SPEND_OPTION_PREFIX` and its id. */
 export const RULESET_ENGINE_SPENDS_OPTION = "engine-spends";
 export const RULESET_SPEND_OPTION_PREFIX = "spend:";
 
-/** What somebody choosing their own symbol spends (1.394) may take now: one more of each spend they
+/** What somebody choosing their own symbol spends (1.382) may take now: one more of each spend they
  *  can still buy, and the Engine's pick for the rest when it would buy anything. Passing keeps what
  *  they have chosen and spends nothing more. */
 function spendWindowOptions(

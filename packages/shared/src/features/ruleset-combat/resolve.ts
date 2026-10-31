@@ -3319,7 +3319,7 @@ function spendSymbols(
   target: RulesetCombatant,
   symbols: Readonly<Record<string, number>>,
   hit: boolean,
-  /** What a side that chose for itself (1.394) chose. The Engine picks for a side not here. */
+  /** What a side that chose for itself (1.382) chose. The Engine picks for a side not here. */
   chosen: NonNullable<RulesetHeldAttack["roll"]["spends"]> = {},
 ): { damage: number; critical: boolean } {
   const out = { damage: 0, critical: false };
@@ -3388,7 +3388,7 @@ function spendSymbols(
   return out;
 }
 
-/** Which side of a symbol throw is asked what it buys (1.394), if either: one whose chooser picks
+/** Which side of a symbol throw is asked what it buys (1.382), if either: one whose chooser picks
  *  their own spends, has not been asked about this throw yet, and has something to buy. The
  *  attacker is asked first, as their spends are bought first. Nobody is asked inside another window,
  *  where a throw cannot be held, or once the fight is over. */
@@ -10821,7 +10821,7 @@ function answerInWindow(
   return takeReaction(definition, combat, state, window, actor, choice, roller);
 }
 
-/** One choice of what a symbol throw buys (1.394): one more of a spend, asked again while there is
+/** One choice of what a symbol throw buys (1.382): one more of a spend, asked again while there is
  *  more to buy, or the Engine's pick for the rest, which ends the asking. Nothing is spent until the
  *  window closes: the throw is then spent as it was chosen, exactly as the Engine's pick would be. */
 function chooseSymbolSpend(
@@ -14125,7 +14125,7 @@ function openHitWindow(
 ): void {
   const { label, optionId, catalog, entry, blow, asks, hit, ...held } = hold;
   const { held: _previous, ...base } = resume;
-  // Held for somebody to choose their spends (1.394): they alone are asked, and the throw is spent
+  // Held for somebody to choose their spends (1.382): they alone are asked, and the throw is spent
   // as they chose once they are done.
   if (asks) {
     openWindow(ctx, {
@@ -17166,7 +17166,7 @@ function resolveActionBodyIn(
           ? landsAt
           : "miss";
       if (pooled && outcome !== "miss") extraDice = roll.total - needed;
-      // Picked up after its maker chose their spends (1.394), it was checked already.
+      // Picked up after its maker chose their spends (1.382), it was checked already.
       if ((needed !== roll.defense || roll.lowered) && !roll.spends) {
         ctx.events.push({
           type: "recheck",
@@ -17192,7 +17192,7 @@ function resolveActionBodyIn(
       if (landed) noteHitBy(ctx, target, actor);
       critical = outcome === "critical";
       if (symbolic && roll.symbols) {
-        // Held again for whoever picks their own spends and has not yet (1.394).
+        // Held again for whoever picks their own spends and has not yet (1.382).
         const asks = spendAsked(ctx, actor, target, roll.symbols, landed, roll.spends ?? {});
         if (asks) {
           return {
@@ -17303,7 +17303,7 @@ function resolveActionBodyIn(
             blow: rulesetBlowKind(ctx.state, actor, target, action),
           };
         }
-        // Held for whoever picks their own spends (1.394), before anything is spent.
+        // Held for whoever picks their own spends (1.382), before anything is spent.
         const asks = spendAsked(ctx, actor, target, thrown.symbols, landed, {});
         if (asks) {
           return {
@@ -18658,7 +18658,7 @@ type RulesetHitHold = RulesetHeldAttack & {
   catalog?: string;
   entry?: string;
   blow?: RulesetBlowKind;
-  /** Held for a side to choose what its symbols buy (1.394) rather than for answers to the hit. */
+  /** Held for a side to choose what its symbols buy (1.382) rather than for answers to the hit. */
   asks?: "attacker" | "target";
   /** Whether that throw landed. */
   hit?: boolean;

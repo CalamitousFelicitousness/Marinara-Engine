@@ -29,7 +29,7 @@ import {
   type RulesetCellChoice,
 } from "./ruleset-combat-board";
 
-/** The order a menu reads in: what a symbol throw's leftovers buy (1.394), then where you go, what
+/** The order a menu reads in: what a symbol throw's leftovers buy (1.382), then where you go, what
  *  you swing, what you cast, what a stat block can do, the contests it may start, the moves the kind
  *  implements, and finally ending the turn. Spends are only ever asked in a window of their own, so
  *  on a turn walking comes first: a turn on a board usually starts with it, and it may be taken
@@ -245,7 +245,7 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
   // A strike with what a spell called up, told apart from casting the spell again (Spiritual Weapon).
   if (option.id.startsWith(RULESET_SUMMON_OPTION_PREFIX))
     return t("game.combat.ruleset.menu.summonStrike", { name: option.label });
-  // The Engine's own pick for what is left of a symbol throw (1.394), named by what it buys.
+  // The Engine's own pick for what is left of a symbol throw (1.382), named by what it buys.
   if (option.symbolSpend?.engine) return t("game.combat.ruleset.menu.engineSpends", { spends: option.label });
   // Walking and getting back up are the board's own two moves, named by this Engine for the same
   // reason the standard actions are: the closed list is the Engine's vocabulary, not the file's.
@@ -723,7 +723,7 @@ export interface RulesetSpendCarried {
  *  for ever. A refusal is not counted: the rules answered it, and it waits for the fight to move. */
 export const RULESET_SPEND_CARRY_TRIES = 3;
 
-/** Whether this browser's choice of picking its own symbol spends (1.394) is carried into the fight
+/** Whether this browser's choice of picking its own symbol spends (1.382) is carried into the fight
  *  on screen now. Null while it waits: no fight in symbol dice, a fight already over, a step in
  *  flight, a decision standing open (which would refuse the command), or this fight already carried.
  *  One the rules refused is tried again once the fight has moved past that revision; one lost on

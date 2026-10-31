@@ -13957,7 +13957,7 @@ function GameSurfaceComponent({
                     data-game-float="map-and-party"
                     className={cn(
                       // On a phone it stops short of the control-button rows in the right half of the chat.
-                      "pointer-events-auto absolute left-3 right-[calc(50%+1.640rem)] z-20 flex min-w-0 items-start gap-2 md:right-auto",
+                      "pointer-events-auto absolute left-3 right-[calc(50%+1.625rem)] z-20 flex min-w-0 items-start gap-2 md:right-auto",
                       gameRuleset?.status === "ok" &&
                         gameRuleset.definition.clocks &&
                         Boolean(gameSnapshot?.rulesetClocks?.length) &&

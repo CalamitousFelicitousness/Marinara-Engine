@@ -1808,6 +1808,10 @@ characters.
 written before 1.391. Without the method, or in a chat that does not list Long-Term Memory, the summary
 request is unchanged.
 
+The block is one flat string written from the whole scene, including messages some participants never
+saw; unlike the recap, it has no per-reader sections. A package that shows memories to a character must
+scope the record by `audienceCharacterIds` itself.
+
 Older Engines do not return `advancedMemory`: check that it exists, or declare 1.391.
 
 ```ts

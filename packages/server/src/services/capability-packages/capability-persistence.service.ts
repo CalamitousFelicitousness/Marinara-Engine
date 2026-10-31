@@ -275,7 +275,7 @@ type AdvancedMemorySummaryRow = Pick<
   keyof typeof advancedMemorySummaryColumns
 >;
 
-/** Advanced Memory's enabled scene recaps; scaffolds and preparation work have no content yet. */
+/** The query keeps enabled scene rows; scaffolds and preparation work have no content yet. */
 function mapAdvancedMemory(rows: AdvancedMemorySummaryRow[]): CapabilityAdvancedMemorySummary[] {
   return rows
     .filter((row) => row.content.trim())

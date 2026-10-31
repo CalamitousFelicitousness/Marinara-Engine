@@ -2,7 +2,10 @@
 // description, kept on their game card, and the same in every fight until the story changes it.
 
 import {
+  characterNamesMatch,
+  findNamedEntry,
   gameCardTemperament,
+  hasExactNamedEntry,
   normalizeCharacterLookupName,
   partyTemperamentFallback,
   readPartyTemperament,
@@ -37,25 +40,40 @@ export function keepPartyTemperaments<T extends { name?: unknown; aiHints?: Comb
   cards: readonly Record<string, unknown>[],
   gameId: string,
 ): { party: T[]; fresh: Map<string, CombatPartyTemperament> } {
-  const byName = new Map<string, Record<string, unknown>>();
-  for (const card of cards)
-    if (typeof card.name === "string" && card.name.trim()) byName.set(normalizeCharacterLookupName(card.name), card);
+  const named = cards.filter(
+    (card): card is Record<string, unknown> & { name: string } =>
+      typeof card.name === "string" && Boolean(card.name.trim()),
+  );
   const fresh = new Map<string, CombatPartyTemperament>();
   const kept = party.map((member) => {
     const name = typeof member.name === "string" ? member.name.trim() : "";
     if (!name) return member;
-    const key = normalizeCharacterLookupName(name);
-    const card = byName.get(key);
+    const card = gameCardFor(named, name);
+    // Keyed by the card's own name, so the one drawn is written onto the card it was drawn for.
+    const key = normalizeCharacterLookupName(card?.name ?? name);
     let temperament = gameCardTemperament(card)?.current;
     if (!temperament) {
       temperament =
-        fresh.get(key) ?? readPartyTemperament(member.aiHints?.temperament) ?? partyTemperamentFallback(gameId, name);
+        fresh.get(key) ??
+        readPartyTemperament(member.aiHints?.temperament) ??
+        partyTemperamentFallback(gameId, card?.name ?? name);
       // Only a member with a card keeps one: a summoned or room-added unit fights with this one.
       if (card) fresh.set(key, temperament);
     }
     return { ...member, aiHints: withKeptTemperament(member.aiHints, temperament) };
   });
   return { party: kept, fresh };
+}
+
+/**
+ * The game card a fight's party member is, as the client finds it (`findGameCombatCard`): the one
+ * named exactly, else the one card a variant of the name matches (a first name, a name without its
+ * title). A variant two cards match finds neither, so no card is given another's temperament.
+ */
+function gameCardFor<T extends { name: string }>(cards: readonly T[], name: string): T | undefined {
+  if (hasExactNamedEntry(cards, name, (card) => card.name)) return findNamedEntry(cards, name, (card) => card.name);
+  const variants = cards.filter((card) => characterNamesMatch(card.name, name));
+  return variants.length === 1 ? variants[0] : undefined;
 }
 
 /** The game's cards with the temperaments drawn for them written on, where they still have none. */

@@ -117,4 +117,33 @@ const next = keepPartyTemperaments(
 assert.equal(next.party[0]!.aiHints?.temperament, "honourable");
 assert.equal(next.fresh.size, 0);
 
+// A member the fight names by a variant of their card's name (a first name) is still that card: its
+// temperament is used, and one drawn for it is written onto that card. A variant two cards share
+// finds neither, so no card takes another's.
+{
+  const cards = [
+    { name: "Johnathan Reyes", temperament: "patient", temperamentInitial: "patient" },
+    { name: "Mira Vale" },
+    { name: "Ana Brightwater" },
+    { name: "Ana Duskwood" },
+  ];
+  const fight = keepPartyTemperaments(
+    [
+      { name: "Johnathan", aiHints: { temperament: "reckless" as const } },
+      { name: "Mira", aiHints: { temperament: "protective" as const } },
+      { name: "Ana", aiHints: { temperament: "cautious" as const } },
+    ],
+    cards,
+    "chat-7",
+  );
+  assert.equal(fight.party[0]!.aiHints?.temperament, "patient");
+  assert.equal(fight.party[1]!.aiHints?.temperament, "protective");
+  assert.equal(fight.party[2]!.aiHints?.temperament, "cautious");
+  assert.deepEqual([...fight.fresh.keys()], ["mira vale"]);
+  const written = cardsWithFreshTemperaments(cards, fight.fresh);
+  assert.deepEqual(gameCardTemperament(written.cards[1]), { current: "protective", initial: "protective" });
+  assert.equal(written.cards[2]!.temperament, undefined);
+  assert.equal(written.cards[3]!.temperament, undefined);
+}
+
 console.log("party-temperament regression passed");

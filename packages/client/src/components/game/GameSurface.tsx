@@ -10866,7 +10866,7 @@ function GameSurfaceComponent({
           aiHints: withKeptTemperament(
             undefined,
             gameCardTemperament(gameCard as Record<string, unknown> | undefined)?.current ??
-              partyTemperamentFallback(activeChatId, m.name),
+              partyTemperamentFallback(activeChatId, typeof gameCard?.name === "string" ? gameCard.name : m.name),
           ),
         };
       });

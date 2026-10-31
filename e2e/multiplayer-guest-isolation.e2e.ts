@@ -317,6 +317,8 @@ test("Game HUD stays inert and choices only extend the player's draft", async ({
             values: [{ label: "Health", value: '<iframe src="/api/secret">' }],
           },
         ],
+        ownRolls: [],
+        bag: [],
       },
     },
   };

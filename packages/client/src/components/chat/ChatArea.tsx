@@ -603,8 +603,10 @@ export const ChatArea = memo(function ChatArea({
   }, [hostsChatSettings]);
   // The Chat Settings button shows while a chat that hosts Chat Settings is open.
   const chatSettingsHosted = useFloatingWindowStore((state) => (state.hosts[CHAT_SETTINGS_WINDOW_ID] ?? 0) > 0);
-  // A fight on a board takes the whole chat area, so the settings bubble steps aside until it ends.
-  const boardFightOnScreen = useCombatScreenStore((state) => state.round !== null);
+  // A fight on a board takes the whole chat area, so the settings bubble steps aside while the combat
+  // pane holds the corner it sits in, and comes back when the pane is put away. The fight's top-bar
+  // controls open Chat Settings either way.
+  const combatPaneOnScreen = useCombatScreenStore((state) => state.round !== null && state.paneOpen);
   // Windows and popped-out drawers follow the open chat's saved layout.
   useChatWindowLayout(activeChatId ? (chat?.id === activeChatId ? chat : undefined) : null);
   useEffect(() => {
@@ -617,7 +619,7 @@ export const ChatArea = memo(function ChatArea({
       <ChatOpeningState error={error} onRetry={refetch} onBack={() => useChatStore.getState().setActiveChatId(null)} />
     );
   const chatSettingsButton =
-    chat && chatSettingsHosted && !boardFightOnScreen ? (
+    chat && chatSettingsHosted && !combatPaneOnScreen ? (
       <ChatSettingsBubble
         chatId={chat.id}
         mode={readChatMode(chat)}
@@ -627,7 +629,16 @@ export const ChatArea = memo(function ChatArea({
   if (chat && (metadata.multiplayerSetup === true || metadata.multiplayer)) {
     return (
       <Suspense fallback={null}>
-        <MultiplayerChat key={chat.id} chat={chat} />
+        <MultiplayerChat
+          key={chat.id}
+          chat={chat}
+          renderGame={() => (
+            <LocalChatArea
+              chatWindowIntroAllowed={chatWindowIntroAllowed}
+              onChatWindowIntroOpenChange={onChatWindowIntroOpenChange}
+            />
+          )}
+        />
         {chatSettingsButton}
       </Suspense>
     );

@@ -150,6 +150,7 @@ import { restoreBranchHudLists, trimJournalForBranch } from "../services/game/br
 import { removeGameInventoryTelling, switchGameInventoryTelling } from "../services/game/game-inventory.service.js";
 import { applyAllSegmentEdits, applyMessageSegmentEdits } from "../services/game/segment-edits.js";
 import { loadRulesetRegistry, resolveGameRuleset } from "../services/game/ruleset-registry.service.js";
+import { addGamePartyCards, syncGamePartyIds } from "../services/game/game-party-cards.js";
 import type { Journal } from "../services/game/journal.service.js";
 import { createRegexScriptsStorage } from "../services/storage/regex-scripts.storage.js";
 import { filterRelevantLorebooks, processLorebooks } from "../services/lorebook/index.js";
@@ -1634,6 +1635,30 @@ export async function chatsRoutes(app: FastifyInstance) {
         updated = (await dropRemovedChatCardVariables(app, req.params.id, cardVariableCharacterIdsToDrop)) ?? updated;
       } catch (err) {
         logger.warn(err, "Failed to drop onboarding card variables for removed chat characters");
+      }
+    }
+    // A character joining a game on a ruleset from here joins with their card's sheet, as one the
+    // Game Master recruits does (laptop playtest 2026-10-24).
+    if (updated && existing.mode === "game" && cardVariableCharacterIdsToSeed.length > 0) {
+      try {
+        if (await addGamePartyCards(app.db, req.params.id, cardVariableCharacterIdsToSeed))
+          updated = (await storage.getById(req.params.id)) ?? updated;
+      } catch (err) {
+        logger.warn(err, "Failed to add game cards for characters added to a game");
+      }
+    }
+    if (
+      updated &&
+      existing.mode === "game" &&
+      (cardVariableCharacterIdsToSeed.length > 0 || cardVariableCharacterIdsToDrop.length > 0)
+    ) {
+      try {
+        if (
+          await syncGamePartyIds(app.db, req.params.id, cardVariableCharacterIdsToSeed, cardVariableCharacterIdsToDrop)
+        )
+          updated = (await storage.getById(req.params.id)) ?? updated;
+      } catch (err) {
+        logger.warn(err, "Failed to update the game party for characters added or removed");
       }
     }
     if (updated && identityChanged) {
@@ -3405,7 +3430,25 @@ export async function chatsRoutes(app: FastifyInstance) {
     // assistant message's active swipe — so edits persist to the row the user
     // actually sees. Falls back to updateLatest when no messages exist yet.
     let updated: Awaited<ReturnType<typeof gameStateStore.updateLatest>> = null;
-    if (hasExplicitTarget) {
+    // Live sheet state is the game's, not one telling's, so it goes to the row GET reads, whatever
+    // row the screen last loaded. A screen holding an older row wrote its long rest there while the
+    // newer row kept the spent slot, which came back on the next reload (laptop playtest 2026-10-27).
+    let liveRow: Awaited<ReturnType<typeof gameStateStore.updateLatest>> = null;
+    if (hasExplicitTarget && fields.rulesetLive !== undefined) {
+      const visible = resolveVisibleGameStateAnchor(await storage.listMessages(req.params.id));
+      if (visible && (visible.messageId !== targetMessageId || visible.swipeIndex !== targetSwipeIndex)) {
+        liveRow = await gameStateStore.updateByMessage(
+          visible.messageId,
+          visible.swipeIndex,
+          req.params.id,
+          { rulesetLive: fields.rulesetLive },
+          false,
+          gameStateUpdateOptions,
+        );
+        delete fields.rulesetLive;
+      }
+    }
+    if (hasExplicitTarget && (!liveRow || Object.keys(fields).length > 0)) {
       const targetMessage = await storage.getMessage(targetMessageId);
       const targetSnapshot = await gameStateStore.getByChatAndMessage(req.params.id, targetMessageId, targetSwipeIndex);
       if (targetMessage?.chatId === req.params.id || targetSnapshot !== null) {
@@ -3439,6 +3482,8 @@ export async function chatsRoutes(app: FastifyInstance) {
     if (!updated && !hasExplicitTarget) {
       updated = await gameStateStore.updateLatest(req.params.id, fields, manual);
     }
+    // Whatever row answers, its live state is the one the sheet now reads.
+    if (liveRow) updated = updated ? { ...updated, rulesetLive: liveRow.rulesetLive } : liveRow;
     // Wipe all manual overrides when explicitly requested. Every row's, because a regeneration
     // starts from the edits on any swipe of the reply it replaces.
     if (clearOverrides && updated) {

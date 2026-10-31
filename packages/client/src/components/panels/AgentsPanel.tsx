@@ -53,6 +53,8 @@ import {
   useImportRuleset,
   useImportRulesetPackage,
   readRulesetPackage,
+  rulesetPacksForPage,
+  type RulesetPickedPack,
   useInstalledCapabilityPackages,
   useInstalledRulesets,
   useRemoveRuleset,
@@ -68,11 +70,13 @@ import {
   isAgentConfigDeleted,
   isAgentAvailableInChatMode,
   isRetiredBuiltInAgentId,
+  isRulesetLocalePackFile,
   isRulesetPackageFile,
   normalizeAgentPhaseForType,
   parseRulesetDefinition,
   RULESET_LOCAL_NAMESPACE,
   RULESET_MAX_BYTES,
+  RULESET_LOCALE_MAX_BYTES,
   RULESET_PACKAGE_FILE_MAX_BYTES,
   type CustomAgentCapability,
   type AgentCategory,
@@ -172,6 +176,10 @@ type PendingRulesetImport = {
   /** A ruleset package file (a parsed `.ruleset.json`), imported whole; with each catalog file's entry count. */
   packageFile?: Record<string, unknown>;
   catalogs?: Record<string, number>;
+  /** Language packs picked with the package file, in the page's language (1.811). */
+  packs?: RulesetPickedPack[];
+  /** Packs were picked, but none in the page's language: the ruleset will read in English. */
+  packsOtherLanguage?: boolean;
 };
 const AGENT_GRADIENT_SURFACE =
   "mari-panel-gradient-surface mari-panel-gradient--agents text-[var(--mari-panel-gradient-text)]";
@@ -1004,6 +1012,10 @@ export function AgentsPanel() {
             })()
           : await (async () => {
               const parsed = JSON.parse(await file.text());
+              // A Game Mode ruleset or its language pack is imported as a ruleset, never read for agents.
+              if (isRulesetPackageFile(parsed)) throw new Error(localizeUi("game.ruleset.import.useRulesetImport"));
+              if (isRulesetLocalePackFile(parsed))
+                throw new Error(localizeUi("game.ruleset.import.packUseRulesetImport"));
               return {
                 agents: getAgentImportEntries(parsed).map((raw): FolderPackageImportEntry => ({
                   raw,
@@ -1021,7 +1033,7 @@ export function AgentsPanel() {
 
       event.target.value = "";
     },
-    [agentImportsDisabledHelp, agentImportsEnabled, prepareAgentEntries],
+    [agentImportsDisabledHelp, agentImportsEnabled, localizeUi, prepareAgentEntries],
   );
 
   const handleImportAgentFolder = useCallback(
@@ -1059,41 +1071,70 @@ export function AgentsPanel() {
     async (event: ChangeEvent<HTMLInputElement>) => {
       setAgentImportError(null);
       setAgentImportSuccess(null);
-      const file = event.target.files?.[0];
+      const files = Array.from(event.target.files ?? []);
       event.target.value = "";
-      if (!file) return;
+      if (!files.length) return;
       if (!agentImportsEnabled) {
         setAgentImportError(agentImportsDisabledHelp);
         return;
       }
-      if (file.size > RULESET_PACKAGE_FILE_MAX_BYTES) {
+      // One ruleset, with the language packs (1.811) published beside its package file if any were picked.
+      const picked: Array<{ file: File; text: string; document: unknown }> = [];
+      for (const file of files) {
+        if (file.size > RULESET_PACKAGE_FILE_MAX_BYTES) {
+          setAgentImportError(
+            localizeUi("game.ruleset.import.packageTooLarge", {
+              limit: RULESET_PACKAGE_FILE_MAX_BYTES / 1024 / 1024,
+            }),
+          );
+          return;
+        }
+        let text: string;
+        try {
+          text = await file.text();
+        } catch {
+          setAgentImportError(localizeUi("game.ruleset.import.unreadable"));
+          return;
+        }
+        try {
+          picked.push({ file, text, document: JSON.parse(text) });
+        } catch {
+          setAgentImportError(localizeUi("game.ruleset.import.notJson"));
+          return;
+        }
+      }
+      const packFiles = picked.filter((each) => isRulesetLocalePackFile(each.document));
+      const rulesetFiles = picked.filter((each) => !isRulesetLocalePackFile(each.document));
+      if (rulesetFiles.length > 1) {
+        setAgentImportError(localizeUi("game.ruleset.import.oneAtATime"));
+        return;
+      }
+      const main = rulesetFiles[0];
+      // A pack translates a package; on its own, or beside a ruleset file with no package, it has nothing to attach to.
+      if (!main || (packFiles.length && !isRulesetPackageFile(main.document))) {
+        setAgentImportError(localizeUi("game.ruleset.import.packNeedsPackage"));
+        return;
+      }
+      const oversized = packFiles.find((each) => each.file.size > RULESET_LOCALE_MAX_BYTES);
+      if (oversized) {
         setAgentImportError(
-          localizeUi("game.ruleset.import.packageTooLarge", {
-            limit: RULESET_PACKAGE_FILE_MAX_BYTES / 1024 / 1024,
+          localizeUi("game.ruleset.import.packTooLarge", {
+            name: oversized.file.name,
+            limit: RULESET_LOCALE_MAX_BYTES / 1024 / 1024,
           }),
         );
         return;
       }
-      let text: string;
-      try {
-        text = await file.text();
-      } catch {
-        setAgentImportError(localizeUi("game.ruleset.import.unreadable"));
-        return;
-      }
-      let document: unknown;
-      try {
-        document = JSON.parse(text);
-      } catch {
-        setAgentImportError(localizeUi("game.ruleset.import.notJson"));
-        return;
-      }
+      const { file, text, document } = main;
       // A package file (`.ruleset.json`, with its catalog files) is read by the Engine, keeping nothing,
       // and reviewed like a ruleset file.
       if (isRulesetPackageFile(document)) {
         const packageFile = document as Record<string, unknown>;
+        const packs = rulesetPacksForPage(
+          packFiles.map((each) => ({ name: each.file.name, document: each.document as Record<string, unknown> })),
+        );
         try {
-          const read = await readRulesetPackage(packageFile);
+          const read = await readRulesetPackage(packageFile, packs);
           const parsed = parseRulesetDefinition(JSON.parse(read.ruleset ?? ""));
           if (!parsed.ok) throw new Error(parsed.issues.slice(0, 3).join("; "));
           setRulesetImportFailure(null);
@@ -1103,6 +1144,8 @@ export function AgentsPanel() {
             text: read.ruleset ?? "",
             packageFile,
             catalogs: read.catalogs,
+            packs,
+            packsOtherLanguage: packFiles.length > 0 && packs.length === 0,
           });
         } catch (error) {
           setAgentImportError(
@@ -1148,14 +1191,22 @@ export function AgentsPanel() {
     setRulesetImportFailure(null);
     try {
       const result = pending.packageFile
-        ? await importRulesetPackage.mutateAsync(pending.packageFile)
+        ? await importRulesetPackage.mutateAsync({ file: pending.packageFile, packs: pending.packs })
         : await importRuleset.mutateAsync(pending.text);
       setPendingRulesetImport(null);
+      // The same version again, now with its language pack: the pack is what changed.
+      const translated =
+        result.status === "unchanged" && !!pending.packs?.length && "locales" in result && !!result.locales?.length;
+      const imported = localizeUi(
+        result.status === "added"
+          ? "game.ruleset.import.added"
+          : translated
+            ? "game.ruleset.import.translationAdded"
+            : "game.ruleset.import.unchanged",
+        { name: pending.definition.name, version: result.version },
+      );
       setAgentImportSuccess(
-        localizeUi(result.status === "added" ? "game.ruleset.import.added" : "game.ruleset.import.unchanged", {
-          name: pending.definition.name,
-          version: result.version,
-        }),
+        pending.packsOtherLanguage ? `${imported} ${localizeUi("game.ruleset.import.packOtherLanguage")}` : imported,
       );
     } catch (error) {
       // The server's refusals are already sentences the author can act on, version conflicts
@@ -1377,6 +1428,8 @@ export function AgentsPanel() {
         // By extension only: the Agent import input beside this one is the panel's JSON-typed input.
         // A ruleset comes as its file, or as a package file (`.ruleset.json`) with its catalog files.
         accept=".ruleset.json,.json"
+        // With its language packs (`<id>-<version>.<lang>.json`), when the ruleset has them.
+        multiple
         className="hidden"
         onChange={(event) => void handleRulesetFileSelected(event)}
       />
@@ -2068,6 +2121,7 @@ export function AgentsPanel() {
           label: catalog.label,
           count: catalog.entries?.length ?? pendingRulesetImport?.catalogs?.[catalog.id] ?? 0,
         }))}
+        translation={!!pendingRulesetImport?.packs?.length}
         onCancel={() => setPendingRulesetImport(null)}
         onConfirm={() => void handleConfirmRulesetImport()}
       />

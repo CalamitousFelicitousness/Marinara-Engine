@@ -10,6 +10,7 @@ import {
   type LorebookScope,
   type ScenePromptPreferences,
 } from "@marinara-engine/shared";
+import type { GameCheckpoint } from "@marinara-engine/shared";
 
 const CreateCharacterModal = lazy(() =>
   import("../modals/CreateCharacterModal").then((module) => ({ default: module.CreateCharacterModal })),
@@ -286,7 +287,14 @@ export function ModalRenderer() {
       content = <GameDataEditorModal open onClose={closeModal} chatId={(modal?.props?.chatId as string) ?? ""} />;
       break;
     case "game-checkpoints":
-      content = <GameCheckpointsModal open onClose={closeModal} chatId={(modal?.props?.chatId as string) ?? ""} />;
+      content = (
+        <GameCheckpointsModal
+          open
+          onClose={closeModal}
+          chatId={(modal?.props?.chatId as string) ?? ""}
+          highlight={modal?.props?.highlight as GameCheckpoint["triggerType"] | undefined}
+        />
+      );
       break;
     case "activity-overview":
       content = <ActivityOverviewModal open onClose={closeModal} />;

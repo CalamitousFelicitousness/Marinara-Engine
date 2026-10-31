@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
+  type CapabilityAdvancedMemorySummary,
   type CapabilityCharacterStatusResult,
   type CapabilityCharacterStatusUpdate,
   type CapabilityChatActivityUpdate,
@@ -29,6 +30,7 @@ import { FileUniqueConstraintError } from "../../db/file-schema.js";
 import { engineEventOwner } from "./capability-roleplay-events.service.js";
 import { ensureTimestampAfter } from "../import/import-timestamps.js";
 import {
+  advancedMemoryRecords,
   chats,
   capabilityDocuments,
   gameStateSnapshots,
@@ -236,7 +238,7 @@ function readGameSession(session: Record<string, unknown>, index: number, chatUp
  * The summaries a chat keeps in its metadata; whatever is missing or malformed reads as empty.
  * Undated entries take the chat's own update time, so repeated reads return the same values.
  */
-function mapChatSummaries(value: unknown, chatUpdatedAt?: string): CapabilityChatSummaries {
+function mapChatSummaries(value: unknown, chatUpdatedAt?: string): Omit<CapabilityChatSummaries, "advancedMemory"> {
   const metadata = parseMetadata(value) ?? {};
   const sessions = Array.isArray(metadata.gamePreviousSessionSummaries) ? metadata.gamePreviousSessionSummaries : [];
   return {
@@ -251,6 +253,37 @@ function mapChatSummaries(value: unknown, chatUpdatedAt?: string): CapabilityCha
       return typeof session?.summary === "string" ? [readGameSession(session, index, chatUpdatedAt)] : [];
     }),
   };
+}
+
+/** Advanced Memory's enabled scene recaps; scaffolds and preparation work have no content yet. */
+function mapAdvancedMemory(rows: (typeof advancedMemoryRecords.$inferSelect)[]): CapabilityAdvancedMemorySummary[] {
+  return rows
+    .filter((row) => row.kind === "scene" && row.enabled === 1 && row.content.trim())
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
+    .map((row) => {
+      let audience: unknown = [];
+      try {
+        audience = JSON.parse(row.audienceCharacterIds);
+      } catch {
+        audience = [];
+      }
+      return {
+        id: row.id,
+        sceneId: row.sceneId,
+        kind: "scene",
+        title: row.title,
+        content: row.content,
+        timeline: row.timeline ?? null,
+        startMessageId: row.startMessageId,
+        endMessageId: row.endMessageId,
+        audienceCharacterIds: Array.isArray(audience)
+          ? audience.filter((id): id is string => typeof id === "string")
+          : [],
+        sourceFingerprint: row.sourceFingerprint,
+        updatedAt: row.updatedAt,
+        memory: typeof row.structuredMemory === "string" ? row.structuredMemory : null,
+      };
+    });
 }
 
 function parsePresentCharacterIds(value: unknown): string[] {
@@ -565,7 +598,10 @@ function createPersistenceSession(db: DB, assertPermission: PersistencePermissio
         .from(chats)
         .where(eq(chats.id, chatId))
         .limit(1);
-      return mapChatSummaries(rows[0]?.metadata, rows[0]?.updatedAt);
+      const records = rows[0]
+        ? await db.select().from(advancedMemoryRecords).where(eq(advancedMemoryRecords.chatId, chatId))
+        : [];
+      return { ...mapChatSummaries(rows[0]?.metadata, rows[0]?.updatedAt), advancedMemory: mapAdvancedMemory(records) };
     },
     async getGameState(chatId) {
       assertPermission("chat-read");

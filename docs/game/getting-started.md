@@ -202,6 +202,8 @@ World generation is the hardest part of Game Mode. It asks the model for one lon
 
 For world generation, use a capable, current top-tier model on a paid connection. As of 2026, players report good results from the flagship tiers of the major providers. Examples are Anthropic Claude, OpenAI GPT, and Google Gemini. Specific model names change often, so treat these as examples, not a fixed list.
 
+The cheapest models we recommend, both tested in play as of October 31, 2026, are DeepSeek V4 Flash and Claude Haiku 5.5.
+
 For ongoing gameplay turns, you can sometimes drop to a cheaper model, because turns ask for narration rather than strict JSON. If the GM starts forgetting NPCs or contradicting earlier details, move back up to a stronger model.
 
 Avoid free or auto-routing models for world generation. They can route to a smaller model that cannot produce valid world-gen JSON. Small open-weight models usually fail this step too.

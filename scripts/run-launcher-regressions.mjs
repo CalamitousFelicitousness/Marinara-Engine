@@ -26,9 +26,9 @@ const SCRIPTS = [
 let current = null;
 let currentExited = Promise.resolve();
 
-function signalCurrentGroup(signal) {
+function signalGroup(pid, signal) {
   try {
-    process.kill(-current.pid, signal);
+    process.kill(-pid, signal);
   } catch (err) {
     // ESRCH: the group is already gone. EPERM: macOS can report it for a group whose members all exited.
     if (err?.code !== "ESRCH" && err?.code !== "EPERM") throw err;
@@ -36,16 +36,20 @@ function signalCurrentGroup(signal) {
 }
 
 // The script runs in its own process group. It is asked to stop first, so it can clean up what it started
-// in other groups, and is killed with its group if it is still running after the grace period.
+// in other groups. Once it exits, or after the grace period if it has not, the rest of its group is killed.
 function stopCurrent() {
   if (!current?.pid || current.exitCode !== null || current.signalCode !== null) return currentExited;
   if (process.platform === "win32") {
     spawnSync("taskkill.exe", ["/pid", String(current.pid), "/T", "/F"], { stdio: "ignore" });
     return currentExited;
   }
-  signalCurrentGroup("SIGTERM");
-  const escalation = setTimeout(() => signalCurrentGroup("SIGKILL"), STOP_GRACE_MS);
-  return currentExited.finally(() => clearTimeout(escalation));
+  const { pid } = current;
+  signalGroup(pid, "SIGTERM");
+  const escalation = setTimeout(() => signalGroup(pid, "SIGKILL"), STOP_GRACE_MS);
+  return currentExited.finally(() => {
+    clearTimeout(escalation);
+    signalGroup(pid, "SIGKILL"); // a member that outlived SIGTERM must not keep our output open
+  });
 }
 
 let interrupted = false;

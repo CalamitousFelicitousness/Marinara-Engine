@@ -363,6 +363,12 @@ export function AppShell({
         root.style.setProperty("--mari-visual-viewport-height", `${Math.max(0, Math.round(height))}px`);
         root.style.setProperty("--mari-visual-viewport-offset-top", `${Math.round(offsetTop)}px`);
         root.toggleAttribute("data-mari-software-keyboard-open", keyboardOpen);
+        // Read by the Mari sheet rules in mari.css. Chrome restyles the whole page on any DOM change
+        // while a :not(:has(:focus)) selector is live, so the composer focus is an attribute.
+        root.toggleAttribute(
+          "data-mari-composer-focused",
+          document.activeElement?.matches(".mari-workspace-composer__input") ?? false,
+        );
         dispatchChatVisualViewportChange({
           height,
           offsetTop,
@@ -418,6 +424,7 @@ export function AppShell({
       root.removeAttribute("data-mari-ios-webkit");
       root.removeAttribute("data-mari-camera-side");
       root.removeAttribute("data-mari-software-keyboard-open");
+      root.removeAttribute("data-mari-composer-focused");
     };
   }, []);
 

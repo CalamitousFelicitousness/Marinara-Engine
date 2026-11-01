@@ -5499,21 +5499,21 @@ html[data-marinara-effects-paused="true"] .mari-workspace-portrait img {
 /* Peek also while an editor field has the keyboard, so the sheet never covers that field. */
 [data-component="GlobalOmnibar"][data-pane="mari"][data-mari-companion="sheet"][data-mari-sheet-snap="peek"]
   > .mari-companion-panel,
-html[data-mari-software-keyboard-open]
+html[data-mari-software-keyboard-open]:not([data-mari-composer-focused])
   [data-component="GlobalOmnibar"][data-pane="mari"][data-mari-companion="sheet"]
-  > .mari-companion-panel:not(:has(.mari-workspace-composer__input:focus)) {
+  > .mari-companion-panel {
   height: auto;
 }
 
 [data-mari-companion="sheet"][data-mari-sheet-snap="peek"] > .mari-companion-panel > :not(.mari-sheet-handle, header),
 [data-mari-companion="sheet"][data-mari-sheet-snap="peek"] > .mari-companion-panel .mari-omnibar-header-row,
-html[data-mari-software-keyboard-open]
+html[data-mari-software-keyboard-open]:not([data-mari-composer-focused])
   [data-component="GlobalOmnibar"][data-pane="mari"][data-mari-companion="sheet"]
-  > .mari-companion-panel:not(:has(.mari-workspace-composer__input:focus))
+  > .mari-companion-panel
   > :not(.mari-sheet-handle, header),
-html[data-mari-software-keyboard-open]
+html[data-mari-software-keyboard-open]:not([data-mari-composer-focused])
   [data-component="GlobalOmnibar"][data-pane="mari"][data-mari-companion="sheet"]
-  > .mari-companion-panel:not(:has(.mari-workspace-composer__input:focus))
+  > .mari-companion-panel
   .mari-omnibar-header-row {
   display: none;
 }

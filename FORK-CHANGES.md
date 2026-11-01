@@ -330,6 +330,19 @@ dialogue colors. Upstream saves it as `rgba(..., 0.25)`, a transparency written 
 colors. Under the slider's 90% default that 25% never applied, and a light avatar gave a nearly solid
 light bubble. The opaque value says what the bubble shows.
 
+### Mari sheet tracks composer focus with an attribute
+
+Three Mari bottom-sheet rules in `packages/client/src/styles/mari.css` read
+`html[data-mari-software-keyboard-open]:not([data-mari-composer-focused])`, and `AppShell.tsx` sets
+`data-mari-composer-focused` on the root beside the keyboard flag. Upstream's `cd71df343d` wrote them
+as `.mari-companion-panel:not(:has(.mari-workspace-composer__input:focus))`. While such a selector is
+live, Chrome invalidates `<body>` and every descendant on any DOM change, so each keystroke in a
+message editor restyled about 9500 elements three times: 1.6 s of style work for 15 characters in an
+83-message chat, against 50 ms without those rules. The positive `:has(...:focus)` rules are cheap and
+stay.
+
+Destined for upstream. Guarded by `scripts/regressions/css-has-focus-negation.regression.mjs`.
+
 ## Fork-only additions
 
 ### Preset variables resolve in every mode, not only Roleplay

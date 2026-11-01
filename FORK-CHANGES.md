@@ -322,6 +322,14 @@ from about 2.5 minutes to 35 seconds.
 
 Destined for upstream. Guarded by `scripts/regressions/launcher/termux-client-build.regression.mjs`.
 
+### Avatar color extraction saves an opaque message box color
+
+`packages/client/src/lib/avatar-color-extraction.ts` returns the box color as hex, like the name and
+dialogue colors. Upstream saves it as `rgba(..., 0.25)`, a transparency written before
+`5c679e847a`, which made Roleplay Messages Background Opacity replace the alpha of authored
+colors. Under the slider's 90% default that 25% never applied, and a light avatar gave a nearly solid
+light bubble. The opaque value says what the bubble shows.
+
 ## Fork-only additions
 
 ### Preset variables resolve in every mode, not only Roleplay

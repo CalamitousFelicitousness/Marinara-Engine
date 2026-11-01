@@ -53,8 +53,8 @@ export async function extractColorsFromImage(imgSrc: string): Promise<[string, s
 
       const nameColor = toHex(colors[0]);
       const dialogueColor = toHex(colors[1] ?? colors[0]);
-      const boxRgb = colors[2] ?? colors[1] ?? colors[0];
-      const boxColor = `rgba(${boxRgb[0]}, ${boxRgb[1]}, ${boxRgb[2]}, 0.25)`;
+      // Opaque: Roleplay Messages Background Opacity sets every bubble's transparency.
+      const boxColor = toHex(colors[2] ?? colors[1] ?? colors[0]);
 
       resolve([nameColor, dialogueColor, boxColor]);
     };

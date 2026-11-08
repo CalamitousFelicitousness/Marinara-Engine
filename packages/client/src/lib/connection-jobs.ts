@@ -9,6 +9,7 @@ import {
   Database,
   Eye,
   Film,
+  Globe,
   GraduationCap,
   ImageIcon,
   MessageCircleQuestion,
@@ -150,6 +151,8 @@ const JOB_LIST = [
   { key: "stt", icon: Mic, group: "media", device: "stt", add: "search", terms: "stt whisper" },
   { key: "decision", icon: BrainCircuit, group: "background", kind: "decision", flag: "defaultForAgents" },
   { key: "embeddings", icon: Database, group: "background", kind: "chat" },
+  // Set on its own card behind the tile: a search engine is not a Model.
+  { key: "webSearch", icon: Globe, group: "background", add: false, terms: "searxng duckduckgo search" },
   {
     key: "vision",
     icon: Eye,

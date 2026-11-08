@@ -1,6 +1,12 @@
 import dotenv from "dotenv";
 import { randomUUID } from "node:crypto";
-import { REQUEST_TIMEOUTS, requestTimeoutSettingsSchema, type RequestTimeoutSettings } from "@marinara-engine/shared";
+import {
+  REQUEST_TIMEOUTS,
+  requestTimeoutSettingsSchema,
+  webSearchSettingsSchema,
+  type RequestTimeoutSettings,
+  type WebSearchSettings,
+} from "@marinara-engine/shared";
 import { logger as sharedLogger } from "../lib/logger.js";
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
@@ -975,9 +981,7 @@ export function getRequestTimeoutSettings(): RequestTimeoutSettings {
   ) as RequestTimeoutSettings;
 }
 
-export function saveRequestTimeoutSettings(input: unknown): RequestTimeoutSettings {
-  const settings = requestTimeoutSettingsSchema.parse(input);
-  const path = requestTimeoutSettingsPath();
+function writeSettingsFile(path: string, settings: unknown) {
   const temporaryPath = `${path}.${randomUUID()}.tmp`;
   mkdirSync(dirname(path), { recursive: true });
   try {
@@ -986,6 +990,53 @@ export function saveRequestTimeoutSettings(input: unknown): RequestTimeoutSettin
   } finally {
     rmSync(temporaryPath, { force: true });
   }
+}
+
+export function saveRequestTimeoutSettings(input: unknown): RequestTimeoutSettings {
+  const settings = requestTimeoutSettingsSchema.parse(input);
+  writeSettingsFile(requestTimeoutSettingsPath(), settings);
   applySavedRequestTimeouts();
+  return settings;
+}
+
+/** Kept beside the active .env like the request timeouts; once saved, it wins over SEARXNG_URL. */
+function webSearchSettingsPath() {
+  return `${getEnvFilePath()}.web-search.json`;
+}
+
+let savedWebSearchSettings: WebSearchSettings | null | undefined;
+
+function readSavedWebSearchSettings(): WebSearchSettings | null {
+  if (savedWebSearchSettings !== undefined) return savedWebSearchSettings;
+  savedWebSearchSettings = null;
+  const path = webSearchSettingsPath();
+  if (existsSync(path)) {
+    try {
+      savedWebSearchSettings = webSearchSettingsSchema.parse(JSON.parse(readFileSync(path, "utf8")));
+    } catch (error) {
+      sharedLogger.warn(error, "Ignoring invalid saved web search settings");
+    }
+  }
+  return savedWebSearchSettings;
+}
+
+/** Validates web search settings and trims the trailing slash off the SearXNG address. */
+export function parseWebSearchSettings(input: unknown): WebSearchSettings {
+  const settings = webSearchSettingsSchema.parse(input);
+  return { ...settings, searxngUrl: settings.searxngUrl?.replace(/\/+$/u, "") ?? null };
+}
+
+/** The saved choice, or SEARXNG_URL when nothing is saved. */
+export function getWebSearchSettings(): WebSearchSettings {
+  const saved = readSavedWebSearchSettings();
+  if (saved) return saved;
+  const url = normalizeEnvValue(process.env.SEARXNG_URL)?.replace(/\/+$/u, "") ?? null;
+  return { provider: url ? "searxng" : "duckduckgo", searxngUrl: url };
+}
+
+export function saveWebSearchSettings(input: unknown): WebSearchSettings {
+  const settings = parseWebSearchSettings(input);
+  writeSettingsFile(webSearchSettingsPath(), settings);
+  savedWebSearchSettings = settings;
   return settings;
 }

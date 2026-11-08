@@ -21,6 +21,8 @@ dist/
 .env
 .env.timeouts.json
 .env.timeouts.json.*.tmp
+.env.web-search.json
+.env.web-search.json.*.tmp
 .env.local
 .env.production
 

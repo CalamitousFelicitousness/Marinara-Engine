@@ -38,6 +38,8 @@ import { createLocalSidecarConnectionOption, isConnectionFlagTrue } from "../../
 import { cn } from "../../lib/utils";
 import { ToggleSetting } from "../panels/settings/SettingControls";
 import { TTSConfigCard } from "../panels/settings/TTSConfigCard";
+import { WebSearchSettings } from "../panels/settings/WebSearchSettings";
+import { useWebSearchSettings } from "../../hooks/use-web-search-settings";
 import { ConnectionSelect } from "./ConnectionSelect";
 import {
   FLAG_JOBS,
@@ -56,6 +58,14 @@ import { DecisionDefaultControl } from "./DecisionDefaultControl";
 import { SMALL_ACTION } from "./DeviceDetail";
 import type { ConnectionRowData } from "./ConnectionRow";
 import { JobRow } from "./JobRow";
+
+function hostOf(url: string | null) {
+  try {
+    return url ? new URL(url).host : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 function JobIcon({ job }: { job: JobKey }) {
   const Icon = JOB[job].icon;
@@ -114,6 +124,7 @@ export function useConnectionDefaults(connectionsList: ConnectionRowData[]) {
   const updateTTS = useUpdateTTSConfig();
   const { data: speech } = useEffectiveTTSConfig();
   const featureModels = useFeatureModels();
+  const webSearch = useWebSearchSettings();
 
   const accountById = useMemo(() => new Map((accounts ?? []).map((account) => [account.id, account])), [accounts]);
   const mainIsBuiltIn = useSidecarStore((s) => s.config.useAsMainDefault);
@@ -425,8 +436,18 @@ export function useConnectionDefaults(connectionsList: ConnectionRowData[]) {
     };
   });
 
+  // Web search names its engine; the SearXNG address shows as the hint. Reading it needs admin access.
+  const searxngHost = webSearch.data?.provider === "searxng" ? hostOf(webSearch.data.searxngUrl) : undefined;
+  const webSearchTile: DefaultsTile = {
+    ...jobTile("webSearch"),
+    warning: null,
+    ...(webSearch.data
+      ? { value: t(`settings.webSearch.providers.${webSearch.data.provider}`), hint: searxngHost }
+      : { value: t("connections.defaults.webSearchUnknown"), muted: true }),
+  };
+
   const byKey = new Map(
-    [...tiles, embeddings, decision, ...(stt ? [stt] : []), ...features].map((tile) => [tile.key, tile]),
+    [...tiles, embeddings, decision, ...(stt ? [stt] : []), webSearchTile, ...features].map((tile) => [tile.key, tile]),
   );
   return JOBS.map((job) => byKey.get(job.key)).filter((tile): tile is DefaultsTile => !!tile);
 }
@@ -615,10 +636,12 @@ function DefaultsJobRow({
   const embeddings = job.key === "embeddings";
   const decision = job.key === "decision";
   const voice = job.key === "voice";
-  const hasSettings = job.key === "agents" || decision || voice;
-  const model = embeddings || decision || job.device ? null : modelFor(job);
+  const webSearch = job.key === "webSearch";
+  const hasSettings = job.key === "agents" || decision || voice || webSearch;
+  const model = embeddings || decision || webSearch || job.device ? null : modelFor(job);
   const title = t(jobLabelKey(job));
   const onClick = () => {
+    if (webSearch) return setSettingsOpen((value) => !value);
     if (tile.device) return onOpenDevice(tile.device);
     if (tile.setup?.item) return openAddConnection({ category: "device", item: tile.setup.item });
     setOpen(true);
@@ -630,7 +653,8 @@ function DefaultsJobRow({
           tile={tile}
           data-defaults-tile={job.key}
           onClick={onClick}
-          aria-haspopup={tile.device ? undefined : "dialog"}
+          aria-haspopup={tile.device || webSearch ? undefined : "dialog"}
+          aria-expanded={webSearch ? settingsOpen : undefined}
           aria-label={t("connections.defaults.jobLabel", {
             role: tile.title,
             value: [tile.follows, tile.value].filter(Boolean).join(" · "),
@@ -681,6 +705,10 @@ function DefaultsJobRow({
             ) : voice ? (
               <div className="py-3">
                 <TTSConfigCard defaultExpanded />
+              </div>
+            ) : webSearch ? (
+              <div className="py-3">
+                <WebSearchSettings />
               </div>
             ) : (
               <AgentsSettings />

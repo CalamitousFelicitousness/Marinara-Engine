@@ -22,10 +22,18 @@ import {
   RUNTIME_DIAGNOSTICS_RATE_LIMIT,
 } from "../middleware/rate-limit.js";
 import { logger } from "../lib/logger.js";
-import { getRequestTimeoutSettings, saveRequestTimeoutSettings, isDockerRuntime } from "../config/runtime-config.js";
+import {
+  getRequestTimeoutSettings,
+  getWebSearchSettings,
+  parseWebSearchSettings,
+  saveRequestTimeoutSettings,
+  saveWebSearchSettings,
+  isDockerRuntime,
+} from "../config/runtime-config.js";
 import { noteSessionExitKind } from "../lib/session-postmortem.js";
 import { armShutdownDeadline } from "../lib/shutdown-deadline.js";
 import { collectRuntimeDiagnostics } from "../lib/runtime-diagnostics.js";
+import { testWebSearch } from "../services/tools/tool-executor.js";
 import {
   ABANDONED_AVATAR_MIN_AGE_MS,
   collectCharacterAvatarPaths,
@@ -79,6 +87,21 @@ export async function adminRoutes(app: FastifyInstance) {
   app.put("/request-timeouts", { config: { rateLimit: REQUEST_TIMEOUT_SETTINGS_RATE_LIMIT } }, async (req, reply) => {
     if (!requirePrivilegedAccess(req, reply, { feature: "Request timeout settings" })) return;
     return saveRequestTimeoutSettings(req.body);
+  });
+
+  // Reading is privileged too: a SearXNG address may carry basic-auth credentials.
+  app.get("/web-search", (req, reply) => {
+    if (!requirePrivilegedAccess(req, reply, { feature: "Web search settings" })) return;
+    return getWebSearchSettings();
+  });
+  app.put("/web-search", { config: { rateLimit: REQUEST_TIMEOUT_SETTINGS_RATE_LIMIT } }, async (req, reply) => {
+    if (!requirePrivilegedAccess(req, reply, { feature: "Web search settings" })) return;
+    return saveWebSearchSettings(req.body);
+  });
+  // Tests the values in the form, saved or not.
+  app.post("/web-search/test", { config: { rateLimit: REQUEST_TIMEOUT_SETTINGS_RATE_LIMIT } }, async (req, reply) => {
+    if (!requirePrivilegedAccess(req, reply, { feature: "Web search settings" })) return;
+    return testWebSearch(parseWebSearchSettings(req.body));
   });
 
   // Read-only runtime detail for support, beyond what /api/health serves:

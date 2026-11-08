@@ -383,6 +383,7 @@ All are off by default, which keeps the old behavior. `STORAGE_CACHE_WINDOWS_BOO
 | `DOCS_I18N_BASE_URL` | official `docs-i18n` branch | Where documentation and UI language packs download from. UI packs use its `ui/` subtree. Must be a public `https://` host. |
 | `GIPHY_API_KEY` | empty | Giphy key for GIF search in Conversation mode. Search stays off until you set it and restart. |
 | `INTIFACE_URL` | `ws://127.0.0.1:12345` | Default address of the Intiface haptic app. |
+| `SEARXNG_URL` | empty | Your SearXNG instance for the **web_search** tool, for example `http://192.168.1.20:8080`. Empty uses DuckDuckGo. The **Web search** job under **Connections** sets the same thing, and once saved there it wins over this variable. The instance must list `json` under `search.formats` in its `settings.yml`. A LAN or local address follows `PROVIDER_LOCAL_URLS_ENABLED`. |
 | `SPOTIFY_REDIRECT_URI` | derived from the request | Override for the Spotify login callback. Set it when TLS ends upstream. |
 | `MARI_WIKI_CONTENT_MAX_BYTES` | `50000` | Largest wiki page content Professor Mari reads before trimming. |
 | `MARI_WIKI_REQUEST_TIMEOUT_MS` | `30000` | Time for one wiki request by Professor Mari. |

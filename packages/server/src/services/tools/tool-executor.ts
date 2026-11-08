@@ -9,8 +9,10 @@ import {
   getCustomToolTimeoutMs,
   isCustomToolScriptEnabled,
   isWebhookLocalUrlsEnabled,
+  getWebSearchSettings,
+  isProviderLocalUrlsEnabled,
 } from "../../config/runtime-config.js";
-import { safeFetch } from "../../utils/security.js";
+import { isAllowedResponseContentType, safeFetch } from "../../utils/security.js";
 import {
   createToolArgumentsAjv,
   createToolArgumentsValidator,
@@ -39,6 +41,8 @@ import {
   type SymbolDiceRollResult,
   skillCheckSymbolText,
   SPOTIFY_RECENT_TRACK_HISTORY_LIMIT,
+  type WebSearchSettings,
+  type WebSearchTestResult,
 } from "@marinara-engine/shared";
 import { symbolDiceResolution } from "../game/dice.service.js";
 
@@ -992,11 +996,102 @@ function parseDuckDuckGoLiteResults(html: string, limit: number) {
   return results;
 }
 
+/** The SearXNG address is typed by whoever runs the server, so it follows the connection base-URL policy. */
+async function searxngWebSearch(base: string, query: string, limit: number): Promise<Record<string, unknown>> {
+  try {
+    const allowLocal = isProviderLocalUrlsEnabled();
+    const url = new URL(`${base}/search`);
+    url.searchParams.set("q", query);
+    url.searchParams.set("format", "json");
+    // fetch refuses a URL carrying credentials, and the URL reaches error text the model and chat history see.
+    // Basic auth travels as a header instead; safeFetch drops it on a cross-origin redirect.
+    const auth =
+      url.username || url.password
+        ? `Basic ${Buffer.from(`${decodeURIComponent(url.username)}:${decodeURIComponent(url.password)}`).toString("base64")}`
+        : null;
+    url.username = "";
+    url.password = "";
+    const res = await safeFetch(url, {
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "Marinara Engine web_search tool",
+        ...(auth ? { Authorization: auth } : {}),
+      },
+      signal: AbortSignal.timeout(10_000),
+      policy: {
+        allowLocal,
+        allowedProtocols: ["https:", "http:"],
+        maxRedirects: 2,
+        flagName: "PROVIDER_LOCAL_URLS_ENABLED",
+      },
+      maxResponseBytes: WEB_SEARCH_RESPONSE_MAX_BYTES,
+    });
+    if (!res.ok) {
+      // SearXNG refuses format=json with an HTML 403 unless search.formats in its settings.yml lists json, so the
+      // status is read before the content type.
+      const hint = res.status === 403 ? "; add json to search.formats in SearXNG's settings.yml" : "";
+      return { query, results: [], count: 0, error: `SearXNG search failed (${res.status})${hint}` };
+    }
+    if (!isAllowedResponseContentType(res.headers.get("content-type"), ["application/json"])) {
+      return { query, results: [], count: 0, error: `${url.origin} did not answer with SearXNG JSON` };
+    }
+    const body = (await res.json()) as { results?: unknown };
+    const results: Array<{ title: string; url: string; snippet: string }> = [];
+    const seenUrls = new Set<string>();
+    for (const entry of Array.isArray(body.results) ? body.results : []) {
+      if (results.length >= limit) break;
+      const item = (entry ?? {}) as Record<string, unknown>;
+      const link = typeof item.url === "string" ? item.url : "";
+      const title = typeof item.title === "string" ? item.title.replace(/\s+/g, " ").trim() : "";
+      if (!title || !/^https?:\/\//iu.test(link) || seenUrls.has(link)) continue;
+      seenUrls.add(link);
+      const snippet = typeof item.content === "string" ? item.content.replace(/\s+/g, " ").trim() : "";
+      results.push({ title, url: link, snippet });
+    }
+    return {
+      query,
+      source: "SearXNG",
+      results,
+      count: results.length,
+      ...(results.length === 0 ? { note: "No web results were found." } : {}),
+    };
+  } catch (err) {
+    return {
+      query,
+      results: [],
+      count: 0,
+      error: err instanceof Error ? err.message : "Web search failed.",
+    };
+  }
+}
+
+/** Runs one search on the given backend; Settings tests unsaved choices through this. */
+export function runWebSearch(
+  settings: WebSearchSettings,
+  query: string,
+  limit: number,
+): Promise<Record<string, unknown>> {
+  if (settings.provider === "searxng" && settings.searxngUrl) {
+    return searxngWebSearch(settings.searxngUrl, query, limit);
+  }
+  return duckDuckGoWebSearch(query, limit);
+}
+
+export async function testWebSearch(settings: WebSearchSettings): Promise<WebSearchTestResult> {
+  const outcome = await runWebSearch(settings, "Marinara Engine", WEB_SEARCH_DEFAULT_LIMIT);
+  const count = typeof outcome.count === "number" ? outcome.count : 0;
+  return typeof outcome.error === "string" ? { ok: false, count, error: outcome.error } : { ok: true, count };
+}
+
 async function webSearch(args: Record<string, unknown>): Promise<Record<string, unknown>> {
   const rawQuery = typeof args.query === "string" ? args.query.trim() : "";
   if (!rawQuery) return { error: "web_search requires a non-empty query", results: [] };
   const query = rawQuery.slice(0, WEB_SEARCH_MAX_QUERY_LENGTH);
   const limit = clampInteger(args.limit, WEB_SEARCH_DEFAULT_LIMIT, 1, WEB_SEARCH_MAX_LIMIT);
+  return runWebSearch(getWebSearchSettings(), query, limit);
+}
+
+async function duckDuckGoWebSearch(query: string, limit: number): Promise<Record<string, unknown>> {
   const url = new URL("https://lite.duckduckgo.com/lite/");
   url.searchParams.set("q", query);
 

@@ -278,6 +278,32 @@ returned 3 of 3 identical replies, and `z-ai/glm-5.3` pinned to the `zai` provid
 unconstrained controls returned 3 distinct replies on both. Default-routed `z-ai/glm-5.3` ignored
 both samplers. No route tested applied `min_p`.
 
+### Web search picks its engine, including SearXNG
+
+The built-in `web_search` tool scraped DuckDuckGo Lite's HTML from a fixed URL. A **Web search** job
+in the Connections panel's Jobs box now chooses the engine from a dropdown, DuckDuckGo or SearXNG
+(its JSON API, `/search?format=json`), and Test runs one search with the values in the form before
+they are saved. The job opens its card in place rather than a Model picker, because a search engine
+is not a Model. Each engine's fields are kept while another is selected, and a new engine is one
+`WEB_SEARCH_PROVIDERS` entry plus its fields.
+
+The choice is server-wide, so it is stored like the request timeouts, in `.env.web-search.json`
+beside the active `.env`, not in the synced database. `SEARXNG_URL` sets SearXNG for headless
+installs, and a value saved in the app wins over it.
+
+The `/api/admin/web-search` routes are privileged, reading included, since the address may carry
+basic-auth credentials. Those are sent as an `Authorization` header and stripped from the URL before
+any message is built, because tool results reach the model and chat history. A typed address follows the connection base-URL rule, so a LAN or loopback
+instance needs `PROVIDER_LOCAL_URLS_ENABLED`, which is on by default. SearXNG answers a JSON request
+with an HTML 403 when `json` is missing from `search.formats`, so the status is checked before the
+content type and the error names that setting.
+
+Upstream-owned files touched: `config/runtime-config.ts` (the settings file, with the atomic write
+pulled out of `saveRequestTimeoutSettings` into `writeSettingsFile`), `services/tools/tool-executor.ts`
+(`runWebSearch()` and one function per engine), `routes/admin.routes.ts`, `lib/connection-jobs.ts`
+and `ConnectionDefaults.tsx`. The card (`settings/WebSearchSettings.tsx`), its hooks and the shared
+schema are fork-owned. Covered by `scripts/regressions/web-search-searxng.regression.ts`.
+
 ### Arli AI receives reasoning effort, Top K and Min P
 
 `applyChatCompletionsReasoning()` in `openai.provider.ts` sent `reasoning_effort` to an Arli

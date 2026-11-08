@@ -300,7 +300,7 @@ try {
     {
       provider: "arli",
       baseUrl: `${base}/v1`,
-      models: ["Mistral-Nemo-12B-Instruct-2407", "unknown-arli"],
+      models: ["Mistral-Nemo-12B-Instruct-2407", "Gemma-4-31B-Garnet", "unknown-arli"],
       make: registry("arli", `${base}/v1`),
     },
     {
@@ -525,6 +525,13 @@ try {
       "assistantReasoningPrefill",
     ),
     "Mistral has no reasoning prefill field",
+  );
+
+  // Arli's /model/all marks every model as reasoning; its Gemma and Qwen templates have no level above high.
+  assert.deepEqual(
+    reasoningEffortChoices({ provider: "arli", model: "Gemma-4-31B-Garnet" }).map((choice) => choice.label),
+    [null, "low", "medium", "high"],
+    "Arli offers Off through high for any model",
   );
 
   // DeepSeek's own levels: it takes low/high/max, treats medium as high, and never takes xhigh.

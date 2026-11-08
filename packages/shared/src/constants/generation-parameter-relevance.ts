@@ -181,7 +181,7 @@ const NEVER_SENT: Record<string, GenerationParameterKey[]> = {
   // Mistral has no field for prefilled reasoning.
   mistral: ["topK", "serviceTier", "assistantReasoningPrefill"],
   cohere: ["topK", "serviceTier"],
-  arli: ["topK", "serviceTier"],
+  arli: ["serviceTier"],
   // DeepSeek documents no verbosity and no top_k/min_p, and marks both penalties
   // deprecated ("will not take effect"). Temperature is listed, but has no effect
   // in thinking mode, which is why it is hidden while an effort level is active.
@@ -315,6 +315,8 @@ export function relevantGenerationParameters(context: GenerationParameterContext
           provider === "mistral" && (isMistralAdjustableReasoningModel(model) || isMistralGlm53Model(model));
         // DeepSeek takes reasoning_effort for all of its chat models, so effort stays whatever the model id is.
         const deepseekReasoning = provider === "deepseek";
+        // Arli lists every model as reasoning and takes reasoning_effort for all of them.
+        const arliReasoning = provider === "arli";
         // DeepSeek's samplers are mode-specific: temperature does nothing while thinking runs, and top_p is fixed at
         // 1.0 once thinking is off. Show the one that is live and hide the one the request drops, so a JSON agent with
         // reasoning off still gets its low temperature, and a thinking chat still gets top_p.
@@ -322,6 +324,7 @@ export function relevantGenerationParameters(context: GenerationParameterContext
         if (
           provider !== "nanogpt" &&
           !deepseekReasoning &&
+          !arliReasoning &&
           !isOpenAIReasoningModel(model) &&
           !glm &&
           !mistralReasoning

@@ -278,6 +278,23 @@ returned 3 of 3 identical replies, and `z-ai/glm-5.3` pinned to the `zai` provid
 unconstrained controls returned 3 distinct replies on both. Default-routed `z-ai/glm-5.3` ignored
 both samplers. No route tested applied `min_p`.
 
+### Arli AI receives reasoning effort, Top K and Min P
+
+`applyChatCompletionsReasoning()` in `openai.provider.ts` sent `reasoning_effort` to an Arli
+connection only for OpenAI-family model ids, which Arli does not serve, so effort never reached the
+request and upstream's settings table (`generation-parameter-relevance.ts`) hid the control. Arli's API
+reference documents `reasoning_effort` for chat completions and maps it onto the chat template's
+`enable_thinking`, and its `/model/all` marks every model `"reasoning": true` (166 of 166 on
+2026-11-08). Arli connections now send the level, and `none` on an explicit disable, as DeepSeek's
+do. `xhigh` and `maximum` step down to `high` through `resolveProviderReasoningEffort`.
+
+The same reference lists `top_k` and `min_p`, so `shouldSendTopK()` admits Arli as it does NanoGPT
+(see "NanoGPT receives Top K and Min P"), and the table no longer lists Top K as never sent by Arli.
+Pinned in `scripts/regressions/provider-compat.regression.ts`.
+
+Both files are upstream-owned; the `generation-parameter-relevance` lane compares the table against
+the request builder, so reverting either half fails there.
+
 ### Trackers show only in the Tracker Panel
 
 `RoleplayTrackerWindow.tsx` gates upstream's Trackers window off with `trackersWindowAvailable =

@@ -653,7 +653,12 @@ export class OpenAIProvider extends BaseLLMProvider {
   private static extractContentBlocks = extractOpenAICompatibleContentBlocks;
 
   private shouldSendTopK(): boolean {
-    return this.apiKey === "local-sidecar" || this.isGenericCustomProvider() || this.providerKind === "nanogpt";
+    return (
+      this.apiKey === "local-sidecar" ||
+      this.isGenericCustomProvider() ||
+      this.providerKind === "nanogpt" ||
+      this.providerKind === "arli"
+    );
   }
 
   /**
@@ -1472,6 +1477,12 @@ export class OpenAIProvider extends BaseLLMProvider {
       }
       return;
     }
+    if (this.providerKind === "arli") {
+      // Arli lists every model as reasoning; its vLLM backend turns reasoning_effort into the template's enable_thinking.
+      if (this.hasExplicitReasoningDisable(options.reasoningEffort)) body.reasoning_effort = "none";
+      else if (this.hasActiveReasoningEffort(options.reasoningEffort)) body.reasoning_effort = options.reasoningEffort;
+      return;
+    }
     if (this.providerKind === "mistral") {
       // Mistral reasoning models take only "high" or "none", and GLM 5.3 only "low", "high" or "max"; other Mistral
       // models are not listed as taking reasoning_effort. prompt_mode is never sent because Mistral rejects it alongside
@@ -2031,7 +2042,7 @@ export class OpenAIProvider extends BaseLLMProvider {
           body.top_k = Math.round(options.topK);
         }
         // min_p, like top_k, is a non-standard sampler only sent where the backend
-        // is known to accept it (the bundled local model, custom endpoints, NanoGPT);
+        // is known to accept it (the bundled local model, custom endpoints, NanoGPT, Arli);
         // other backends can use the customParameters escape hatch. minP=0 means
         // "disabled" → omit it.
         if (
@@ -2354,7 +2365,7 @@ export class OpenAIProvider extends BaseLLMProvider {
           body.top_k = Math.round(options.topK);
         }
         // min_p, like top_k, is a non-standard sampler only sent where the backend
-        // is known to accept it (the bundled local model, custom endpoints, NanoGPT);
+        // is known to accept it (the bundled local model, custom endpoints, NanoGPT, Arli);
         // other backends can use the customParameters escape hatch. minP=0 means
         // "disabled" → omit it.
         if (

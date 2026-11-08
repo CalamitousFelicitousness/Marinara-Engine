@@ -494,6 +494,19 @@ try {
   assert.equal(customParametersRequestBody.top_k, 44, "NanoGPT documents top_k");
   assert.equal(customParametersRequestBody.min_p, 0.12, "NanoGPT documents min_p");
 
+  customParametersRequestBody = null;
+  await new OpenAIProvider(
+    `http://127.0.0.1:${address.port}/v1`,
+    "test",
+    undefined,
+    undefined,
+    undefined,
+    "arli",
+  ).chatComplete([{ role: "user", content: "test" }], { model: "Gemma-4-31B-Garnet", stream: false, topK: 44, minP: 0.12 });
+  assert.ok(customParametersRequestBody);
+  assert.equal(customParametersRequestBody.top_k, 44, "Arli documents top_k");
+  assert.equal(customParametersRequestBody.min_p, 0.12, "Arli documents min_p");
+
   const buildPrefillMessages = (
     assistantPrefill: string,
     assistantReasoningPrefill: string,

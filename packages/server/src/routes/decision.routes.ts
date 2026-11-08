@@ -76,9 +76,9 @@ const thinkingSchema = z.object({ slot: slotSchema, thinking: z.enum(DECISION_TH
 
 /** The label shown for each local entry, with the model it would actually use. */
 const SLOT_LABELS: Record<DecisionLocalSlot, string> = {
-  primary: "Primary local model",
-  utility: "Utility local model",
-  decision_sidecar: "Decision sidecar",
+  primary: "Built-in model",
+  utility: "Built-in model (utility)",
+  decision_sidecar: "Built-in model (decisions)",
 };
 
 /**
@@ -205,6 +205,12 @@ export async function decisionRoutes(app: FastifyInstance) {
       unsupportedReason: isDecisionRuntimeSupported() ? null : "Requires Linux with an NVIDIA GPU",
       settings: sidecarSettings,
       runtimeInstalled: decisionRuntimeInstalled(),
+      // Whether the installed model's weights are here and whole, or null with none installed. A pasted model
+      // has no catalog row to carry `downloaded`, so the window reads it here.
+      installedModelDownloaded: (() => {
+        const installed = installedDecisionModel(sidecarSettings);
+        return installed ? decisionRuntimeService.modelDownloaded(installed) : null;
+      })(),
       process: decisionProcessService.getStatus(),
       logPath: decisionProcessService.getLogPath(),
       models,

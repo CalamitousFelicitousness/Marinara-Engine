@@ -1,3 +1,4 @@
+import { chooseConnection } from "./connection-picker.js";
 import { prepareViteFixtureDependencies } from "./vite-fixture-dependencies.js";
 import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
 import { readFileSync } from "node:fs";
@@ -88,6 +89,10 @@ async function mountWizard(page: Page, testInfo: TestInfo, options: WizardMountO
       const { default: ReactDOM } = await import(dependencyUrl("react-dom_client"));
       const { QueryClient, QueryClientProvider } = await import(dependencyUrl("@tanstack_react-query"));
       const container = document.createElement("div");
+      // In the app the wizard's z-[10001] layers stay inside the shell, under the body-level pickers
+      // (z-[10000]). Mounted straight on <body> they would cover the "Model for …" picker, so the
+      // container holds them just under it and over the Home page.
+      container.style.cssText = "position: fixed; inset: 0; z-index: 9999";
       document.body.append(container);
       const result = document.createElement("output");
       result.dataset.testid = "wizard-result";
@@ -134,6 +139,9 @@ async function mountWizard(page: Page, testInfo: TestInfo, options: WizardMountO
   );
   const wizard = page.locator('[data-component="GameSetupWizard"]');
   await expect(wizard).toBeVisible();
+  // A setup file sent before the lists it resolves against have loaded is refused ("still loading"), and a
+  // busy machine can take a while; Import setup turns on once they have.
+  await expect(wizard.getByRole("button", { name: "Import setup", exact: true })).toBeEnabled();
   return wizard;
 }
 
@@ -196,11 +204,7 @@ for (const hosted of [false, true]) {
       ),
     ).toBeVisible();
     await expect(wizard.getByRole("switch", { name: "Setup fixture", exact: true })).toHaveCount(0);
-    await wizard
-      .locator("select")
-      .filter({ has: page.locator('option[value="wizard-connection"]') })
-      .first()
-      .selectOption("wizard-connection");
+    await chooseConnection(page, wizard.locator("[data-connection-value]").first(), "wizard-connection");
     const { next } = stepNavigation(wizard);
     await next();
     await next();
@@ -317,11 +321,8 @@ for (const theme of ["dark", "light"] as const) {
       registeredStyles: [{ id: "hex-board", label: customLabel }, { id: "duel" }],
     });
     await wizard.getByPlaceholder("Name your adventure...", { exact: true }).fill("Registered style proof");
-    await wizard
-      .locator("select")
-      .filter({ has: page.locator('option[value="wizard-connection"]') })
-      .first()
-      .selectOption("wizard-connection");
+    // The GM model <select> became a ConnectionSelect and its picker in #8456.
+    await chooseConnection(page, wizard.locator("[data-connection-value]").first(), "wizard-connection");
     const { next } = stepNavigation(wizard);
     await next();
     await expect(wizard.getByRole("button", { name: "duel", exact: true })).toBeVisible();
@@ -432,6 +433,10 @@ for (const isNewGame of [true, false]) {
       }),
     );
     await page.route("**/api/connections", (route) => route.fulfill({ json: wizardConnections }));
+    // The Party step's CharacterSelect (#8763) names the party from the library, not the `characters` prop.
+    await page.route("**/api/characters", (route) =>
+      route.fulfill({ json: [{ id: "party-fixture", data: { name: "Companion fixture" } }] }),
+    );
     await page.route("**/api/lorebooks", (route) => route.fulfill({ json: books }));
     await page.route("**/api/lorebooks/keeper-book/entries", (route) => route.fulfill({ json: [] }));
     let failEntryFetch = true;
@@ -853,11 +858,7 @@ test("A setting kit is off by default, can be picked, written for the setting, e
   });
 
   const wizard = await mountWizard(page, testInfo, { isNewGame: true });
-  await wizard
-    .locator("select")
-    .filter({ has: page.locator('option[value="wizard-connection"]') })
-    .first()
-    .selectOption("wizard-connection");
+  await chooseConnection(page, wizard.locator("[data-connection-value]").first(), "wizard-connection");
   const { next, back } = stepNavigation(wizard);
   await next();
   // A new game is on the Overworld RPG, whose world needs a kit: the genre's own until another is picked,
@@ -1032,11 +1033,7 @@ test("The wizard suggests settings from across settings, and a picked kit brings
   const wizard = await mountWizard(page, testInfo, { isNewGame: true });
   const suggested = async () =>
     (await wizard.getByRole("button").allInnerTexts()).map((text) => text.trim()).filter((text) => settingOf.has(text));
-  await wizard
-    .locator("select")
-    .filter({ has: page.locator('option[value="wizard-connection"]') })
-    .first()
-    .selectOption("wizard-connection");
+  await chooseConnection(page, wizard.locator("[data-connection-value]").first(), "wizard-connection");
   // A Classic game has no kit, so its ideas come from across the settings.
   const styles = wizard.getByTestId("game-style-chooser");
   await styles.getByRole("radio", { name: /Classic/ }).click();
@@ -1192,11 +1189,7 @@ test("A world is made from a seed in the kit's words: the lore's places kept, th
   });
 
   const wizard = await mountWizard(page, testInfo, { isNewGame: true });
-  await wizard
-    .locator("select")
-    .filter({ has: page.locator('option[value="wizard-connection"]') })
-    .first()
-    .selectOption("wizard-connection");
+  await chooseConnection(page, wizard.locator("[data-connection-value]").first(), "wizard-connection");
   const { next, back } = stepNavigation(wizard);
   await next();
   // The Overworld RPG always has a world: one is rolled for the kit, with no switch to leave it out.
@@ -1320,11 +1313,7 @@ test("A game that makes a world can lay it out as its World Maps map, exactly th
   await page.route("**/api/connections", (route) => route.fulfill({ json: wizardConnections }));
   await page.route("**/api/lorebooks", (route) => route.fulfill({ json: [] }));
   const wizard = await mountWizard(page, testInfo, { isNewGame: true });
-  await wizard
-    .locator("select")
-    .filter({ has: page.locator('option[value="wizard-connection"]') })
-    .first()
-    .selectOption("wizard-connection");
+  await chooseConnection(page, wizard.locator("[data-connection-value]").first(), "wizard-connection");
   const { next } = stepNavigation(wizard);
   await next();
   await wizard.getByRole("button", { name: /^High fantasy/u }).click();

@@ -115,7 +115,7 @@ function ToggleRow({ label, checked, onChange }: { label: string; checked: boole
 
 // ── Main card ─────────────────────────────────────
 
-export function TTSConfigCard() {
+export function TTSConfigCard({ defaultExpanded = false }: { defaultExpanded?: boolean } = {}) {
   const { t: localizeUi } = useUiTranslation();
   const { data: savedConfig, isLoading } = useTTSConfig();
   const updateConfig = useUpdateTTSConfig();
@@ -150,9 +150,14 @@ export function TTSConfigCard() {
   const [callAutomaticVideoClipsEnabled, setCallAutomaticVideoClipsEnabled] = useState(false);
   const [callCustomVideoClipsEnabled, setCallCustomVideoClipsEnabled] = useState(false);
 
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The edit waiting for the debounce; closing the card (or the Add window around it) still saves it.
+  const pendingSaveRef = useRef<TTSConfig | null>(null);
+  // Saves not answered yet. A refetch that lands meanwhile can be older than the draft.
+  const savesInFlightRef = useRef(0);
+  const { mutateAsync: putConfig } = updateConfig;
   const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [ttsState, setTTSState] = useState(ttsService.getState());
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -160,9 +165,9 @@ export function TTSConfigCard() {
   const [exportingTtsCache, setExportingTtsCache] = useState(false);
   const [clearingTtsCache, setClearingTtsCache] = useState(false);
 
-  // Populate draft from server on load
+  // Populate draft from server on load, unless a newer edit is still waiting or being saved.
   useEffect(() => {
-    if (!savedConfig) return;
+    if (!savedConfig || pendingSaveRef.current || savesInFlightRef.current > 0) return;
     setEnabled(savedConfig.enabled);
     setAutoplayRP(savedConfig.autoplayRP);
     setAutoplayConvo(savedConfig.autoplayConvo);
@@ -197,13 +202,15 @@ export function TTSConfigCard() {
     [],
   );
 
-  // Clear debounce timer on unmount
+  // Clear debounce timer on unmount, and send the edit it was holding
   useEffect(
     () => () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      const pending = pendingSaveRef.current;
+      if (pending) void putConfig(pending).catch(() => undefined);
       if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
     },
-    [],
+    [putConfig],
   );
 
   useEffect(() => {
@@ -258,8 +265,14 @@ export function TTSConfigCard() {
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
     }
+    pendingSaveRef.current = null;
     setSaveStatus("saving");
-    await updateConfig.mutateAsync(payload);
+    savesInFlightRef.current += 1;
+    try {
+      await updateConfig.mutateAsync(payload);
+    } finally {
+      savesInFlightRef.current -= 1;
+    }
     setSaveStatus("saved");
     if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
     statusTimerRef.current = setTimeout(() => {
@@ -273,6 +286,7 @@ export function TTSConfigCard() {
     setSaveStatus("idle");
     setPreviewError(null);
     const payload = buildPayload(overrides);
+    pendingSaveRef.current = payload;
     saveTimerRef.current = setTimeout(async () => {
       try {
         await saveNow(payload);

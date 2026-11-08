@@ -12,6 +12,7 @@ const reviewer =
 const proof = String.raw`
 from __future__ import annotations
 import contextlib, io, pathlib, subprocess, sys, tempfile, threading, types, unittest
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace as NS
 from unittest.mock import patch
@@ -88,7 +89,7 @@ class StreamProgress(unittest.TestCase):
                 ))
         def stream(**request):
             captured.update(request)
-            return MessageStream()
+            return MessageStream([NS(type="message_start")])
         ctx = NS(clients={"large": NS(messages=NS(stream=stream))})
         settings = {"slot": "large", "model": "claude-opus-5-5", "effort": "xhigh", "max_tokens": 32000}
         modules = {
@@ -96,10 +97,167 @@ class StreamProgress(unittest.TestCase):
             "httpx2": NS(TimeoutException=TimeoutError, TransportError=OSError),
         }
         with patch.dict(sys.modules, modules):
-            message, _ = reviewer.claude_reply(ctx, settings, [{"role": "user", "content": "Review."}], [], "auto", 600, 0, {}, "")
+            message, _ = reviewer.claude_reply(ctx, settings, [{"role": "user", "content": "Review."}], [], "auto", 600, reviewer.time.monotonic(), {}, "")
         self.assertEqual(captured["thinking"], {"type": "adaptive", "display": "summarized"})
         self.assertEqual(message.stop_reason, "end_turn")
         self.assertEqual(captured["output_config"], {"effort": "xhigh"})
+
+    def test_an_empty_max_tokens_reply_is_resent_at_the_same_effort(self):
+        submit = {"type": "function", "function": {"name": "submit", "description": "Submit.", "parameters": {"type": "object"}}}
+        def usage(output):
+            return NS(input_tokens=19248, output_tokens=output, cache_read_input_tokens=0, cache_creation_input_tokens=0)
+        empty = NS(stop_reason="max_tokens", content=[], usage=usage(0))
+        thought = {"type": "thinking", "thinking": "x" * 100, "signature": "s"}
+        spent = NS(stop_reason="max_tokens", content=[NS(type="thinking", model_dump=lambda **kwargs: thought)], usage=usage(64000))
+        done = NS(stop_reason="tool_use", content=[NS(type="tool_use", id="t", name="submit", input={"findings": []})], usage=usage(50))
+        # 996 s is the finder's deadline (the review's less the checker's reserve) from its start in run 41931881745.
+        def run(*replies, role="finder", tool=submit, keep=None, deadline=996, cost_limit=0, cache_key="", prompt="Review.", **limits):
+            replies = list(replies)
+            # Time passes in the waits and in a reply given as (seconds, reply), so each limit is met exactly.
+            clock = [0]
+            seen = NS(efforts=[], waits=[], out=io.StringIO(), result=None, error=None)
+            def sleep(wait):
+                seen.waits.append(wait)
+                clock[0] += wait
+            class MessageStream(list):
+                def __enter__(self): return self
+                def __exit__(self, *args): return False
+                def get_final_message(self):
+                    seconds, reply = replies.pop(0) if isinstance(replies[0], tuple) else (0, replies.pop(0))
+                    clock[0] += seconds
+                    if isinstance(reply, Exception):
+                        raise reply
+                    return reply
+            def stream(**request):
+                seen.efforts.append(request["output_config"]["effort"])
+                return MessageStream([NS(type="message_start")])
+            settings = {"slot": "large", "model": "claude-sonnet-5-5", "api": "anthropic", "effort": "xhigh",
+                        "max_tokens": 64000, "reads": 0, "chars": 0, "minutes": 10, **limits}
+            seen.ctx = NS(clients={"large": NS(messages=NS(stream=stream))}, models={role: settings}, failures={},
+                          lock=threading.Lock(), cost_limit=cost_limit, spent_usd=0.0, deadline=deadline,
+                          stats={"roles": {role: defaultdict(int)}})
+            seen.totals = seen.ctx.stats["roles"][role]
+            modules = {"anthropic": NS(Timeout=lambda *args, **kwargs: None), "httpx2": NS(TimeoutException=TimeoutError, TransportError=OSError)}
+            try:
+                with patch.dict(sys.modules, modules), patch.object(reviewer.time, "monotonic", lambda: clock[0]), \
+                        patch.object(reviewer.time, "sleep", sleep), patch.object(reviewer, "run_tool", lambda *args: "code"), \
+                        contextlib.redirect_stdout(seen.out):
+                    seen.result = reviewer.run_agent(seen.ctx, role, [{"role": "user", "content": prompt}], tool, cache_key=cache_key, keep=keep)
+            except Exception as error:
+                seen.error = error
+            return seen
+        # Each empty reply still billed its 19248 prompt tokens, so the cost limit and telemetry count every reply.
+        one = reviewer.call_cost_usd("claude-sonnet-5-5", {"prompt_tokens": 19248})
+        written = reviewer.call_cost_usd("claude-sonnet-5-5", {"completion_tokens": 50})
+        self.assertEqual((reviewer.RETRY_DELAYS, reviewer.EMPTY_REPLY_DELAYS), ((15, 45), (15, 45, 90, 120)))
+        # This request's spread lengthens the 15, 45, 90 and 120 s waits by up to a third, to these.
+        waits = [19, 55, 117, 132]
+        with self.subTest("an empty reply is resent after the transient-error wait, at the same effort"):
+            seen = run(empty, done)
+            self.assertEqual((seen.result, seen.efforts, seen.waits, seen.ctx.failures), ({"findings": []}, ["xhigh", "xhigh"], waits[:1], {"finder": 0}))
+            self.assertIn("before Claude wrote anything", seen.out.getvalue())
+            self.assertEqual((seen.totals["model_calls"], seen.totals["prompt_tokens"], seen.totals["completion_tokens"]), (2, 2 * 19248, 50))
+            self.assertAlmostEqual(seen.ctx.spent_usd, 2 * one + written)
+        with self.subTest("a reply that spent its cap thinking still goes down a level"):
+            seen = run(spent, done)
+            self.assertEqual((seen.result, seen.efforts, seen.waits), ({"findings": []}, ["xhigh", "high"], []))
+            self.assertIn("output cap at effort xhigh; retrying once at high", seen.out.getvalue())
+        # Run 41931881745's packet 0 finder: empty after 8 s and 50 s, then thinking to its cap for 480 s, about 2 s
+        # inside its 600 s box; after this request's longer waits the cap comes 12 s past it. The time chat lost to the
+        # gateway does not count against the box, so the reply still goes down a level, as does one capped after a
+        # third empty reply and the first longer resend.
+        for label, failed in (("two", [(8, empty), (50, empty)]), ("three", [(50, empty)] * 3)):
+            with self.subTest(f"a reply capped after {label} empty replies still goes down a level"):
+                seen = run(*failed, (480, spent), done)
+                self.assertEqual((seen.result, seen.efforts, seen.waits), ({"findings": []}, ["xhigh"] * (len(failed) + 1) + ["high"], waits[: len(failed)]))
+                self.assertIn("output cap at effort xhigh; retrying once at high", seen.out.getvalue())
+        with self.subTest("a stall is resent at once, MODEL_MAX_RETRIES times"):
+            seen = run(reviewer.StreamStalled("dropped"), done)
+            self.assertEqual((seen.result, seen.waits, seen.ctx.failures), ({"findings": []}, [0], {"finder": 0}))
+            seen = run(reviewer.StreamStalled("dropped"), reviewer.StreamStalled("dropped"), done)
+            self.assertEqual((type(seen.error), seen.waits, seen.ctx.failures), (reviewer.StreamStalled, [0], {"finder": 1}))
+        with self.subTest("a burst of four empty replies, past the old three-attempt limit, still ends in a reply"):
+            seen = run(empty, empty, empty, empty, done)
+            self.assertEqual((seen.result, seen.efforts, seen.waits, seen.ctx.failures), ({"findings": []}, ["xhigh"] * 5, waits, {"finder": 0}))
+            self.assertEqual((seen.totals["model_calls"], seen.totals["prompt_tokens"], seen.totals["completion_tokens"]), (5, 5 * 19248, 50))
+            self.assertAlmostEqual(seen.ctx.spent_usd, 5 * one + written)
+        with self.subTest("empty on all five attempts, the call fails once as a gateway failure, not a spent cap"):
+            seen = run(empty, empty, empty, empty, empty, done)
+            self.assertRegex(reviewer.error_text(seen.error), "^ResponseFailed: .*max_tokens before Claude wrote anything")
+            self.assertTrue(reviewer.transient_error(seen.error))
+            self.assertEqual((seen.efforts, seen.waits, seen.ctx.failures), (["xhigh"] * 5, waits, {"finder": 1}))
+            self.assertEqual((seen.totals["model_calls"], seen.totals["prompt_tokens"]), (5, 5 * 19248))
+            self.assertAlmostEqual(seen.ctx.spent_usd, 5 * one)
+        # A longer resend is sent only while the resent reply still has the role's whole box before the role's
+        # deadline, and bills a prompt only under the cost limit. The RETRY_DELAYS resends are every transient
+        # error's, so a call already past its deadline (a forced submission) or the cost limit still gets them.
+        for label, limits, kept in (
+            ("the fifth attempt would have 577 s of its 600 s box before a 900 s deadline", {"deadline": 900}, 3),
+            ("with a 4-minute box, the fifth would have 177 s of it before a 500 s deadline", {"minutes": 4, "deadline": 500}, 3),
+            ("the deadline had passed before the call, as for a forced submission", {"deadline": -1}, 2),
+            ("three empty replies reached the cost limit", {"cost_limit": 2.5 * one}, 2),
+            ("the first empty reply reached the cost limit, which stops only the longer resends", {"cost_limit": 0.5 * one}, 2),
+        ):
+            with self.subTest(f"a longer resend the review cannot afford fails at once: {label}"):
+                seen = run(empty, empty, empty, empty, empty, done, **limits)
+                self.assertIsInstance(seen.error, reviewer.ResponseFailed)
+                self.assertEqual((seen.waits, seen.ctx.failures, seen.totals["model_calls"]), (waits[:kept], {"finder": 1}, kept + 1))
+                self.assertAlmostEqual(seen.ctx.spent_usd, (kept + 1) * one)
+        with self.subTest("a longer resend is not sent when its reply could not finish before the deadline"):
+            # After four 50 s empty replies, the fifth attempt would start 473 s before a 996 s deadline.
+            seen = run(*[(50, empty)] * 4, (480, done), done)
+            self.assertIsInstance(seen.error, reviewer.ResponseFailed)
+            self.assertEqual((seen.waits, seen.ctx.failures, seen.totals["model_calls"]), (waits[:3], {"finder": 1}, 4))
+        with self.subTest("other gateway failures keep the RETRY_DELAYS resends, and one that will not change fails at once"):
+            overloaded = [reviewer.ResponseFailed("overloaded", "server_error") for _ in range(3)]
+            seen = run(*overloaded, done)
+            self.assertEqual((type(seen.error), seen.waits, seen.ctx.failures, seen.totals["model_calls"]), (reviewer.ResponseFailed, waits[:2], {"finder": 1}, 0))
+            seen = run(reviewer.ResponseFailed("invalid prompt", "invalid_prompt"), done)
+            self.assertEqual((type(seen.error), seen.waits, seen.ctx.failures), (reviewer.ResponseFailed, [], {"finder": 1}))
+        with self.subTest("calls that fail together resend apart, by a spread each request fixes"):
+            # The finders on two packets share the prompt but not the cache key; a packet's scouts share the key
+            # but not their share.
+            finders = [run(empty, done, cache_key=f"dottore-pr-p{index}").waits for index in (0, 1)]
+            scouts = [run(empty, done, role="scout", cache_key="dottore-pr-s0", prompt=f"Gather for {name}.").waits for name in "ab"]
+            self.assertEqual((finders, scouts), ([[16], [20]], [[18], [20]]))
+            self.assertEqual(run(empty, done, cache_key="dottore-pr-p0").waits, [16])
+        keep_places = {"type": "function", "function": {"name": "keep_places", "description": "Keep.", "parameters": {"type": "object"}}}
+        place = {"path": "a.py", "start": 1, "end": 2, "why": "caller"}
+        read = NS(stop_reason="tool_use", usage=usage(50), content=[
+            NS(type="tool_use", id="r", name="read_file", input={"path": "a.py"}),
+            NS(type="tool_use", id="k", name="keep_places", input={"places": [place]}),
+        ])
+        with self.subTest("a keep run whose later call fails on every resend ends with what it kept"):
+            seen = run(read, *[empty] * 5, role="scout", tool=keep_places, keep="places", reads=10, chars=100000, max_tokens=16000)
+            self.assertEqual((seen.error, seen.result), (None, {"places": [place]}))
+            self.assertEqual((seen.efforts, seen.waits, seen.totals["stop_error"]), (["xhigh"] * 6, [17, 51, 113, 120], 1))
+            self.assertIn("scout call failed; ending with the 1 kept: ResponseFailed", seen.out.getvalue())
+        with self.subTest("a keep run that has kept nothing still fails"):
+            seen = run(*[empty] * 5, role="scout", tool=keep_places, keep="places", reads=10, chars=100000, max_tokens=16000)
+            self.assertIsInstance(seen.error, reviewer.ResponseFailed)
+
+    def test_an_empty_incomplete_response_is_resent_unless_filtered(self):
+        def reply(reason, output, items=()):
+            response = NS(output=list(items), usage=NS(input_tokens=10, output_tokens=output),
+                          incomplete_details=NS(reason=reason), status="incomplete")
+            class Stream(list):
+                def __enter__(self): return self
+                def __exit__(self, *args): return False
+            client = NS(responses=NS(create=lambda **request: Stream([NS(type="response.incomplete", response=response)])))
+            modules = {"openai": NS(Timeout=lambda *args, **kwargs: None, APIConnectionError=ConnectionError),
+                       "httpx2": NS(TimeoutException=TimeoutError, TransportError=OSError)}
+            settings = {"slot": "large", "model": "gpt-5.6-sol", "effort": "xhigh", "max_tokens": 0}
+            with patch.dict(sys.modules, modules):
+                return reviewer.responses_reply(NS(clients={"large": client}), settings, [{"role": "user", "content": "Review."}], [], "auto", 600, reviewer.time.monotonic(), {}, "")
+        # A response cut short before any output is resent like a failure without a code; a filter stops every resend.
+        for reason, code in (("max_output_tokens", ""), (None, ""), ("content_filter", "content_filter")):
+            with self.subTest(reason=reason):
+                with self.assertRaisesRegex(reviewer.ResponseFailed, "before the model wrote anything") as stopped:
+                    reply(reason, 0)
+                self.assertEqual((stopped.exception.code, reviewer.transient_error(stopped.exception)), (code, not code))
+                self.assertEqual(stopped.exception.usage["prompt_tokens"], 10)
+        message, _ = reply("max_output_tokens", 64000, [NS(type="reasoning", encrypted_content=None)])
+        self.assertEqual((message.capped, message.stop_reason), (True, "max_output_tokens"))
 
     def test_provider_transport_failures_use_httpx2_without_legacy_httpx(self):
         class TransportError(Exception): pass
@@ -130,6 +288,62 @@ class StreamProgress(unittest.TestCase):
                     with self.assertRaises(expected) as stopped:
                         reply(ctx, settings, [{"role": "user", "content": "Review."}], [], "auto", 600, 0, {}, "")
                     self.assertIs(type(stopped.exception), expected)
+
+    def test_a_claude_stream_that_ends_before_message_start_is_resent(self):
+        # Runs 42243084375 and 42254621875 (#8918): packet 1's finder got a 200 stream that ended before message_start,
+        # on which the SDK's get_final_message fails a bare assert, and the review failed as "AssertionError: ".
+        usage = NS(input_tokens=10, output_tokens=5, cache_read_input_tokens=0, cache_creation_input_tokens=0)
+        done = NS(stop_reason="tool_use", content=[NS(type="tool_use", id="t", name="submit", input={"findings": []})], usage=usage)
+        class MessageStream(list):
+            response = NS(headers={"content-type": "text/event-stream", "request-id": "req_1"})
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def get_final_message(self):
+                assert any(event.type == "message_start" for event in self)  # the SDK's check, which has no message
+                return done
+        def stream(**request):
+            return MessageStream(streams.pop(0))
+        settings = {"slot": "large", "model": "claude-sonnet-5-5", "api": "anthropic", "effort": "xhigh",
+                    "max_tokens": 64000, "reads": 0, "chars": 0, "minutes": 10}
+        modules = {"anthropic": NS(Timeout=lambda *args, **kwargs: None), "httpx2": NS(TimeoutException=TimeoutError, TransportError=OSError)}
+        # The SDK drops pings and nameless events; any other event before message_start reaches claude_reply unparsed,
+        # its error as a dict, so the error names what came instead and the headers that say who sent it.
+        stalled = "the reply stream ended before Claude started (content-type text/event-stream, request-id req_1, events before message_start: "
+        early = (NS(type="error", error={"type": "overloaded_error", "message": "Overloaded"}), NS(type="proxy_note"))
+        for events, seen in (([], "none"), (early, "error (Overloaded), proxy_note")):
+            streams = [list(events)]
+            with self.subTest(seen=seen), patch.dict(sys.modules, modules):
+                with self.assertRaises(reviewer.StreamStalled) as stalled_error:
+                    reviewer.claude_reply(NS(clients={"large": NS(messages=NS(stream=stream))}), settings, [{"role": "user", "content": "Review."}], [], "auto", 600, reviewer.time.monotonic(), {}, "")
+                self.assertEqual(str(stalled_error.exception), f"{stalled}{seen})")
+        # The finder resends it at once, like a stall, and goes on to its submission.
+        streams, out = [[], [NS(type="message_start")]], io.StringIO()
+        ctx = NS(clients={"large": NS(messages=NS(stream=stream))}, models={"finder": settings}, failures={}, lock=threading.Lock(),
+                 cost_limit=0, spent_usd=0.0, deadline=996, stats={"roles": {"finder": defaultdict(int)}})
+        submit = {"type": "function", "function": {"name": "submit", "description": "Submit.", "parameters": {"type": "object"}}}
+        with patch.dict(sys.modules, modules), patch.object(reviewer.time, "monotonic", lambda: 0), \
+                patch.object(reviewer.time, "sleep", lambda wait: None), contextlib.redirect_stdout(out):
+            result = reviewer.run_agent(ctx, "finder", [{"role": "user", "content": "Review."}], submit)
+        self.assertEqual((result, streams, ctx.failures), ({"findings": []}, [], {"finder": 0}))
+        self.assertIn(f"wait_s=0; StreamStalled: {stalled}none)", out.getvalue())
+
+    def test_a_failed_review_names_a_silent_error_and_logs_its_traceback(self):
+        # The SDK's bare assert, compiled as its installed file so the summary names it the way a run would.
+        sdk = {}
+        exec(compile("def get_final_message():\n    assert None is not None\n", "/opt/python/lib/python3.12/site-packages/anthropic/lib/streaming/_messages.py", "exec"), sdk)
+        try:
+            sdk["get_final_message"]()
+        except AssertionError as error:
+            log = io.StringIO()
+            with contextlib.redirect_stdout(log):
+                summary = reviewer.model_failure_detail(error)
+        self.assertEqual(summary, "Dottore Review could not complete: AssertionError: raised at anthropic/lib/streaming/_messages.py:2 in get_final_message")
+        self.assertTrue(log.getvalue().startswith("Traceback (most recent call last):"), log.getvalue())
+        self.assertIn('site-packages/anthropic/lib/streaming/_messages.py", line 2, in get_final_message', log.getvalue())
+        self.assertEqual(log.getvalue().splitlines()[-1], "AssertionError")
+        # An error with a message, or one never raised, reads as before.
+        self.assertEqual(reviewer.error_text(ValueError("bad  value")), "ValueError: bad value")
+        self.assertEqual(reviewer.error_text(AssertionError()), "AssertionError: ")
 
     def test_chat_completions_reply_keeps_its_stop_reason(self):
         chunks = [

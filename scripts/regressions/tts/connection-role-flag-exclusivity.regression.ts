@@ -142,6 +142,8 @@ try {
   {
     const mover = await make("Mover", "openai", { defaultForAgents: true });
     assert.equal((await flagsOf(mover.id)).defaultForAgents, "true", "the language default is set");
+    // A row on an account takes its provider from the account, so it leaves the account first.
+    await connections.update(mover.id, { accountId: null } as never);
     await connections.update(mover.id, { provider: "image_generation" } as never);
     assert.equal(
       (await flagsOf(mover.id)).defaultForAgents,
@@ -232,6 +234,7 @@ try {
   // ── Leaving the generation category releases every purpose flag ──
   {
     const leaver = await makeGeneration("Leaver", { defaultForSfx: true, defaultForMusic: true });
+    await connections.update(leaver.id, { accountId: null } as never);
     await connections.update(leaver.id, { provider: "audio" } as never);
     const flags = await flagsOf(leaver.id);
     assert.equal(

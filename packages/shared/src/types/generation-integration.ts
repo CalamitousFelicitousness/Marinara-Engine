@@ -30,6 +30,11 @@ export interface ChatMessage {
   media?: ChatMediaAttachment[];
   /** Provider-specific metadata (e.g. Gemini parts with thought signatures) */
   providerMetadata?: Record<string, unknown>;
+  /**
+   * Cache the prompt up to and including this message (Capability API 1.814). Anthropic puts a cache breakpoint
+   * here whether or not `enableCaching` is on, keeping the last four, and then adds none of its own.
+   */
+  cacheBreakpoint?: boolean;
 }
 
 export interface ChatMediaAttachment {
@@ -92,6 +97,11 @@ export interface ChatOptions {
   captureReasoning?: boolean;
   /** Callback for streaming text tokens as they arrive (used in tool path) */
   onToken?: (chunk: string) => void | Promise<void>;
+  /**
+   * onToken only shows the call is alive and the caller reads the reply from the result, so a fallback connection may
+   * still answer after the primary streamed text and failed.
+   */
+  onTokenKeepaliveOnly?: boolean;
   /** Enable extended thinking (reasoning models) */
   enableThinking?: boolean;
   /**
@@ -203,7 +213,10 @@ export interface ContextFitSummary {
   replyBudgetTo: number;
 }
 
-export type GenerationFallbackCategory = "main" | "agents" | "illustrator" | "video";
+export type GenerationFallbackCategory = "main" | "agents" | "illustrator" | "video" | "feature";
+
+/** Why the chat's own Model did not answer, so the fallback did. */
+export type GenerationFallbackUnavailableReason = "off" | "needs_key" | "review" | "deleted";
 
 /** Why the chosen connection failed before the fallback answered. */
 export type GenerationFallbackReason =
@@ -211,9 +224,16 @@ export type GenerationFallbackReason =
 
 export type GenerationFallbackNotice = {
   category: GenerationFallbackCategory;
+  /** The fallback Model that answered. */
   connectionId: string;
   connectionName: string;
   model: string;
+  /** Set when the chat's own Model was unavailable and never tried; absent after a failed request. */
+  reason?: GenerationFallbackUnavailableReason;
+  /** The Model that could not answer, and its Connection (where "Fix" goes). */
+  unavailableConnectionId?: string;
+  unavailableName?: string;
+  unavailableAccountId?: string;
   /** The connection that failed first, such as the random pool's pick (#7697). */
   failed?: {
     connectionId: string;
@@ -242,6 +262,12 @@ export type ConnectionAdmissionMode =
    */
   | { kind: "none" };
 
+/** A looping GIF's timing. The Engine clamps it to 2..12 frames of 20..2000 ms (see resolveOpenAIGifAnimation). */
+export interface ImageAnimation {
+  frameCount?: number;
+  frameDurationMs?: number;
+}
+
 export interface ImageGenRequest {
   prompt: string;
   /** OpenAI GPT Image generation quality. Ignored by unsupported services and models. */
@@ -269,6 +295,12 @@ export interface ImageGenRequest {
   referenceIsCanvas?: boolean;
   /** Optional structured per-character prompts. NovelAI V4/V4.5 maps these to native character captions. */
   characterPrompts?: SceneIllustrationCharacterPrompt[];
+  /**
+   * Return one looping GIF (image/gif) instead of a still; `{}` uses the Engine defaults (9 frames, 200 ms).
+   * Only GPT Image 2.6 on an OpenAI connection makes one. The prompt is the only input: a request that also
+   * carries a reference picture, or a connection that can't make GIFs, is refused before any paid call.
+   */
+  animation?: ImageAnimation;
   /** Request a transparent image background when the provider/model supports it. */
   transparentBackground?: boolean;
   /** Keep uncompressed provider output for sprite/portrait processing that requires its original pixels and format. */
@@ -370,6 +402,11 @@ export interface VideoGenerationRequest {
   ltxDirectorPrompt?: LtxDirectorPromptInput;
   /** Up to five connection-scoped LoRAs for custom ComfyUI workflow placeholders. */
   comfyLoras?: ComfyUiLoraSetting[];
+  /**
+   * Non-secret extra HTTP headers for local-backend requests (ComfyUI, SwarmUI).
+   * Authentication stays host-managed: use the connection's API key field for that.
+   */
+  customHeaders?: Record<string, string>;
   /** Model-specific Atlas Cloud inputs saved on the connection for the selected model. */
   atlasModelOptions?: Record<string, unknown>;
   /** ComfyUI workflow frame rate exposed through %fps% and used by the legacy %length% macro. */
@@ -396,6 +433,8 @@ export interface VideoGenerationRequest {
     model: string;
     comfyWorkflow?: string;
     comfyLoras?: ComfyUiLoraSetting[];
+    /** Non-secret extra HTTP headers for the fallback connection's local-backend requests. */
+    customHeaders?: Record<string, string>;
     atlasModelOptions?: Record<string, unknown>;
     fps?: number;
   };
@@ -456,7 +495,7 @@ export interface CapabilityConnectionFallbackOptions {
   primaryConnectionName?: string | null;
   fallbackConnection: FallbackConnection | null | undefined;
   fallbackBaseUrl: string;
-  category: "main" | "agents";
+  category: "main" | "agents" | "feature";
   onFallback?: GenerationFallbackNotifier;
   onProviderUsed?: (origin: GenerationProviderOrigin) => void;
   admissionMode?: ConnectionAdmissionMode;

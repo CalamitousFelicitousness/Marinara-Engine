@@ -46,10 +46,34 @@ export async function fetchModelsForAudioConnection(db: DB, connectionId: string
   // Resolution falls through to the category default when an id does not name a
   // usable audio row, which would list another connection's models.
   if (resolvedConnectionId !== connectionId) return null;
+  if (resolvedSource === "openai") {
+    const models = await fetchOpenAICompatibleModels(configuredBaseUrl(cfg), cfg.apiKey);
+    return { models, fromProvider: models.length > 0, source: resolvedSource };
+  }
   if (!TTS_SOURCES_WITH_MODEL_LISTING.includes(resolvedSource)) {
     return { models: [], fromProvider: false, source: resolvedSource };
   }
   return await fetchProviderModels(cfg);
+}
+
+/** An OpenAI-compatible speech server's own `/models` list; empty when it has none or refuses. */
+async function fetchOpenAICompatibleModels(base: string, apiKey: string): Promise<TTSModelsResponse["models"]> {
+  try {
+    const response = await safeFetch(`${base}/models`, {
+      headers: optionalBearerHeaders(apiKey),
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+      policy: ttsUrlPolicy(),
+      maxResponseBytes: 2 * 1024 * 1024,
+    });
+    if (!response.ok) return [];
+    const json = (await response.json()) as { data?: Array<{ id?: unknown }> };
+    return (json.data ?? [])
+      .map((entry) => (typeof entry.id === "string" ? entry.id.trim() : ""))
+      .filter(Boolean)
+      .map((id) => ({ id, name: id }));
+  } catch {
+    return [];
+  }
 }
 
 /**

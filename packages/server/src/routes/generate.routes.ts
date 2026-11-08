@@ -6,6 +6,7 @@ import {
   TTS_SETTINGS_KEY,
   isStockMarinaraUniversalPreset,
   withoutPresetTokenLimits,
+  mergedReplyRoster,
   VIDEO_GENERATION_SETTINGS_KEY,
   type RulesetClocks,
 } from "@marinara-engine/shared";
@@ -612,6 +613,7 @@ import {
   appendGenerationTailMessages,
   canUseMessageForUserRegeneration,
   dedupeLastMessageWrappers,
+  endPromptOnAssistantPrefill,
   findTrackerContextInsertIndex,
   formatConversationInstructionsForWrap,
   describeAttachmentsForNonUserTurn,
@@ -631,6 +633,7 @@ import {
   extractImageAttachmentDataUrls,
   postProcessMessages,
   appendSeparateAgentInjectionMessage,
+  capSummarizedHistory,
   computeSummaryHideIds,
   computeSummaryMessageRange,
   selectRollingSummaryMessages,
@@ -722,6 +725,8 @@ import {
   captionSentSelfies,
   normalizePromptAttachments,
   resolveImageCaptioningRuntime,
+  resolveVisionCaptioningRuntime,
+  withImageCaptionFallback,
   resolvePromptAttachmentInputs,
   type ImageCaptioningRuntime,
 } from "./generate/image-captioning-runtime.js";
@@ -992,6 +997,7 @@ import {
   collectPastReasoningMetadata,
   limitPastReasoningMetadata,
   readChatCompletionsReasoningMetadata,
+  rejectsFinalAssistantMessage,
   resolveStoredChatOptions,
   resolveStoredMaxTokens,
   buildParameterTrace,
@@ -1011,6 +1017,14 @@ import {
 } from "../services/generation/agent-prompt-runtime.js";
 import { resolveAgentPipelineAgents, resolveEffectiveAgentSettings } from "../services/generation/agent-resolution.js";
 import { createReplyFallbackNotifier } from "./generate/fallback-notification.js";
+import {
+  applyChatModelOverride,
+  readChatFollowsMain,
+  readChatModelOverride,
+  resolveChatConnectionOrFallback,
+} from "../services/generation/connection-resolution.js";
+import { readJobFallback, visionCaptionSettings } from "../services/generation/job-fallback.js";
+import { readFeatureModelConnections } from "../services/storage/feature-model-connections.js";
 import {
   GAME_MODE_AUTO_ATTACH_TOOL_NAMES,
   isChatToolResolved,
@@ -1713,10 +1727,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
     }
 
     // Resolve connection
-    const impersonateConnectionOverride =
-      input.impersonate && input.impersonateConnectionId ? input.impersonateConnectionId : null;
+    const impersonateConnectionOverride = input.impersonate
+      ? input.impersonateConnectionId ||
+        (await readFeatureModelConnections(app.db).catch(releaseActiveGenerationAndRethrow)).impersonateConnectionId
+      : null;
     const fallbackConnectionId = input.connectionId || chat.connectionId;
     let connId = impersonateConnectionOverride || fallbackConnectionId;
+    // Only a selection of the chat's own Model runs its catalog pick (decision 25): not a Random or impersonate pick.
+    let runsChatModel = !impersonateConnectionOverride && fallbackConnectionId === chat.connectionId;
     let memoryRecallConnectionId = connId === "random" ? "random" : undefined;
 
     // ── Random connection: pick one from the random pool ──
@@ -1730,22 +1748,21 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
       connId = picked.id;
     }
 
-    if (!connId) {
-      releaseActiveGeneration();
-      return rejectGenerationOutput(reply, 400, { error: "No API connection configured for this chat" });
-    }
     const resolveGenerationConnection = async (connectionId: string) =>
       connectionId === LOCAL_SIDECAR_CONNECTION_ID
         ? createLocalSidecarGenerationConnection()
         : await connections.getWithKey(connectionId).catch(releaseActiveGenerationAndRethrow);
 
-    let conn = await resolveGenerationConnection(connId);
+    // A chat without a Model (deleted, or never set) answers through the Main default, with the notice below.
+    let conn = connId ? await resolveGenerationConnection(connId) : null;
+    let unavailableModelNotice: GenerationFallbackNotice | null = null;
     if (!conn && impersonateConnectionOverride && connId === impersonateConnectionOverride && fallbackConnectionId) {
       logger.warn(
         "[generate] Impersonate connection override %s was not found; falling back to chat/request connection",
         impersonateConnectionOverride,
       );
       connId = fallbackConnectionId;
+      runsChatModel = fallbackConnectionId === chat.connectionId;
       memoryRecallConnectionId = connId === "random" ? "random" : undefined;
       if (connId === "random") {
         const pool = await connections.listRandomPool().catch(releaseActiveGenerationAndRethrow);
@@ -1759,8 +1776,29 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
       conn = connId ? await resolveGenerationConnection(connId) : null;
     }
     if (!conn) {
+      // The Model is gone, or its Connection is off or needs a key: use a fallback and tell the user why.
+      // The stream has not started yet; the notice is sent as an event once it does.
+      conn = await resolveChatConnectionOrFallback(
+        connections,
+        connId || null,
+        (notice) => {
+          unavailableModelNotice = notice;
+        },
+        null,
+        !connId && readChatFollowsMain(chat),
+      ).catch(releaseActiveGenerationAndRethrow);
+      if (conn) connId = conn.id;
+    }
+    if (!conn) {
       releaseActiveGeneration();
-      return rejectGenerationOutput(reply, 400, { error: "API connection not found" });
+      return rejectGenerationOutput(
+        reply,
+        400,
+        connId ? { error: "API connection not found" } : { error: "No API connection configured for this chat" },
+      );
+    }
+    if (runsChatModel && connId === chat.connectionId) {
+      conn = applyChatModelOverride(conn, readChatModelOverride(chat));
     }
 
     // Resolve base URL — fall back to provider default if empty
@@ -1769,7 +1807,18 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
       releaseActiveGeneration();
       return rejectGenerationOutput(reply, 400, { error: "No base URL configured for this connection" });
     }
-    const mainFallbackConnection = await connections.getFallbackForMain().catch(releaseActiveGenerationAndRethrow);
+    // Impersonate's own "If it fails" Model answers first; unset, the Main fallback does.
+    const impersonateFallbackConnection = impersonateConnectionOverride
+      ? await readJobFallback(
+          connections,
+          await readFeatureModelConnections(app.db).catch(releaseActiveGenerationAndRethrow),
+          "impersonateFallbackConnectionId",
+          impersonateConnectionOverride,
+        ).catch(releaseActiveGenerationAndRethrow)
+      : null;
+    const mainFallbackConnection =
+      impersonateFallbackConnection ??
+      (await connections.getFallbackForMain().catch(releaseActiveGenerationAndRethrow));
     const mainFallbackBaseUrl = mainFallbackConnection ? resolveBaseUrl(mainFallbackConnection) : "";
     let chatMeta = roomGenerationMetadata(parseExtra(chat.metadata));
     const requestTimeZone = normalizePromptTimeZone(input.userTimeZone);
@@ -1798,11 +1847,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
     const promptNow = toZonedWallClockDate(new Date(), promptTimeZone);
     const excludePastReasoning = chatMeta.excludePastReasoning !== false;
     let encryptedReasoningItems: unknown[] | undefined;
-    const imageCaptioningRuntime: ImageCaptioningRuntime = await resolveImageCaptioningRuntime({
+    const imageCaptioningArgs = {
       chatMeta,
       fallbackConnectionId: connId,
       connections,
-    });
+      ...visionCaptionSettings(await readFeatureModelConnections(app.db).catch(() => null)),
+    };
+    const imageCaptioningRuntime: ImageCaptioningRuntime = await resolveImageCaptioningRuntime(imageCaptioningArgs);
     let memoryRecallEmbeddingSource: Awaited<ReturnType<typeof resolveMemoryRecallEmbeddingSource>> | null = null;
     try {
       memoryRecallEmbeddingSource = await resolveMemoryRecallEmbeddingSource(app.db, {
@@ -1848,6 +1899,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
       });
     }
     const onFallback = createReplyFallbackNotifier(reply);
+    // Assigned inside a callback, which flow analysis cannot see.
+    const pendingFallbackNotice = unavailableModelNotice as GenerationFallbackNotice | null;
+    if (pendingFallbackNotice) await onFallback(pendingFallbackNotice);
 
     let generationComplete = false;
     let restoredRoleplayInterruption = false;
@@ -2141,6 +2195,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         const timelineIds = new Set(roleplayTimeline.map((message) => message.id));
         chatMessages = chatMessages.filter((message) => timelineIds.has(message.id));
         lorebookKeeperMessages = lorebookKeeperMessages.filter((message) => timelineIds.has(message.id));
+      }
+      if (isRoleplaySummaryMode(chatMode) && !advancedMemoryEnabled) {
+        chatMessages = capSummarizedHistory(chatMessages, chatMeta, {
+          excludeMessageIds: input.regenerateMessageId ? [input.regenerateMessageId] : undefined,
+        }).messages;
       }
       const promptLastGenerationType = resolvePromptLastGenerationType(input);
       const promptIdleDuration = resolvePromptIdleDuration(chatMessages, {
@@ -2531,6 +2590,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           settings: agent.settings,
           activeMusicPlayerSource,
           chatMetadata: chatMeta,
+          chatCharacterIds: parseJsonField<string[]>(chat.characterIds, []),
         });
         effectiveAgentSettingsById.set(agent.id, settings);
         const isCharacterActivityAgent =
@@ -2882,25 +2942,20 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           maxContext: conn.maxContext,
         });
         const routingKnownModel = findKnownModel(conn.provider as APIProvider, conn.model.trim());
-        const routingChatProvider = withConnectionFallbackProvider({
-          primary: createLLMProvider(
-            conn.provider,
-            baseUrl,
-            conn.apiKey,
-            conn.maxContext,
-            conn.openrouterProvider,
-            conn.maxTokensOverride,
-            conn.claudeFastMode === "true",
-            conn.treatAsLocalEndpoint === "true",
-            conn.defaultParameters,
-          ),
-          primaryConnectionId: connId ?? conn.id,
-          primaryConnectionName: conn.name,
-          fallbackConnection: mainFallbackConnection,
-          fallbackBaseUrl: mainFallbackBaseUrl,
-          category: "main",
-          onFallback,
-        });
+        // Unwrapped: agent resolution adds the reply's fallback (chatConnectionMainFallback) and the retry layer
+        // once. A wrapped provider got them twice, so a failed routing prompt reached the fallback twice and each
+        // 429 retry ran inside another one.
+        const routingChatProvider = createLLMProvider(
+          conn.provider,
+          baseUrl,
+          conn.apiKey,
+          conn.maxContext,
+          conn.openrouterProvider,
+          conn.maxTokensOverride,
+          conn.claudeFastMode === "true",
+          conn.treatAsLocalEndpoint === "true",
+          conn.defaultParameters,
+        );
         const routingAgentTypes = new Set(eligibleCharacterActivityConfigs.map((config) => config.type));
         const { resolvedAgents: characterActivityAgents, agentConnectionWarnings } = await resolveAgentPipelineAgents({
           connections,
@@ -2930,6 +2985,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           chatCachingAtDepth: conn.cachingAtDepth ?? 5,
           activeMusicPlayerSource,
           chatMetadata: chatMeta,
+          chatCharacterIds: allCharacterIds,
+          chatConnectionMainFallback: { connection: mainFallbackConnection, connectionName: conn.name },
           onFallback,
           resolveBaseUrl,
         });
@@ -4861,11 +4918,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         };
         const providerRuntime = resolveGenerationProviderRuntime({
           wrapProvider: (provider) =>
-            withLorebookImageCompatibility(
-              provider,
-              lorebookReferenceImages,
-              () => notifyLorebookImages("unsupported"),
-              new Set(finalMessages.flatMap((message) => message.images ?? [])),
+            withImageCaptionFallback(
+              withLorebookImageCompatibility(
+                provider,
+                lorebookReferenceImages,
+                () => notifyLorebookImages("unsupported"),
+                new Set(finalMessages.flatMap((message) => message.images ?? [])),
+              ),
+              () => resolveVisionCaptioningRuntime(imageCaptioningArgs),
+              requestDebug,
             ),
           connectionId: connId ?? "",
           connection: conn,
@@ -4983,6 +5044,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           chatCachingAtDepth: conn.cachingAtDepth ?? 5,
           activeMusicPlayerSource,
           chatMetadata: chatMeta,
+          chatCharacterIds: allCharacterIds,
           onFallback,
           resolveBaseUrl,
         });
@@ -5893,7 +5955,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                             input.chatId,
                             pinnedGameRuleset.definition,
                             turnSheetMetadata as Record<string, unknown>,
-                            personaName || null,
+                            chat.personaId,
                           ),
                         ),
                       }
@@ -8201,12 +8263,6 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           isGoogleProvider: isGoogleProvider || isGeminiModel(conn.model),
           regenerateUserMessage,
         });
-        if (tailMessages.assistantPrefillInjected) {
-          const prefillPosition = tailMessages.googleUserRegenerationInjected
-            ? "before final user message"
-            : "as final assistant message";
-          logger.debug("[generate] Injected assistant prefill (%d chars) %s", assistantPrefill.length, prefillPosition);
-        }
         if (tailMessages.googleUserRegenerationInjected && assistantPrefill.trim()) {
           logger.debug("[generate] Preserved assistant prefill before Gemini user-message regeneration instruction");
         }
@@ -8622,7 +8678,10 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         const usesIndividualGroupGeneration = groupChatMode === "individual";
         const useIndividualLoop =
           isGroupChat && usesIndividualGroupGeneration && !input.regenerateMessageId && !input.impersonate;
-        const regenGroupChatIndividual = isGroupChat && usesIndividualGroupGeneration && input.regenerateMessageId;
+        // Only a character's message regenerates as that character. A persona's turn, typed or impersonated (also
+        // one whose replay a branch dropped), takes the single/Merged path that rewrites or re-impersonates it (#8682).
+        const regenGroupChatIndividual =
+          isGroupChat && usesIndividualGroupGeneration && input.regenerateMessageId && regenMsg?.role !== "user";
         const explicitlyMentionedConversationCharacterIds =
           chatMode === "conversation" && isGroupChat && !input.impersonate ? getExplicitlyMentionedCharacterIds() : [];
         const mentionedConversationCharacters = charInfo.filter((character) =>
@@ -9246,18 +9305,38 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               wrapFormat,
             );
           }
+          // The request ends on the Assistant Prefill, after everything this responder's prompt gained above.
+          const prefillTurn = endPromptOnAssistantPrefill<GenerationPromptMessage>(
+            preparedMessagesForGen,
+            tailMessages.prefill &&
+              resolvePromptMessageMacros([tailMessages.prefill], providerMacroContext, historyMacroProfilesById)[0]!,
+            !rejectsFinalAssistantMessage(conn.provider, conn.model),
+            (message) => {
+              const source = message.id ? allChatMessages.find((saved: any) => saved.id === message.id) : undefined;
+              return source ? conversationPromptHistoryContent(source, chatMode) : undefined;
+            },
+          );
+          if (tailMessages.prefill?.content) {
+            logger.debug(
+              "[generate] Assistant prefill (%d chars) %s",
+              assistantPrefill.length,
+              prefillTurn.opensReply
+                ? "as the final assistant message"
+                : "at the start of the last assistant reply, if any: the model refuses a final assistant message",
+            );
+          }
 
-          const prepareProviderMessages = (messages: ChatMessage[]): ChatMessage[] => {
-            return postProcessMessages(messages, {
-              ...(resolvedPreset && !isStockMarinaraUniversalPreset(resolvedPreset)
-                ? parseStoredGenerationParameters(resolvedPreset.parameters)
-                : {}),
-              ...providerRuntime.connectionParams,
-              ...providerRuntime.gameSetupParams,
-              ...providerRuntime.chatParams,
-              ...providerRuntime.chatOverrideParams,
-            });
+          const providerMessageParameters = {
+            ...(resolvedPreset && !isStockMarinaraUniversalPreset(resolvedPreset)
+              ? parseStoredGenerationParameters(resolvedPreset.parameters)
+              : {}),
+            ...providerRuntime.connectionParams,
+            ...providerRuntime.gameSetupParams,
+            ...providerRuntime.chatParams,
+            ...providerRuntime.chatOverrideParams,
           };
+          const prepareProviderMessages = (messages: ChatMessage[]): ChatMessage[] =>
+            postProcessMessages(messages, providerMessageParameters, prefillTurn.endsOnPrefill);
 
           let advancedMemoryReceipt: AdvancedMemoryReceipt | undefined;
           let advancedMemorySnapshot: AdvancedMemorySnapshot | undefined;
@@ -9373,11 +9452,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           providerThinking = "";
           replyThinking = "";
           streamOutput.resetReasoningClock();
-          if (
-            tailMessages.assistantPrefillInjected &&
-            !tailMessages.googleUserRegenerationInjected &&
-            assistantPrefill
-          ) {
+          if (prefillTurn.opensReply && assistantPrefill) {
             await writeContentChunked(assistantPrefill);
           }
           let geminiResponseParts: unknown[] | null = null;
@@ -9644,7 +9719,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 gameToolPlan,
                 maxToolRounds,
                 initialMessages: initialProviderMessages,
-                assistantPrefillInjected: tailMessages.assistantPrefillInjected,
+                assistantPrefillInjected: prefillTurn.endsOnPrefill,
+                // A Single User Message labels each turn, so the merged prefill carries its "[USER]" label.
+                userPrefill:
+                  prefillTurn.userPrefill &&
+                  `${providerMessageParameters.singleUserMessage ? "[USER]\n" : ""}${prefillTurn.userPrefill}`,
                 tools: nativeToolCalls ? responderToolDefs : undefined,
                 toolChoice: (round) =>
                   nativeToolCalls
@@ -9950,7 +10029,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           let assistantSpatialDirective: ReturnType<typeof extractAssistantSpatialDirective>["directive"] = null;
           let assistantSpatialDirectiveDetected = false;
           let conversationCommandContent: string | null = null;
-          if (tailMessages.assistantPrefillInjected && assistantPrefill && fullResponse.startsWith(assistantPrefill)) {
+          if (prefillTurn.opensReply && assistantPrefill && fullResponse.startsWith(assistantPrefill)) {
             const responseAfterPrefill = fullResponse.slice(assistantPrefill.length);
             if (responseAfterPrefill.startsWith(assistantPrefill)) {
               fullResponse = assistantPrefill + responseAfterPrefill.slice(assistantPrefill.length);
@@ -10086,6 +10165,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           }
           fullResponse = cleanedReply.text;
           if (cleanedReply.changed) contentReplaced = true;
+          // The "Trim incomplete sentences" setting shortened the reply; say so rather than cut it silently (#8643).
+          if (cleanedReply.trimmedEnding) sendSseEvent(reply, { type: "reply_trimmed" });
           const oocMessages = cleanedReply.oocMessages;
 
           // The outcome rewrite must see the commands it is asked to retain or reject.
@@ -10940,8 +11021,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               shouldSaveHiddenGenerationAnchor({
                 impersonate: input.impersonate,
                 hasActionableOutput:
-                  parsedCommands.length > 0 ||
-                  parsedRawCommandCount > 0 ||
+                  (chatMode === "conversation"
+                    ? parsedCommands.some(
+                        (command) => command.type !== "react" || Boolean(targetCharId || input.regenerateMessageId),
+                      )
+                    : parsedCommands.length > 0 || parsedRawCommandCount > 0) ||
                   collectedGmVerbCalls.length > 0 ||
                   (pendingGameStateToolCalls.length > 0 && !generationSignal.aborted),
                 spatialDirectiveDetected: assistantSpatialDirectiveDetected,
@@ -11661,8 +11745,23 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   ...referencedCharacterIds,
                 ]),
               ];
+              // The roster this reply was written with, so its narrator avatars outlast later roster changes (#8762).
+              // Continuing keeps the reply's own as saved, even members who have left the chat since; only a reply
+              // without one derives it from its expression result.
+              const previousRosterIds = input.continueMessageId
+                ? mergedReplyRoster(parseExtra(savedMsg.extra), allCharacterIds)
+                : [];
+              extraUpdate.mergedRosterCharacterIds = [...new Set([...previousRosterIds, ...characterIds])];
             } else {
               extraUpdate.referencedCharacterIds = [];
+              // Continuing keeps the reply's saved roster even when the chat is down to one member, so the others
+              // come back if they rejoin; a new or regenerated reply here saves none, so no swipe inherits one.
+              const savedRosterIds = input.continueMessageId
+                ? parseExtra(savedMsg.extra).mergedRosterCharacterIds
+                : null;
+              extraUpdate.mergedRosterCharacterIds = Array.isArray(savedRosterIds)
+                ? savedRosterIds.filter((id): id is string => typeof id === "string")
+                : [];
             }
             extraUpdate.conversationCommandContent =
               chatMode === "conversation" && !input.impersonate ? conversationCommandContent : null;
@@ -11828,6 +11927,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 "generationReplay",
                 "lorebookGenerationTriggers",
                 "referencedCharacterIds",
+                "mergedRosterCharacterIds",
               ]);
               // Every fallback-written part keeps its identity, without duplicating the turn's usage.
               if (generationProviderOrigin.fallback) everyPart.generationInfo = generationProviderOrigin;
@@ -12056,7 +12156,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 sanitize: {
                   chatMode: chatMode === "conversation" ? "conversation" : "roleplay",
                   customThinkingTags,
-                  assistantPrefill: tailMessages.assistantPrefillInjected ? assistantPrefill : null,
+                  assistantPrefill: prefillTurn.endsOnPrefill ? assistantPrefill : null,
                   conversationCommandsEnabled,
                   filterEnabledCommands: (commands) => filterEnabledConversationCommands(commands, chatMeta),
                   roleplayDmCommandsEnabled,
@@ -13692,7 +13792,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               }
             }
 
-            // Validate expression agent results — reject hallucinated expressions and unknown characters
+            // These entries were finalized before SSE. Check their concrete handles
+            // without interpreting labels or rerolling variants a second time.
             if (result.success && result.type === "sprite_change" && result.data && typeof result.data === "object") {
               const spriteData = result.data as {
                 expressions?: Array<{
@@ -13705,7 +13806,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               const availableSprites = agentContext.memory._availableSprites as
                 Array<{ characterId: string; characterName: string; expressions: string[] }> | undefined;
               if (Array.isArray(spriteData.expressions)) {
-                const validation = validateSpriteExpressionEntries(spriteData.expressions, availableSprites);
+                const validation = validateSpriteExpressionEntries(spriteData.expressions, availableSprites, {
+                  resolvedHandles: true,
+                });
                 let validatedExpressions = validation.expressions as typeof spriteData.expressions;
                 for (const warning of validation.warnings) {
                   logger.warn("[generate] %s", warning.message);
@@ -15488,10 +15591,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       agentType: result.agentType,
                       agentName: imagePromptAgent?.name ?? "Illustrator",
                       retryTarget: "illustration",
-                      error: `No image generation connection is set on ${
+                      code: "image_connection_missing",
+                      error: `No image model is set for ${
                         imagePromptAgent?.name?.trim() ||
                         (result.agentType === "illustrator" ? "the Illustrator agent" : "this image agent")
-                      } or under Settings → Connections → Defaults → Images. Choose one there, or assign one directly in Settings → Agents.`,
+                      } or as the Images default in the Connections sidebar. Pick one there or in the agent's settings.`,
                     },
                   });
                 }

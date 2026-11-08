@@ -8,6 +8,7 @@ import type { GameNpc, PartyDialogueLine } from "../../packages/shared/src/types
 import type { NarrationSegment } from "../../packages/client/src/components/game/GameNarration.js";
 import { normalizeSpriteExpressionKey } from "../../packages/client/src/lib/sprite-expression-match.js";
 import { TTS_RETRY_BASE_DELAY_MS } from "../../packages/client/src/lib/tts-synthesis-policy.js";
+import { normalizeGameTtsEmotion } from "../../packages/client/src/lib/game-tts-emotion.js";
 import {
   buildTTSVoiceRequests,
   extractDialogueUtterances,
@@ -58,6 +59,7 @@ const ttsService = {
 const dependencies = {
   normalizeTextForMatch,
   normalizeSpriteExpressionKey,
+  normalizeGameTtsEmotion,
   splitTTSChunks,
   getTTSPersonaVoice,
   resolveTTSChunkCharLimit,
@@ -68,11 +70,7 @@ const dependencies = {
 };
 const narration = componentSource("GameNarration.tsx");
 const gameCode = declarations(narration, [
-  "GAME_TTS_EMOTIONS",
-  "GAME_TTS_EMOTION_SET",
-  "GAME_TTS_EMOTION_ALIASES",
   "GAME_VOICE_SYNTHESIS_POLICY",
-  "normalizeGameTtsEmotion",
   "resolveGameSegmentTtsEmotion",
   "hashVoiceKey",
   "buildVoiceConfigSignature",
@@ -105,7 +103,11 @@ const game = new Function(
     segment: NarrationSegment,
     config: TTSConfig,
     npcs?: GameNpc[],
-    options?: { playerSpeakerNames?: ReadonlySet<string>; persona?: { id?: string; name: string } | null },
+    options?: {
+      playerSpeakerNames?: ReadonlySet<string>;
+      persona?: { id?: string; name: string } | null;
+      isAmbiguousSpeaker?: (speaker?: string | null) => boolean;
+    },
   ) => VoiceRequest | null;
   jobs: (key: string, requests: VoiceRequest[], config: TTSConfig) => VoiceJob[];
   generate: (job: VoiceJob, controller: AbortController) => Promise<Blob>;
@@ -432,7 +434,7 @@ function findCombatSynthesis(node: ts.Node): void {
 }
 findCombatSynthesis(combat);
 assert.equal(combatCalls.length, 1);
-const generateCombat = new Function(
+const generateCombatCall = new Function(
   "ttsService",
   "chunk",
   "line",
@@ -441,6 +443,7 @@ const generateCombat = new Function(
   "chunkKey",
   "combatAudioConnectionId",
   "COMBAT_VOICE_SYNTHESIS_POLICY",
+  "normalizeGameTtsEmotion",
   `return ${combatCalls[0]!.getText(combat)};`,
 ) as (
   service: typeof ttsService,
@@ -448,7 +451,18 @@ const generateCombat = new Function(
   line: PartyDialogueLine,
   config: TTSConfig,
   controller: AbortController,
+  chunkKey: string | undefined,
+  combatAudioConnectionId: string | null,
+  policy: undefined,
+  normalize: typeof normalizeGameTtsEmotion,
 ) => Promise<Blob>;
+const generateCombat = (
+  service: typeof ttsService,
+  chunk: string,
+  line: PartyDialogueLine,
+  config: TTSConfig,
+  controller: AbortController,
+) => generateCombatCall(service, chunk, line, config, controller, undefined, null, undefined, normalizeGameTtsEmotion);
 for (const current of [config, disabled]) {
   const chunks = splitTTSChunks(line.content, current);
   assert.deepEqual(chunks, [current.roleplaySpeakerExtractorEmotionsEnabled ? line.content : "As you wish."]);
@@ -458,3 +472,33 @@ for (const current of [config, disabled]) {
   assert.equal(spoken.options.speaker, line.character);
   assert.equal(spoken.options.tone, line.expression);
 }
+// #8619: a combat line's expression is folded into the game's spoken expressions, as Game narration's are, so the
+// server can map it to a documented audio tag; one that names none is sent without a tone instead of as a word.
+for (const [expression, tone] of [
+  ["grin", "happy"],
+  ["Smirking", "smirk"],
+  ["victorious", undefined],
+] as const) {
+  await generateCombat(ttsService, "Hold the line.", { ...line, expression }, config, new AbortController());
+  assert.equal(generated.at(-1)!.options.tone, tone, `combat expression ${expression} speaks as ${tone ?? "no tone"}`);
+}
+
+// #8638: Game narration, like chat, never gives a speaker who fits several active cards the voice of a card outside
+// the game; a speaker who fits none still takes the one voiced card whose name contains theirs.
+const junpeiLibrary = ttsConfigSchema.parse({
+  source: "openai",
+  voice: "fixture-voice",
+  voiceMode: "per-character",
+  voiceAssignments: [{ characterId: "sato-id", characterName: "Junpei Sato", voice: "sato-voice" }],
+});
+const junpeiLine: NarrationSegment = { ...main, id: "junpei", speaker: "Junpei", content: "Yo!" };
+assert.equal(
+  game.request(junpeiLine, junpeiLibrary, [], { isAmbiguousSpeaker: () => true })?.voice,
+  "fixture-voice",
+  "a speaker two active cards fit never takes an outside card's voice",
+);
+assert.equal(
+  game.request(junpeiLine, junpeiLibrary, [], { isAmbiguousSpeaker: () => false })?.voice,
+  "sato-voice",
+  "a speaker no active card fits still takes the outside card's voice",
+);

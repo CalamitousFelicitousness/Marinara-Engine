@@ -259,61 +259,52 @@ for (const [file, path] of [
 }
 
 // ── Every lane is pointed from the same place ──
-// Sound effects and music get their own default and fallback rows beside the
-// voice pair. The pair component is generic over the flag name, so the pins that
-// matter are which fields each row writes and that nothing offers an engine the
-// route would then refuse.
+// Sound effects and music are jobs beside Voice in the Defaults box. The pins
+// that matter are which flags each job writes and that nothing offers an engine
+// the route would then refuse.
 {
-  const panel = readSource("packages/client/src/components/panels/ConnectionsPanel.tsx");
-  for (const [primary, fallback] of [
-    ["defaultForSfx", "fallbackForSfx"],
-    ["defaultForMusic", "fallbackForMusic"],
+  const jobs = readSource("packages/client/src/lib/connection-jobs.ts");
+  const defaults = readSource("packages/client/src/components/connections/ConnectionDefaults.tsx");
+  for (const [key, primary, fallback] of [
+    ["sfx", "defaultForSfx", "fallbackForSfx"],
+    ["music", "defaultForMusic", "fallbackForMusic"],
   ] as const) {
-    assert.match(panel, new RegExp(String.raw`primaryField="${primary}"`, "u"), `a ${primary} row must exist`);
-    assert.match(panel, new RegExp(String.raw`fallbackField="${fallback}"`, "u"), `paired with ${fallback}`);
     assert.match(
-      panel,
-      new RegExp(String.raw`\|\s*"${primary}"`, "u"),
-      `${primary} must be a value the pair component accepts`,
+      jobs,
+      new RegExp(
+        String.raw`key: "${key}",[\s\S]{0,120}?kind: "audio_generation",\s*flag: "${primary}",\s*fallback: "${fallback}"`,
+        "u",
+      ),
+      `the ${key} job writes ${primary} and ${fallback} on Music & Sound Effects rows`,
     );
   }
   assert.match(
-    panel,
-    /audioConnectionSupportsPurpose\(connection, "sfx"\)/u,
-    "the sound effect options must be engines that can generate sound effects",
-  );
-  assert.match(
-    panel,
-    /audioConnectionSupportsPurpose\(connection, "music"\)/u,
-    "and the music options engines that can generate music",
+    jobs,
+    /audioConnectionSupportsPurpose\(row, purpose\)/u,
+    "a lane's options must be engines that can generate for it",
   );
   // A connection that loses the capability still holds the flag until someone
   // clears it, so it has to stay in the list that can clear it.
   assert.match(
-    panel,
-    /isEnabledConnectionRole\(connection\.defaultForSfx\)/u,
-    "a stale sound effect default must stay visible to be cleared",
+    jobs,
+    /\(!!flag && isConnectionFlagTrue\(row\[flag\]\)\) \|\|\s*\(!!fallback && isConnectionFlagTrue\(row\[fallback\]\)\)/u,
+    "a stale lane default must stay visible to be cleared",
   );
-  assert.match(panel, /isEnabledConnectionRole\(connection\.defaultForMusic\)/u, "and a stale music default likewise");
+  assert.match(defaults, /rowFilter: jobRowFilter\(job\)/u, "and the job pickers apply that filter");
 
-  // The empty option names what actually answers next, the way the voice pair's
+  // The empty option names what actually answers next, the way the voice job's
   // does. "None" would describe a silence that never happens.
   const catalogText = readSource("packages/client/src/localization/locales/en.json");
   const catalog = JSON.parse(catalogText) as Record<string, string>;
   const purposeEmptyLabel =
     catalog["ui.panels.connectiondefaultssection.useTheFallbackThenTheMusicAndSoundEffectsDefaults"];
-  assert.ok(purposeEmptyLabel, "the purpose pairs need an empty-option label");
+  assert.ok(purposeEmptyLabel, "the lane jobs need an empty-option label");
   assert.match(purposeEmptyLabel, /fallback/iu, "which names the fallback");
   assert.match(purposeEmptyLabel, /Music & Sound Effects/u, "and then the pair it falls through to");
   assert.match(
-    panel,
+    defaults,
     /ui\.panels\.connectiondefaultssection\.useTheFallbackThenTheMusicAndSoundEffectsDefaults/u,
-    "and the panel must render it",
-  );
-  assert.match(
-    panel,
-    /const sfxConnections = useMemo\(\s*\(\) =>\s*generativeAudioConnections\.filter/u,
-    "the lanes list Music & Sound Effects connections, not speech ones",
+    "and the Defaults box must render it",
   );
 }
 
@@ -349,7 +340,7 @@ for (const [file, path] of [
   // handle per source, so audio would otherwise show each of them twice.
   assert.match(
     editor,
-    /Base URL \(audio keeps its own[\s\S]{0,120}?\{!isAudioProvider && \(/u,
+    /Base URL \(audio keeps its own[\s\S]{0,120}?&& !isAudioProvider && \(/u,
     "the generic base URL group is hidden for audio",
   );
   assert.match(
@@ -376,8 +367,8 @@ for (const [file, path] of [
     );
   }
 
-  const modal = readSource("packages/client/src/components/modals/CreateConnectionModal.tsx");
-  assert.match(modal, /audioSource: "elevenlabs"/u, "a new audio connection starts with a real source, not null");
+  const modal = readSource("packages/client/src/components/modals/create-connection/CreateConnectionModalContent.tsx");
+  assert.match(modal, /audioSource: source,/u, "a new audio connection starts with a real source, not null");
 }
 
 // ── Saving a connection invalidates what it decided ──
@@ -430,8 +421,8 @@ for (const [file, path] of [
     "the defaults section says it identically, being the same selection",
   );
 
-  const panel = readSource("packages/client/src/components/panels/ConnectionsPanel.tsx");
-  assert.match(panel, new RegExp(`connectiondefaultssection\.${key}`, "u"), "and actually renders that label");
+  const defaults = readSource("packages/client/src/components/connections/ConnectionDefaults.tsx");
+  assert.match(defaults, new RegExp(`connectiondefaultssection\.${key}`, "u"), "and actually renders that label");
 }
 
 // ── Clearing the clip cache clears all of it ──
@@ -521,22 +512,19 @@ for (const [file, path] of [
 
 // ── An empty game-audio lane says what would fill it ──
 {
-  const panel = readSource("packages/client/src/components/panels/ConnectionsPanel.tsx");
+  const defaults = readSource("packages/client/src/components/connections/ConnectionDefaults.tsx");
   assert.match(
-    panel,
+    defaults,
     /needsAValue1ConnectionWithThisSwitchedOn[\s\S]{0,120}connections\.audioGeneration\.category/u,
     "the hint names the Music & Sound Effects connection type",
   );
-  assert.equal(
-    (panel.match(/emptyHint=\{gameAudioHint\}/gu) ?? []).length,
-    2,
-    "both game audio rows explain an empty picker",
-  );
   assert.match(
-    panel,
-    /\{emptyHint && !hasConnections && \(/u,
-    "and only when it is empty, so a working lane stays uncluttered",
+    defaults,
+    /if \(!connectionsList\.some\(\(row\) => matchesKind\(row, role\.kind\) && offered\(row\)\)\)/u,
+    "and only when no connection can fill the lane, so a working lane stays uncluttered",
   );
+  const jobs = readSource("packages/client/src/lib/connection-jobs.ts");
+  assert.equal((jobs.match(/purpose: "(?:sfx|music)",/gu) ?? []).length, 2, "both game audio lanes are jobs");
 }
 
 console.info("TTS audio connection UX regression passed.");

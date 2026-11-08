@@ -26,6 +26,12 @@ type RateLimitRule = {
 
 const DEFAULT_RULE: RateLimitRule = { key: "default", limit: 600, windowMs: 60_000 };
 
+/** Connection probes can submit credentials and call a paid provider. */
+export const CONNECTION_TEST_RATE_LIMIT = {
+  max: 30,
+  timeWindow: 60_000,
+} as const satisfies MarinaraRouteRateLimit;
+
 /** Quick answers call a model per request; a person asks a few per minute, never in a loop. */
 export const PROFESSOR_MARI_QUICK_RATE_LIMIT = {
   max: 30,
@@ -210,6 +216,14 @@ export const HEALTH_RATE_LIMIT = {
 } as const satisfies MarinaraRouteRateLimit;
 
 const ROUTE_RULES: Array<{ pattern: RegExp; rule: RateLimitRule }> = [
+  {
+    pattern: /^\/api\/connections\/[^/]+\/test(?:\?|$)/,
+    rule: {
+      key: "connection-test",
+      limit: CONNECTION_TEST_RATE_LIMIT.max,
+      windowMs: CONNECTION_TEST_RATE_LIMIT.timeWindow,
+    },
+  },
   {
     pattern: /^\/api\/access\/login(?:\?|$)/,
     rule: { key: "access-login", limit: ACCESS_LOGIN_RATE_LIMIT.max, windowMs: ACCESS_LOGIN_RATE_LIMIT.timeWindow },
@@ -422,20 +436,24 @@ let lastSweepAt = 0;
 const monotonicNow = () => performance.now();
 const isE2ERateLimitDisabled = process.env.MARINARA_E2E_DISABLE_RATE_LIMIT === "true";
 
-function selectRule(url: string): RateLimitRule {
-  let path = url.split("?")[0] ?? url;
-  // Match rules against the DECODED path the router actually dispatches on:
-  // matching the raw URL let "/api/generat%65"-style percent-encoding slip any
-  // rule in this table back into the permissive default bucket while the route
-  // still resolved. Collapse duplicate slashes for the same reason. A malformed
-  // escape keeps the raw path — the router rejects those requests anyway.
-  try {
-    path = decodeURIComponent(path);
-  } catch {
-    // fall through with the raw path
-  }
-  path = path.replace(/\/{2,}/g, "/");
-  return ROUTE_RULES.find((entry) => entry.pattern.test(path))?.rule ?? DEFAULT_RULE;
+function selectRule(request: FastifyRequest): RateLimitRule {
+  // Match rules against the route the router dispatched to, not the raw target:
+  // "/api/generat%65"-style percent-encoding, duplicate slashes or an
+  // absolute-form target ("POST http://host/api/generate") otherwise slipped
+  // past every rule in this table into the permissive default bucket while the
+  // route still resolved. The table's `[^/]+` segments also match a pattern's
+  // `:param`s. An unrouted request is a 404 whichever bucket it lands in.
+  const { url: routeUrl, config } = request.routeOptions;
+  // Fastify's automatic HEAD route for a prefix root ("/api/notices" + "/") reports
+  // the trailing-slash pattern; trim it so that HEAD lands in its GET's bucket.
+  const routePath = routeUrl && routeUrl.length > 1 ? routeUrl.replace(/\/$/u, "") : routeUrl;
+  const tableRule = ROUTE_RULES.find((entry) => entry.pattern.test(routePath ?? request.url))?.rule;
+  if (tableRule) return tableRule;
+  const declared = config?.rateLimit;
+  if (!declared || routePath === undefined) return DEFAULT_RULE;
+  // A route the table does not cover keeps the limit it declares, in a bucket of its own; HEAD shares GET's.
+  const method = request.method === "HEAD" ? "GET" : request.method;
+  return { key: `route:${method} ${routePath}`, limit: declared.max, windowMs: declared.timeWindow };
 }
 
 function sweepExpired(now: number) {
@@ -448,7 +466,7 @@ function sweepExpired(now: number) {
 
 export function rateLimitHook(request: FastifyRequest, reply: FastifyReply, done: () => void) {
   if (isE2ERateLimitDisabled) return done();
-  const rule = selectRule(request.url);
+  const rule = selectRule(request);
   // Pages and assets are not throttled, except the sign-in pages that check passwords and codes.
   if (!isApiRequest(request) && rule.key !== "login-page") return done();
 

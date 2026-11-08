@@ -1,4 +1,4 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { useTranslation, useTranslation as useUiTranslation } from "react-i18next";
 import { normalizeSemanticSummaryRetrievalSettings } from "@marinara-engine/shared";
 import { toast } from "sonner";
@@ -24,6 +24,7 @@ import { usePageActivity } from "../../hooks/use-page-activity";
 import {
   appendContinuationMessageContent,
   isLongTermMemoryChatSummaryPromptAllowed,
+  mergedReplyRoster,
   STORYBOARD_AGENT_ID,
   type GameTurnStoryboard,
   type ChatSummaryEntry,
@@ -80,7 +81,10 @@ import { EndSceneBar } from "./SceneBanner";
 import { ChatCommonOverlays, type ChatSettingsTools } from "./ChatCommonOverlays";
 import { useProvideChatGalleryActions } from "../../hooks/use-chat-gallery-actions";
 import { PinnedImageOverlay } from "./PinnedImageOverlay";
-import type { SpriteDisplayMode } from "./sprite-display-modes";
+import { normalizeSpriteDisplayModes, type SpriteDisplayMode } from "./sprite-display-modes";
+import { membersWithoutExpressions, splitReplyLastParts } from "./merged-avatar-roster";
+import { spriteKeys, type SpriteInfo } from "../../hooks/use-characters";
+import { api } from "../../lib/api-client";
 import { chatAvatarParticipants } from "../../features/avatars/stage/avatar-stage-logic";
 import { useChatAvatarAgentIds } from "../../features/avatars/stage/use-chat-avatar-agents";
 import type {
@@ -99,6 +103,12 @@ import {
 } from "../../hooks/use-game-storyboards";
 
 type ChatData = ComponentProps<typeof ChatCommonOverlays>["chat"];
+
+/** Each sprite list: null while loading, empty when it failed. Structurally shared by React Query, so an unchanged
+ *  list keeps its identity. */
+function combineSpriteLists(results: Array<{ data?: SpriteInfo[]; isError: boolean }>): (SpriteInfo[] | null)[] {
+  return results.map((result) => result.data ?? (result.isError ? [] : null));
+}
 
 const RoleplayTrackerWindow = lazy(async () => {
   const module = await import("./RoleplayTrackerWindow");
@@ -462,7 +472,8 @@ function RegeneratingMessageContent({
   const streamingOutputStarted = useChatStore((s) =>
     hasVisibleStreamText(s.streamBuffers.get(msg.chatId) ?? (s.activeChatId === msg.chatId ? s.streamBuffer : "")),
   );
-  // A new swipe replaces the old media and reasoning; a continuation retains them.
+  // A new swipe replaces the old media, reasoning and narrator roster; a continuation retains them, with the
+  // roster an older reply derives from its expression result, which the server keeps too.
   const parsedExtra = typeof msg.extra === "string" ? JSON.parse(msg.extra) : (msg.extra ?? {});
   const cleanExtra = {
     ...parsedExtra,
@@ -473,8 +484,9 @@ function RegeneratingMessageContent({
           roleplayCommandActivity: null,
           roleplayPrivateCommands: null,
           diceRollResult: null,
+          mergedRosterCharacterIds: null,
         }
-      : {}),
+      : { mergedRosterCharacterIds: mergedReplyRoster(parsedExtra, rest.chatCharacterIds ?? []) }),
     thinking: thinkingBuffer || (isContinuation ? parsedExtra.thinking : null),
   };
   return (
@@ -1076,13 +1088,33 @@ export function ChatRoleplaySurface({
     return activeVnMessage ? visibleVnMessages.indexOf(activeVnMessage) : -1;
   }, [activeVnMessage, visibleVnMessages]);
 
-  // Reset VN navigation when switching chats or when live stream starts/ends.
+  // Whether the reader saw the current reply stream in, so its end keeps their place.
+  const vnFollowedStream = useRef(false);
+  // Reset VN navigation when switching chats.
   useEffect(() => {
     setVnSelectedMessageId(null);
     setVnParagraphIndex(null);
     setVnSpeech(null);
     pendingVnPrevious.current = null;
-  }, [activeChatId, hasLiveStream]);
+    vnFollowedStream.current = false;
+  }, [activeChatId]);
+  // A live reply, and each group member's turn in it, opens at its first paragraph and moves on only
+  // when the reader does (#8635).
+  const streamingCharacterId = useChatStore((s) => s.streamingCharacterId);
+  useEffect(() => {
+    if (!hasLiveStream) return;
+    setVnSelectedMessageId(null);
+    setVnParagraphIndex(0);
+    setVnSpeech(null);
+    pendingVnPrevious.current = null;
+    vnFollowedStream.current = true;
+  }, [activeChatId, hasLiveStream, streamingCharacterId]);
+  // A continuation opens on the paragraph its new text extends, also after a group turn names its speaker.
+  useEffect(() => {
+    if (!hasLiveStream || !continuationMessageId) return;
+    const continued = useChatStore.getState().continuationStreams.get(activeChatId)?.content ?? "";
+    setVnParagraphIndex(Math.max(0, splitRoleplayParagraphs(continued).length - 1));
+  }, [activeChatId, continuationMessageId, hasLiveStream, streamingCharacterId]);
 
   useEffect(() => {
     const index = visibleVnMessages.findIndex((message) => message.id === pendingVnPrevious.current);
@@ -1105,12 +1137,15 @@ export function ChatRoleplaySurface({
     )
       return;
     setVnSelectedMessageId(null);
-    setVnParagraphIndex(0);
+    // A reply that finished while the reader was elsewhere opens at its start.
+    if (!vnFollowedStream.current) setVnParagraphIndex(0);
+    vnFollowedStream.current = false;
     pendingVnPrevious.current = null;
     useChatStore.getState().setPendingVnReply(activeChatId, null);
   }, [activeChatId, hasLiveStream, latestVnMessage, pendingVnReply]);
 
-  const currentParagraphIndex = vnParagraphIndex ?? Math.max(0, vnParagraphCount - 1);
+  // The reply shown can hold fewer paragraphs than the place kept, as when an unsaved stream ends.
+  const currentParagraphIndex = Math.max(0, Math.min(vnParagraphIndex ?? Infinity, vnParagraphCount - 1));
 
   const [ttsState, setTtsState] = useState(ttsService.getState());
   useEffect(() => ttsService.subscribe((state) => setTtsState(state)), []);
@@ -1516,6 +1551,36 @@ export function ChatRoleplaySurface({
     const activeIds = chatCharIds.filter((id) => !inactiveIds.has(id));
     return activeIds.length > 0 ? activeIds : chatCharIds;
   }, [chatCharIds, chatMeta.inactiveCharacterIds]);
+  // A merged reply saved before its roster was keeps the active members its expression result could never name.
+  const mergedRoleplayGroup = isRoleplay && groupChatMode === "merged" && chatCharIds.length > 1;
+  const mergedSpriteLists = useQueries({
+    queries: (mergedRoleplayGroup ? chatCharIds : []).map((characterId) => ({
+      queryKey: spriteKeys.list(characterId),
+      queryFn: () => api.get<SpriteInfo[]>(`/sprites/${characterId}`),
+      enabled: spriteCharacterIds.length === 0 || spriteCharacterIds.includes(characterId),
+      staleTime: 5 * 60_000,
+    })),
+    combine: combineSpriteLists,
+  });
+  const chatSpriteDisplayModes = chatMeta.spriteDisplayModes;
+  const noExpressionCharacterIds = useMemo(
+    () =>
+      mergedRoleplayGroup
+        ? membersWithoutExpressions({
+            chatCharacterIds: chatCharIds,
+            spriteCharacterIds,
+            spriteDisplayModes: normalizeSpriteDisplayModes(chatSpriteDisplayModes),
+            spriteLists: mergedSpriteLists,
+          })
+        : [],
+    [chatCharIds, chatSpriteDisplayModes, mergedRoleplayGroup, mergedSpriteLists, spriteCharacterIds],
+  );
+  // An older reply split at scene breaks saved its expression result only on its last part, grouped under the first.
+  const splitReplyLastPartExtras = useMemo(
+    () =>
+      mergedRoleplayGroup && messages ? splitReplyLastParts(messages) : new Map<string, Record<string, unknown>>(),
+    [mergedRoleplayGroup, messages],
+  );
   const loadedMessageOffset = totalMessageCount - (messages?.length ?? 0);
   const summaryActiveAgentIds = Array.isArray(chatMeta.activeAgentIds)
     ? chatMeta.activeAgentIds.filter((agentId): agentId is string => typeof agentId === "string")
@@ -2059,6 +2124,8 @@ export function ChatRoleplaySurface({
                           colorInlineNames={colorInlineNames}
                           chatCharacterIds={chatCharIds}
                           mergedGroupCharacterIds={activeChatCharacterIds}
+                          noExpressionCharacterIds={noExpressionCharacterIds}
+                          splitReplyLastPartExtra={splitReplyLastPartExtras.get(msg.id)}
                           expressionAvatarResolver={expressionAvatarResolver}
                           multiSelectMode={multiSelectMode}
                           isSelected={selectedMessageIds.has(msg.id)}
@@ -2175,72 +2242,79 @@ export function ChatRoleplaySurface({
                             />
                           )
                         ) : activeVnMessage ? (
-                          <div>
-                            <ChatMessage
-                              key={`${activeChatId}:${activeVnMessage.id}:${activeVnMessage.activeSwipeIndex}`}
-                              message={activeVnMessage}
-                              memoryStartCharacterIds={memoryContextStarts.get(activeVnMessage.id)}
-                              failedReply={activeVnMessage.id === failedReplyMessageId}
-                              failedReplyReason={failedReplyReason}
-                              onRetryFailedReply={onRetryFailedReply}
-                              replyCheckup={activeVnMessage.id === replyCheckupMessageId ? replyCheckup : undefined}
-                              visualNovel
-                              visualNovelSpeech={vnSpeech}
-                              onVisualNovelSpeechParagraph={setVnParagraphIndex}
-                              visualNovelParagraphIndex={vnParagraphIndex ?? undefined}
-                              onVisualNovelParagraphCount={setVnParagraphCount}
-                              visualNovelMediaTarget={vnMediaTarget}
-                              chatMode="roleplay"
-                              characterMap={characterMap}
-                              personaInfo={personaInfo}
-                              groupChatMode={groupChatMode}
-                              colorInlineNames={colorInlineNames}
-                              chatCharacterIds={chatCharIds}
-                              mergedGroupCharacterIds={activeChatCharacterIds}
-                              expressionAvatarResolver={expressionAvatarResolver}
-                              messageDepth={(messages?.length ?? 1) - 1 - (messages?.indexOf(activeVnMessage) ?? 0)}
-                            />
-                            {(vnParagraphCount > 1 || visibleVnMessages.length > 1 || hasNextPage) && (
-                              <div
-                                data-roleplay-vn-navigation
-                                className="flex items-center justify-between border-t border-[var(--border)]/50 px-3 py-1.5 text-xs text-[var(--marinara-chat-chrome-accent)]"
-                              >
-                                <button
-                                  type="button"
-                                  disabled={!canGoPreviousParagraph}
-                                  onClick={handlePreviousParagraph}
-                                  className="inline-flex items-center gap-1 rounded px-2 py-1 transition-colors hover:bg-[var(--marinara-chat-chrome-button-bg-hover)] disabled:opacity-30 disabled:pointer-events-none"
-                                  aria-label={localizeUi("chat.roleplayVn.previousParagraph")}
-                                  title={localizeUi("chat.roleplayVn.previousParagraph")}
-                                >
-                                  <ChevronLeft size="0.875rem" />
-                                  <span>{localizeUi("chat.roleplayVn.previousParagraph")}</span>
-                                </button>
-                                <span className="font-mono text-[0.6875rem] opacity-75">
-                                  {localizeUi("chat.roleplayVn.paragraphCounter", {
-                                    current: currentParagraphIndex + 1,
-                                    total: vnParagraphCount,
-                                  })}
-                                </span>
-                                <button
-                                  type="button"
-                                  disabled={!canGoNextParagraph}
-                                  onClick={handleNextParagraph}
-                                  className="inline-flex items-center gap-1 rounded px-2 py-1 transition-colors hover:bg-[var(--marinara-chat-chrome-button-bg-hover)] disabled:opacity-30 disabled:pointer-events-none"
-                                  aria-label={localizeUi("chat.roleplayVn.nextParagraph")}
-                                  title={localizeUi("chat.roleplayVn.nextParagraph")}
-                                >
-                                  <span>{localizeUi("chat.roleplayVn.nextParagraph")}</span>
-                                  <ChevronRight size="0.875rem" />
-                                </button>
-                              </div>
-                            )}
-                          </div>
+                          <ChatMessage
+                            key={`${activeChatId}:${activeVnMessage.id}:${activeVnMessage.activeSwipeIndex}`}
+                            message={activeVnMessage}
+                            memoryStartCharacterIds={memoryContextStarts.get(activeVnMessage.id)}
+                            failedReply={activeVnMessage.id === failedReplyMessageId}
+                            failedReplyReason={failedReplyReason}
+                            onRetryFailedReply={onRetryFailedReply}
+                            replyCheckup={activeVnMessage.id === replyCheckupMessageId ? replyCheckup : undefined}
+                            visualNovel
+                            visualNovelSpeech={vnSpeech}
+                            onVisualNovelSpeechParagraph={setVnParagraphIndex}
+                            visualNovelParagraphIndex={vnParagraphIndex ?? undefined}
+                            onVisualNovelParagraphCount={setVnParagraphCount}
+                            visualNovelMediaTarget={vnMediaTarget}
+                            chatMode="roleplay"
+                            characterMap={characterMap}
+                            personaInfo={personaInfo}
+                            groupChatMode={groupChatMode}
+                            colorInlineNames={colorInlineNames}
+                            chatCharacterIds={chatCharIds}
+                            mergedGroupCharacterIds={activeChatCharacterIds}
+                            noExpressionCharacterIds={noExpressionCharacterIds}
+                            splitReplyLastPartExtra={splitReplyLastPartExtras.get(activeVnMessage.id)}
+                            expressionAvatarResolver={expressionAvatarResolver}
+                            messageDepth={(messages?.length ?? 1) - 1 - (messages?.indexOf(activeVnMessage) ?? 0)}
+                          />
                         ) : (
                           <p className="p-4 text-sm text-[var(--marinara-chat-chrome-text)]">
                             {localizeUi("chat.roleplayVn.empty")}
                           </p>
                         )}
+                        {(hasLiveStream || activeVnMessage) &&
+                          (vnParagraphCount > 1 || visibleVnMessages.length > 1 || hasNextPage) && (
+                            <div
+                              data-roleplay-vn-navigation
+                              className="flex items-center justify-between border-t border-[var(--border)]/50 px-3 py-1.5 text-xs text-[var(--marinara-chat-chrome-accent)]"
+                            >
+                              <button
+                                type="button"
+                                disabled={!canGoPreviousParagraph}
+                                onClick={handlePreviousParagraph}
+                                className="inline-flex items-center gap-1 rounded px-2 py-1 transition-colors hover:bg-[var(--marinara-chat-chrome-button-bg-hover)] disabled:opacity-30 disabled:pointer-events-none"
+                                aria-label={localizeUi("chat.roleplayVn.previousParagraph")}
+                                title={localizeUi("chat.roleplayVn.previousParagraph")}
+                              >
+                                <ChevronLeft size="0.875rem" />
+                                <span>{localizeUi("chat.roleplayVn.previousParagraph")}</span>
+                              </button>
+                              <span className="font-mono text-[0.6875rem] opacity-75">
+                                {localizeUi(
+                                  // More paragraphs may still arrive while the reply is written.
+                                  hasLiveStream
+                                    ? "chat.roleplayVn.paragraphCounterStreaming"
+                                    : "chat.roleplayVn.paragraphCounter",
+                                  {
+                                    current: currentParagraphIndex + 1,
+                                    total: vnParagraphCount,
+                                  },
+                                )}
+                              </span>
+                              <button
+                                type="button"
+                                disabled={!canGoNextParagraph}
+                                onClick={handleNextParagraph}
+                                className="inline-flex items-center gap-1 rounded px-2 py-1 transition-colors hover:bg-[var(--marinara-chat-chrome-button-bg-hover)] disabled:opacity-30 disabled:pointer-events-none"
+                                aria-label={localizeUi("chat.roleplayVn.nextParagraph")}
+                                title={localizeUi("chat.roleplayVn.nextParagraph")}
+                              >
+                                <span>{localizeUi("chat.roleplayVn.nextParagraph")}</span>
+                                <ChevronRight size="0.875rem" />
+                              </button>
+                            </div>
+                          )}
                       </div>
                     )}
                     {!vnHistoryOpen && !isStreaming && <CyoaChoices messages={messages} />}

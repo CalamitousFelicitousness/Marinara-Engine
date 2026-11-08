@@ -29,8 +29,14 @@ import {
   isEmptyCharacterTagEdit,
   GREETING_IMAGE_BAKE_MAX_PER_REQUEST,
   restoreBakedGreetingImages,
+  resolveOpenAIGifAnimation,
 } from "@marinara-engine/shared";
-import type { CharacterData, ConversationCallCharacterVideoClipKind, ExportEnvelope } from "@marinara-engine/shared";
+import type {
+  CharacterData,
+  ConversationCallCharacterVideoClipKind,
+  ExportEnvelope,
+  ImageAnimation,
+} from "@marinara-engine/shared";
 import { createCharactersStorage, type PersonaStorageRow } from "../services/storage/characters.storage.js";
 import { createCharacterCatalog } from "../services/storage/character-catalog.js";
 import { encodePersonaCreate, encodePersonaUpdate, projectPersona } from "../services/personas/persona-projector.js";
@@ -46,7 +52,7 @@ import { createLorebooksStorage } from "../services/storage/lorebooks.storage.js
 import { createNoodleStorage } from "../services/storage/noodle.storage.js";
 import { createPromptOverridesStorage } from "../services/storage/prompt-overrides.storage.js";
 import { CHARACTERS_REFERENCE_SHEET, loadPrompt } from "../services/prompt-overrides/index.js";
-import { generateImage } from "../services/image/image-generation.js";
+import { generateImage, ImageAnimationUnsupportedError } from "../services/image/image-generation.js";
 import {
   resolveConnectionImageDefaults,
   resolveConnectionImageQuality,
@@ -77,6 +83,7 @@ import { join, resolve, sep } from "path";
 import { DATA_DIR } from "../utils/data-dir.js";
 import {
   createJsonSlot,
+  DataUrl,
   singleChunk,
   streamExportZip,
   streamJsonWithSlot,
@@ -102,6 +109,7 @@ import { resolveBaseUrl } from "../services/generation/connection-base-url.js";
 import { cardFieldGenerationSchema, generateCardField } from "../services/generation/card-field-generation.js";
 import { importSTLorebook } from "../services/import/st-lorebook.importer.js";
 import { embeddedSpriteSizesAreWithinLimits, MAX_EMBEDDED_SPRITE_COUNT } from "../services/import/marinara.importer.js";
+import { readOptionalSpriteCatalog, spriteDirectory } from "../services/sprites/sprite-catalog.js";
 import {
   clearEmbeddedLorebookFromCharacter,
   embedLorebookIntoCharacter,
@@ -276,7 +284,11 @@ async function readCallVideoClipUploadBuffer(data: UploadedMultipartFile) {
 }
 
 async function ensureCharacterGalleryDir(characterId: string) {
-  const dir = join(CHARACTER_GALLERY_ROOT, characterId);
+  // Stored ids are not always app-made: a profile import or Mari can store any id.
+  if (isUnsafePathSegment(characterId)) {
+    throw new Error("Invalid character id");
+  }
+  const dir = assertInsideDir(CHARACTER_GALLERY_ROOT, join(CHARACTER_GALLERY_ROOT, characterId));
   await mkdir(dir, { recursive: true });
   return dir;
 }
@@ -490,6 +502,8 @@ type AvatarGenerationBody = {
   styleProfileId?: string | null;
   debugMode?: boolean;
   promptOverrides?: AvatarGenerationPromptOverride[];
+  /** One looping GIF drawn from the prompt alone; refused with 400 code "animation-unsupported" (see generateImage). */
+  animation?: ImageAnimation;
 };
 
 const AVATAR_GENERATION_MAX_DIMENSION = 4096;
@@ -570,12 +584,12 @@ async function resolveAvatarGenerationConnection(app: FastifyInstance, body: Ava
 
 type ExportFormat = "native" | "compatible";
 
-// Read an image file and return it as a base64 data URL, or null if the file
-// is missing, outside the expected dir, or not a recognized image type. Used
-// by native exports to embed binary data (avatars, sprites, gallery shots)
-// directly into the JSON envelope so personas/characters round-trip with
-// every image intact.
-async function readImageAsDataUrl(rootDir: string, filename: string): Promise<string | null> {
+// Read an image file as a data URL, or null if the file is missing, outside
+// the expected dir, or not a recognized image type. Used by native exports to
+// embed binary data (avatars, sprites, gallery shots) directly into the JSON
+// envelope so personas/characters round-trip with every image intact; the
+// export writes the bytes as base64 a slice at a time (#8917).
+async function readImageAsDataUrl(rootDir: string, filename: string): Promise<DataUrl | null> {
   if (!filename || filename.includes("..") || filename.includes("/") || filename.includes("\\")) return null;
   let filepath: string;
   try {
@@ -588,7 +602,7 @@ async function readImageAsDataUrl(rootDir: string, filename: string): Promise<st
     const buf = await readFile(filepath);
     const info = isAllowedImageBuffer(buf, extname(filename));
     if (!info) return null;
-    return `data:${info.mimeType};base64,${buf.toString("base64")}`;
+    return new DataUrl(info.mimeType, buf);
   } catch {
     return null;
   }
@@ -596,7 +610,7 @@ async function readImageAsDataUrl(rootDir: string, filename: string): Promise<st
 
 // Pull the avatar off disk for the persona/character row's avatarPath
 // (format: /api/avatars/file/<filename>). Returns null if missing/invalid.
-async function readAvatarDataUrl(avatarPath: string | null | undefined): Promise<string | null> {
+async function readAvatarDataUrl(avatarPath: string | null | undefined): Promise<DataUrl | null> {
   if (!avatarPath || typeof avatarPath !== "string") return null;
   const filename = avatarPath.split("?")[0]!.split("/").pop();
   if (!filename) return null;
@@ -652,7 +666,7 @@ async function readSpritesForId(
   id: string,
   enforcePortableLimits = false,
 ): Promise<Array<{ filename: string; data: string }> | null> {
-  const dir = join(DATA_DIR, "sprites", id);
+  const dir = spriteDirectory(id);
   if (!existsSync(dir)) return [];
   let entries: string[];
   try {
@@ -674,7 +688,7 @@ async function readSpritesForId(
         continue;
       }
     }
-    const dataUrl = await readImageAsDataUrl(dir, entry);
+    const dataUrl = (await readImageAsDataUrl(dir, entry))?.toString();
     if (dataUrl) {
       if (enforcePortableLimits) {
         if (sprites.length >= MAX_EMBEDDED_SPRITE_COUNT) return null;
@@ -721,9 +735,10 @@ async function* galleryExportEntries(
 
 // Read each sprite in data/sprites/<id>/ as it is written; import restores the
 // same expression set under a new id.
-async function* spriteExportEntries(id: string): AsyncGenerator<{ filename: string; data: string }> {
-  const dir = join(DATA_DIR, "sprites", id);
-  if (!id || !existsSync(dir)) return;
+async function* spriteExportEntries(id: string): AsyncGenerator<{ filename: string; data: DataUrl }> {
+  if (!id) return;
+  const dir = spriteDirectory(id);
+  if (!existsSync(dir)) return;
   let entries: string[];
   try {
     entries = await readdir(dir);
@@ -792,6 +807,7 @@ async function buildNativeCharacterExport(
         spec: "chara_card_v2",
         spec_version: "2.0",
         data: portableData,
+        spriteCatalog: readOptionalSpriteCatalog(char.id),
         // avatar, sprites and gallery are streamed here, in that order.
         [slot]: 0,
         metadata: {
@@ -815,7 +831,7 @@ async function buildNativeCharacterExport(
 export function buildCompatibleCharacterExport(
   data: any,
   sprites: Array<{ filename: string; data: string }> = [],
-  { keepOnboarding = false }: { keepOnboarding?: boolean } = {},
+  { keepOnboarding = false, spriteCatalog }: { keepOnboarding?: boolean; spriteCatalog?: unknown } = {},
 ) {
   // Compatible cards carry no gallery, so baked greeting images go back to their web links.
   data = data ? restoreBakedGreetingImages(data) : data;
@@ -837,10 +853,11 @@ export function buildCompatibleCharacterExport(
   delete extensions.characterSheetImageId;
   if (!keepOnboarding) delete extensions.onboarding;
   extensions.useCharacterSheetAsReference = false;
-  if (sprites.length > 0) {
+  if (sprites.length > 0 || spriteCatalog !== undefined) {
     extensions.marinara = {
       ...parseCharacterDataRecord(extensions.marinara),
       sprites,
+      ...(spriteCatalog !== undefined ? { spriteCatalog } : {}),
     };
   }
   return {
@@ -874,6 +891,7 @@ async function buildNativePersonaExport(
       exportedAt: new Date().toISOString(),
       data: {
         ...personaData,
+        spriteCatalog: personaId ? readOptionalSpriteCatalog(personaId) : undefined,
         // avatar, sprites and gallery are streamed here, in that order.
         [slot]: 0,
         metadata: {
@@ -1060,18 +1078,31 @@ export async function charactersRoutes(app: FastifyInstance) {
       search?: string;
       sort?: string;
       favoriteFilter?: string;
+      tag?: string | string[];
+      excludeTag?: string | string[];
+      folder?: string;
+      view?: string;
     };
   }>("/catalog", async (req) => {
     const page = parseLibraryPageQuery(req.query);
+    const list = (value: string | string[] | undefined) => (value === undefined ? [] : [value].flat());
     return catalog.list({
+      view: req.query.view === "summary" ? "summary" : undefined,
       includeBuiltIn: req.query.includeBuiltIn === "true",
       limit: page.limit,
       offset: page.offset,
       search: page.search,
       sort: page.sort,
       favoriteFilter: page.favoriteFilter,
+      tags: list(req.query.tag),
+      excludeTags: list(req.query.excludeTag),
+      folder: typeof req.query.folder === "string" ? req.query.folder : undefined,
     });
   });
+
+  app.get<{ Querystring: { includeBuiltIn?: string } }>("/catalog/tags", async (req) =>
+    catalog.tags(req.query.includeBuiltIn === "true"),
+  );
 
   app.post<{ Body: { ids?: unknown } }>("/summaries", async (req) => {
     const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter((id): id is string => typeof id === "string") : [];
@@ -1549,6 +1580,9 @@ export async function charactersRoutes(app: FastifyInstance) {
         comfyWorkflow: conn.comfyuiWorkflow || undefined,
         imageDefaults,
         quality: resolveConnectionImageQuality(conn),
+        animation:
+          body.animation && typeof body.animation === "object" ? resolveOpenAIGifAnimation(body.animation) : undefined,
+        debugMode: debugOverrideEnabled,
         fallback: imageFallback,
         onFallback: createReplyFallbackNotifier(reply),
       });
@@ -1557,6 +1591,9 @@ export async function charactersRoutes(app: FastifyInstance) {
         prompt: compiled.prompt,
       };
     } catch (err) {
+      if (err instanceof ImageAnimationUnsupportedError) {
+        return reply.status(400).send({ error: err.message, code: err.code });
+      }
       logger.error(err, "%s generation failed", isCharacterSheet ? "Character sheet" : "Avatar");
       return reply.status(500).send({
         error:
@@ -2408,11 +2445,8 @@ export async function charactersRoutes(app: FastifyInstance) {
         : {};
 
     const result = await importSTLorebook(
-      {
-        name: String(charData.name ?? "Character Lorebook"),
-        entries: book?.entries ?? [],
-        extensions: (book as Record<string, unknown> | null | undefined)?.extensions ?? {},
-      },
+      // The card book's own settings (description, scan depth, token budget, recursion) come along.
+      { ...book, name: String(charData.name ?? "Character Lorebook"), entries },
       app.db,
       {
         characterId: req.params.id,
@@ -2542,7 +2576,10 @@ export async function charactersRoutes(app: FastifyInstance) {
     if (!sprites) {
       return reply.status(413).send({ error: "Sprite collection exceeds compatible PNG export limits" });
     }
-    const v2Envelope = buildCompatibleCharacterExport(charData, sprites, { keepOnboarding: true });
+    const v2Envelope = buildCompatibleCharacterExport(charData, sprites, {
+      keepOnboarding: true,
+      spriteCatalog: readOptionalSpriteCatalog(char.id),
+    });
     const charaBase64 = Buffer.from(JSON.stringify(v2Envelope), "utf-8").toString("base64");
 
     // Read avatar image or create a minimal 1x1 transparent PNG fallback

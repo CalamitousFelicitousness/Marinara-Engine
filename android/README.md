@@ -14,7 +14,7 @@ The Android app is a Termux bootstrap + WebView shell for Marinara Engine. It is
 - If Termux blocks external commands, the APK copies the required `allow-external-apps` command to the clipboard and opens Termux so the user can paste it once.
 - The first APK bootstrap starts the exact embedded source commit with update checks skipped and leaves browser auto-open disabled so the authenticated Android app can connect. Later manual launches and updates are still owned by the Termux launcher.
 - APK-managed installs generate and provision a private per-install secret automatically to authenticate the WebView to the Termux server. Users do not create, copy, or enter it during the normal APK flow. This prevents another Android app from impersonating Marinara on the localhost port or inheriting loopback API access. Manual Termux-only installs retain their existing behavior.
-- The Termux launcher sizes the server's Node.js heap from the structured profile size (roughly twice the on-disk profile plus headroom) bounded by one quarter of known device RAM (or 1536 MiB when device memory cannot be read), starting at a 1 GiB baseline. Client builds, including in-app updates, run with their own 1536 MiB heap, capped at half of known device RAM but never below the 1280 MiB the build needs; the server retains its original limit. The RAM cap is rounded down in 128 MiB steps. Phones with less than about 3 GB of RAM can still run out of memory while building. Advanced users can keep an explicit override, for example `NODE_OPTIONS="--max-old-space-size=1536" ./start-termux.sh`, which applies to both build and server.
+- The Termux launcher sizes the server's Node.js heap from the structured profile size (roughly twice the on-disk profile plus headroom) bounded by one quarter of known device RAM (or 1536 MiB when device memory cannot be read), starting at a 1 GiB baseline. Client builds, including in-app updates, run with their own 1536 MiB heap, capped at half of known device RAM but never below the 1280 MiB the build needs; the server retains its original limit. The RAM cap is rounded down in 128 MiB steps. The shared package builds without its type-check or type declarations on Android, so it fits in the 1 GiB baseline. Phones with less than about 3 GB of RAM can still run out of memory while building. Advanced users can keep an explicit override, for example `NODE_OPTIONS="--max-old-space-size=1536" ./start-termux.sh`, which applies to both build and server.
 - The bootstrap fetches and checks out the exact source commit embedded in the APK. It does not fall back to a mutable branch when that commit cannot be fetched.
 - Client rebuilds use the complete low-memory build, including the isolated multiplayer guest assets. Image processing includes Sharp's matching WebAssembly fallback for Android, retained through dependency updates.
 - Release and versioning policy follows the main repo docs in [../CONTRIBUTING.md](../CONTRIBUTING.md): root `package.json` is canonical, Android `versionName` should match the app version, and `versionCode` must increase for every shipped APK.
@@ -48,7 +48,7 @@ The current native wrapper cannot join multiplayer rooms. Its JavaScript bridge 
 
 - **Java 17+** — `brew install openjdk@17` (macOS) or `pkg install openjdk-17` (Termux)
 - **Android SDK** — Set the `ANDROID_HOME` environment variable
-- **Gradle 9.6+** — required by Android Gradle Plugin 9.4; CI uses the pinned Gradle 9.8.2 distribution. Install with `brew install gradle` (macOS) or `pkg install gradle` (Termux).
+- **Gradle 9.6+** — the minimum for Android Gradle Plugin 9.5, the plugin version set in `android/build.gradle`; CI uses the pinned Gradle 9.8.2 distribution. Install with `brew install gradle` (macOS) or `pkg install gradle` (Termux).
 
 ### Build
 
@@ -117,7 +117,7 @@ cd android
 On a fresh Termux install, paste this command first:
 
 ```bash
-pkg update -y && pkg install -y git nodejs-lts && ([ -d "$HOME/Marinara-Engine/.git" ] || git clone https://github.com/Pasta-Devs/Marinara-Engine.git "$HOME/Marinara-Engine") && cd "$HOME/Marinara-Engine" && chmod +x start-termux.sh && ./start-termux.sh
+pkg upgrade -y && pkg install -y git nodejs-lts && ([ -d "$HOME/Marinara-Engine/.git" ] || git clone https://github.com/Pasta-Devs/Marinara-Engine.git "$HOME/Marinara-Engine") && cd "$HOME/Marinara-Engine" && chmod +x start-termux.sh && ./start-termux.sh
 ```
 
 After Marinara has been installed once, start it again in Termux:

@@ -35,6 +35,7 @@ import {
   resolveTTSVoiceForSpeaker,
   splitTTSChunks,
 } from "../../lib/tts-dialogue";
+import { normalizeGameTtsEmotion } from "../../lib/game-tts-emotion";
 import { ttsService } from "../../lib/tts-service";
 import { useGameAssetManifest } from "../../hooks/use-game-assets";
 import { useCombatRound } from "../../hooks/use-game";
@@ -1162,7 +1163,7 @@ export function GameCombatUI({
           try {
             const blob = await ttsService.synthesize(chunk, {
               speaker: line.character,
-              tone: line.expression,
+              tone: normalizeGameTtsEmotion(line.expression) ?? undefined,
               voice: line.voice,
               audioConnectionId: combatAudioConnectionId ?? undefined,
               cacheKey: chunkKey,

@@ -156,20 +156,20 @@ function setAgentFailureError(failures: AgentFailure[], force = false) {
   });
 }
 
-function showAgentFailuresError(failures: AgentFailure[], onRetry?: () => void) {
+function showAgentFailuresError(failures: AgentFailure[], onRetry?: () => void, code?: unknown) {
   const hasIllustratorFailure = failures.some((failure) => failure.agentType === "illustrator");
   setAgentFailureError(failures);
-  showError(
-    formatAgentFailuresToast(failures),
-    hasIllustratorFailure && onRetry
+  // A missing image Model fails again on retry, so the toast opens the Connections sidebar, whose Jobs box sets Images.
+  const action =
+    code === "image_connection_missing"
       ? {
-          action: {
-            label: "Try again",
-            onClick: () => onRetry(),
-          },
+          label: translate("connections.defaults.setUp"),
+          onClick: () => useUIStore.getState().openRightPanel("connections"),
         }
-      : undefined,
-  );
+      : hasIllustratorFailure && onRetry
+        ? { label: "Try again", onClick: () => onRetry() }
+        : null;
+  showError(formatAgentFailuresToast(failures), action ? { action } : undefined);
 }
 
 const shownAgentWarnings = new Set<string>();
@@ -2751,6 +2751,14 @@ export function useGenerate() {
               break;
             }
 
+            case "reply_trimmed": {
+              // "Trim incomplete sentences" shortened the reply; the content_replace that follows shows it (#8643).
+              if (!params.autonomous) {
+                toast.info(translate("chat.reply.trimmedIncompleteEnding"), { id: "reply-trimmed-incomplete-ending" });
+              }
+              break;
+            }
+
             case "generation_discarded": {
               const discarded = event.data as { characterId?: unknown } | null;
               const discardedCharacterId =
@@ -3176,6 +3184,7 @@ export function useGenerate() {
                 agentName?: string | null;
                 error: string;
                 retryTarget?: unknown;
+                code?: unknown;
               };
               if (errData.agentType === "illustrator" && errData.retryTarget !== "background") {
                 illustrationSettled = true;
@@ -3192,13 +3201,17 @@ export function useGenerate() {
               // this" error it just set (L2) — tracked apart from replyErrorSeen so a
               // successful completion can replace a stale "Generate reply" row with this.
               agentFailuresThisRun = mergeAgentFailures(agentFailuresThisRun, [failure]);
-              showAgentFailuresError([failure], () => {
-                void retryAgentsRef.current?.(
-                  params.chatId,
-                  [failure.agentType],
-                  withIllustratorFailureTargets(undefined, [failure]),
-                );
-              });
+              showAgentFailuresError(
+                [failure],
+                () => {
+                  void retryAgentsRef.current?.(
+                    params.chatId,
+                    [failure.agentType],
+                    withIllustratorFailureTargets(undefined, [failure]),
+                  );
+                },
+                errData.code,
+              );
               break;
             }
 
@@ -4345,19 +4358,24 @@ export function useGenerate() {
                 agentName?: string | null;
                 error: string;
                 retryTarget?: unknown;
+                code?: unknown;
               };
               hasError = true;
               const failure = toAgentFailure(errData);
               const mergedFailures = mergeAgentFailures(failedRetryFailures, [failure]);
               failedRetryFailures.splice(0, failedRetryFailures.length, ...mergedFailures);
               setFailedAgentFailures(failedRetryFailures, chatId);
-              showAgentFailuresError([failure], () => {
-                void retryAgentsRef.current?.(
-                  chatId,
-                  [failure.agentType],
-                  withIllustratorFailureTargets(options, [failure]),
-                );
-              });
+              showAgentFailuresError(
+                [failure],
+                () => {
+                  void retryAgentsRef.current?.(
+                    chatId,
+                    [failure.agentType],
+                    withIllustratorFailureTargets(options, [failure]),
+                  );
+                },
+                errData.code,
+              );
               break;
             }
             case "error": {

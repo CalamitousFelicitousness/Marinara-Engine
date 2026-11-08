@@ -3,6 +3,7 @@
 // active chat have stored (memory, tracker state, custom
 // outputs), manually or via AI-assisted selection rewrites.
 // ──────────────────────────────────────────────
+import { isConnectionFlagTrue } from "../../lib/connection-filters";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -57,6 +58,7 @@ import { useUIStore } from "../../stores/ui.store";
 import { useGameStateStore } from "../../stores/game-state.store";
 import { Modal } from "../ui/Modal";
 import { useTranslation as useUiTranslation } from "react-i18next";
+import { ConnectionSelect } from "../connections/ConnectionSelect";
 
 export interface AgentSuiteAgent {
   id: string;
@@ -301,8 +303,8 @@ function DataBlock({
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-            <span className="text-[0.6875rem] font-semibold">{label}</span>
-            <span className="rounded bg-[var(--secondary)]/55 px-1 py-0.5 text-[0.5rem] uppercase tracking-wide text-[var(--muted-foreground)]">
+            <span className="text-[0.6875rem] max-sm:text-[13px] font-semibold">{label}</span>
+            <span className="rounded bg-[var(--secondary)]/55 px-1 py-0.5 text-[0.5rem] max-sm:text-[13px] uppercase tracking-wide text-[var(--muted-foreground)]">
               {mode === "json"
                 ? localizeUi("ui.agents.tooleditor.json")
                 : localizeUi("ui.chat.chatbranchselector.text")}
@@ -314,7 +316,9 @@ function DataBlock({
               />
             )}
           </div>
-          {description && <p className="text-[0.625rem] text-[var(--muted-foreground)]">{description}</p>}
+          {description && (
+            <p className="text-[0.625rem] max-sm:text-[13px] text-[var(--muted-foreground)]">{description}</p>
+          )}
         </div>
         <button
           type="button"
@@ -324,7 +328,7 @@ function DataBlock({
           }}
           disabled={disabled}
           className={cn(
-            "inline-flex min-h-7 shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[0.625rem] font-medium ring-1 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-50",
+            "inline-flex min-h-7 shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[0.625rem] max-sm:text-[13px] font-medium ring-1 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-50",
             aiOpen
               ? "bg-[var(--primary)]/10 text-[var(--primary)] ring-[var(--primary)]/30"
               : "bg-[var(--secondary)] text-[var(--foreground)] ring-[var(--border)] hover:bg-[var(--accent)]",
@@ -366,7 +370,7 @@ function DataBlock({
           disabled={disabled || busy}
           rows={Math.min(14, Math.max(3, currentText.split("\n").length))}
           spellCheck={false}
-          className="mt-2 w-full resize-y rounded-md border border-[var(--input)] bg-[var(--secondary)]/45 px-2 py-1.5 font-mono text-[0.625rem] leading-relaxed text-[var(--foreground)] outline-none transition-colors focus:border-[var(--ring)] focus:ring-1 focus:ring-[var(--ring)] disabled:opacity-60"
+          className="mt-2 w-full resize-y rounded-md border border-[var(--input)] bg-[var(--secondary)]/45 px-2 py-1.5 font-mono text-[0.625rem] max-sm:text-[13px] leading-relaxed text-[var(--foreground)] outline-none transition-colors focus:border-[var(--ring)] focus:ring-1 focus:ring-[var(--ring)] disabled:opacity-60"
         />
       )}
 
@@ -381,7 +385,7 @@ function DataBlock({
             }
           }}
         >
-          <p className="text-[0.625rem] text-[var(--muted-foreground)]">
+          <p className="text-[0.625rem] max-sm:text-[13px] text-[var(--muted-foreground)]">
             {selection && selection.start < selection.end
               ? localizeUi("ui.chat.datablock.rewritingTheSelectedValue1Characters", {
                   value1: selection.end - selection.start,
@@ -395,18 +399,18 @@ function DataBlock({
             maxLength={4000}
             placeholder={localizeUi("ui.chat.datablock.howShouldThisTextChangeEGFixThe")}
             spellCheck={false}
-            className="w-full resize-y rounded-md border border-[var(--input)] bg-[var(--background)]/60 px-2 py-1.5 text-[0.625rem] leading-relaxed text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-foreground)] focus:border-[var(--ring)] focus:ring-1 focus:ring-[var(--ring)]"
+            className="w-full resize-y rounded-md border border-[var(--input)] bg-[var(--background)]/60 px-2 py-1.5 text-[0.625rem] max-sm:text-[13px] leading-relaxed text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-foreground)] focus:border-[var(--ring)] focus:ring-1 focus:ring-[var(--ring)]"
           />
           <button
             type="button"
             onClick={() => setContextOpen((open) => !open)}
-            className="inline-flex min-h-7 items-center gap-1 rounded-md border border-[var(--border)]/70 bg-[var(--secondary)]/45 px-2 py-1 text-[0.625rem] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--accent)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--ring)]"
+            className="inline-flex min-h-7 items-center gap-1 rounded-md border border-[var(--border)]/70 bg-[var(--secondary)]/45 px-2 py-1 text-[0.625rem] max-sm:text-[13px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--accent)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--ring)]"
             title={localizeUi("ui.chat.datablock.attachCharacterCardsOrLorebookEntriesSoTheModel")}
           >
             <Paperclip size="0.6875rem" />
             {localizeUi("ui.chat.datablock.addContext")}
             {contextCount > 0 && (
-              <span className="rounded-full bg-[var(--primary)]/15 px-1.5 py-0.5 text-[0.5625rem] font-medium text-[var(--primary)]">
+              <span className="rounded-full bg-[var(--primary)]/15 px-1.5 py-0.5 text-[0.5625rem] max-sm:text-[13px] font-medium text-[var(--primary)]">
                 {contextCount}
               </span>
             )}
@@ -414,26 +418,21 @@ function DataBlock({
           </button>
           {contextOpen && contextPicker}
           <div className="flex flex-wrap items-center gap-1.5">
-            <select
-              value={rewriteConnectionId}
-              onChange={(event) => onRewriteConnectionChange(event.target.value)}
-              className="min-w-0 flex-1 rounded-md bg-[var(--secondary)] px-2 py-1.5 text-[0.625rem] outline-none ring-1 ring-[var(--border)] transition-shadow focus:ring-[var(--primary)]/40"
-            >
-              {connectionOptions.length === 0 && (
-                <option value="">{localizeUi("ui.chat.datablock.noConnectionsAvailable")}</option>
-              )}
-              {connectionOptions.map((conn) => (
-                <option key={conn.id} value={conn.id}>
-                  {conn.name}
-                  {conn.model ? localizeUi("ui.chat.datablock.value1", { value1: conn.model }) : ""}
-                </option>
-              ))}
-            </select>
+            <ConnectionSelect
+              job={localizeUi("connections.picker.job.agents")}
+              required
+              value={rewriteConnectionId || null}
+              onChange={(id) => onRewriteConnectionChange(id ?? "")}
+              defaultLabel={
+                connectionOptions.length === 0 ? localizeUi("ui.chat.datablock.noConnectionsAvailable") : undefined
+              }
+              rowFilter={(row) => connectionOptions.some((conn) => conn.id === row.id)}
+            />
             <button
               type="button"
               onClick={handleRewrite}
               disabled={disabled || rewrite.isPending || !instruction.trim() || !rewriteConnectionId}
-              className="inline-flex min-h-7 items-center gap-1 rounded-md bg-[var(--primary)] px-2.5 py-1 text-[0.625rem] font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex min-h-7 items-center gap-1 rounded-md bg-[var(--primary)] px-2.5 py-1 text-[0.625rem] max-sm:text-[13px] font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {rewrite.isPending ? <Loader2 size="0.6875rem" className="animate-spin" /> : <Wand2 size="0.6875rem" />}
               {rewrite.isPending ? localizeUi("ui.chat.datablock.rewriting") : localizeUi("ui.chat.datablock.rewrite")}
@@ -443,7 +442,10 @@ function DataBlock({
       )}
 
       {(error ?? jsonError) && (
-        <div role="alert" className="mt-1.5 text-[0.5625rem] text-[var(--marinara-app-accent-static)]">
+        <div
+          role="alert"
+          className="mt-1.5 text-[0.5625rem] max-sm:text-[13px] text-[var(--marinara-app-accent-static)]"
+        >
           {error ?? jsonError}
         </div>
       )}
@@ -457,7 +459,7 @@ function DataBlock({
             setSelection(null);
           }}
           disabled={!isDirty || busy}
-          className="inline-flex min-h-7 items-center gap-1 rounded-md border border-[var(--border)] px-2 py-1 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex min-h-7 items-center gap-1 rounded-md border border-[var(--border)] px-2 py-1 text-[0.625rem] max-sm:text-[13px] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-40"
         >
           <RotateCcw size="0.625rem" />
           {localizeUi("ui.characters.charactercliptrimmodal.reset")}
@@ -466,7 +468,7 @@ function DataBlock({
           type="button"
           onClick={handleSave}
           disabled={disabled || !isDirty || busy || jsonError !== null}
-          className="inline-flex min-h-7 items-center gap-1 rounded-md bg-[var(--primary)] px-2.5 py-1 text-[0.625rem] font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex min-h-7 items-center gap-1 rounded-md bg-[var(--primary)] px-2.5 py-1 text-[0.625rem] max-sm:text-[13px] font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-50"
         >
           {saving ? <Loader2 size="0.625rem" className="animate-spin" /> : <Save size="0.625rem" />}
           {saving ? localizeUi("ui.noodle.stageprofileform.saving") : localizeUi("ui.noodle.noodlehome.save")}
@@ -565,7 +567,8 @@ export function AgentSuiteModal({ chat, open, onClose, onCloseGuardChange, agent
     }
     const agentDefault = connectionOptions.find((c) => c.defaultForAgents === true || c.defaultForAgents === "true");
     const chatConnection = connectionOptions.find((c) => c.id === chat.connectionId);
-    return (agentDefault ?? chatConnection ?? connectionOptions[0])?.id ?? "";
+    const main = connectionOptions.find((c) => isConnectionFlagTrue((c as { isDefault?: unknown }).isDefault));
+    return (agentDefault ?? chatConnection ?? main ?? connectionOptions[0])?.id ?? "";
   }, [chat.connectionId, connectionOptions, rewriteConnectionId]);
 
   const handleBlockDirtyChange = useCallback((blockId: string, dirty: boolean) => {
@@ -817,17 +820,17 @@ export function AgentSuiteModal({ chat, open, onClose, onCloseGuardChange, agent
 
   const contextPicker: ReactNode = (
     <div className="space-y-1.5 rounded-md border border-[var(--border)] bg-[var(--background)]/40 p-2">
-      <p className="text-[0.5625rem] text-[var(--muted-foreground)]">
+      <p className="text-[0.5625rem] max-sm:text-[13px] text-[var(--muted-foreground)]">
         {localizeUi("ui.chat.agentsuitemodal.attachedSourcesGroundTheRewriteTheSelectionAppliesTo")}
       </p>
       {contextSourcesLoading ? (
-        <p className="py-1 text-center text-[0.625rem] text-[var(--muted-foreground)]">
+        <p className="py-1 text-center text-[0.625rem] max-sm:text-[13px] text-[var(--muted-foreground)]">
           {localizeUi("ui.chat.agentsuitemodal.loadingContextSources")}
         </p>
       ) : contextSources.length === 0 ? (
         <p
           className={cn(
-            "py-1 text-center text-[0.625rem]",
+            "py-1 text-center text-[0.625rem] max-sm:text-[13px]",
             entriesError ? "text-[var(--destructive)]" : "text-[var(--muted-foreground)]",
           )}
         >
@@ -838,20 +841,20 @@ export function AgentSuiteModal({ chat, open, onClose, onCloseGuardChange, agent
       ) : (
         <>
           {entriesError && (
-            <p className="text-[0.5625rem] text-[var(--destructive)]">
+            <p className="text-[0.5625rem] max-sm:text-[13px] text-[var(--destructive)]">
               {localizeUi("ui.chat.agentsuitemodal.couldnTLoadLorebookEntriesShowingCharacterCardsOnly")}
             </p>
           )}
           {groupedContextSources.map(([group, sources]) => (
             <div key={group}>
-              <p className="mb-0.5 text-[0.5625rem] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+              <p className="mb-0.5 text-[0.5625rem] max-sm:text-[13px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
                 {group}
               </p>
               <div className="max-h-32 space-y-0.5 overflow-y-auto">
                 {sources.map((source) => (
                   <label
                     key={source.key}
-                    className="flex cursor-pointer items-center gap-1.5 rounded px-1 py-0.5 text-[0.625rem] transition-colors hover:bg-[var(--accent)]/40"
+                    className="flex cursor-pointer items-center gap-1.5 rounded px-1 py-0.5 text-[0.625rem] max-sm:text-[13px] transition-colors hover:bg-[var(--accent)]/40"
                   >
                     <input
                       type="checkbox"
@@ -860,7 +863,7 @@ export function AgentSuiteModal({ chat, open, onClose, onCloseGuardChange, agent
                       className="h-3 w-3 shrink-0 accent-[var(--primary)]"
                     />
                     <span className="min-w-0 flex-1 truncate">{source.display}</span>
-                    <span className="shrink-0 text-[0.5rem] text-[var(--muted-foreground)]">
+                    <span className="shrink-0 text-[0.5rem] max-sm:text-[13px] text-[var(--muted-foreground)]">
                       ~{estimateTextTokens(source.content).toLocaleString()}{" "}
                       {localizeUi("ui.agents.agenteditor.tokens")}
                     </span>
@@ -874,7 +877,7 @@ export function AgentSuiteModal({ chat, open, onClose, onCloseGuardChange, agent
       {selectedContextSources.length > 0 && (
         <p
           className={cn(
-            "text-[0.5625rem]",
+            "text-[0.5625rem] max-sm:text-[13px]",
             contextOverLimit ? "text-[var(--destructive)]" : "text-[var(--muted-foreground)]",
           )}
         >
@@ -899,7 +902,7 @@ export function AgentSuiteModal({ chat, open, onClose, onCloseGuardChange, agent
       chatFloatingPanel
     >
       {agents.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-[var(--border)] px-3 py-6 text-center text-[0.6875rem] text-[var(--muted-foreground)]">
+        <div className="rounded-lg border border-dashed border-[var(--border)] px-3 py-6 text-center text-[0.6875rem] max-sm:text-[13px] text-[var(--muted-foreground)]">
           {localizeUi("ui.chat.agentsuitemodal.noAgentsAreActiveInThisChatAddAgents")}
         </div>
       ) : (
@@ -930,8 +933,8 @@ export function AgentSuiteModal({ chat, open, onClose, onCloseGuardChange, agent
                       : "bg-[var(--secondary)] hover:bg-[var(--accent)]",
                   )}
                 >
-                  <span className="truncate text-[0.6875rem] font-medium">{agent.name}</span>
-                  <span className="text-[0.5625rem] uppercase tracking-wide text-[var(--muted-foreground)]">
+                  <span className="truncate text-[0.6875rem] max-sm:text-[13px] font-medium">{agent.name}</span>
+                  <span className="text-[0.5625rem] max-sm:text-[13px] uppercase tracking-wide text-[var(--muted-foreground)]">
                     {CATEGORY_LABELS[agent.category] ?? agent.category}
                   </span>
                 </button>
@@ -947,12 +950,14 @@ export function AgentSuiteModal({ chat, open, onClose, onCloseGuardChange, agent
                   <Bot size="0.875rem" className="mt-0.5 shrink-0 text-[var(--primary)]" />
                   <div className="min-w-0 flex-1">
                     <h3 className="text-xs font-semibold">{selectedAgent.name}</h3>
-                    <p className="text-[0.625rem] text-[var(--muted-foreground)]">{selectedAgent.description}</p>
+                    <p className="text-[0.625rem] max-sm:text-[13px] text-[var(--muted-foreground)]">
+                      {selectedAgent.description}
+                    </p>
                   </div>
                 </div>
 
                 {isAgentProcessing && (
-                  <div className="flex items-center gap-1.5 rounded-lg bg-amber-400/10 px-2.5 py-2 text-[0.625rem] text-amber-400/90 ring-1 ring-amber-400/30">
+                  <div className="flex items-center gap-1.5 rounded-lg bg-amber-400/10 px-2.5 py-2 text-[0.625rem] max-sm:text-[13px] text-amber-400/90 ring-1 ring-amber-400/30">
                     <AlertTriangle size="0.75rem" className="shrink-0" />
                     {localizeUi("ui.chat.agentsuitemodal.agentsAreCurrentlyRunningForThisChatSavingIs")}
                   </div>
@@ -961,7 +966,7 @@ export function AgentSuiteModal({ chat, open, onClose, onCloseGuardChange, agent
                 {/* Stored memory */}
                 <section className="space-y-2">
                   <div className="flex items-center justify-between gap-2">
-                    <h4 className="text-[0.6875rem] font-semibold text-[var(--muted-foreground)]">
+                    <h4 className="text-[0.6875rem] max-sm:text-[13px] font-semibold text-[var(--muted-foreground)]">
                       {localizeUi("ui.chat.agentsuitemodal.storedMemory")}
                     </h4>
                     <div className="flex items-center gap-1.5">
@@ -969,7 +974,7 @@ export function AgentSuiteModal({ chat, open, onClose, onCloseGuardChange, agent
                         <button
                           type="button"
                           onClick={() => setSpoilersRevealed((v) => !v)}
-                          className="inline-flex min-h-7 items-center gap-1 rounded-md border border-[var(--border)] px-2 py-1 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--ring)]"
+                          className="inline-flex min-h-7 items-center gap-1 rounded-md border border-[var(--border)] px-2 py-1 text-[0.625rem] max-sm:text-[13px] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--ring)]"
                         >
                           {spoilersRevealed ? <EyeOff size="0.625rem" /> : <Eye size="0.625rem" />}
                           {spoilersRevealed
@@ -982,7 +987,7 @@ export function AgentSuiteModal({ chat, open, onClose, onCloseGuardChange, agent
                           type="button"
                           onClick={clearAgentMemory}
                           disabled={isAgentProcessing}
-                          className="inline-flex min-h-7 items-center gap-1 rounded-md border border-[var(--border)] px-2 py-1 text-[0.625rem] text-[var(--destructive)] transition-colors hover:bg-[var(--destructive)]/15 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-40"
+                          className="inline-flex min-h-7 items-center gap-1 rounded-md border border-[var(--border)] px-2 py-1 text-[0.625rem] max-sm:text-[13px] text-[var(--destructive)] transition-colors hover:bg-[var(--destructive)]/15 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           <Trash2 size="0.625rem" />
                           {localizeUi("ui.chat.agentsuitemodal.clearMemory")}
@@ -991,22 +996,22 @@ export function AgentSuiteModal({ chat, open, onClose, onCloseGuardChange, agent
                     </div>
                   </div>
                   {memoryQuery.isLoading && (
-                    <p className="py-2 text-center text-[0.625rem] text-[var(--muted-foreground)]">
+                    <p className="py-2 text-center text-[0.625rem] max-sm:text-[13px] text-[var(--muted-foreground)]">
                       {localizeUi("ui.chat.agentsuitemodal.loadingStoredMemory")}
                     </p>
                   )}
                   {memoryQuery.isError && (
-                    <p className="rounded-md border border-[var(--destructive)]/25 bg-[var(--destructive)]/10 px-2 py-1.5 text-center text-[0.625rem] text-[var(--destructive)]">
+                    <p className="rounded-md border border-[var(--destructive)]/25 bg-[var(--destructive)]/10 px-2 py-1.5 text-center text-[0.625rem] max-sm:text-[13px] text-[var(--destructive)]">
                       {localizeUi("ui.chat.agentsuitemodal.couldNotLoadThisAgentSMemory")}
                     </p>
                   )}
                   {!memoryQuery.isLoading && !memoryQuery.isError && memoryEntries.length === 0 && (
-                    <p className="rounded-md border border-dashed border-[var(--border)] px-2 py-2 text-center text-[0.625rem] text-[var(--muted-foreground)]">
+                    <p className="rounded-md border border-dashed border-[var(--border)] px-2 py-2 text-center text-[0.625rem] max-sm:text-[13px] text-[var(--muted-foreground)]">
                       {localizeUi("ui.chat.agentsuitemodal.noStoredMemoryForThisAgentInThisChat")}
                     </p>
                   )}
                   {hideSpoilers ? (
-                    <p className="rounded-md border border-dashed border-[var(--border)] px-2 py-2 text-center text-[0.625rem] text-[var(--muted-foreground)]">
+                    <p className="rounded-md border border-dashed border-[var(--border)] px-2 py-2 text-center text-[0.625rem] max-sm:text-[13px] text-[var(--muted-foreground)]">
                       {localizeUi("ui.chat.agentsuitemodal.containsHiddenNarrativeSpoilersUseRevealSpoilersToView")}
                     </p>
                   ) : (
@@ -1037,7 +1042,7 @@ export function AgentSuiteModal({ chat, open, onClose, onCloseGuardChange, agent
                 {trackerSlice && (
                   <section className="space-y-2">
                     <div className="flex items-center justify-between gap-2">
-                      <h4 className="text-[0.6875rem] font-semibold text-[var(--muted-foreground)]">
+                      <h4 className="text-[0.6875rem] max-sm:text-[13px] font-semibold text-[var(--muted-foreground)]">
                         {localizeUi("ui.chat.agentsuitemodal.trackerData")}
                       </h4>
                       <button
@@ -1049,24 +1054,24 @@ export function AgentSuiteModal({ chat, open, onClose, onCloseGuardChange, agent
                             initialSectionId: selectedAgent?.id,
                           })
                         }
-                        className="inline-flex min-h-7 items-center gap-1 rounded-md px-2 py-1 text-[0.625rem] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--ring)]"
+                        className="inline-flex min-h-7 items-center gap-1 rounded-md px-2 py-1 text-[0.625rem] max-sm:text-[13px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--ring)]"
                       >
                         <Braces size="0.6875rem" />
                         {localizeUi("ui.chat.agentsuitemodal.openStateEditor")}
                       </button>
                     </div>
                     {gameStateQuery.isLoading && (
-                      <p className="py-2 text-center text-[0.625rem] text-[var(--muted-foreground)]">
+                      <p className="py-2 text-center text-[0.625rem] max-sm:text-[13px] text-[var(--muted-foreground)]">
                         {localizeUi("ui.chat.agentsuitemodal.loadingTrackerData")}
                       </p>
                     )}
                     {gameStateQuery.isError && (
-                      <p className="rounded-md border border-[var(--destructive)]/25 bg-[var(--destructive)]/10 px-2 py-1.5 text-center text-[0.625rem] text-[var(--destructive)]">
+                      <p className="rounded-md border border-[var(--destructive)]/25 bg-[var(--destructive)]/10 px-2 py-1.5 text-center text-[0.625rem] max-sm:text-[13px] text-[var(--destructive)]">
                         {localizeUi("ui.chat.agentsuitemodal.couldNotLoadTrackerData")}
                       </p>
                     )}
                     {!gameStateQuery.isLoading && !gameStateQuery.isError && !gameStateQuery.data && (
-                      <p className="rounded-md border border-dashed border-[var(--border)] px-2 py-2 text-center text-[0.625rem] text-[var(--muted-foreground)]">
+                      <p className="rounded-md border border-dashed border-[var(--border)] px-2 py-2 text-center text-[0.625rem] max-sm:text-[13px] text-[var(--muted-foreground)]">
                         {localizeUi("ui.chat.agentsuitemodal.noTrackerDataRecordedForThisChatYet")}
                       </p>
                     )}
@@ -1093,13 +1098,13 @@ export function AgentSuiteModal({ chat, open, onClose, onCloseGuardChange, agent
                         />
                         {selectedAgent.id === "world-state" && (gameStateQuery.data.recentEvents?.length ?? 0) > 0 && (
                           <div className="rounded-lg border border-[var(--border)] bg-[var(--secondary)]/35 p-2.5">
-                            <span className="text-[0.6875rem] font-semibold">
+                            <span className="text-[0.6875rem] max-sm:text-[13px] font-semibold">
                               {localizeUi("ui.chat.agentsuitemodal.recentEvents")}
                             </span>
-                            <p className="text-[0.625rem] text-[var(--muted-foreground)]">
+                            <p className="text-[0.625rem] max-sm:text-[13px] text-[var(--muted-foreground)]">
                               {localizeUi("ui.chat.agentsuitemodal.maintainedByTheAgentAndRewrittenOnEachRun")}
                             </p>
-                            <ul className="mt-1.5 list-disc space-y-0.5 pl-4 text-[0.625rem] text-[var(--muted-foreground)]">
+                            <ul className="mt-1.5 list-disc space-y-0.5 pl-4 text-[0.625rem] max-sm:text-[13px] text-[var(--muted-foreground)]">
                               {gameStateQuery.data.recentEvents.map((event, index) => (
                                 <li key={index}>{event}</li>
                               ))}
@@ -1114,16 +1119,16 @@ export function AgentSuiteModal({ chat, open, onClose, onCloseGuardChange, agent
                 {/* Custom agent outputs */}
                 {selectedAgent.category === "custom" && (
                   <section className="space-y-2">
-                    <h4 className="text-[0.6875rem] font-semibold text-[var(--muted-foreground)]">
+                    <h4 className="text-[0.6875rem] max-sm:text-[13px] font-semibold text-[var(--muted-foreground)]">
                       {localizeUi("ui.chat.agentsuitemodal.recentOutputs")}
                     </h4>
                     {customRunsQuery.isLoading && (
-                      <p className="py-2 text-center text-[0.625rem] text-[var(--muted-foreground)]">
+                      <p className="py-2 text-center text-[0.625rem] max-sm:text-[13px] text-[var(--muted-foreground)]">
                         {localizeUi("ui.chat.agentsuitemodal.loadingOutputs")}
                       </p>
                     )}
                     {!customRunsQuery.isLoading && customRuns.length === 0 && (
-                      <p className="rounded-md border border-dashed border-[var(--border)] px-2 py-2 text-center text-[0.625rem] text-[var(--muted-foreground)]">
+                      <p className="rounded-md border border-dashed border-[var(--border)] px-2 py-2 text-center text-[0.625rem] max-sm:text-[13px] text-[var(--muted-foreground)]">
                         {localizeUi("ui.chat.agentsuitemodal.noStoredOutputsFromThisAgentInThisChat")}
                       </p>
                     )}

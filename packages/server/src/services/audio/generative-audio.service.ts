@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { addAbortListener } from "node:events";
 import { access, mkdir, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -37,6 +37,33 @@ type ResolvedConfig = GenerativeAudioProviderConfig & {
   legacyId: string | null;
 };
 const warnedOptionalMigrationFailures = new WeakSet<DB>();
+// The in-memory request identity includes credentials so edits cannot reuse an old job.
+// A process-local HMAC keeps that identity opaque; it is not a stored password verifier.
+const testRequestIdentityKey = randomBytes(32);
+
+function testRequestIdentity(config: ResolvedConfig) {
+  // Use the credential as the HMAC key. It changes the identity after a credential edit without putting the secret
+  // in the hashed message or using a password hash as a verifier.
+  const identityKey = config.apiKey || testRequestIdentityKey;
+  return createHmac("sha256", identityKey)
+    .update(
+      JSON.stringify([
+        config.id,
+        config.source,
+        config.baseUrl,
+        config.model,
+        config.soundEffectsModel,
+        config.callbackUrl,
+        config.musicEndpoint,
+        config.soundEffectsEndpoint,
+        config.requestFormat,
+        config.responseFormat,
+        config.music,
+        config.soundEffects,
+      ]),
+    )
+    .digest("hex");
+}
 
 export class AudioGenerationConfigurationError extends Error {
   constructor(
@@ -59,7 +86,12 @@ export async function resolveGenerativeAudioConfig(
   const connections = createConnectionsStorage(db);
   let row;
   if (requestedId) {
-    const candidate = await connections.getWithKey(requestedId);
+    let candidate = await connections.getWithKey(requestedId);
+    if (!candidate) {
+      // A remote connection that only lacks its key is still chosen: readiness reports it unavailable.
+      const lacking = await connections.unavailableReason(requestedId);
+      if (lacking?.reason === "needs_key" && lacking.row) candidate = { ...lacking.row, apiKey: "" };
+    }
     row =
       candidate?.provider === "audio_generation"
         ? candidate
@@ -246,8 +278,9 @@ async function compose(
   // Paced before the provider deadline starts, so waiting for a slot never eats the composition's budget.
   const slot = reserveOutboundSlot(config.id);
   if (slot) await slot;
+  // Sound effects send no length, so the provider fits it to the cue (Custom endpoints default to 5 s).
   const bytes = await generateAudioBytes(config, kind, prompt, {
-    lengthMs: context?.lengthMs ?? (context ? 120_000 : 5_000),
+    lengthMs: context ? (context.lengthMs ?? 120_000) : undefined,
   });
   await mkdir(directory, { recursive: true });
   const temporary = join(directory, `.${hash}.${randomUUID()}.tmp`);
@@ -313,8 +346,8 @@ export async function generateAudioAsset(
     : `${cacheIdentity(config, request.kind)}${request.kind}\0${prompt.toLowerCase()}`;
   const isConnectionTest = context && "scope" in context && context.scope === "connection-test";
   const key = isConnectionTest
-    ? `${directoryKey}\0${createHash("sha256")
-        .update(JSON.stringify([config, request.kind, prompt, context.lengthMs ?? 120_000]))
+    ? `${directoryKey}\0${createHmac("sha256", testRequestIdentityKey)
+        .update(JSON.stringify([testRequestIdentity(config), request.kind, prompt, context.lengthMs ?? 120_000]))
         .digest("hex")}`
     : directoryKey;
   let pending = locks.get(key);

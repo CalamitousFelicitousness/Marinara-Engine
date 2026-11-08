@@ -479,65 +479,30 @@ fork-owned modules so a merge has small surfaces to reconcile. `importCharacterB
 gained a positional argument rather than an options object: upstream owns that
 signature and both its call sites, and reshaping them would conflict on every sync.
 
-### Model pickers show what a call costs
+### Audio model pickers show what a call costs
 
-A connection could not say what it charges. `RemoteModel` carried an id, a name and two token
-limits, and the listing that supplies them was fetched in the shape that omits prices.
+Text model prices come from upstream's catalog (`services/connections/model-catalog.ts`, shown by
+`CostBadge`). Audio needs its own shape: there is no unit field on an audio row, the vendor names the
+unit by which key it fills, and across NanoGPT's 80 published audio models it fills six of them. A flat
+per-generation fee and a per-second rate cannot be expressed as each other, so `AudioModelPricing`
+carries the unit with the amount. A block price (`per_prompt_char_block: 0.09` over
+`prompt_char_block_size: 300`) becomes `$0.30 per thousand characters`.
 
-Two providers publish per-model prices and they agree on nothing but the field name. NanoGPT states
-its unit (`unit: "per_million_tokens"`) and prices cache reads per _thousand_ tokens in that same
-object. OpenRouter carries no unit at all, prices per token as decimal strings, and writes `-1`
-where a router model's backend, and so its cost, is not chosen until the request runs. So
-`services/llm/model-pricing.ts` reads a price only where the unit is known: the row declares one, or
-the provider is OpenRouter. A custom endpoint serving an unrecognized pricing field is left alone
-rather than scaled by a guess, which also means a custom connection pointed at NanoGPT still prices,
-because the unit travels with the row rather than with the provider label.
-
-Over the live listings that reads 627 of 629 NanoGPT models and 391 of 396 OpenRouter ones. Every
-refusal is a model that says its price varies: the two NanoGPT rows carry `note:
-"varies_by_modality"` and no rates at all, and all five OpenRouter rows are routers using the `-1`
-sentinel. Zero is a real price and renders as free; negative never renders.
-
-A price is also the wrong thing to show where a plan already covers the call. The allowance comes
-from upstream's subscription usage feature (#6686, `useSubscriptionUsage`, NanoGPT readings only), and
-`isCoveredBySubscription` in `lib/model-cost.ts` reads a model as covered instead of priced only
-while that usage reports the subscription active, the model row says `subscriptionIncluded`, and
-any reported quota has tokens left, so the price returns once the allowance is gone.
-
-Audio needed a different shape. There is no unit field on an audio row: the vendor names the unit by
-which key it fills, and across the 80 published models it fills six of them. A flat per-generation
-fee and a per-second rate cannot be expressed as each other, so `AudioModelPricing` carries the unit
-with the amount instead of normalizing it away. Two conversions are still real. A block price
-(`per_prompt_char_block: 0.09` over `prompt_char_block_size: 300`) is the same dimension at another
-scale and becomes `$0.30 per thousand characters`.
-
-And a rate of zero is not a rate: it is how this catalog says a dimension does not bill. Six music
-models publish `per_second: 0` beside the `minimum` that is their entire price, and `vibevoice`
-publishes `per_thousand_chars: 0` beside a flat `per_generation`. Reading the first rate found
-printed "free" on seven models that bill up to fifteen cents a generation. Dropping the zeros leaves
-exactly one rate or none across all 80 models, so no precedence rule is needed; where none is left,
-the floor is the price and it bills per generation.
+A rate of zero is how this catalog says a dimension does not bill. Six music models publish
+`per_second: 0` beside the `minimum` that is their entire price, and `vibevoice` publishes
+`per_thousand_chars: 0` beside a flat `per_generation`. Dropping the zeros leaves exactly one rate or
+none across all 80 models; where none is left, the floor is the price and it bills per generation.
 
 The same listing fixed a filter that never filtered. `parseNanoGptModelOptions` rejected a row only
-when `capabilities.text_to_speech === false`, but only the 26 speech rows carry that flag at all and
-the other 37 omit it. Absent is not false, so every music, lyrics, voice-clone and analysis model
-reached the voice dropdown, which is exactly what the function's comment said it prevented. Rows now
-carry a `lane` read from their category, with a positive capability claim outranking it, and the
-voice picker keeps speech. One listing serves every lane, so the caller choosing a voice and the
-caller choosing a score read one response.
+when `capabilities.text_to_speech === false`, but only the 26 speech rows carry that flag and the other
+37 omit it, so every music, lyrics, voice-clone and analysis model reached the voice dropdown. Rows now
+carry a `lane` read from their category, with a positive capability claim outranking it, and the voice
+picker keeps speech.
 
-Surfaces: the model dropdown row and selected-model strip in `ConnectionEditor.tsx`, the quick
-model picker (`ConnectionModelPicker.tsx`, upstream's, in the Connections menu and Chat Settings),
-the speech model help line in `AudioSourceFields.tsx`, and the sound-effect and music lanes in
-`AudioParameterSection.tsx`, which price whatever model their parameters name.
-
-Upstream-hot files touched: `routes/connections.routes.ts` (the reader import, the `pricing` field
-on `RemoteModel`), `routes/tts.routes.ts` (carrying lane and pricing through), `types/tts.ts`,
-`ConnectionEditor.tsx`, `lib/connection-model-selection.ts` (`pricing` on both model types and in
-`mergeConnectionModelOptions`) and `services/storage/connections.storage.ts` (`pricing` in
-`SAVED_MODEL_EXTRA_FIELDS`). Upstream saves a connection's model list and answers from it until
-Refresh; a field missing from that list is dropped after the first fetch with nothing failing. The
-readers themselves are fork-owned modules so a merge has one small surface to reconcile.
+Surfaces: the speech model help line in `AudioSourceFields.tsx` and the sound-effect and music lanes in
+`AudioParameterSection.tsx`. Readers: `services/tts/audio-model-pricing.ts`, `lib/model-cost.ts`.
+Upstream-hot files touched: `routes/tts.routes.ts` (carrying lane and pricing through) and
+`types/tts.ts`.
 
 ### Profile import marker coverage beyond upstream's lane
 
@@ -1601,6 +1566,36 @@ Patches to upstream files: `packages/client/src/components/chat/ChatBranchesPane
 and `packages/client/src/localization/locales/en.json`.
 
 Covered by `scripts/regressions/chat-branch-preview.regression.ts`.
+
+### Sync with upstream, 2026-11-07
+
+896 upstream commits, merge base `e7bdce93e`, through `11489b413`. v2.5.1 to v2.5.2, storage format 8 to
+10 (connection accounts, GLB and FBX avatars; no row conversion). 131 overlapping files, 52 conflicts,
+most from the account-first Connections redesign (#8456).
+
+- **Connections Defaults box.** Upstream's panel is taken. Its Voice job writes the same
+  `defaultForAgents`/`fallbackForAgents` flags on speech connections that the fork resolves, and the
+  fork adds **Sound effects** and **Music** jobs on the lane flags (`connection-jobs.ts`). The Voice row
+  shows the connection speech resolves to (`/tts/effective-config`), not the settings blob's
+  `connectionId`, and its gear opens the playback card (`TTSConfigCard`).
+- **Audio connection editor.** Upstream's account-first `ConnectionEditor.tsx` is taken with the fork's
+  `AudioSourceFields`, Synthesis defaults, Engine parameters and voice casting mounted for speech rows.
+  `AUDIO_SOURCE_OPTIONS` derives from `TTS_SOURCE_DEFINITIONS`, so NanoGPT speech can be added.
+- **Accounts and audio keys.** A speech row linked to an account detaches when its source or key
+  changes and keeps the typed key (`connections.storage.ts`); audio getters skip blocked accounts.
+- **Rate limits.** Upstream's account-scope pacing runs through the fork's `outbound-request-pacer.ts`
+  (`reserveOutboundSlot` takes an optional `maxRpm`).
+- **Model prices.** Both lineages built text model pricing; upstream's catalog reader and `CostBadge`
+  stay, the fork's `readTextModelPricing` and its lane are gone. Audio pricing stays the fork's.
+- **Ported by hand.** Game mode no longer speaks the sprite emotion (#8641) through the fork's
+  ElevenLabs and OpenAI providers; ambiguous speaker names (#8650) through the fork's options object
+  on `buildTTSVoiceRequests`; the resize cursor (#8621) in `use-panel-resize.ts`; the streaming swipe
+  guard (#8636) on the fork's relocated swipe controls.
+- **Logging.** Upstream's `LOG_FORMAT` decides pretty or JSON inside the fork's `createLogDestination`;
+  upstream's pino transport is not taken.
+- **Saved Settings.** `authorNotesRole` is excluded beside upstream's author's note text and depth.
+- **Not taken.** `e2e/tts-request-timeout.e2e.ts` and `tts-audio-connection-source.regression.ts` stay
+  deleted (#7711, #7848).
 
 ### Sync with upstream, 2026-10-31
 

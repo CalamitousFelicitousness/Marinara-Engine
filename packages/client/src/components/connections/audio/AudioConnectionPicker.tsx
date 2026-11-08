@@ -21,6 +21,7 @@ import { TTS_SOURCE_DEFINITIONS, type TTSSourceId } from "@marinara-engine/share
 import { useConnections, useUpdateConnection } from "../../../hooks/use-connections";
 import { useEffectiveTTSConfig } from "../../../hooks/use-tts";
 import { filterTTSConnections, isConnectionFlagTrue } from "../../../lib/connection-filters";
+import { openAddConnection } from "../../../lib/add-connection";
 import { useUIStore } from "../../../stores/ui.store";
 import { HelpTooltip } from "../../ui/HelpTooltip";
 
@@ -59,7 +60,6 @@ export function AudioConnectionPicker() {
   const { data: effectiveConfig } = useEffectiveTTSConfig();
   const updateConnection = useUpdateConnection();
   const openConnectionDetail = useUIStore((state) => state.openConnectionDetail);
-  const openModal = useUIStore((state) => state.openModal);
 
   const audioConnections = useMemo(
     () => filterTTSConnections((connections ?? []).map(toAudioConnectionOption).filter((row) => row !== null)),
@@ -120,9 +120,7 @@ export function AudioConnectionPicker() {
         </select>
         <button
           type="button"
-          onClick={() =>
-            selected ? openConnectionDetail(selected.id) : openModal("create-connection", { initialProvider: "audio" })
-          }
+          onClick={() => (selected ? openConnectionDetail(selected.id) : openAddConnection({ job: "voice" }))}
           className="mari-chrome-control mari-chrome-control--small shrink-0 text-xs"
         >
           {selected

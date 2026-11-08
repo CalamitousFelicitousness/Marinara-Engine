@@ -7,7 +7,7 @@
 // roleplay chat, and returns a summary memory when concluded.
 // ──────────────────────────────────────────────
 import type { FastifyInstance } from "fastify";
-import { logger, logDebugOverride } from "../lib/logger.js";
+import { debugJson, logger, logDebugOverride } from "../lib/logger.js";
 import { tryParseJsonRecord } from "../lib/json-repair.js";
 import { isDebugAgentsEnabled } from "../config/runtime-config.js";
 import { readdirSync, existsSync } from "fs";
@@ -16,6 +16,7 @@ import { createChatsStorage } from "../services/storage/chats.storage.js";
 import { createChatPresetsStorage } from "../services/storage/chat-presets.storage.js";
 import { parseExtra } from "../services/generation/prompt-attachments.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
+import { resolveGameConnection } from "../services/game/connection.service.js";
 import { createCharactersStorage } from "../services/storage/characters.storage.js";
 import { createPromptsStorage } from "../services/storage/prompts.storage.js";
 import { resolveChatUserIdentity } from "../services/chat-user-identity.js";
@@ -26,7 +27,7 @@ import { createReplyFallbackNotifier } from "./generate/fallback-notification.js
 import { stripConversationPromptTimestamps } from "../services/conversation/transcript-sanitize.js";
 import { DATA_DIR } from "../utils/data-dir.js";
 import type { ChatCompletionResult, ChatMessage } from "../services/llm/base-provider.js";
-import { localAuthProviderBaseUrl, normalizeGroupChatMode, parseChoiceOptions } from "@marinara-engine/shared";
+import { chatPresetVariablesFor, normalizeGroupChatMode, parseChoiceOptions } from "@marinara-engine/shared";
 import type {
   SceneCreateRequest,
   SceneCreateResponse,
@@ -135,33 +136,8 @@ function formatScenePromptPreferences(preferences: ScenePromptPreferences | null
 // Helpers (reused from encounter pattern)
 // ──────────────────────────────────────────────
 
-async function resolveConnection(
-  connections: ReturnType<typeof createConnectionsStorage>,
-  connId: string | null | undefined,
-  chatConnectionId: string | null,
-) {
-  let id = connId ?? chatConnectionId;
-  if (id === "random") {
-    const pool = await connections.listRandomPool();
-    if (!pool.length) throw new Error("No connections marked for the random pool");
-    id = pool[Math.floor(Math.random() * pool.length)].id;
-  }
-  if (!id) throw new Error("No API connection configured");
-  const conn = await connections.getWithKey(id);
-  if (!conn) throw new Error("API connection not found");
-
-  let baseUrl = conn.baseUrl;
-  if (!baseUrl) {
-    const { PROVIDERS } = await import("@marinara-engine/shared");
-    const providerDef = PROVIDERS[conn.provider as keyof typeof PROVIDERS];
-    baseUrl = providerDef?.defaultBaseUrl ?? "";
-  }
-  const localAuthBaseUrl = localAuthProviderBaseUrl(conn.provider);
-  if (!baseUrl && localAuthBaseUrl) baseUrl = localAuthBaseUrl;
-  if (!baseUrl) throw new Error("No base URL configured for this connection");
-
-  return { conn, baseUrl };
-}
+// Same resolution as game mode: random pool, fallback with a notice, the chat's per-chat catalog pick.
+const resolveConnection = resolveGameConnection;
 
 async function buildCharacterContext(
   chars: ReturnType<typeof createCharactersStorage>,
@@ -548,14 +524,15 @@ export async function sceneRoutes(app: FastifyInstance) {
 
     // A scene is a new Roleplay chat, so it starts from the starred Roleplay settings profile, as a new Roleplay
     // chat does. The connection is the profile's unless the request named one; a prompt preset picked for the
-    // scene stays; the scene's own settings below are written on top.
+    // scene stays (the profile's preset variable choices then apply only if saved for that preset); the scene's
+    // own settings below are written on top.
     const chatPresetsStorage = createChatPresetsStorage(app.db);
     const starredProfile = await chatPresetsStorage.getActive("roleplay");
     if (starredProfile && !starredProfile.isDefault) {
       await chatPresetsStorage.applyToChat(starredProfile.id, sceneChat.id, {
         connectionId: connectionId ?? starredProfile.settings.connectionId ?? origin.connectionId ?? null,
+        ...(selectedPresetId && { promptPresetId: selectedPresetId }),
       });
-      if (selectedPresetId) await chats.update(sceneChat.id, { promptPresetId: selectedPresetId });
     }
 
     // Build conversation transcript as hidden context (NOT displayed)
@@ -723,7 +700,7 @@ export async function sceneRoutes(app: FastifyInstance) {
     const sceneOriginChat = originChatId ? await chats.getById(originChatId) : null;
 
     // Resolve connection
-    const { conn, baseUrl } = await resolveConnection(connections, connectionId, sceneChat.connectionId);
+    const { conn, baseUrl } = await resolveConnection(connections, connectionId, sceneChat);
     const provider = await createSceneProvider(conn, baseUrl, createReplyFallbackNotifier(reply));
 
     // Build context — the scene chat inherits its personaId from the origin;
@@ -1157,7 +1134,7 @@ export async function sceneRoutes(app: FastifyInstance) {
     const participants = await resolveSceneParticipants(origin, req.body.promptPreferences ?? {});
     if ("error" in participants) return reply.status(400).send({ error: participants.error });
 
-    const { conn, baseUrl } = await resolveConnection(connections, connectionId, origin.connectionId);
+    const { conn, baseUrl } = await resolveConnection(connections, connectionId, origin);
     const provider = await createSceneProvider(conn, baseUrl, createReplyFallbackNotifier(reply));
 
     const characterIds = participants.characterIds;
@@ -1301,7 +1278,7 @@ export async function sceneRoutes(app: FastifyInstance) {
     ];
 
     // With no preset picked for the scene, the opening follows the writing rules the scene chat will use: the prompt
-    // preset of the starred Roleplay settings profile, which /scene/create applies.
+    // preset of the starred Roleplay settings profile, with its saved variable choices, which /scene/create applies.
     const profilePresetId =
       !preset && starredRoleplayProfile && !starredRoleplayProfile.isDefault
         ? (starredRoleplayProfile.settings.promptPresetId ?? null)
@@ -1324,7 +1301,15 @@ export async function sceneRoutes(app: FastifyInstance) {
         sections: sections.filter((section) => section.isMarker !== "true"),
         chatChoices: {
           ...(parsePromptPresetChoices(writingPreset.defaultChoices) ?? {}),
-          ...(preset ? (presetChoices ?? {}) : {}),
+          // As /scene/create stores them: the request's own choices, else the starred profile's when it saved them
+          // for this same preset (#8957).
+          ...(preset
+            ? (presetChoices ??
+              (starredRoleplayProfile && !starredRoleplayProfile.isDefault
+                ? chatPresetVariablesFor(starredRoleplayProfile.settings, preset.id)
+                : undefined) ??
+              {})
+            : (chatPresetVariablesFor(starredRoleplayProfile?.settings, profilePresetId) ?? {})),
         },
         localVariables: origin.chat ? normalizeChatMacroVariables(parseMetadata(origin.chat).macroVariables) : {},
         chatId: origin.chat?.id ?? "",
@@ -1347,7 +1332,7 @@ export async function sceneRoutes(app: FastifyInstance) {
     logDebugOverride(
       req.body.debugMode === true || isDebugAgentsEnabled(),
       "[scene/plan] Final scene planning prompt:\n%s",
-      JSON.stringify(planPrompt, null, 2),
+      debugJson(planPrompt),
     );
     const result = await provider.chatComplete(planPrompt, {
       model: conn.model,

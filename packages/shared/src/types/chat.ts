@@ -654,6 +654,16 @@ export interface ChatMetadata {
   spotifyPlaylistName?: string | null;
   /** Spotify artist name used when spotifySourceType is "artist". */
   spotifyArtist?: string | null;
+  /**
+   * Music DJ folder on the server device for this chat only (#8901). Missing, null or empty follows the
+   * chat's one character, then the default folder.
+   */
+  customMusicExternalFolder?: string | null;
+  /**
+   * Music DJ Game Assets music subfolder for this chat only (#8916). Missing, null or empty uses the default
+   * subfolder. An older `customMusicFolder` key in chat metadata only copied the default and is not read.
+   */
+  customMusicGameAssetsFolder?: string | null;
   /** Recent Spotify track URIs played by the roleplay/conversation Music DJ. */
   spotifyRecentTracks?: string[];
   /** Durable count of autonomous messages the user has not viewed yet. */
@@ -1079,10 +1089,17 @@ export interface MessageExtra {
   mariRunError?: { message: string; dismissed?: boolean } | null;
   /** Send now reached her after steps but before any words: the text is a placeholder, shown muted. */
   mariCheckpointFiller?: boolean;
+  /**
+   * #8711: a claim check flagged this reply's words in a run that tried no change. The words stay as she wrote them,
+   * and the client adds a localized note that no change was made or held. Never part of the text or her history.
+   */
+  mariNothingChanged?: boolean;
   /** Per-swipe sprite expressions from the Expression Engine agent */
   spriteExpressions?: Record<string, string> | null;
   /** Presentation-only ID-macro card references for merged Roleplay narrator avatars; never chat members. */
   referencedCharacterIds?: string[];
+  /** Presentation-only: the active chat characters this merged Roleplay reply was generated with, so its narrator avatars outlast later roster changes. */
+  mergedRosterCharacterIds?: string[];
   /** All sprite owners in the completed expression result, including the persona. Empty means none. */
   expressionSpriteIds?: string[];
   /** An earlier Individual group reply: its `spriteExpressions` hold only its own character, not the whole turn. */

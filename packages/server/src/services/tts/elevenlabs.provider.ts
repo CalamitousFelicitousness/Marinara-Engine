@@ -34,7 +34,7 @@ export class ElevenLabsTTSProvider extends BaseTTSProvider {
       url: `${elevenLabsApiRoot(this.baseUrl)}/v1/text-to-speech/${encodeURIComponent(input.voice)}?output_format=mp3_44100_128`,
       headers: elevenLabsHeaders(this.cfg.apiKey),
       body: this.jsonBody({
-        text: buildElevenLabsTextInput(input.text, input.tone),
+        text: buildElevenLabsTextInput(input.text, input.tone, model),
         model_id: model,
         ...(languageCode ? { language_code: languageCode } : {}),
         voice_settings: {

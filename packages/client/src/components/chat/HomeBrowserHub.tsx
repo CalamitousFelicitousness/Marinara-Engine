@@ -33,6 +33,7 @@ import {
   MessageCircle,
   NotebookPen,
   PackagePlus,
+  Plug,
   RefreshCw,
   Sparkles,
   Star,
@@ -56,6 +57,9 @@ import { useMatchMedia } from "../../hooks/use-match-media";
 import { useMariAppearancePack } from "../../hooks/use-mari-appearance-pack";
 import { MARI_ASSET_TIER, mariImgLoading } from "../../lib/mari-work-animations";
 import { MariHold } from "./mari/MariHold";
+import { useConnections } from "../../hooks/use-connections";
+import { openAddConnection } from "../../lib/add-connection";
+import { isChatProvider } from "@marinara-engine/shared";
 import { useAllCharacterCatalog } from "../../hooks/use-characters";
 import {
   selectHomeBrowserPackages,
@@ -82,6 +86,7 @@ import { startSceneWithPromptPreferences } from "../../lib/scene-generation";
 import { useChatStore } from "../../stores/chat.store";
 import { CapabilityElement } from "../capabilities/CapabilityElement";
 import { Modal } from "../ui/Modal";
+import { SHEET_BUTTON_PRIMARY } from "../ui/neutral-surface-styles";
 import { ToggleSetting } from "../panels/settings/SettingControls";
 import { HomeAchievements } from "./HomeAchievements";
 import { ChatModeIcon } from "./ChatModeIcon";
@@ -924,6 +929,13 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
     portraits: mariPortraits,
   } = useMariAppearancePack();
   const { t, i18n } = useTranslation();
+  const connectionsQuery = useConnections();
+  // Hidden while loading, so a returning user never sees it flash.
+  const noChatModel =
+    connectionsQuery.data !== undefined &&
+    !(connectionsQuery.data as Array<{ provider: string; model?: string | null }>).some(
+      (c) => isChatProvider(c.provider) && !!c.model,
+    );
   const installedChannel = useQuery<{ channel: "stable" | "staging" }>({
     queryKey: ["update-channel"],
     queryFn: () => api.get("/updates/channel"),
@@ -2396,6 +2408,16 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                       </span>
                     </HomeNewChatLauncher>
                   </div>
+                  {noChatModel && (
+                    <button
+                      type="button"
+                      onClick={() => openAddConnection()}
+                      className="mari-chrome-control mx-auto mt-2 flex min-h-11 max-w-md items-center justify-center gap-2 rounded-xl border border-[var(--primary)]/40 bg-[var(--primary)]/10 px-4 py-2 text-xs font-semibold text-[var(--foreground)] sm:min-h-9"
+                    >
+                      <Plug size="0.875rem" aria-hidden="true" />
+                      {t("home.connectModel.cta")}
+                    </button>
+                  )}
                 </section>
                 <div ref={feedShellRef} className="mari-home-feed-shell">
                   <div
@@ -3018,10 +3040,21 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
           setEditingCustomWidget(null);
         }}
         title={t("home.widgets.editTitle")}
+        footer={
+          <button
+            type="submit"
+            form="home-widget-edit-form"
+            disabled={updateCustomWidgetMutation.isPending}
+            className={SHEET_BUTTON_PRIMARY}
+          >
+            {t("home.widgets.save")}
+          </button>
+        }
         width="max-w-md"
       >
         {editingCustomWidget && (
           <form
+            id="home-widget-edit-form"
             className="grid gap-3"
             onSubmit={(event) => {
               event.preventDefault();
@@ -3038,7 +3071,7 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                 maxLength={80}
                 value={editingCustomWidget.title}
                 onChange={(event) => setEditingCustomWidget({ ...editingCustomWidget, title: event.target.value })}
-                className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2"
+                className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 max-sm:text-base"
               />
             </label>
             <label className="grid gap-1 text-sm">
@@ -3050,7 +3083,7 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                 onChange={(event) =>
                   setEditingCustomWidget({ ...editingCustomWidget, description: event.target.value })
                 }
-                className="min-h-24 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2"
+                className="min-h-24 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 max-sm:text-base"
               />
             </label>
             <label className="grid gap-1 text-sm">
@@ -3063,7 +3096,7 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                     accent: event.target.value as HomeCustomWidget["accent"],
                   })
                 }
-                className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2"
+                className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 max-sm:text-base"
               >
                 {["cyan", "orange", "pink", "violet"].map((accent) => (
                   <option key={accent} value={accent}>
@@ -3082,7 +3115,7 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                     icon: event.target.value as HomeCustomWidget["icon"],
                   })
                 }
-                className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2"
+                className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 max-sm:text-base"
               >
                 {["sparkles", "note", "heart", "star", "book", "compass"].map((icon) => (
                   <option key={icon} value={icon}>
@@ -3096,13 +3129,6 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                 {t("home.widgets.editFailed")}
               </p>
             )}
-            <button
-              type="submit"
-              disabled={updateCustomWidgetMutation.isPending}
-              className="min-h-10 rounded-lg bg-[var(--primary)] px-3 text-sm font-semibold text-[var(--primary-foreground)]"
-            >
-              {t("home.widgets.save")}
-            </button>
           </form>
         )}
       </Modal>

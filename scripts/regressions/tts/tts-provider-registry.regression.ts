@@ -153,7 +153,7 @@ const jsonBody = (body: string | FormData): Record<string, unknown> => {
   const elevenBody = jsonBody(elevenThroughNanoGpt.body);
   assert.equal(elevenBody.response_format, "mp3", "a saved WAV preference must not reach an ElevenLabs model");
   assert.equal(elevenBody.speed, undefined, "ElevenLabs-branded models reject a speed parameter");
-  assert.equal(elevenBody.input, "[sad] Hello.", "tone rides in the text as a bracketed cue");
+  assert.equal(elevenBody.input, "Hello.", "a model without audio tags would read the cue aloud");
 
   // Kokoro is not ElevenLabs-branded, so it keeps speed and the saved format.
   const kokoro = createTTSProvider(

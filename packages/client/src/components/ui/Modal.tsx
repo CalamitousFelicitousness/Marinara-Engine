@@ -8,6 +8,9 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import {
   NEUTRAL_PANEL_HEADER,
+  PHONE_BOTTOM_SHEET_CLASS,
+  SHEET_CLOSE_BUTTON_CLASS,
+  SHEET_GRABBER_CLASS,
   NEUTRAL_PANEL_SCROLL_AREA,
   NEUTRAL_PANEL_SHELL,
   NEUTRAL_PANEL_TITLE,
@@ -24,6 +27,8 @@ interface ModalProps {
   open: boolean;
   onClose: () => void;
   title: string;
+  /** Shown in the header instead of the title text; `title` still names the dialog. */
+  titleSlot?: ReactNode;
   children: ReactNode;
   /** Width class, e.g. "max-w-md", "max-w-lg" */
   width?: string;
@@ -41,8 +46,17 @@ interface ModalProps {
   /** Optional feature-local style variables applied to the full panel. */
   panelStyle?: CSSProperties;
   closeDisabled?: boolean;
+  /** Phone sheet closes on a downward pull and shows a grab handle. Turn off where closing loses work (review, running generation). */
+  pullToClose?: boolean;
+  /** Actions pinned under the scrolling content; main action first, stacked full-width on phones. */
+  footer?: ReactNode;
+  closeButtonClassName?: string;
+  /** Solid panel surface and no backdrop blur (Connections windows); other modals keep the translucent chrome. */
+  opaque?: boolean;
   /** Let drag hit-testing reach content behind the modal while keeping the panel interactive. */
   dragThrough?: boolean;
+  /** Keep surrounding libraries interactive, without a backdrop or focus trap. */
+  modeless?: boolean;
   /** Always open on the omnibar's layer, above every other app overlay (app dialogs, even over a package screen). */
   topLayer?: boolean;
 }
@@ -51,6 +65,7 @@ export function Modal({
   open,
   onClose,
   title,
+  titleSlot,
   children,
   width = "max-w-md",
   contentRef,
@@ -63,9 +78,18 @@ export function Modal({
   contentClassName,
   panelStyle,
   closeDisabled = false,
+  pullToClose = true,
+  footer,
+  closeButtonClassName,
+  opaque = false,
   dragThrough = false,
+  modeless = false,
   topLayer = false,
 }: ModalProps) {
+  const sidebarOpen = useUIStore((s) => modeless && s.sidebarOpen);
+  const sidebarWidth = useUIStore((s) => (modeless ? s.sidebarWidth : 0));
+  const rightPanelOpen = useUIStore((s) => modeless && s.rightPanelOpen);
+  const rightPanelWidth = useUIStore((s) => (modeless ? s.rightPanelWidth : 0));
   const { t: localizeUi } = useUiTranslation();
   const localize = useLocalizedUiText();
   const localizedTitle = localize(title);
@@ -87,6 +111,7 @@ export function Modal({
     restoreFocusRef,
     focusScopePortalSelector,
     () => overlayRegistrationRef.current?.isTopmost() ?? true,
+    !modeless,
   );
   // Hardware / gesture back closes the topmost modal. While closing is disabled
   // the press is absorbed rather than ignored, matching Escape: an in-flight
@@ -147,17 +172,29 @@ export function Modal({
     const handler = (e: KeyboardEvent) => {
       // Escape while an IME is composing cancels the composition first.
       if (e.isComposing) return;
+      if (!modeless) {
+        if (e.key !== "Escape" || closeDisabled) return;
+        if (!overlayRegistrationRef.current?.isTopmost()) return;
+        onClose();
+        return;
+      }
       if (e.key !== "Escape" || closeDisabled) return;
       if (!overlayRegistrationRef.current?.isTopmost()) return;
+      // Sidebar keys belong to the sidebar; drag/menu cancellation may also consume Escape.
+      if (e.defaultPrevented) return;
+      const panel = panelRef.current;
+      const targetInside = e.target instanceof Node && panel?.contains(e.target);
+      if (!targetInside && !panel?.contains(document.activeElement)) return;
       onClose();
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [open, onClose, closeDisabled]);
+  }, [open, onClose, closeDisabled, modeless]);
 
-  // Remove from DOM after exit animation completes
+  // Remove from DOM after exit animation completes. A reopen during the exit (focus is already back on the opener)
+  // keeps it: the late transitionend or the fallback below must not unmount an open dialog.
   const handleAnimationEnd = () => {
-    if (animating === "exit") {
+    if (animating === "exit" && !open) {
       setMounted(false);
       setAnimating(null);
     }
@@ -168,74 +205,173 @@ export function Modal({
   // backgrounded (e.g. a game starting auto-closes its setup). Without this
   // the overlay stays mounted forever and blocks clicks.
   useEffect(() => {
-    if (animating !== "exit") return;
+    if (animating !== "exit" || open) return;
     const timer = setTimeout(() => {
       setMounted(false);
       setAnimating(null);
     }, 400);
     return () => clearTimeout(timer);
-  }, [animating]);
+  }, [animating, open]);
+
+  // Phone sheet: pull down to close. Native listeners because React's touchmove is passive.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!open || !mounted || !panel || !pullToClose || closeDisabled || mobileFullscreen || modeless || dragThrough)
+      return;
+    if (!window.matchMedia("(max-width: 639px)").matches) return;
+    let startX = 0;
+    let startY = 0;
+    let startT = 0;
+    let dy = 0;
+    let tracking = false;
+    let dragging = false;
+    let prevTransition = "";
+    const onStart = (e: TouchEvent) => {
+      tracking = false;
+      if (e.touches.length !== 1) return;
+      const target = e.target as Element;
+      if (target.closest("input, textarea, select, [contenteditable='true']")) return;
+      // Only from the top: any scroller between the finger and the panel must be scrolled up.
+      for (let el: Element | null = target; el && el !== panel; el = el.parentElement) if (el.scrollTop > 0) return;
+      tracking = true;
+      dragging = false;
+      dy = 0;
+      startX = e.touches[0]!.clientX;
+      startY = e.touches[0]!.clientY;
+      startT = e.timeStamp;
+    };
+    const onMove = (e: TouchEvent) => {
+      if (!tracking) return;
+      const d = e.touches[0]!.clientY - startY;
+      if (!dragging) {
+        if (d < 0 || Math.abs(e.touches[0]!.clientX - startX) > d) {
+          tracking = false; // upward or sideways: leave it to scrolling
+          return;
+        }
+        if (d < 8) return;
+        dragging = true;
+        prevTransition = panel.style.transition;
+        panel.style.transition = "none";
+      }
+      e.preventDefault();
+      dy = Math.max(0, d - 8);
+      panel.style.transform = `translateY(${dy}px)`;
+    };
+    const onEnd = (e: TouchEvent) => {
+      tracking = false;
+      if (!dragging) return;
+      dragging = false;
+      panel.style.transition = prevTransition;
+      const pulled = panel.style.transform; // browser read-back, so a fractional dy still matches
+      if (dy > panel.offsetHeight * 0.25 || dy / Math.max(1, e.timeStamp - startT) > 0.4) {
+        onCloseRef.current();
+        // A guarded close (e.g. "Discard changes?") may keep the sheet open: then snap back.
+        window.setTimeout(() => {
+          if (panel.style.transform === pulled) panel.style.transform = "";
+        }, 300);
+      } else {
+        panel.style.transform = "";
+      }
+    };
+    panel.addEventListener("touchstart", onStart, { passive: true });
+    panel.addEventListener("touchmove", onMove, { passive: false });
+    panel.addEventListener("touchend", onEnd);
+    panel.addEventListener("touchcancel", onEnd);
+    return () => {
+      panel.removeEventListener("touchstart", onStart);
+      panel.removeEventListener("touchmove", onMove);
+      panel.removeEventListener("touchend", onEnd);
+      panel.removeEventListener("touchcancel", onEnd);
+    };
+  }, [open, mounted, pullToClose, closeDisabled, mobileFullscreen, modeless, dragThrough]);
 
   if (!mounted) return null;
 
   const isEntering = animating === "enter";
+  // Below `sm` a plain dialog is a bottom sheet; full-screen, modeless and drag-through ones keep their shape.
+  const sheet = !mobileFullscreen && !modeless && !dragThrough;
+  const phoneSheet = sheet && window.matchMedia("(max-width: 639px)").matches;
+  const pullClose = phoneSheet && pullToClose && !closeDisabled;
 
   return createPortal(
     <div
       ref={overlayRef}
       role="dialog"
-      aria-modal="true"
+      aria-modal={modeless ? undefined : true}
       aria-label={localizedTitle}
       data-chat-floating-panel={chatFloatingPanel ? "true" : undefined}
       data-component="Modal"
-      className={`mari-modal fixed inset-0 ${overOmnibar || topLayer ? "z-(--mari-layer-omnibar)" : "z-[10000]"} flex items-center justify-center ${dragThrough ? "pointer-events-none" : ""} ${
+      className={`mari-modal${opaque ? " mari-modal--opaque" : ""} fixed inset-0 ${overOmnibar || topLayer ? "z-(--mari-layer-omnibar)" : "z-[10000]"} flex items-center justify-center ${sheet ? "max-sm:items-end max-sm:p-0! max-sm:pt-[calc(env(safe-area-inset-top)+2.5rem)]!" : ""} ${dragThrough || modeless ? "pointer-events-none" : ""} ${modeless ? "pt-16! lg:pl-[var(--dialog-left)]! sm:pr-[var(--dialog-right)]!" : ""} ${
         mobileFullscreen
           ? "p-0 sm:p-4 sm:pl-[max(1rem,var(--mari-safe-area-inset-left))] sm:pr-[max(1rem,var(--mari-safe-area-inset-right))]"
           : "p-3 max-md:pt-[max(0.75rem,env(safe-area-inset-top))] max-md:pb-[max(0.75rem,var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom)))] sm:p-4 sm:pl-[max(1rem,var(--mari-safe-area-inset-left))] sm:pr-[max(1rem,var(--mari-safe-area-inset-right))]"
       }`}
       style={{
+        ...(modeless
+          ? ({
+              "--dialog-left": `${sidebarOpen ? sidebarWidth + 16 : 16}px`,
+              "--dialog-right": `${rightPanelOpen ? rightPanelWidth + 16 : 16}px`,
+            } as CSSProperties)
+          : {}),
         opacity: isEntering ? 1 : 0,
         transition: "opacity 150ms ease-out",
       }}
       onTransitionEnd={handleAnimationEnd}
-      {...backdropDismiss}
+      {...(modeless ? {} : backdropDismiss)}
     >
       {/* Backdrop */}
-      <div
-        data-backdrop-dismiss-surface="true"
-        className="mari-modal-backdrop absolute inset-0 bg-black/55 backdrop-blur-[2px]"
-        style={{
-          opacity: isEntering ? 1 : 0,
-          transition: "opacity 150ms ease-out",
-        }}
-      />
+      {!modeless && (
+        <div
+          data-backdrop-dismiss-surface="true"
+          className="mari-modal-backdrop absolute inset-0 bg-black/55 backdrop-blur-[2px]"
+          style={{
+            opacity: isEntering ? 1 : 0,
+            transition: "opacity 150ms ease-out",
+          }}
+        />
+      )}
 
       {/* Panel */}
       <div
         ref={panelRef}
         tabIndex={-1}
-        className={`mari-modal-panel ${NEUTRAL_PANEL_SHELL} relative flex w-full flex-col ${dragThrough ? "pointer-events-auto" : ""} ${width} max-h-[calc(100dvh-1.5rem)] sm:max-h-[min(90dvh,52rem)]${
+        className={`mari-modal-panel ${NEUTRAL_PANEL_SHELL} relative flex w-full flex-col ${dragThrough || modeless ? "pointer-events-auto" : ""} ${modeless ? "max-h-[calc(100dvh-5rem)]!" : ""} ${width} max-h-[calc(100dvh-1.5rem)] sm:max-h-[min(90dvh,52rem)]${
           mobileFullscreen
             ? " max-sm:h-full max-sm:max-h-none max-sm:max-w-none max-sm:rounded-none max-sm:border-0 max-sm:pt-[env(safe-area-inset-top)] max-sm:pb-[var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom))]"
             : ""
-        } ${panelClassName ?? ""}`}
+        } ${sheet ? PHONE_BOTTOM_SHEET_CLASS : ""} ${panelClassName ?? ""}`}
         style={{
           ...panelStyle,
           opacity: isEntering ? 1 : 0,
           // Settle at `none`: an identity transform keeps the entire image library in a composited layer.
-          transform: isEntering ? undefined : "scale(0.97) translateY(6px)",
-          transition: "opacity 150ms ease-out, transform 150ms ease-out",
+          transform: isEntering ? undefined : phoneSheet ? "translateY(100%)" : "scale(0.97) translateY(6px)",
+          transition: phoneSheet
+            ? "opacity 150ms ease-out, transform 220ms cubic-bezier(0.32, 0.72, 0, 1)"
+            : "opacity 150ms ease-out, transform 150ms ease-out",
         }}
       >
+        {pullClose && <div aria-hidden="true" className={`${SHEET_GRABBER_CLASS} sm:hidden`} />}
         {/* Header */}
-        <div className={`shrink-0 flex items-center justify-between ${NEUTRAL_PANEL_HEADER}`}>
-          <h2 className={NEUTRAL_PANEL_TITLE}>{localizedTitle}</h2>
+        <div
+          className={`shrink-0 flex items-center justify-between ${NEUTRAL_PANEL_HEADER} ${sheet && !titleSlot ? "max-sm:relative max-sm:min-h-13 max-sm:justify-center max-sm:px-12" : ""}`}
+        >
+          {titleSlot ?? (
+            <h2
+              className={`${NEUTRAL_PANEL_TITLE} ${sheet ? "max-sm:justify-center max-sm:text-center max-sm:text-[17px]" : ""}`}
+            >
+              {localizedTitle}
+            </h2>
+          )}
           <button
             type="button"
             onClick={onClose}
             disabled={closeDisabled}
             aria-label={localizeUi("ui.ui.modal.value1Value2", { value1: localize("Close"), value2: localizedTitle })}
-            className="flex shrink-0 items-center justify-center rounded-lg p-1.5 text-[var(--marinara-chat-chrome-panel-muted)] transition-colors max-md:h-9 max-md:w-9 [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9 hover:bg-[var(--marinara-chat-chrome-highlight-bg-hover)] hover:text-[var(--marinara-chat-chrome-highlight-text)] disabled:cursor-wait disabled:opacity-40"
+            className={`flex shrink-0 items-center justify-center rounded-lg p-1.5 text-[var(--marinara-chat-chrome-panel-muted)] transition-colors max-md:h-9 max-md:w-9 [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9 hover:bg-[var(--marinara-chat-chrome-highlight-bg-hover)] hover:text-[var(--marinara-chat-chrome-highlight-text)] disabled:cursor-wait disabled:opacity-40 ${sheet ? SHEET_CLOSE_BUTTON_CLASS : "max-sm:after:absolute max-sm:after:-inset-1 max-sm:after:content-['']"} ${sheet && !titleSlot ? "max-sm:absolute max-sm:right-3 max-sm:top-1/2 max-sm:-translate-y-1/2" : "max-sm:relative"} ${closeButtonClassName ?? ""}`}
           >
             <X size="1rem" />
           </button>
@@ -248,6 +384,11 @@ export function Modal({
         >
           {children}
         </div>
+        {footer && (
+          <div className="flex shrink-0 flex-row-reverse items-center justify-start gap-2 border-t border-[var(--marinara-chat-chrome-panel-divider)] px-5 py-3 max-sm:flex-col max-sm:items-stretch max-sm:px-4 max-sm:[&>button]:min-h-12 max-sm:[&>button]:justify-center">
+            {footer}
+          </div>
+        )}
       </div>
     </div>,
     document.body,

@@ -49,6 +49,7 @@ import {
   type ProfessorMariHandoff,
 } from "@marinara-engine/shared";
 import { useConnections } from "../../hooks/use-connections";
+import { useFeatureModels } from "../../hooks/use-connection-accounts";
 import { useTrackAchievement } from "../../hooks/use-achievements";
 import { chatKeys, useChats } from "../../hooks/use-chats";
 import { characterKeys, useCharacters, usePersonas } from "../../hooks/use-characters";
@@ -283,6 +284,17 @@ function fetchMariThreadMessages(id: string, signal?: AbortSignal) {
   return api.get<Message[]>(`/chats/${id}/messages?limit=80`, { signal });
 }
 
+/**
+ * #8651: a chip's chat action can name a chat the app does not list (her own thread, an id she made up). Running it
+ * closed her window and the chat view fell back to Home, every time; such a chip asks her instead, and so does one
+ * whose chat the list has not confirmed yet (still loading, or failed).
+ */
+function withOpenableChatAction(chip: MariSuggestionChip, chats: readonly { id: string }[] | undefined) {
+  const action = chip.action;
+  if (action?.kind !== "chat" && action?.kind !== "peek-prompt") return chip;
+  return chats?.some((chat) => chat.id === action.chatId) ? chip : { ...chip, action: undefined };
+}
+
 /** Points her context at an editor field, with the field's current text as its draft. */
 function withCapturedEditorField(
   current: ProfessorMariAskContext | null,
@@ -407,9 +419,8 @@ export function HomeProfessorMariChat({
   const lorebookFallbackName = t("omnibar.categories.lorebook", "Lorebook");
   const focusedLorebook = resolveContextLorebook(handoffContext, lorebookPreviewById, lorebookFallbackName);
   const [isReadingAttachments, setIsReadingAttachments] = useState(false);
-  const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(
-    () => useUIStore.getState().mariConnectionId,
-  );
+  const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
+  const { data: featureModels, isLoading: featureModelsLoading } = useFeatureModels();
   const [workspaceStatus, setWorkspaceStatus] = useState<MariWorkspaceStatus | null>(null);
   /** R14 (item 7): when this client's newest run started and ended; the live timer and "Worked for" read it. */
   const [workspaceRunClock, setWorkspaceRunClock] = useState<{ startedAt: number; endedAt: number | null } | null>(
@@ -726,7 +737,7 @@ export function HomeProfessorMariChat({
       ...languageConnections,
       {
         id: LOCAL_SIDECAR_CONNECTION_ID,
-        name: sidecarModelDisplayName ? `Local Model (${sidecarModelDisplayName})` : "Local Model (sidecar)",
+        name: sidecarModelDisplayName ? `Built-in model (${sidecarModelDisplayName})` : "Built-in model",
         model: sidecarModelDisplayName ?? "local-sidecar",
         provider: "local_sidecar",
         isDefault: languageConnections.length === 0,
@@ -807,7 +818,9 @@ export function HomeProfessorMariChat({
       ),
     [chatId, loadedMessagesChatId, mariTodos, mariTodosChatId, messages, serverTodos],
   );
-  const storeChipsForChat = mariChipsChatId === chatId && mariChips.length > 0 ? mariChips : savedChips;
+  const storeChipsForChat = (mariChipsChatId === chatId && mariChips.length > 0 ? mariChips : savedChips).map((chip) =>
+    withOpenableChatAction(chip, referenceChats.data),
+  );
   const visibleSuggestionChips =
     pendingDeferredMutations && !storeChipsForChat.some((chip) => chip.id === MARI_AUTHORIZATION_ACCEPT_CHIP.id)
       ? withHeldChangeDeclineChip([
@@ -1319,7 +1332,7 @@ export function HomeProfessorMariChat({
   }, [selectedConnectionId]);
 
   useEffect(() => {
-    if (hasLoadedRef.current || connectionsLoading) return;
+    if (hasLoadedRef.current || connectionsLoading || featureModelsLoading) return;
     hasLoadedRef.current = true;
     setLoadingHistory(true);
     const prefetchMessages = (id: string) => {
@@ -1328,9 +1341,10 @@ export function HomeProfessorMariChat({
       return { id, items };
     };
     let prefetched = cachedThread ? prefetchMessages(cachedThread.chatId) : null;
+    const storedConnectionId = selectedConnectionId ?? featureModels?.mariConnectionId ?? null;
     const storedConnectionExists =
-      !!selectedConnectionId && connectionOptions.some((connection) => connection.id === selectedConnectionId);
-    ensureProfessorMariChat(storedConnectionExists ? selectedConnectionId : null)
+      !!storedConnectionId && connectionOptions.some((connection) => connection.id === storedConnectionId);
+    ensureProfessorMariChat(storedConnectionExists ? storedConnectionId : null)
       .then(async (chat) => {
         // Her messages load beside the routing; it usually keeps the thread she is already in.
         if (prefetched?.id !== chat.id) prefetched = prefetchMessages(chat.id);
@@ -1339,7 +1353,6 @@ export function HomeProfessorMariChat({
         if (restoredConnectionId) {
           setSelectedConnectionId(restoredConnectionId);
           latestConnectionSelectionRef.current = restoredConnectionId;
-          useUIStore.getState().setMariConnectionId(restoredConnectionId);
         }
         const targetId = await routeArrivalThread(chat.id);
         return loadMessages(targetId, {
@@ -1358,6 +1371,8 @@ export function HomeProfessorMariChat({
   }, [
     connectionOptions,
     connectionsLoading,
+    featureModels,
+    featureModelsLoading,
     ensureProfessorMariChat,
     loadMessages,
     routeArrivalThread,
@@ -2038,7 +2053,6 @@ export function HomeProfessorMariChat({
     setSelectedConnectionId(id);
     latestConnectionSelectionRef.current = id;
     pendingConnectionPersistRef.current = id;
-    useUIStore.getState().setMariConnectionId(id);
     persistLatestConnectionSelection();
   };
 
@@ -3304,7 +3318,9 @@ export function HomeProfessorMariChat({
             bare
             chips={data.cards}
             onSelect={(card, draft) =>
-              card.action?.kind === "find-setting" || card.action?.kind === "undo-setting"
+              card.action?.kind === "find-setting" ||
+              card.action?.kind === "undo-setting" ||
+              card.action?.kind === "add-connection"
                 ? onArrivalAction?.(card.action)
                 : handleSuggestionSelect(
                     card as MariSuggestionChip,

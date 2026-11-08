@@ -134,6 +134,7 @@ import {
 import {
   collectPastReasoningMetadata,
   limitPastReasoningMetadata,
+  rejectsFinalAssistantMessage,
 } from "../../services/generation/generation-parameters.js";
 import {
   filterPromptMessagesForCharacterAudience,
@@ -144,13 +145,13 @@ import { applyAllSegmentEdits } from "../../services/game/segment-edits.js";
 import { applyRegexScriptsToPromptMessages } from "../../services/regex/regex-application.js";
 import { sendSseEvent, startSseReply } from "./sse.js";
 import {
-  appendReadableAttachmentsToContent,
   postProcessMessages,
   buildGenerationGuideInstruction,
+  capSummarizedHistory,
   createLocalSidecarGenerationConnection,
   dedupeLastMessageWrappers,
   describeAttachmentsForNonUserTurn,
-  extractFileAttachmentInputs,
+  endPromptOnAssistantPrefill,
   extractImageAttachmentDataUrls,
   findTrackerContextInsertIndex,
   formatConversationInstructionsForWrap,
@@ -197,6 +198,22 @@ import {
 } from "../../services/generation/runtime-agent-sections.js";
 import { loadPriorBeholderState } from "../../services/agents/beholder-state.js";
 import { logger } from "../../lib/logger.js";
+import {
+  applyChatModelOverride,
+  readChatFollowsMain,
+  readChatModelOverride,
+  resolveChatConnectionOrFallback,
+} from "../../services/generation/connection-resolution.js";
+import { visionCaptionSettings } from "../../services/generation/job-fallback.js";
+import { readFeatureModelConnections } from "../../services/storage/feature-model-connections.js";
+import {
+  DISABLED_IMAGE_CAPTIONING,
+  resolveImageCaptioningRuntime,
+  resolvePromptAttachmentInputs,
+  resolveVisionCaptioningRuntime,
+  withImageCaptionFallback,
+} from "../../services/generation/image-captioning-runtime.js";
+import { createReplyFallbackNotifier } from "./fallback-notification.js";
 import { resolveGameGmPromptTemplate } from "../../services/generation/game-gm-prompt-runtime.js";
 
 import { injectCapabilityContexts } from "../../services/generation/capability-prompt-runtime.js";
@@ -591,9 +608,14 @@ export async function registerDryRunRoute(app: FastifyInstance) {
 
     // Resolve connection (allow override; otherwise use chat connection)
     // Extensions may send connectionId like presetId (number or `{id}`); accept it.
-    const impersonateConnectionOverride = impersonate ? asNonEmptyString(body.impersonateConnectionId) : null;
+    const impersonateConnectionOverride = impersonate
+      ? asNonEmptyString(body.impersonateConnectionId) ||
+        (await readFeatureModelConnections(app.db)).impersonateConnectionId
+      : null;
     const fallbackConnectionId = asNonEmptyString(body.connectionId) || ((chat.connectionId as string | null) ?? null);
     let connId = impersonateConnectionOverride || fallbackConnectionId;
+    // Only a selection of the chat's own Model runs its catalog pick (decision 25): not a Random or impersonate pick.
+    let runsChatModel = !impersonateConnectionOverride && fallbackConnectionId === chat.connectionId;
 
     if (connId === "random") {
       const pool = await connections.listRandomPool();
@@ -602,19 +624,19 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       connId = picked.id;
     }
 
-    if (!connId) return reply.status(400).send({ error: "No API connection configured for this chat" });
     const resolveDryRunConnection = async (connectionId: string) =>
       connectionId === LOCAL_SIDECAR_CONNECTION_ID
         ? createLocalSidecarGenerationConnection()
         : await connections.getWithKey(connectionId);
 
-    let conn = await resolveDryRunConnection(connId);
+    let conn = connId ? await resolveDryRunConnection(connId) : null;
     if (!conn && impersonateConnectionOverride && connId === impersonateConnectionOverride && fallbackConnectionId) {
       logger.warn(
         "[dryRun] Impersonate connection override %s was not found; falling back to chat/request connection",
         impersonateConnectionOverride,
       );
       connId = fallbackConnectionId;
+      runsChatModel = fallbackConnectionId === chat.connectionId;
       if (connId === "random") {
         const pool = await connections.listRandomPool();
         if (!pool.length) return reply.status(400).send({ error: "No connections are marked for the random pool" });
@@ -623,7 +645,24 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       }
       conn = connId ? await resolveDryRunConnection(connId) : null;
     }
-    if (!conn) return reply.status(400).send({ error: "API connection not found" });
+    if (!conn) {
+      conn = await resolveChatConnectionOrFallback(
+        connections,
+        connId || null,
+        createReplyFallbackNotifier(reply),
+        null,
+        !connId && readChatFollowsMain(chat),
+      );
+      if (conn) connId = conn.id;
+    }
+    if (!conn) {
+      return reply
+        .status(400)
+        .send({ error: connId ? "API connection not found" : "No API connection configured for this chat" });
+    }
+    if (runsChatModel && connId === chat.connectionId) {
+      conn = applyChatModelOverride(conn, readChatModelOverride(chat));
+    }
 
     const baseUrl = resolveBaseUrl(conn);
     if (!baseUrl) return reply.status(400).send({ error: "No base URL configured for this connection" });
@@ -698,6 +737,11 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         const timelineIds = new Set(scopedMessages.slice(0, index).map((message) => message.id));
         chatMessages = chatMessages.filter((message) => timelineIds.has(message.id));
       }
+    }
+    if (chatMode === "roleplay" && !advancedMemoryEnabled) {
+      chatMessages = capSummarizedHistory(chatMessages, chatMeta, {
+        excludeMessageIds: regenerateMessageId ? [regenerateMessageId] : undefined,
+      }).messages;
     }
     const dryRunBeholderState = await loadPriorBeholderState({
       agentsStore: createAgentsStorage(app.db),
@@ -792,6 +836,20 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       conn.model,
     );
     const latestReplyUserMessageId = [...chatMessages].reverse().find((message) => message.role === "user")?.id;
+    // Images are captioned as in a real turn; captions are not saved (a dry run has no side effects).
+    const imageCaptioningArgs = {
+      chatMeta,
+      fallbackConnectionId: connId ?? null,
+      connections,
+      ...visionCaptionSettings(await readFeatureModelConnections(app.db)),
+    };
+    const imageCaptioning = chatMessages.some(
+      (m: any) => extractImageAttachmentDataUrls(parseExtra(m.extra).attachments as PromptAttachment[]).length,
+    )
+      ? await resolveImageCaptioningRuntime(imageCaptioningArgs)
+      : DISABLED_IMAGE_CAPTIONING;
+    // ponytail: captions are not tied to the dry-run abort; link them if long caption runs need cancelling.
+    const captionSignal = new AbortController().signal;
     const chatSpeakerNames =
       chatMode === "conversation" &&
       chatMessages.some((m: any) =>
@@ -799,30 +857,35 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       )
         ? await resolveChatSpeakerNames(chars, chat)
         : [];
-    let mappedMessages: DryRunPromptMessage[] = chatMessages.map((m: any) => {
+    let mappedMessages: DryRunPromptMessage[] = [];
+    for (const m of chatMessages as any[]) {
       const extra = parseExtra(m.extra);
       const personaSnapshotName = m.role === "user" ? readPersonaSnapshotName(extra) : null;
       const attachments = extra.attachments as PromptAttachment[] | undefined;
-      const images = extractImageAttachmentDataUrls(attachments);
-      const files = extractFileAttachmentInputs(attachments);
+      const { content, images, files } = await resolvePromptAttachmentInputs({
+        content:
+          chatMode === "roleplay" ? conversationPromptHistoryContent(m, chatMode) : ((m.content as string) ?? ""),
+        attachments,
+        imageCaptioning,
+        signal: captionSignal,
+      });
       const hiddenFromAICharacterIds = getMessageHiddenFromAICharacterIds(m);
       const conversationStartForCharacterIds = getMessageConversationStartCharacterIds(m);
       const providerMetadata = pastReasoning.get(m.id);
+      // Providers reject native image and file parts outside user turns.
       const isUserTurn = m.role === "user";
-      const content =
-        withLatestMessageReply(
-          appendReadableAttachmentsToContent(
-            chatMode === "roleplay" ? conversationPromptHistoryContent(m, chatMode) : ((m.content as string) ?? ""),
-            attachments,
-          ),
-          extra.replyTo,
-          isUserTurn && m.id === latestReplyUserMessageId,
-        ) + (isUserTurn ? "" : describeAttachmentsForNonUserTurn(attachments));
-      return {
+      let historyContent = withLatestMessageReply(
+        content,
+        extra.replyTo,
+        isUserTurn && m.id === latestReplyUserMessageId,
+      );
+      if (!isUserTurn) historyContent += describeAttachmentsForNonUserTurn(attachments);
+      if (m.role === "assistant")
+        historyContent = appendSentMediaNotes(historyContent, attachments, attachments, chatSpeakerNames);
+      mappedMessages.push({
         id: typeof m.id === "string" ? m.id : null,
         role: m.role === "narrator" ? ("system" as const) : (m.role as "user" | "assistant" | "system"),
-        content:
-          m.role === "assistant" ? appendSentMediaNotes(content, attachments, attachments, chatSpeakerNames) : content,
+        content: historyContent,
         contextKind: "history" as const,
         characterId: typeof m.characterId === "string" && m.characterId ? m.characterId : null,
         ...(personaSnapshotName ? { personaSnapshotName } : {}),
@@ -831,8 +894,8 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         ...(isUserTurn && images?.length ? { images } : {}),
         ...(isUserTurn && files.length ? { files } : {}),
         ...(providerMetadata ? { providerMetadata } : {}),
-      };
-    });
+      });
+    }
 
     // Game mode prompt preview must mirror real generation: segment edits/deletes
     // made in the VN log are model-visible overlays, even though raw DB messages
@@ -2166,11 +2229,6 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       });
     }
 
-    if (!impersonate && assistantPrefill.trim()) {
-      // Mirror the real send path: the trailing edge is stripped because Anthropic
-      // rejects a final assistant message ending in whitespace.
-      finalMessages.push({ role: "assistant", content: assistantPrefill.trimEnd() });
-    }
     finalMessages = injectOwnerSpatialPrompt(finalMessages, promptSpatialProjection);
     dedupeLastMessageWrappers(finalMessages);
     // Mirror the live route's provider-boundary macro guard so Peek Prompt is
@@ -2269,11 +2327,26 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     await appendLorebookImageMessages(finalMessages, lorebookImageEntries, {
       rememberImage: (dataUrl) => referenceImages.add(dataUrl),
     });
-    const provider = withLorebookImageCompatibility(
-      rawProvider,
-      referenceImages,
-      () => logger.warn("Dry-run model rejected lorebook reference images; retrying with text"),
-      chatImages,
+    // Mirror the real send path: the prompt ends on the Assistant Prefill, after everything above.
+    const prefillTurn = endPromptOnAssistantPrefill(
+      finalMessages,
+      !impersonate && assistantPrefill.trim()
+        ? resolveHistoryMessageMacros([{ role: "assistant" as const, content: assistantPrefill }])[0]!
+        : null,
+      !rejectsFinalAssistantMessage(conn.provider ?? "", conn.model ?? ""),
+      (message) => {
+        const source = message.id ? allChatMessages.find((saved) => saved.id === message.id) : undefined;
+        return source ? conversationPromptHistoryContent(source, chatMode) : undefined;
+      },
+    );
+    const provider = withImageCaptionFallback(
+      withLorebookImageCompatibility(
+        rawProvider,
+        referenceImages,
+        () => logger.warn("Dry-run model rejected lorebook reference images; retrying with text"),
+        chatImages,
+      ),
+      () => resolveVisionCaptioningRuntime(imageCaptioningArgs),
     );
 
     // ── Mirror /api/generate: normalize + fit prompt to context ──
@@ -2303,15 +2376,19 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       }));
 
     const prepareProviderMessages = (messages: ChatMessage[]): ChatMessage[] => {
-      return postProcessMessages(messages, {
-        ...(effectivePreset && !isStockMarinaraUniversalPreset(effectivePreset)
-          ? parseStoredGenerationParameters(effectivePreset.parameters)
-          : {}),
-        ...connectionParams,
-        ...gameSetupParams,
-        ...chatParams,
-        ...chatOverrideParams,
-      });
+      return postProcessMessages(
+        messages,
+        {
+          ...(effectivePreset && !isStockMarinaraUniversalPreset(effectivePreset)
+            ? parseStoredGenerationParameters(effectivePreset.parameters)
+            : {}),
+          ...connectionParams,
+          ...gameSetupParams,
+          ...chatParams,
+          ...chatOverrideParams,
+        },
+        prefillTurn.endsOnPrefill,
+      );
     };
 
     let advancedContext: Awaited<ReturnType<typeof prepareAdvancedMemoryContext>> | null = null;

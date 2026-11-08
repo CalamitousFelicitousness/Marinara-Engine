@@ -1,5 +1,12 @@
 import { clickTopbarPanel } from "./topbar-navigation.js";
 import {
+  openConnectionsPanelModel,
+  openDefaultsTile,
+  openDevicePage,
+  revealDefaultsTile,
+  ttsConfigCard,
+} from "./connections-panel.js";
+import {
   expect,
   test,
   type APIRequestContext,
@@ -15,6 +22,8 @@ import type { HomeCustomWidgetCatalog } from "@marinara-engine/shared";
 import { downloadExport } from "./export-save.js";
 import { forceColorValueEnablesColor } from "./playwright-color-environment.js";
 import { mockUILanguagePacks, selectUILanguage } from "./ui-language-fixtures.js";
+import { chooseConnection } from "./connection-picker.js";
+import { acquireMariThreadLock, releaseMariThreadLock } from "./mari-thread-lock.js";
 import { seedUIState } from "./ui-state-fixture.js";
 import {
   chatSettingsDrawer,
@@ -57,6 +66,17 @@ function collectUnexpectedErrors(page: Page) {
     errors.push(text);
   });
   return errors;
+}
+
+/**
+ * Since #8456 the Connections panel, the editors and the model switcher read every model's list. A fixture, or a
+ * model an earlier spec left behind, with an unreachable address answers 502 (without an address, 400), and the
+ * browser logs that as a console error. A test that does not look at model lists serves them empty.
+ */
+async function serveEmptyModelLists(page: Page) {
+  await page.route("**/api/connections/*/models*", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ models: [] }) }),
+  );
 }
 
 /** Check a sidebar's header help: named after the sidebar, right after its title, its own text on screen, closable. */
@@ -1173,9 +1193,14 @@ test("Chat Settings adds a formatted greeting after the setup wizard is skipped"
     const settingsProfileSelect = drawer.getByLabel("Profile", { exact: true });
     await expect(settingsProfileSelect).toHaveAttribute("title", "Apply a settings profile to this chat");
     await expect(settingsProfileSelect.locator("option:checked")).toHaveText("Custom settings profile");
-    await expect(drawer.getByTitle("Cannot save into the Default profile")).toBeDisabled();
+    // #8555 added the profile builder's Edit and New buttons: Edit carries the same "Cannot save" title for the
+    // Default profile, and New (from this chat's settings) replaced the save-as-new icon.
+    await expect(
+      drawer.getByRole("button", { name: "Cannot save into the Default profile", exact: true }),
+    ).toBeDisabled();
+    await expect(drawer.getByRole("button", { name: "Edit", exact: true })).toBeDisabled();
     await expect(drawer.getByTitle("Cannot rename the Default profile")).toBeDisabled();
-    await expect(drawer.getByTitle("Save current chat settings as a new profile")).toBeEnabled();
+    await expect(drawer.getByTitle("New profile from this chat's settings")).toBeEnabled();
     await expect(drawer.getByTitle("Import settings profile (.json)")).toBeEnabled();
     await expect(drawer.getByTitle("Export settings profile (.json)")).toBeEnabled();
     await expect(drawer.getByTitle("Cannot delete the Default profile")).toBeDisabled();
@@ -1184,17 +1209,22 @@ test("Chat Settings adds a formatted greeting after the setup wizard is skipped"
     ).toHaveClass(/lucide-venetian-mask/u);
     await drawer.getByText("Characters", { exact: true }).first().click();
     await drawer.getByRole("button", { name: "Add Character", exact: true }).click();
-    await drawer.getByPlaceholder("Search characters").fill(characterName);
-    const characterOption = drawer.locator("button", { hasText: characterName }).last();
-    const characterOptionContainer = characterOption.locator("..");
+    // #8763: Add Character opens the shared character picker window beside the drawer.
+    const characterPicker = page.getByRole("dialog", { name: "Characters", exact: true });
+    await characterPicker.getByRole("searchbox", { name: "Search characters" }).fill(characterName);
+    const characterOption = characterPicker.locator("[data-pick-row]", { hasText: characterName }).last();
     await characterOption.hover();
-    const [characterOptionBox, characterOptionContainerBox] = await Promise.all([
-      characterOption.boundingBox(),
-      characterOptionContainer.boundingBox(),
-    ]);
-    expect(characterOptionBox).not.toBeNull();
-    expect(characterOptionContainerBox).not.toBeNull();
-    expect(Math.abs(characterOptionBox!.width - characterOptionContainerBox!.width)).toBeLessThan(0.1);
+    // The row fills the list's width inside its padding, so its hover background spans the list.
+    const rowWidths = await characterOption.evaluate((row) => {
+      const list = row.parentElement!;
+      const style = getComputedStyle(list);
+      const inset = ["paddingLeft", "paddingRight", "borderLeftWidth", "borderRightWidth"] as const;
+      return {
+        row: row.getBoundingClientRect().width,
+        list: list.getBoundingClientRect().width - inset.reduce((sum, key) => sum + parseFloat(style[key]), 0),
+      };
+    });
+    expect(Math.abs(rowWidths.row - rowWidths.list)).toBeLessThan(0.1);
     await expect(characterOption).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     await characterOption.click();
 
@@ -2325,7 +2355,9 @@ test("mobile Roleplay context and edit controls keep their chrome and space", as
       body: await page.screenshot({ fullPage: true }),
       contentType: "image/png",
     });
-    await quickSwitcher.click();
+    // Since #8456 the phone Quick Switcher is a Modal that covers its composer toggle, so it closes from its own
+    // Close button.
+    await page.getByRole("button", { name: "Close Quick Switcher", exact: true }).click();
     await expect(budget).toHaveCount(0);
 
     const roleplaySurface = page.locator('[data-component="ChatArea.Roleplay"]');
@@ -3254,20 +3286,23 @@ test("modal backdrops ignore drag releases but still close on a fresh outside cl
   await expect(dialog).toHaveCount(0);
 });
 
-test("connection model fetch errors inherit the configured editor accent", async ({ page }, testInfo) => {
+test("connection model fetch errors use the Connections editor accent", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name.includes("mobile"), "Desktop connection editor chrome is covered here.");
 
   const connectionResponse = await page.request.post("/api/connections", {
+    // Since #8456 a custom Connection without a model is its account's anchor, which the panel lists no row for.
     data: {
       name: "Connection Fetch Error Chroma",
       provider: "custom",
+      model: "fetch-error-model",
     },
   });
   expect(connectionResponse.ok()).toBeTruthy();
   const connection = (await connectionResponse.json()) as { id: string };
   const networkError = "NetworkError when attempting to fetch resource.";
   const internalServerError = "Internal Server Error";
-  const accentColor = "rgb(20, 184, 166)";
+  // The Connections scope paints its editor in the Connections type colour (#38bdf8), even over a teal app accent.
+  const accentColor = "rgb(56, 189, 248)";
   let fetchCount = 0;
 
   try {
@@ -3306,32 +3341,33 @@ test("connection model fetch errors inherit the configured editor accent", async
 
     await clickTopbarPanel(page, "connections");
     const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
-    await rightPanel
-      .getByText("Connection Fetch Error Chroma", { exact: true })
-      .first()
-      .evaluate((element) => (element as HTMLElement).click());
+    await openConnectionsPanelModel(rightPanel, "Connection Fetch Error Chroma");
 
     const editor = page.locator(".mari-editor-shell");
     await expect(editor).toBeVisible();
-    await editor.getByText("Select a model…", { exact: true }).click();
-    await editor.getByRole("button", { name: "Fetch Models from API" }).click();
-
-    const errorText = editor.getByText(networkError, { exact: true });
+    // #8456: the editor's model list is the shared model picker, which loads the list as it opens and shows a
+    // failed load under its search; a failed Refresh is reported in a toast.
+    const loadStatus = editor.locator('[data-connection-model-picker] [role="status"]');
+    await expect(
+      loadStatus.getByText("Couldn't load the model list. You can still type a model ID.", { exact: true }),
+    ).toBeVisible();
+    const errorText = loadStatus.getByText(networkError, { exact: true });
     await expect(errorText).toBeVisible();
     await expect(errorText).toHaveCSS("color", accentColor);
     expect(await errorText.getAttribute("class")).not.toMatch(/destructive|pink|red|rose/iu);
 
-    await editor.getByRole("button", { name: "Fetch Models from API" }).click();
-    const internalErrorText = editor.getByText(internalServerError, { exact: true });
-    await expect(internalErrorText).toBeVisible();
-    await expect(internalErrorText).toHaveCSS("color", accentColor);
-    expect(await internalErrorText.getAttribute("class")).not.toMatch(/destructive|pink|red|rose/iu);
+    await editor.getByRole("button", { name: "Refresh model list", exact: true }).click();
+    await expect(
+      page
+        .locator("[data-sonner-toast]")
+        .filter({ hasText: `Couldn't refresh the model list: ${internalServerError}` }),
+    ).toBeVisible();
   } finally {
     await page.request.delete(`/api/connections/${connection.id}`).catch(() => undefined);
   }
 });
 
-test("connection test-message errors inherit the configured editor accent", async ({ page }, testInfo) => {
+test("connection test-message errors use the Connections editor accent", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name.includes("mobile"), "Desktop connection editor chrome is covered here.");
 
   const connectionResponse = await page.request.post("/api/connections", {
@@ -3345,7 +3381,8 @@ test("connection test-message errors inherit the configured editor accent", asyn
   expect(connectionResponse.ok()).toBeTruthy();
   const connection = (await connectionResponse.json()) as { id: string };
   const internalServerError = "Internal Server Error";
-  const accentColor = "rgb(20, 184, 166)";
+  // The Connections scope paints its editor in the Connections type colour (#38bdf8), even over a teal app accent.
+  const accentColor = "rgb(56, 189, 248)";
 
   try {
     await page.route(`**/api/connections/${connection.id}/test-message`, async (route) => {
@@ -3384,14 +3421,11 @@ test("connection test-message errors inherit the configured editor accent", asyn
 
     await clickTopbarPanel(page, "connections");
     const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
-    await rightPanel
-      .getByText("Connection Message Error Chroma", { exact: true })
-      .first()
-      .evaluate((element) => (element as HTMLElement).click());
+    await openConnectionsPanelModel(rightPanel, "Connection Message Error Chroma");
 
     const editor = page.locator(".mari-editor-shell");
     await expect(editor).toBeVisible();
-    await editor.getByRole("button", { name: "Send Test Message" }).click();
+    await editor.getByRole("button", { name: "Send test message" }).click();
 
     const errorText = editor.getByText(internalServerError, { exact: true });
     await expect(errorText).toBeVisible();
@@ -3427,10 +3461,7 @@ test("NovelAI style plate upload keeps the connection editor mounted", async ({ 
     await page.goto("/");
     await clickTopbarPanel(page, "connections");
     const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
-    await rightPanel
-      .getByText("NovelAI Style Plate Upload", { exact: true })
-      .first()
-      .evaluate((element) => (element as HTMLElement).click());
+    await openConnectionsPanelModel(rightPanel, "NovelAI Style Plate Upload");
 
     const editor = page.locator(".mari-editor-shell");
     await expect(editor).toBeVisible();
@@ -3509,10 +3540,7 @@ test("NovelAI generation defaults survive save and editor navigation", async ({ 
     await page.goto("/");
     await clickTopbarPanel(page, "connections");
     const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
-    await rightPanel
-      .getByText(connectionName, { exact: true })
-      .first()
-      .evaluate((element) => (element as HTMLElement).click());
+    await openConnectionsPanelModel(rightPanel, connectionName);
 
     let editor = page.locator(".mari-editor-shell");
     await expect(editor).toBeVisible();
@@ -3534,8 +3562,8 @@ test("NovelAI generation defaults survive save and editor navigation", async ({ 
       .toBe(50);
 
     const downloadPromise = page.waitForEvent("download");
-    await editor.getByRole("button", { name: "Export connection" }).click();
-    const exportDialog = page.getByRole("dialog", { name: "Export Connection Data" });
+    await editor.getByRole("button", { name: "Export model" }).click();
+    const exportDialog = page.getByRole("dialog", { name: "Export provider data" });
     await expect(exportDialog).toBeVisible();
     await exportDialog.getByRole("button", { name: "Export", exact: true }).click();
     const download = await downloadPromise;
@@ -3561,10 +3589,7 @@ test("NovelAI generation defaults survive save and editor navigation", async ({ 
       .toBe(personaId);
 
     await clickTopbarPanel(page, "connections");
-    await rightPanel
-      .getByText(connectionName, { exact: true })
-      .first()
-      .evaluate((element) => (element as HTMLElement).click());
+    await openConnectionsPanelModel(rightPanel, connectionName);
     editor = page.locator(".mari-editor-shell");
     const reopenedSeedInput = editor.getByRole("spinbutton", { name: "Seed" });
     if (!(await reopenedSeedInput.isVisible())) {
@@ -3587,8 +3612,10 @@ test("NovelAI generation defaults survive connection import", async ({ page, req
     await page.goto("/");
     await clickTopbarPanel(page, "connections");
     const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
-    await rightPanel.getByRole("button", { name: "Import connection" }).click();
-    const importDialog = page.getByRole("dialog", { name: "Import Connections" });
+    // Import lives in the panel's More menu.
+    await rightPanel.getByRole("button", { name: "More actions", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Import account" }).click();
+    const importDialog = page.getByRole("dialog", { name: "Import accounts" });
     await importDialog.locator('input[type="file"]').setInputFiles({
       name: "novelai-defaults.connection.json",
       mimeType: "application/json",
@@ -3634,12 +3661,9 @@ test("NovelAI generation defaults survive connection import", async ({ page, req
     };
     expect(params.imageGeneration?.seed).toBe(73);
 
-    await importDialog.getByRole("button", { name: "Close Import Connections" }).click();
+    await importDialog.getByRole("button", { name: "Close Import accounts" }).click();
     await expect(importDialog).toHaveCount(0);
-    await rightPanel
-      .getByText(connectionName, { exact: true })
-      .first()
-      .evaluate((element) => (element as HTMLElement).click());
+    await openConnectionsPanelModel(rightPanel, connectionName);
     const editor = page.locator(".mari-editor-shell");
     await expect(editor).toBeVisible();
     const seedInput = editor.getByRole("spinbutton", { name: "Seed" });
@@ -3697,24 +3721,21 @@ test("Connection image captioning defaults persist with a dedicated captioning c
     await page.goto("/");
     await clickTopbarPanel(page, "connections");
     const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
-    await rightPanel
-      .getByText(chatConnectionName, { exact: true })
-      .first()
-      .evaluate((element) => (element as HTMLElement).click());
+    await openConnectionsPanelModel(rightPanel, chatConnectionName);
 
     const editor = page.locator(".mari-editor-shell");
     await expect(editor).toBeVisible();
     await editor
-      .getByText("Use custom defaults for this connection", { exact: true })
+      .getByText("Use custom defaults for this model", { exact: true })
       .evaluate((element) => (element as HTMLElement).click());
-    await expect(editor.getByRole("checkbox", { name: "Use custom defaults for this connection" })).toBeChecked();
-    await editor.getByText("Image Captioning", { exact: true }).click();
-    await expect(editor.getByRole("checkbox", { name: "Image Captioning" })).toBeChecked();
+    await expect(editor.getByRole("checkbox", { name: "Use custom defaults for this model" })).toBeChecked();
+    await editor.getByText("Image captioning", { exact: true }).click();
+    await expect(editor.getByRole("checkbox", { name: "Image captioning" })).toBeChecked();
+    // #8456: the captioning field is a ConnectionSelect, a button that opens the model picker.
     const captioningSelect = editor
-      .getByText("Captioning Connection", { exact: true })
-      .locator("..")
-      .getByRole("combobox");
-    await captioningSelect.selectOption(captionConnection.id);
+      .locator("label", { hasText: "Captioning provider" })
+      .locator("[data-connection-value]");
+    await chooseConnection(page, captioningSelect, captionConnection.id);
 
     await Promise.all([
       page.waitForResponse(
@@ -3734,13 +3755,10 @@ test("Connection image captioning defaults persist with a dedicated captioning c
     expect(storedDefaults.imageCaptioningConnectionId).toBe(captionConnection.id);
 
     await editor.locator(".mari-editor-header .mari-editor-action").first().click();
-    await rightPanel
-      .getByText(chatConnectionName, { exact: true })
-      .first()
-      .evaluate((element) => (element as HTMLElement).click());
-    await expect(editor.getByRole("checkbox", { name: "Use custom defaults for this connection" })).toBeChecked();
-    await expect(editor.getByRole("checkbox", { name: "Image Captioning" })).toBeChecked();
-    await expect(captioningSelect).toHaveValue(captionConnection.id);
+    await openConnectionsPanelModel(rightPanel, chatConnectionName);
+    await expect(editor.getByRole("checkbox", { name: "Use custom defaults for this model" })).toBeChecked();
+    await expect(editor.getByRole("checkbox", { name: "Image captioning" })).toBeChecked();
+    await expect(captioningSelect).toHaveAttribute("data-connection-value", captionConnection.id);
   } finally {
     await Promise.all([
       request.delete(`/api/connections/${chatConnection.id}`).catch(() => undefined),
@@ -3749,18 +3767,21 @@ test("Connection image captioning defaults persist with a dedicated captioning c
   }
 });
 
-test("Connection Discard uses the configured editor accent", async ({ page }, testInfo) => {
+test("Connection Discard uses the Connections editor accent", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name.includes("mobile"), "Desktop connection editor guard chrome is covered here.");
 
   const connectionResponse = await page.request.post("/api/connections", {
+    // Since #8456 a custom Connection without a model is its account's anchor, which the panel lists no row for.
     data: {
       name: "Connection Discard Accent",
       provider: "custom",
+      model: "discard-accent-model",
     },
   });
   expect(connectionResponse.ok()).toBeTruthy();
   const connection = (await connectionResponse.json()) as { id: string };
-  const accentColor = "rgb(20, 184, 166)";
+  // The Connections scope paints its editor in the Connections type colour (#38bdf8), even over a teal app accent.
+  const accentColor = "rgb(56, 189, 248)";
 
   try {
     await page.goto("/");
@@ -3771,10 +3792,7 @@ test("Connection Discard uses the configured editor accent", async ({ page }, te
 
     await clickTopbarPanel(page, "connections");
     const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
-    await rightPanel
-      .getByText("Connection Discard Accent", { exact: true })
-      .first()
-      .evaluate((element) => (element as HTMLElement).click());
+    await openConnectionsPanelModel(rightPanel, "Connection Discard Accent");
 
     const editor = page.locator(".mari-editor-shell");
     await expect(editor).toBeVisible();
@@ -3790,72 +3808,6 @@ test("Connection Discard uses the configured editor accent", async ({ page }, te
     await expect(editor).toHaveCount(0);
   } finally {
     await page.request.delete(`/api/connections/${connection.id}`).catch(() => undefined);
-  }
-});
-
-test("mobile connection drag previews preserve configured Chroma text", async ({ page, request }, testInfo) => {
-  test.skip(!testInfo.project.name.includes("mobile"), "Touch drag preview colors are covered on mobile.");
-
-  const suffix = Date.now().toString(36);
-  const connectionName = `Drag Preview Chroma ${suffix}`;
-  const model = `drag-preview-${suffix}`;
-  const connectionResponse = await request.post("/api/connections", {
-    data: { name: connectionName, provider: "openrouter", model },
-  });
-  expect(connectionResponse.ok(), await connectionResponse.text()).toBeTruthy();
-  const connection = (await connectionResponse.json()) as { id: string };
-
-  try {
-    await page.goto("/");
-    await page.evaluate(async () => {
-      const { useUIStore } = (await import("/src/stores/ui.store.ts" as string)) as {
-        useUIStore: {
-          getState: () => {
-            setAppAccentColor: (value: string) => void;
-            setChatChromeTextColor: (value: string) => void;
-          };
-        };
-      };
-      const ui = useUIStore.getState();
-      ui.setAppAccentColor("#ff1493");
-      ui.setChatChromeTextColor("#14b8a6");
-    });
-    await clickTopbarPanel(page, "connections");
-
-    const panel = page.locator('[data-component="RightPanelMobile"]');
-    const source = panel.locator(`[data-touch-drag-card="connection"][data-connection-id="${connection.id}"]`);
-    const metadataText = `openrouter • ${model}`;
-    const sourceMetadata = source.getByText(metadataText, { exact: true });
-    const expectedColor = await readScopedCssVariableColor(source, "--muted-foreground");
-    await expect(sourceMetadata).toHaveCSS("color", expectedColor);
-
-    const dragHandle = source;
-    const handleBounds = await dragHandle.boundingBox();
-    expect(handleBounds).not.toBeNull();
-    const point = {
-      x: handleBounds!.x + handleBounds!.width / 2,
-      y: handleBounds!.y + handleBounds!.height / 2,
-    };
-    await dragHandle.evaluate((handle, startPoint) => {
-      const touch = { identifier: 1, target: handle, clientX: startPoint.x, clientY: startPoint.y };
-      const event = new Event("touchstart", { bubbles: true, cancelable: true });
-      Object.defineProperties(event, {
-        touches: { value: [touch] },
-        changedTouches: { value: [touch] },
-      });
-      handle.dispatchEvent(event);
-    }, point);
-    await page.waitForTimeout(350);
-
-    const preview = page.locator(
-      `body > [data-touch-drag-card="connection"][data-connection-id="${connection.id}"][aria-hidden="true"]`,
-    );
-    await expect(preview).toBeVisible();
-    await expect(preview.getByText(metadataText, { exact: true })).toHaveCSS("color", expectedColor);
-    await page.evaluate(() => window.dispatchEvent(new Event("touchcancel")));
-    await expect(preview).toHaveCount(0);
-  } finally {
-    await request.delete(`/api/connections/${connection.id}`).catch(() => undefined);
   }
 });
 
@@ -4381,9 +4333,12 @@ test("Character Chat actions reuse mode selection and seed the chosen setup wiza
     const roleplayWizard = page.locator('[data-component="ChatSetupWizard"]');
     await expect(roleplayWizard).toBeVisible();
     await expect(roleplayWizard).toHaveClass(/mari-chat-setup-wizard/u);
-    const roleplayConnectionSelect = roleplayWizard.getByRole("combobox", { name: "Connection", exact: true });
+    // #8456 replaced the Connection listbox with ConnectionSelect: a "Model" button that opens the model picker.
+    const roleplayConnectionSelect = roleplayWizard.getByRole("button", { name: /^Model: /u });
+    await expect(roleplayConnectionSelect).toHaveAttribute("aria-haspopup", "dialog");
     await roleplayConnectionSelect.click();
-    const connectionListbox = roleplayWizard.getByRole("listbox", { name: "Connection", exact: true });
+    const connectionPicker = page.getByRole("dialog", { name: "Model for this chat", exact: true });
+    const connectionListbox = connectionPicker.locator(".connection-picker-dialog");
     await expect(connectionListbox).toBeVisible();
     const connectionListboxStyle = await connectionListbox.evaluate((listbox) => {
       const style = getComputedStyle(listbox);
@@ -4391,20 +4346,22 @@ test("Character Chat actions reuse mode selection and seed the chosen setup wiza
     });
     expect(connectionListboxStyle.backgroundColor).not.toBe("rgb(255, 255, 255)");
     expect(connectionListboxStyle.color).not.toBe(connectionListboxStyle.backgroundColor);
-    await connectionListbox.getByRole("option", { name: "None", exact: true }).click();
-    await expect(connectionListbox).toBeHidden();
+    await connectionPicker.getByRole("button", { name: "Close Model for this chat", exact: true }).click();
+    await expect(connectionPicker).toBeHidden();
     await roleplayWizard.getByRole("button", { name: "Next", exact: true }).click();
     await expect(roleplayWizard.getByRole("heading", { name: "Pick a Preset", exact: true })).toBeVisible();
     const presetSelect = roleplayWizard.getByRole("combobox", { name: "Preset", exact: true });
     await presetSelect.click();
     const presetListbox = roleplayWizard.getByRole("listbox", { name: "Preset", exact: true });
     await expect(presetListbox).toBeVisible();
-    expect(
-      await presetListbox.evaluate((listbox) => {
-        const style = getComputedStyle(listbox);
-        return { backgroundColor: style.backgroundColor, color: style.color };
-      }),
-    ).toEqual(connectionListboxStyle);
+    // The model field is no longer a listbox of the same kind (#8456), so the preset listbox is held to the same
+    // legibility rules on its own.
+    const presetListboxStyle = await presetListbox.evaluate((listbox) => {
+      const style = getComputedStyle(listbox);
+      return { backgroundColor: style.backgroundColor, color: style.color };
+    });
+    expect(presetListboxStyle.backgroundColor).not.toBe("rgb(255, 255, 255)");
+    expect(presetListboxStyle.color).not.toBe(presetListboxStyle.backgroundColor);
     await page.route(`**/api/chats/${roleplayChatId}`, async (route) => {
       const request = route.request();
       if (request.method() === "PATCH" && request.postDataJSON()?.promptPresetId === null) {
@@ -4853,7 +4810,8 @@ test("Character and Persona avatar actions stay separated and visually balanced"
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
     await expect(uploadButton).toHaveClass(/mari-chrome-control--small/);
     await expect(metadataGenerateButton).toHaveClass(/mari-chrome-control--small/);
-    const fullImageButton = editor.getByRole("button", { name: "Full image", exact: true });
+    // The crop widget's "Full image" button reads "Full" since #8021.
+    const fullImageButton = editor.getByRole("button", { name: "Full", exact: true });
     const resetCropButton = editor.getByTitle("Reset to centered max-square crop");
     const resetVersionButton = editor.getByTitle("Reset card versioning");
     await expect(fullImageButton).toHaveClass(/mari-editor-action/u);
@@ -4884,8 +4842,9 @@ test("Character and Persona avatar actions stay separated and visually balanced"
 
     if (panel === "characters") {
       await openEditorSection(editor, "Card");
-      const addGreetingButton = editor.getByRole("button", { name: "+ Add", exact: true });
-      await expect(addGreetingButton).toHaveClass(/mari-editor-action--accent/u);
+      // #8535 moved greetings into the card field panel, whose add button is a plain editor action.
+      const addGreetingButton = editor.getByRole("button", { name: "Add Alternate Greeting", exact: true });
+      await expect(addGreetingButton).toHaveClass(/mari-editor-action/u);
     }
 
     await openEditorSection(editor, "Lorebook");
@@ -4917,6 +4876,97 @@ test("Character and Persona avatar actions stay separated and visually balanced"
       page.request.delete(`/api/characters/personas/${persona.id}`).catch(() => undefined),
       page.request.delete(`/api/connections/${connection.id}`).catch(() => undefined),
     ]);
+  }
+});
+
+test("Sprite image selection uses a regular file picker and Engine confirmation", async ({
+  page,
+  request,
+}, testInfo) => {
+  const response = await request.post("/api/characters", { data: { data: { name: "Image import confirmation" } } });
+  expect(response.ok()).toBeTruthy();
+  const character = (await response.json()) as { id: string };
+  const browserDialogs: string[] = [];
+  page.on("dialog", async (dialog) => {
+    browserDialogs.push(dialog.type());
+    await dialog.dismiss();
+  });
+  const uploads: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().includes(`/api/sprites/${character.id}`))
+      uploads.push(request.url());
+  });
+  const images = ["happy.png", "sad.png"].map((name) => ({
+    name,
+    mimeType: "image/png",
+    buffer: Buffer.from(TRANSPARENT_PNG_BASE64, "base64"),
+  }));
+  try {
+    await page.goto("/");
+    await page.evaluate(async (id) => {
+      const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+      useUIStore.getState().openCharacterDetail(id);
+    }, character.id);
+    const editor = page.locator(".mari-editor-shell");
+    await openEditorSection(editor, "Sprites");
+    await editor.getByRole("button", { name: "Manage", exact: true }).last().click();
+    await editor.getByRole("button", { name: "Add sprites", exact: true }).click();
+    const section = editor.locator('[data-editor-section="sprites"]');
+    await expect(section.locator("input[webkitdirectory]")).toHaveCount(0);
+    await expect(section.getByRole("button", { name: "Import folder", exact: true })).toHaveCount(0);
+    const confirmation = page.getByRole("dialog", { name: "Import images", exact: true });
+    async function chooseImages(files = images) {
+      const opened = page.waitForEvent("filechooser");
+      await section.getByRole("button", { name: "Upload images", exact: true }).click();
+      const chooser = await opened;
+      expect(chooser.isMultiple()).toBe(true);
+      expect(await chooser.element().getAttribute("webkitdirectory")).toBeNull();
+      expect(await chooser.element().getAttribute("accept")).toBe("image/*");
+      await chooser.setFiles(files);
+    }
+    await chooseImages([...images, { name: "unsupported.bmp", mimeType: "image/bmp", buffer: Buffer.from("ignored") }]);
+    await expect(confirmation.getByText("Import 2 images?", { exact: true })).toBeVisible();
+    expect(uploads).toEqual([]);
+    for (const theme of ["dark", "light"] as const) {
+      await page.evaluate(async (theme) => {
+        const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+        useUIStore.getState().setTheme(theme);
+      }, theme);
+      await expect(confirmation.getByRole("button", { name: "Import", exact: true })).toBeInViewport();
+      await testInfo.attach(`sprite-image-confirmation-${theme}`, {
+        body: await page.screenshot(),
+        contentType: "image/png",
+      });
+    }
+    await confirmation.getByRole("button", { name: "Cancel", exact: true }).click();
+    expect(uploads).toEqual([]);
+    await chooseImages([{ name: "unsupported.bmp", mimeType: "image/bmp", buffer: Buffer.from("ignored") }]);
+    await expect(page.getByText("No supported sprite images were found.", { exact: true })).toBeVisible();
+    await expect(confirmation).toHaveCount(0);
+    expect(uploads).toEqual([]);
+    await chooseImages();
+    await confirmation.getByRole("button", { name: "Import", exact: true }).click();
+    await expect.poll(async () => (await (await request.get(`/api/sprites/${character.id}`)).json()).length).toBe(2);
+    const sprites = (await (await request.get(`/api/sprites/${character.id}`)).json()) as Array<{
+      label: string;
+      folderId: string | null;
+    }>;
+    expect(sprites.map((sprite) => sprite.label)).toEqual(["happy", "sad"]);
+    expect(sprites.every((sprite) => sprite.folderId === null)).toBe(true);
+    expect((await (await request.get(`/api/sprites/${character.id}/catalog`)).json()).folders).toEqual([]);
+    await section.getByRole("button", { name: "Full-body", exact: true }).click();
+    await chooseImages([{ ...images[0]!, name: "neutral.png" }]);
+    await expect(confirmation.getByText("Import 1 image?", { exact: true })).toBeVisible();
+    await confirmation.getByRole("button", { name: "Import", exact: true }).click();
+    await expect.poll(async () => (await (await request.get(`/api/sprites/${character.id}`)).json()).length).toBe(3);
+    expect(
+      (await (await request.get(`/api/sprites/${character.id}`)).json()).some(
+        (sprite: { label: string }) => sprite.label === "full_neutral",
+      ),
+    ).toBe(true);
+    expect(browserDialogs).toEqual([]);
+  } finally {
+    await bestEffortDelete(request, `/api/characters/${character.id}`);
   }
 });
 
@@ -4963,9 +5013,16 @@ test("Character-sheet generation offers the saved neutral full-body sprite as an
     const editor = page.locator(".mari-editor-shell");
     await openEditorSection(editor, "Sprites");
     const create = editor.locator('[data-editor-section="sprites"]').getByRole("button", { name: "Create with AI" });
+    await editor.getByRole("button", { name: "Manage", exact: true }).click();
     await create.click();
     const dialog = page.getByRole("dialog", { name: "Create Character Sheet" });
-    await dialog.getByRole("combobox").selectOption(connection.id);
+    await dialog.locator("[data-connection-value]").click();
+    const modelPicker = page.getByRole("dialog", { name: "Model for Avatar images", exact: true });
+    await modelPicker
+      .getByRole("region", { name: "All models", exact: true })
+      .getByRole("button", { name: /^Sheet reference fixture,/ })
+      .click();
+    await expect(modelPicker).toBeHidden();
     const neutral = dialog.getByRole("checkbox", { name: "Use neutral full-body sprite as a reference" });
     const likeness = dialog.getByRole("checkbox", { name: /Use current avatar as a likeness reference/ });
     await expect(neutral).not.toBeChecked();
@@ -5002,13 +5059,33 @@ test("Character-sheet generation offers the saved neutral full-body sprite as an
       expect(sent.at(-1)?.referenceImages).toEqual(expected);
     }
 
+    const uploadedSheet = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/api/characters/${character.id}/gallery/upload`) &&
+        response.request().method() === "POST",
+    );
+    await dialog.getByRole("button", { name: "Save as Character Sheet", exact: true }).click();
+    expect((await uploadedSheet).ok()).toBeTruthy();
+    const savedSheet = (await (await uploadedSheet).json()) as { id: string };
+    await expect(dialog).toHaveCount(0);
+    await expect
+      .poll(
+        async () =>
+          JSON.parse((await (await request.get(`/api/characters/${character.id}`)).json()).data).extensions
+            .characterSheetImageId,
+      )
+      .toBe(savedSheet.id);
+    await expect(editor.locator(".mari-editor-action--save")).toBeDisabled();
+    await create.click();
+    await expect(neutral).not.toBeChecked();
     await neutral.check();
+    await likeness.uncheck();
     await page.evaluate(async () => {
       const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
       useUIStore.getState().setReviewImagePromptsBeforeSend(true);
     });
     const previewRequest = page.waitForRequest("**/api/characters/avatar-generation/preview");
-    await dialog.getByRole("button", { name: "Regenerate", exact: true }).click();
+    await dialog.getByRole("button", { name: "Generate", exact: true }).click();
     expect((await previewRequest).postDataJSON().referenceImages).toEqual([sprite]);
     const review = page.getByRole("dialog", { name: "Review Image Prompt", exact: true });
     await review.getByRole("button", { name: "Generate", exact: true }).click();
@@ -5016,6 +5093,12 @@ test("Character-sheet generation offers the saved neutral full-body sprite as an
     expect(sent.at(-1)?.referenceImages).toEqual([sprite]);
 
     await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(
+      JSON.parse((await (await request.get(`/api/characters/${character.id}`)).json()).data).extensions
+        .characterSheetImageId,
+    ).toBe(savedSheet.id);
+    await expect(editor.locator(".mari-editor-action--save")).toBeDisabled();
     await create.click();
     await expect(neutral).not.toBeChecked();
     await neutral.check();
@@ -5035,8 +5118,8 @@ test("Character-sheet generation offers the saved neutral full-body sprite as an
     await page.unroute(`**${referenceUrl}`);
     await editor.getByRole("button", { name: "Full-body", exact: true }).click();
     const savedNeutral = editor.getByAltText("full_neutral", { exact: true }).locator("../..");
-    await savedNeutral.hover();
-    await savedNeutral.getByRole("button", { name: "Delete", exact: true }).click();
+    await savedNeutral.getByRole("img").click();
+    await page.getByRole("dialog").last().getByRole("button", { name: "Delete Sprite", exact: true }).click();
     const deletion = page.getByRole("dialog", { name: "Delete Sprite", exact: true });
     await deletion.getByRole("button", { name: "Delete", exact: true }).click();
     await expect(deletion).not.toBeVisible();
@@ -5097,7 +5180,7 @@ test("Persona sheets accept neutral full-body references and save the result", a
       .getByRole("button", { name: "Create with AI", exact: true });
     await create.click();
     const dialog = page.getByRole("dialog", { name: "Create Character Sheet", exact: true });
-    await dialog.getByRole("combobox").selectOption(connectionId);
+    await chooseConnection(page, dialog.locator("[data-connection-value]"), connectionId);
     const neutral = dialog.getByRole("checkbox", { name: "Use neutral full-body sprite as a reference" });
     const likeness = dialog.getByRole("checkbox", { name: /Use current avatar as a likeness reference/ });
     await expect(neutral).not.toBeChecked();
@@ -5326,9 +5409,32 @@ test("Character and persona sheets persist an explicit reference choice and fall
     ).toHaveCount(0);
     await openEditorSection(editor, "Sprites");
     await expect(editor.getByRole("heading", { name: "Character Sheet", exact: true })).toBeVisible();
+    const sheetThumbnail = editor.getByRole("button", { name: "Open full image", exact: true });
+    const sheetPreview = page.getByRole("dialog", { name: "Image preview", exact: true });
+    await sheetThumbnail.focus();
+    await sheetThumbnail.press("Enter");
+    await expect(sheetPreview).toBeVisible();
+    await expect(sheetPreview.locator(".mari-modal-panel")).toHaveCount(0);
+    await expect(sheetPreview.getByRole("heading")).toHaveCount(0);
+    await expect(sheetPreview.getByAltText(`${characterName} character sheet`, { exact: true })).toHaveJSProperty(
+      "src",
+      await sheetThumbnail.locator("img").evaluate((image: HTMLImageElement) => image.src),
+    );
+    await page.keyboard.press("Escape");
+    await expect(sheetPreview).toBeHidden();
+    await expect(sheetThumbnail).toBeFocused();
+    await editor.getByRole("button", { name: "Manage", exact: true }).click();
     await expect(editor.getByAltText(`${characterName} character sheet`)).toBeVisible();
-    await expect(editor.getByRole("checkbox", { name: "Use as reference image" })).toBeChecked();
-    await expect(editor.getByText(/Character sheet reference is active/u)).toBeVisible();
+    const expandedSheet = editor.getByAltText(`${characterName} character sheet`).locator("..");
+    await expandedSheet.click();
+    await expect(sheetPreview).toBeVisible();
+    await sheetPreview.getByRole("button", { name: "Close image", exact: true }).click();
+    await expect(sheetPreview).toBeHidden();
+    await expect(expandedSheet).toBeFocused();
+    await expandedSheet.click();
+    await sheetPreview.click({ position: { x: 2, y: 2 } });
+    await expect(sheetPreview).toBeHidden();
+    await expect(editor.getByRole("checkbox", { name: "Use character sheet" })).toBeChecked();
     await expect(editor.getByRole("heading", { name: "Choose from Character Gallery", exact: true })).toHaveCount(0);
     await editor
       .locator('[data-editor-section="sprites"]')
@@ -5380,7 +5486,7 @@ test("Character and persona sheets persist an explicit reference choice and fall
     await openEditorSection(personaEditor, "Sprites");
     await expect(personaEditor.getByRole("heading", { name: "Character Sheet", exact: true })).toBeVisible();
     await expect(personaEditor.getByAltText(`${personaName} character sheet`)).toBeVisible();
-    await expect(personaEditor.getByRole("checkbox", { name: "Use as reference image" })).toBeChecked();
+    await expect(personaEditor.getByRole("checkbox", { name: "Use character sheet" })).toBeChecked();
     await personaEditor
       .locator('[data-editor-section="sprites"]')
       .getByRole("button", { name: "Create with AI", exact: true })
@@ -5599,6 +5705,7 @@ test("Matched full-body sprites approve a neutral anchor before sending each exp
     const editor = page.locator(".mari-editor-shell");
     await openEditorSection(editor, "Sprites");
     await editor.getByRole("button", { name: "Full-body", exact: true }).click();
+    await editor.getByRole("button", { name: "Add sprites", exact: true }).click();
     await editor.getByRole("button", { name: "Generate Sprite", exact: true }).click();
 
     const modal = page.getByRole("dialog", { name: "Generate Sprites" });
@@ -5650,6 +5757,31 @@ test("Matched full-body sprites approve a neutral anchor before sending each exp
     ]);
     await expect(modal.locator('input[value="happy"]')).toBeVisible();
     await expect(modal.locator('input[value="sad"]')).toBeVisible();
+    const folderResponse = await request.post(`/api/sprites/${character.id}/folders`, {
+      data: { name: "Outfit", category: "full-body" },
+    });
+    expect(folderResponse.ok()).toBeTruthy();
+    const folderId = (await folderResponse.json()).folders[0].id;
+    expect(
+      (
+        await request.post(`/api/sprites/${character.id}`, {
+          data: { expression: "full_original", image: `data:image/png;base64,${TRANSPARENT_PNG_BASE64}`, folderId },
+        })
+      ).ok(),
+    ).toBeTruthy();
+    expect(
+      (await request.patch(`/api/sprites/${character.id}/full_original`, { data: { expression: "full_happy" } })).ok(),
+    ).toBeTruthy();
+    await modal.getByRole("button", { name: /^Save \d+ Sprites?$/iu }).click();
+    await expect(modal).not.toBeVisible();
+    const saved = (await (await request.get(`/api/sprites/${character.id}`)).json()) as Array<{
+      expression: string;
+      label: string;
+      folderId: string | null;
+    }>;
+    expect(saved.filter((sprite) => sprite.label === "full_happy")).toEqual([
+      expect.objectContaining({ expression: "full_original", folderId }),
+    ]);
   } finally {
     await page.unroute("**/api/sprites/generate-sheet");
     await request.delete(`/api/characters/${character.id}`).catch(() => undefined);
@@ -7653,9 +7785,7 @@ test("generation fallbacks identify the replacement connection in a toast", asyn
     await page.locator("textarea.mari-chat-input-textarea").fill("Use the fallback if necessary");
     await page.locator("button.mari-chat-send-btn").click();
     await expect(page.getByText("Main switched to Backup API (fallback-model).")).toBeVisible();
-    await expect(
-      page.getByText("The primary generation failed, so Marinara retried with your configured fallback."),
-    ).toBeVisible();
+    await expect(page.getByText("The request failed, so Marinara tried again with your fallback.")).toBeVisible();
   } finally {
     await page.request.delete(`/api/chats/${chat.id}`);
   }
@@ -10895,13 +11025,14 @@ test("preset token counters stay localized and editable with malformed marker se
     for (const name of ["Agent marker", "CJK prompt"]) {
       const card = cards.filter({ hasText: name });
       await card.locator("[data-preset-section-toggle]").click();
-      await expect(card.getByText("約3トークン", { exact: true })).toBeVisible();
+      // #8625 shows the same count in the section's header badge, so read the field's own counter.
+      await expect(card.locator("p", { hasText: /^約3トークン$/u })).toBeVisible();
       await expect(card.locator("[data-preset-section-position]")).toBeVisible();
       if (name === "Agent marker") await card.locator("[data-preset-section-toggle]").click();
     }
     const prompt = cards.filter({ hasText: "CJK prompt" });
     await prompt.locator("textarea").fill("hello");
-    await expect(prompt.getByText("約2トークン", { exact: true })).toBeVisible();
+    await expect(prompt.locator("p", { hasText: /^約2トークン$/u })).toBeVisible();
     await prompt.getByRole("button", { name: "Expand editor", exact: true }).click();
     const expanded = page.locator('[data-component="ExpandedMacroEditor"]');
     await expect(expanded.getByText("約2トークン", { exact: true })).toBeVisible();
@@ -10917,7 +11048,7 @@ test("preset token counters stay localized and editable with malformed marker se
     await expanded.getByRole("button", { name: "Close expanded editor" }).click();
     await expect(expanded).toHaveCount(0);
     await expect(prompt.locator("textarea")).toHaveValue("你好世界你好世界");
-    await expect(prompt.getByText("約6トークン", { exact: true })).toBeVisible();
+    await expect(prompt.locator("p", { hasText: /^約6トークン$/u })).toBeVisible();
     await expect
       .poll(async () => {
         const response = await request.get(`/api/prompts/${preset.id}/full`);
@@ -11976,7 +12107,7 @@ test("Game character sheet Retry remains a draft until Save", async ({ page, req
     await page.getByTitle(`${characterName} - Click to open character sheet`).filter({ visible: true }).click();
     const sheet = page.locator('[data-component="GameCharacterSheet"]');
     await expect(sheet).toBeVisible();
-    await sheet.getByRole("button", { name: "Edit sheet" }).click();
+    await sheet.getByRole("button", { name: "Edit card" }).click();
 
     const classInput = sheet.getByPlaceholder("Class or role");
     await expect(classInput).toHaveValue("Scout");
@@ -11996,7 +12127,7 @@ test("Game character sheet Retry remains a draft until Save", async ({ page, req
     await expect(sheet.getByRole("button", { name: "Cancel", exact: true })).toBeVisible();
 
     await sheet.getByRole("button", { name: "Cancel", exact: true }).click();
-    await sheet.getByRole("button", { name: "Edit sheet" }).click();
+    await sheet.getByRole("button", { name: "Edit card" }).click();
     await expect(classInput).toHaveValue("Scout");
 
     await sheet.getByRole("button", { name: "Retry", exact: true }).click();
@@ -12012,7 +12143,7 @@ test("Game character sheet Retry remains a draft until Save", async ({ page, req
     await expect(page.locator("[data-sonner-toast]")).toHaveCount(0);
     await page.locator('.mari-window-bubble[data-window="control:character-profiles"]').click();
     await page.getByTitle(`${characterName} - Click to open character sheet`).filter({ visible: true }).click();
-    await sheet.getByRole("button", { name: "Edit sheet" }).click();
+    await sheet.getByRole("button", { name: "Edit card" }).click();
     await expect(classInput).toHaveValue("Chronomancer");
     await sheet.getByRole("button", { name: "Cancel", exact: true }).click();
     await sheet.getByRole("button", { name: "Close character sheet", exact: true }).click();
@@ -12209,17 +12340,13 @@ test("PocketTTS discovers server voices and uses its speech endpoint", async ({ 
     });
 
     await page.goto("/");
-    await clickTopbarPanel(page, "connections");
-    const rightPanel = page.locator('[data-component="RightPanel"]');
-    await expect(rightPanel).toBeVisible();
-    const ttsLabel = rightPanel.getByText("Text to Speech", { exact: true });
-    const ttsCard = ttsLabel.locator("xpath=../../..");
-    await ttsCard.getByTitle("Expand").click();
+    await openDevicePage(page, "tts");
+    const ttsCard = ttsConfigCard(page);
     const serverVoiceSelect = ttsCard.getByLabel("PocketTTS server voice");
     await expect(serverVoiceSelect.locator('option[value="AgentCobra.wav"]')).toHaveText(
       "Agent Cobra (AgentCobra.wav)",
     );
-    await expect(ttsCard.getByText("Loaded 2 voices from PocketTTS server.", { exact: true })).toBeVisible();
+    await expect(ttsCard.getByText("2 voices loaded from the PocketTTS server.", { exact: true })).toBeVisible();
 
     await ttsCard.getByText("Only read dialogues", { exact: true }).click();
     const dialoguePause = ttsCard.getByLabel("Pause between dialogues in seconds");
@@ -12353,11 +12480,8 @@ test("OpenAI-compatible TTS accepts and persists a custom Kokoro voice mix", asy
   });
 
   await page.goto("/");
-  await clickTopbarPanel(page, "connections");
-  const rightPanel = page.locator('[data-component="RightPanel"]');
-  await expect(rightPanel).toBeVisible();
-  const ttsCard = rightPanel.getByText("Text to Speech", { exact: true }).locator("xpath=../../..");
-  await ttsCard.getByTitle("Expand").click();
+  await openDefaultsTile(page, "voice");
+  const ttsCard = ttsConfigCard(page);
 
   const customVoiceInput = ttsCard.getByTestId("tts-custom-voice-input-global");
   await expect(customVoiceInput).toHaveAttribute("placeholder", /Custom voice or mix/);
@@ -12467,11 +12591,9 @@ test("ElevenLabs keeps models visible and exposes scrollable account voices in e
     });
 
     await page.goto("/");
-    await clickTopbarPanel(page, "connections");
-    const rightPanel = page.locator('[data-component="RightPanel"]');
-    const ttsLabel = rightPanel.getByText("Text to Speech", { exact: true });
-    const ttsCard = ttsLabel.locator("xpath=../../..");
-    await ttsCard.getByTitle("Expand").click();
+    // #8678 lists the On this device Text to speech page only for PocketTTS; every source has it in the Add window.
+    await openDefaultsTile(page, "voice");
+    const ttsCard = ttsConfigCard(page);
 
     const modelSelect = ttsCard.getByRole("combobox", { name: "Model" });
     await expect(modelSelect.locator("option")).toHaveCount(3);
@@ -12525,7 +12647,10 @@ test("ElevenLabs keeps models visible and exposes scrollable account voices in e
     const characterVoiceMenuBox = await characterVoiceList.locator("xpath=../..").boundingBox();
     expect(characterVoiceTriggerBox).not.toBeNull();
     expect(characterVoiceMenuBox).not.toBeNull();
-    expect(characterVoiceMenuBox!.width).toBeGreaterThan(characterVoiceTriggerBox!.width + 40);
+    // The compact voice menu keeps its 352px reading width and is never narrower than its trigger. In the old side
+    // panel page that made it outgrow the trigger by 40px or more; the Add window that holds the card since #8678
+    // gives the trigger itself more room than that.
+    expect(characterVoiceMenuBox!.width).toBeGreaterThanOrEqual(Math.max(352, characterVoiceTriggerBox!.width) - 0.5);
     await page.keyboard.press("Escape");
     await expect(characterVoicePicker).toBeFocused();
 
@@ -12835,6 +12960,7 @@ test(
 
 test("every sidebar explains itself with a help tip next to its title", async ({ page }, testInfo) => {
   const errors = collectUnexpectedErrors(page);
+  await serveEmptyModelLists(page);
   await page.goto("/");
   await expect(page.locator('[data-component="TopBar"]')).toBeVisible();
   await page.locator('[data-tour="sidebar-toggle"]').click();
@@ -12845,7 +12971,7 @@ test("every sidebar explains itself with a help tip next to its title", async ({
     testInfo,
   );
   const header = page.locator('[data-component="RightPanel"] .mari-right-panel-header');
-  for (const panel of ["characters", "personas", "lorebooks", "presets", "connections", "agents", "settings"]) {
+  for (const panel of ["characters", "personas", "lorebooks", "presets", "agents", "settings"]) {
     await clickTopbarPanel(page, panel);
     const name = `${panel[0]!.toUpperCase()}${panel.slice(1)}`;
     await expectSidebarHelp(page, header, { key: panel, name, titled: true }, testInfo);
@@ -12856,6 +12982,9 @@ test("every sidebar explains itself with a help tip next to its title", async ({
     await expect(header.getByRole("heading", { name: title, exact: true })).toBeVisible();
     await expect(header.getByRole("button", { name: /^Show help/ })).toHaveCount(0);
   };
+  // #8456 removed the Connections sidebar's help tip (navigation.sidebarHelp.connections).
+  await clickTopbarPanel(page, "connections");
+  await expectNoHelp("Connections");
   await page.evaluate(async () => {
     const extensions = await import("/src/lib/personal-extension-contributions.ts" as string);
     const extension = { id: "help-fixture", name: "Help Fixture", contentHash: "help-fixture-hash" };
@@ -13834,10 +13963,10 @@ test("Storyboard Agent settings stay organized and contained at phone widths", a
     await expect(workflow).toHaveAttribute("data-storyboard-active-workflow", "roleplay");
     await expect(roleplayTab).toHaveAttribute("aria-selected", "true");
 
-    await expect(setup.getByText("Image connection", { exact: true })).toBeVisible();
-    const imageConnection = setup.locator("select").first();
-    await imageConnection.selectOption(connection.id);
-    await expect(imageConnection).toHaveValue(connection.id);
+    await expect(setup.getByText("Image model", { exact: true })).toBeVisible();
+    const imageConnection = setup.locator("[data-connection-value]").first();
+    await chooseConnection(page, imageConnection, connection.id);
+    await expect(imageConnection).toHaveAttribute("data-connection-value", connection.id);
 
     const roleplay = workflow.locator("[data-storyboard-active-roleplay]");
     const roleplayInterval = roleplay.getByLabel("Default Roleplay episode interval", { exact: true });
@@ -13850,7 +13979,7 @@ test("Storyboard Agent settings stay organized and contained at phone widths", a
     await expect(roleplay).toHaveCount(0);
     await roleplayTab.click();
     await expect(roleplay.getByLabel("Default Roleplay episode interval", { exact: true })).toHaveValue("7");
-    await expect(imageConnection).toHaveValue(connection.id);
+    await expect(imageConnection).toHaveAttribute("data-connection-value", connection.id);
 
     await page.evaluate(() => {
       document.documentElement.style.fontSize = "18px";
@@ -14072,20 +14201,27 @@ test("Mobile Roleplay quick picker matches the character selector surface", asyn
       expect(surface).not.toMatch(/^(?:transparent|rgba\([^)]*,\s*0\))$/u);
       await page.getByTitle("Trigger character response", { exact: true }).click();
       await page.getByTitle("Quick Switcher", { exact: true }).click();
-      const picker = page.locator("[data-quick-switcher-mobile-menu]");
+      // #8456 opens the phone Quick Switcher in a Modal, whose panel is the surface, and names its first tab Models.
+      const quickSwitcher = page.getByRole("dialog", { name: "Quick Switcher", exact: true });
+      const picker = quickSwitcher.locator(".mari-modal-panel");
       await expect(picker).toBeVisible();
-      for (const tab of ["Connections", "Personas"]) {
-        await picker.getByRole("button", { name: tab, exact: true }).click();
+      for (const tab of ["Models", "Personas"]) {
+        await quickSwitcher.getByRole("button", { name: tab, exact: true }).click();
         await testInfo.attach(`roleplay-picker-${theme}-${tab}`, {
           body: await page.screenshot(),
           contentType: "image/png",
         });
-        await expect(picker).toHaveCSS("background-color", surface);
+        // #8456 made it a solid Connections window: the character picker's surface colour, painted over the app
+        // background so the chat under it does not show through.
+        await expect(picker).toHaveCSS("background-image", `linear-gradient(${surface}, ${surface})`);
+        expect(await picker.evaluate((element) => getComputedStyle(element).backgroundColor)).toMatch(/^rgb\(/u);
         const bounds = await picker.boundingBox();
         expect(bounds!.x).toBeGreaterThanOrEqual(0);
         expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
       }
-      await page.getByTitle("Quick Switcher", { exact: true }).click();
+      // The Modal covers the composer's Quick Switcher toggle, so it closes from its own Close button.
+      await quickSwitcher.getByRole("button", { name: "Close Quick Switcher", exact: true }).click();
+      await expect(quickSwitcher).toHaveCount(0);
     }
   } finally {
     if (chatId) await bestEffortDelete(page.request, `/api/chats/${chatId}`);
@@ -14385,7 +14521,11 @@ test("UI language selection downloads packs on demand and persists across reload
     await expect(page.locator(`[role="option"][id="settings-control-language-select-list-${locale}"]`)).toHaveCount(1);
   }
 
+  // The open picker moves focus to its search box on the next frame, and only the picker handles Escape. A slow
+  // page (CI run 42029653525) took the key on the trigger instead, so the next trigger click closed the picker.
+  await expect(page.getByRole("combobox", { name: "Search languages", exact: true })).toBeFocused();
   await page.keyboard.press("Escape");
+  await expect(languageSelect).toHaveAttribute("aria-expanded", "false");
   await selectUILanguage(page, "pl");
   await expect(page.getByText("Działanie aplikacji", { exact: true })).toBeVisible();
   await expect(page.getByPlaceholder("Szukaj w ustawieniach")).toBeVisible();
@@ -15202,8 +15342,8 @@ test("downloadable agent catalog is usable on desktop and mobile", async ({ page
   });
   await page.goto("/");
   await clickTopbarPanel(page, "agents");
-  await expect(page.getByText("No Agents installed yet, click Download Agents to add them!")).toBeVisible();
-  await page.getByLabel("Agents").getByRole("button", { name: "Download Agents", exact: true }).click();
+  await expect(page.getByText("No Agents installed yet, click Agent Organizer to add them!")).toBeVisible();
+  await page.getByLabel("Agents").getByRole("button", { name: "Agent Organizer", exact: true }).click();
 
   const catalogView = page.locator('[data-component="AgentCatalogView"]');
   if (testInfo.project.name.includes("mobile")) {
@@ -15211,51 +15351,44 @@ test("downloadable agent catalog is usable on desktop and mobile", async ({ page
   } else {
     await expect(page.locator('[data-component="RightPanelDesktop"]')).toBeVisible();
   }
-  await expect(catalogView.getByRole("heading", { name: "Download Agents" })).toBeVisible();
-  await expect(catalogView.getByRole("heading", { name: "Installed Agents", exact: true })).toBeVisible();
-  await expect(catalogView.getByRole("heading", { name: "Uninstalled Agents", exact: true })).toBeVisible();
-  await expect(catalogView.locator("aside h3")).toHaveText(["Writer Agents", "Tracker Agents", "Misc Agents"]);
-  const writerSection = catalogView.locator("aside h3", { hasText: "Writer Agents" }).locator("..");
-  const trackerSection = catalogView.locator("aside h3", { hasText: "Tracker Agents" }).locator("..");
-  await expect(writerSection.getByText("Card Evolution Auditor", { exact: true })).toBeVisible();
-  await expect(trackerSection.getByText("Hierarchical Maps", { exact: true })).toBeVisible();
+  await expect(catalogView.getByRole("heading", { name: "Agent Organizer" })).toBeVisible();
+  // #8494 rebuilt the catalog as the Agent Organizer: Home, Updates and Installed pages instead of the
+  // Installed/Uninstalled lists, and Home shelves per section instead of the category headings. Entries
+  // without store data shelve by category: writer under Writing help, tracker under Trackers, the rest under
+  // More agents.
+  for (const pageName of ["Home", "Updates", "Installed"]) {
+    await expect(catalogView.getByRole("button", { name: pageName, exact: true })).toBeVisible();
+  }
+  const shelf = (id: string) => catalogView.locator(`section[aria-labelledby="organizer-shelf-${id}"]`);
+  await expect(catalogView.locator('section[aria-labelledby^="organizer-shelf-"] h2')).toHaveText([
+    "Writing help",
+    "Trackers",
+    "More agents",
+  ]);
+  await expect(shelf("writing").getByText("Card Evolution Auditor", { exact: true })).toBeVisible();
+  await expect(shelf("trackers").getByText("Hierarchical Maps", { exact: true })).toBeVisible();
   await expect(catalogView.getByText("About Me Keeper")).toHaveCount(0);
   await expect(catalogView.getByText("Play UNO with Conversation characters.").first()).toBeVisible();
-  const unoListButton = catalogView.locator("aside button").filter({
-    hasText: "Play UNO with Conversation characters.",
-  });
-  await expect(unoListButton.getByText("Conversation", { exact: true })).toBeVisible();
-  const allAgentsButton = catalogView.locator("button", { hasText: "All agents" });
-  if (testInfo.project.name.includes("mobile")) {
-    await unoListButton.click();
-    await expect(allAgentsButton).toBeVisible();
-    await allAgentsButton.click();
-    await expect(allAgentsButton).toBeHidden();
-    await unoListButton.click();
-  } else {
-    await expect(allAgentsButton).toBeHidden();
-  }
-  await expect(catalogView.getByText("Marinara Engine v2.3.0+")).toBeVisible();
+  // An agent opens on its own page, whose back button returns to its section on every screen size.
+  const unoRow = shelf("more").getByRole("button").filter({ hasText: "Play UNO with Conversation characters." });
+  await unoRow.click();
+  const backToSection = catalogView.getByRole("button", { name: "Back to More agents", exact: true });
+  await expect(backToSection).toBeVisible();
+  await backToSection.click();
+  await expect(backToSection).toBeHidden();
+  await catalogView.getByRole("button").filter({ hasText: "Play UNO with Conversation characters." }).click();
+  await expect(catalogView.getByRole("heading", { name: "UNO", exact: true })).toBeVisible();
+  const facts = catalogView.locator("dl");
+  await expect(facts.locator("div", { hasText: "Works in" }).getByText("Conversation", { exact: true })).toBeVisible();
+  await expect(facts.locator("div", { hasText: "Needs Engine" }).getByText("2.3.0 or newer")).toBeVisible();
   const documentationLink = catalogView.getByRole("link", { name: "Read how this agent works" });
   await expect(documentationLink).toHaveAttribute("href", "https://github.com/Pasta-Devs/Marinara-Agents#uno");
-  const installButton = catalogView.getByRole("button", { name: "Install", exact: true });
-  await expect(installButton).toBeVisible();
-  await expect(documentationLink).toHaveClass(/mari-chrome-control--primary/u);
-  expect(await documentationLink.getAttribute("class")).toBe(await installButton.getAttribute("class"));
-  const readActionStyles = async (selector: typeof documentationLink) =>
-    selector.evaluate((element) => {
-      const styles = getComputedStyle(element);
-      return {
-        borderRadius: styles.borderRadius,
-        fontFamily: styles.fontFamily,
-        fontSize: styles.fontSize,
-        fontWeight: styles.fontWeight,
-        minHeight: styles.minHeight,
-        padding: styles.padding,
-      };
-    });
-  expect(await readActionStyles(documentationLink)).toEqual(await readActionStyles(installButton));
-  await catalogView.getByRole("button", { name: "Custom Sources" }).click();
+  // #8494 put the install action (Get) in the page header and the documentation link in About as a text
+  // link, so the two no longer share one button style.
+  await expect(catalogView.getByRole("button", { name: "Get UNO", exact: true })).toBeVisible();
+  // Custom Sources moved into the Organizer's More actions menu (#8494).
+  await catalogView.getByRole("button", { name: "More actions", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Custom Sources", exact: true }).click();
   const customSources = page.getByRole("dialog", { name: "Custom Agent Repositories" });
   await expect(customSources.getByText(/not affiliated with or vetted by PastaDevs/u)).toBeVisible();
   await customSources.getByLabel("GitHub agent repository URL").fill("https://github.com/example/community-agents");
@@ -15395,8 +15528,8 @@ test("Agent updates share one dismissible prompt and remain available after Not 
   await expect(proseGuardianRow).toContainText("1.0.0 → 1.1.0");
   await expect(worldBuilderRow).toContainText("2.0.0 → 2.1.0");
   // Only the update that needs one carries the restart tag.
-  await expect(worldBuilderRow.getByText("Restart required", { exact: true })).toHaveCount(1);
-  await expect(proseGuardianRow.getByText("Restart required", { exact: true })).toHaveCount(0);
+  await expect(worldBuilderRow.getByText("Restart", { exact: true })).toHaveCount(1);
+  await expect(proseGuardianRow.getByText("Restart", { exact: true })).toHaveCount(0);
   // The notable-change marker belongs to the update the catalog flagged, and its
   // accessible name is what a screen reader announces in place of the dot.
   await expect(proseGuardianRow.getByText("Notable change", { exact: true })).toHaveCount(1);
@@ -15406,10 +15539,10 @@ test("Agent updates share one dismissible prompt and remain available after Not 
   const notes = proseGuardianRow.getByText("- Keeps dialogue tags out of narration.");
   await expect(notes).toBeHidden();
   // Exactly one: the update without notes offers nothing to expand.
-  const disclosures = updateDialog.getByRole("button", { name: "What changed", exact: true });
+  const disclosures = updateDialog.getByRole("button", { name: /^What's new \(/u });
   await expect(disclosures).toHaveCount(1);
-  await expect(worldBuilderRow.getByRole("button", { name: "What changed", exact: true })).toHaveCount(0);
-  await proseGuardianRow.getByRole("button", { name: "What changed", exact: true }).click();
+  await expect(worldBuilderRow.getByRole("button", { name: /^What's new \(/u })).toHaveCount(0);
+  await proseGuardianRow.getByRole("button", { name: /^What's new \(/u }).click();
   await expect(notes).toBeVisible();
   await expect(updateDialog.getByRole("button", { name: "Update all", exact: true })).toBeVisible();
   await expect(updateDialog.getByRole("button", { name: "Not now", exact: true })).toBeVisible();
@@ -15440,13 +15573,15 @@ test("Agent updates share one dismissible prompt and remain available after Not 
   expect(singleDeclineRequests).toBe(0);
 
   await clickTopbarPanel(page, "agents");
-  await page.getByLabel("Agents").getByRole("button", { name: "Download Agents", exact: true }).click();
+  // The Agent Organizer button carries the waiting update's count beside its name (#8494).
+  await page
+    .getByLabel("Agents")
+    .getByRole("button", { name: /^Agent Organizer/u })
+    .click();
   const catalogView = page.locator('[data-component="AgentCatalogView"]');
-  await expect(catalogView.getByRole("heading", { name: "Download Agents" })).toBeVisible();
-  if (testInfo.project.name.includes("mobile")) {
-    await catalogView.getByRole("button", { name: /Prose Guardian/u }).click();
-  }
-  await expect(catalogView.getByRole("button", { name: "Update", exact: true })).toBeVisible();
+  await expect(catalogView.getByRole("heading", { name: "Agent Organizer" })).toBeVisible();
+  // The Organizer opens on Home, whose shelf row offers the agent's own Update on every screen size.
+  await expect(catalogView.getByRole("button", { name: "Update Prose Guardian", exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -15470,7 +15605,7 @@ test("agent catalog reports API failures without diagnosing an internet outage",
 
   await page.goto("/");
   await clickTopbarPanel(page, "agents");
-  await page.getByLabel("Agents").getByRole("button", { name: "Download Agents", exact: true }).click();
+  await page.getByLabel("Agents").getByRole("button", { name: "Agent Organizer", exact: true }).click();
 
   const catalogView = page.locator('[data-component="AgentCatalogView"]');
   await expect(catalogView.getByText("The agent catalog is unavailable.")).toBeVisible();
@@ -15580,13 +15715,11 @@ test("Music Player stays unavailable until Music DJ is installed", async ({ page
   await expect(page.getByText("Download the Music DJ agent to use the Music Player.")).toBeVisible();
 
   await clickTopbarPanel(page, "agents");
-  await page.getByLabel("Agents").getByRole("button", { name: "Download Agents", exact: true }).click();
+  await page.getByLabel("Agents").getByRole("button", { name: "Agent Organizer", exact: true }).click();
   const catalogView = page.locator('[data-component="AgentCatalogView"]');
   await expect(catalogView).toBeVisible();
-  if (testInfo.project.name.includes("mobile")) {
-    await catalogView.getByRole("button", { name: /Music DJ Matches scene mood/u }).click();
-  }
-  await catalogView.getByRole("button", { name: "Install", exact: true }).click();
+  // The Organizer's Home lists Music DJ with its own Get on every screen size (#8494).
+  await catalogView.getByRole("button", { name: "Get Music DJ", exact: true }).click();
   await expect(musicPlayer).toBeVisible();
   const installedToast = page
     .locator("[data-sonner-toast]")
@@ -15610,6 +15743,13 @@ test("Music Player stays unavailable until Music DJ is installed", async ({ page
 
 test("Connections exposes Local Whisper only while Conversation Calls is installed", async ({ page }, testInfo) => {
   const errors = collectUnexpectedErrors(page);
+  // The Defaults box shows once there is a model, so the test brings its own instead of relying on other tests.
+  const modelResponse = await page.request.post("/api/connections", {
+    data: { name: `Whisper defaults ${testInfo.project.name}`, provider: "custom", baseUrl: "http://127.0.0.1:1/v1" },
+  });
+  expect(modelResponse.ok()).toBeTruthy();
+  const model = (await modelResponse.json()) as { id: string };
+  await serveEmptyModelLists(page);
   let callsInstalled = true;
   const callsPackage = {
     id: "conversation-calls",
@@ -15694,43 +15834,40 @@ test("Connections exposes Local Whisper only while Conversation Calls is install
     });
   });
 
-  const openExpandedLocalModel = async () => {
-    const rightPanel = page.locator('[data-component="RightPanel"]');
-    const connectionsButton = page.locator('[data-tour="panel-connections"]');
-    if ((await connectionsButton.getAttribute("aria-pressed")) !== "true") await clickTopbarPanel(page, "connections");
-    await expect(rightPanel).toBeVisible();
-    const localModelLabel = rightPanel.getByText("Local Model", { exact: true });
-    await localModelLabel.evaluate((element) => element.parentElement?.parentElement?.click());
-    const localModelCard = localModelLabel.locator("xpath=../../..");
-    await expect(localModelCard.getByTitle("Collapse")).toBeVisible();
-    return rightPanel;
-  };
+  try {
+    // Variant D: Local Whisper sits with Speech to text, which exists only while Calls is installed.
+    await page.goto("/");
+    await openDefaultsTile(page, "stt");
+    const speechModel = page.getByText("Local speech model", { exact: true }).filter({ visible: true });
+    await expect(speechModel).toBeVisible();
+    await expect(page.getByRole("button", { name: "Download Whisper" }).filter({ visible: true })).toBeVisible();
+    if (testInfo.project.name.includes("mobile")) {
+      const speechSelect = page
+        .locator("select")
+        .filter({ visible: true, has: page.locator('option[value="whisper_tiny"]') });
+      await expect(speechSelect).toBeVisible();
+      const spacing = await speechSelect.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { left: parseFloat(style.paddingLeft), right: parseFloat(style.paddingRight) };
+      });
+      expect(spacing.left).toBeGreaterThanOrEqual(8);
+      expect(spacing.right).toBeGreaterThanOrEqual(24);
+      await speechSelect.scrollIntoViewIfNeeded();
+      await testInfo.attach(`mobile-whisper-spacing-${testInfo.project.name}.png`, {
+        body: await page.screenshot(),
+        contentType: "image/png",
+      });
+    }
 
-  await page.goto("/");
-  let rightPanel = await openExpandedLocalModel();
-  await expect(rightPanel.getByText("Local Speech Model", { exact: true })).toBeVisible();
-  await expect(rightPanel.getByRole("button", { name: "Download Whisper" })).toBeVisible();
-  if (testInfo.project.name.includes("mobile")) {
-    const speechSelect = rightPanel.locator("select").filter({ has: page.locator('option[value="whisper_tiny"]') });
-    await expect(speechSelect).toBeVisible();
-    const spacing = await speechSelect.evaluate((element) => {
-      const style = getComputedStyle(element);
-      return { left: parseFloat(style.paddingLeft), right: parseFloat(style.paddingRight) };
-    });
-    expect(spacing.left).toBeGreaterThanOrEqual(8);
-    expect(spacing.right).toBeGreaterThanOrEqual(24);
-    await speechSelect.scrollIntoViewIfNeeded();
-    await testInfo.attach(`mobile-whisper-spacing-${testInfo.project.name}.png`, {
-      body: await rightPanel.screenshot(),
-      contentType: "image/png",
-    });
+    callsInstalled = false;
+    await page.reload();
+    await revealDefaultsTile(page, "voice");
+    await expect(page.locator('[data-defaults-tile="stt"]')).toHaveCount(0);
+    await expect(page.getByText("Local speech model", { exact: true })).toHaveCount(0);
+    expect(errors).toEqual([]);
+  } finally {
+    await page.request.delete(`/api/connections/${model.id}`).catch(() => undefined);
   }
-
-  callsInstalled = false;
-  await page.reload();
-  rightPanel = await openExpandedLocalModel();
-  await expect(rightPanel.getByText("Local Speech Model", { exact: true })).toHaveCount(0);
-  expect(errors).toEqual([]);
 });
 
 test("agent catalog can install and uninstall every package", async ({ page }, testInfo) => {
@@ -15837,11 +15974,20 @@ test("agent catalog can install and uninstall every package", async ({ page }, t
 
   await page.goto("/");
   await clickTopbarPanel(page, "agents");
-  await page.getByRole("button", { name: "Download Agents" }).click();
+  await page.getByRole("button", { name: "Agent Organizer", exact: true }).click();
 
   const catalogView = page.locator('[data-component="AgentCatalogView"]');
-  const installAllButton = catalogView.getByRole("button", { name: "Install All", exact: true });
-  const uninstallAllButton = catalogView.getByRole("button", { name: "Uninstall All", exact: true });
+  // #8494 moved Install all and Uninstall All into the Organizer's More actions menu, which closes after a pick.
+  const moreActions = catalogView.getByRole("button", { name: "More actions", exact: true });
+  const actionsMenu = page.getByRole("menu");
+  const installAllButton = actionsMenu.getByRole("menuitem", { name: /^Install all \d+ agents$/u });
+  const uninstallAllButton = actionsMenu.getByRole("menuitem", { name: "Uninstall All", exact: true });
+  const closeActionsMenu = async () => {
+    await page.keyboard.press("Escape");
+    await expect(actionsMenu).toHaveCount(0);
+  };
+  await moreActions.click();
+  await expect(installAllButton).toHaveText("Install all 3 agents");
   await expect(installAllButton).toBeEnabled();
   await expect(uninstallAllButton).toBeDisabled();
   const [installAllBounds, uninstallAllBounds] = await Promise.all([
@@ -15852,10 +15998,13 @@ test("agent catalog can install and uninstall every package", async ({ page }, t
   expect(uninstallAllBounds).not.toBeNull();
   expect(Math.abs(installAllBounds!.width - uninstallAllBounds!.width)).toBeLessThanOrEqual(1);
   expect(Math.abs(installAllBounds!.height - uninstallAllBounds!.height)).toBeLessThanOrEqual(1);
+  await closeActionsMenu();
 
-  await catalogView.getByRole("textbox", { name: "Search downloadable agents" }).fill("UNO");
+  await catalogView.getByRole("searchbox", { name: "Search downloadable agents" }).fill("UNO");
+  await moreActions.click();
   await installAllButton.click();
   await expect.poll(() => installedIds.size).toBe(packageIds.length);
+  await moreActions.click();
   await expect(installAllButton).toBeDisabled();
   await expect(uninstallAllButton).toBeEnabled();
   expect(installRequests).toEqual(packageIds);
@@ -15865,8 +16014,10 @@ test("agent catalog can install and uninstall every package", async ({ page }, t
   await expect(confirmDialog).toBeVisible();
   await confirmDialog.getByRole("button", { name: "Uninstall All", exact: true }).click();
   await expect.poll(() => installedIds.size).toBe(0);
+  await moreActions.click();
   await expect(installAllButton).toBeEnabled();
   await expect(uninstallAllButton).toBeDisabled();
+  await closeActionsMenu();
   expect(uninstallRequests).toEqual(packageIds);
   expect(errors).toEqual([]);
 });
@@ -15985,17 +16136,21 @@ test("installed package artwork appears in the sidebar and clears immediately on
     "https://example.com/prose-guardian-artwork.gif",
   );
 
-  await agentsSidebar.getByRole("button", { name: "Download Agents" }).click();
+  await agentsSidebar.getByRole("button", { name: "Agent Organizer", exact: true }).click();
   const catalogView = page.locator('[data-component="AgentCatalogView"]');
-  await expect(catalogView.getByRole("button", { name: "Uninstall", exact: true })).toBeVisible();
-  await catalogView.getByRole("button", { name: "Uninstall", exact: true }).click();
+  // The Organizer (#8494) uninstalls from an installed agent's More menu, on the Installed page.
+  await catalogView.getByRole("button", { name: /^Installed/u }).click();
+  await catalogView.getByRole("button", { name: "More for Prose Guardian", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Uninstall", exact: true }).click();
   const confirmDialog = page.getByRole("dialog", { name: "Uninstall Prose Guardian?" });
   await expect(confirmDialog).toBeVisible();
   await confirmDialog.getByRole("button", { name: "Uninstall", exact: true }).click();
 
   await expect(agentsSidebar.getByText("Prose Guardian", { exact: true })).toHaveCount(0);
-  await expect(agentsSidebar.getByText("No Agents installed yet, click Download Agents to add them!")).toBeVisible();
-  await expect(catalogView.getByRole("button", { name: "Install", exact: true })).toBeVisible();
+  await expect(agentsSidebar.getByText("No Agents installed yet, click Agent Organizer to add them!")).toBeVisible();
+  await expect(catalogView.getByText("No agents installed yet. Pick one on Home to start.")).toBeVisible();
+  await catalogView.getByRole("button", { name: "Home", exact: true }).click();
+  await expect(catalogView.getByRole("button", { name: "Get Prose Guardian", exact: true })).toBeVisible();
   await expect(agentsSidebar).toBeVisible();
   expect(errors).toEqual([]);
 });
@@ -16017,6 +16172,7 @@ test("Conversation Agents exposes matching collapsible command and feature setti
   });
   expect(otherChatResponse.ok()).toBeTruthy();
   const otherChat = (await otherChatResponse.json()) as { id: string };
+  await serveEmptyModelLists(page);
   let conversationFeaturesInstalled = false;
   let clientLoadAttempts = 0;
   const releaseInitialClientLoad = createDeferred();
@@ -16438,7 +16594,7 @@ test("Conversation setup commands follow the installed agent library", async ({ 
     await expect(page.getByText("Selfies", { exact: true })).toHaveCount(0);
     await expect(page.getByText("Calls", { exact: true })).toHaveCount(0);
     let setupWizard = page.getByRole("heading", { name: "New Conversation", exact: true }).locator("../..");
-    await expect(setupWizard.getByRole("button", { name: "Download Agents", exact: true })).toBeVisible();
+    await expect(setupWizard.getByRole("button", { name: "Agent Organizer", exact: true })).toBeVisible();
 
     illustratorInstalled = true;
     await page.reload();
@@ -16447,7 +16603,7 @@ test("Conversation setup commands follow the installed agent library", async ({ 
     await expect(page.getByText("Selfies", { exact: true })).toBeVisible();
     await expect(page.getByText("Calls", { exact: true })).toHaveCount(0);
     setupWizard = page.getByRole("heading", { name: "New Conversation", exact: true }).locator("../..");
-    await expect(setupWizard.getByRole("button", { name: "Download Agents", exact: true })).toHaveCount(0);
+    await expect(setupWizard.getByRole("button", { name: "Agent Organizer", exact: true })).toHaveCount(0);
     expect(errors).toEqual([]);
   } finally {
     const afterResponse = await request.get("/api/chats");
@@ -16616,7 +16772,7 @@ test("Game setup only shows features owned by installed agents", async ({ page, 
     await expect(dialog.getByText("Music DJ", { exact: true })).toHaveCount(0);
     await expect(dialog.getByText("Lorebook Keeper", { exact: true })).toHaveCount(0);
     await expect(dialog.getByText("Illustrator", { exact: true })).toHaveCount(0);
-    await expect(dialog.getByRole("button", { name: "Download Agents", exact: true })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Agent Organizer", exact: true })).toBeVisible();
 
     installedAgentIds = new Set(["spotify", "lorebook-keeper", "illustrator"]);
     await page.reload();
@@ -16637,7 +16793,7 @@ test("Game setup only shows features owned by installed agents", async ({ page, 
     await dynamicPromptButton.click();
     await expect(dynamicPromptButton).toHaveAttribute("aria-pressed", "true");
     await expect(dialog.getByText("Visual Generation", { exact: true })).toHaveCount(0);
-    await expect(dialog.getByRole("button", { name: "Download Agents", exact: true })).toHaveCount(0);
+    await expect(dialog.getByRole("button", { name: "Agent Organizer", exact: true })).toHaveCount(0);
 
     installedAgentIds.add("hierarchical-maps");
     await page.reload();
@@ -17407,6 +17563,7 @@ test("Roleplay and Game chat settings link empty agent libraries to Download Age
   test.setTimeout(90_000);
 
   const errors = collectUnexpectedErrors(page);
+  await serveEmptyModelLists(page);
   const chats: Array<{ id: string; mode: "roleplay" | "game" }> = [];
   const fixtureNames = new Set(["roleplay Empty Agent Settings Smoke", "game Empty Agent Settings Smoke"]);
   const existingChatsResponse = await page.request.get("/api/chats");
@@ -17494,7 +17651,7 @@ test("Roleplay and Game chat settings link empty agent libraries to Download Age
       const agentsSection = drawer.locator('[role="button"][aria-expanded]').filter({ hasText: /^Agents/ });
       await agentsSection.click();
       await expect(drawer.getByText("No agents downloaded yet.", { exact: true })).toBeVisible();
-      await drawer.getByRole("button", { name: "Download Agents", exact: true }).click();
+      await drawer.getByRole("button", { name: "Agent Organizer", exact: true }).click();
       const catalog = page.locator('[data-component="AgentCatalogView"]');
       await expect(catalog).toBeVisible();
       await expect(page.locator('[data-component="RightPanelDesktop"]')).toBeVisible();
@@ -17970,6 +18127,7 @@ test("Roleplay setup points empty agent libraries to the Agents tab", async ({ p
   });
   expect(connectionResponse.ok()).toBeTruthy();
   const connection = (await connectionResponse.json()) as { id: string };
+  await serveEmptyModelLists(page);
   await page.route("**/api/capability-packages/agents", async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
   });
@@ -18018,14 +18176,14 @@ test("Roleplay setup points empty agent libraries to the Agents tab", async ({ p
     const agentsStepHeading = page.getByRole("heading", { name: "Enable Agents", exact: true });
     await expect(agentsStepHeading).toBeVisible();
     await expect(
-      page.getByText("No agents downloaded yet. Head to Agents tab and click Download Agents to get some!"),
+      page.getByText("No agents downloaded yet. Head to Agents tab and click Agent Organizer to get some!"),
     ).toBeVisible();
     await expect(
       page.locator('[data-component="ChatSetupWizard.AgentEmptyState"] .mari-panel-gradient--agents'),
     ).toHaveCount(0);
     await page.getByRole("button", { name: "Open Agents tab" }).click();
     await expect(page.locator('[data-component="RightPanelDesktop"]')).toBeVisible();
-    await expect(page.getByRole("button", { name: "Download Agents" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Agent Organizer", exact: true })).toBeVisible();
     expect(errors).toEqual([]);
   } finally {
     const afterResponse = await request.get("/api/chats");
@@ -18171,9 +18329,11 @@ test("desktop resource editors open beside their source sidebars", async ({ page
     name: presetName,
     description: "Desktop sidebar regression fixture.",
   });
+  // Since #8456 a custom Connection without a model is its account's anchor, which the panel lists no row for.
   const connection = await createResource("/api/connections", {
     name: connectionName,
     provider: "custom",
+    model: "sidebar-model",
   });
   const agent = await createResource("/api/agents", {
     type: `sidebar-agent-${suffix}`,
@@ -18207,9 +18367,13 @@ test("desktop resource editors open beside their source sidebars", async ({ page
       await clickTopbarPanel(page, resource.panel);
       await expect(resourceSidebar).toBeVisible();
       await expect(centerContent).toHaveAttribute("data-center-compact", "true");
-      const resourceRow = resourceSidebar.getByText(resource.name, { exact: true }).first();
-      await expect(resourceRow).toBeVisible();
-      await resourceRow.evaluate((element) => (element as HTMLElement).click());
+      if (resource.panel === "connections") {
+        await openConnectionsPanelModel(resourceSidebar, resource.name);
+      } else {
+        const resourceRow = resourceSidebar.getByText(resource.name, { exact: true }).first();
+        await expect(resourceRow).toBeVisible();
+        await resourceRow.evaluate((element) => (element as HTMLElement).click());
+      }
 
       const editor = centerContent.locator(".mari-editor-shell");
       await expect(editor).toBeVisible();
@@ -18234,40 +18398,13 @@ test("desktop resource editors open beside their source sidebars", async ({ page
   }
 });
 
-test("desktop Connections and Lorebooks folders expand without a React hook error", async ({ page }, testInfo) => {
+test("desktop Lorebooks folders expand without a React hook error", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name.includes("mobile"), "Desktop right-sidebar folder regression.");
   await page.setViewportSize({ width: 1360, height: 900 });
 
   const suffix = Date.now().toString(36);
-  const connectionName = `Folder Connection ${suffix}`;
-  const connectionFolderName = `Connection Folder ${suffix}`;
   const lorebookName = `Folder Lorebook ${suffix}`;
   const lorebookFolderName = `Lorebook Folder ${suffix}`;
-  const connectionResponse = await page.request.post("/api/connections", {
-    data: { name: connectionName, provider: "custom" },
-  });
-  expect(connectionResponse.ok()).toBeTruthy();
-  const connection = (await connectionResponse.json()) as { id: string };
-  const connectionFolderResponse = await page.request.post("/api/connection-folders", {
-    data: { name: connectionFolderName },
-  });
-  expect(connectionFolderResponse.ok()).toBeTruthy();
-  const connectionFolder = (await connectionFolderResponse.json()) as { id: string };
-  expect(
-    (
-      await page.request.post("/api/connection-folders/move-connection", {
-        data: { connectionId: connection.id, folderId: connectionFolder.id },
-      })
-    ).ok(),
-  ).toBeTruthy();
-  expect(
-    (
-      await page.request.patch(`/api/connection-folders/${connectionFolder.id}`, {
-        data: { collapsed: true },
-      })
-    ).ok(),
-  ).toBeTruthy();
-
   const lorebookResponse = await page.request.post("/api/lorebooks", {
     data: {
       name: lorebookName,
@@ -18304,16 +18441,7 @@ test("desktop Connections and Lorebooks folders expand without a React hook erro
   try {
     await page.goto("/");
 
-    await clickTopbarPanel(page, "connections");
     const resourceSidebar = page.locator('[data-component="RightPanelDesktop"]');
-    const connectionFolderToggle = resourceSidebar.locator(
-      `[data-connection-folder-id="${connectionFolder.id}"] > [role="button"]`,
-    );
-    await expect(connectionFolderToggle).toBeVisible();
-    await connectionFolderToggle.click();
-    await expect(connectionFolderToggle).toHaveAttribute("aria-expanded", "true");
-    await expect(resourceSidebar.getByText(connectionName, { exact: true })).toBeVisible();
-
     await clickTopbarPanel(page, "lorebooks");
     const lorebookFolderToggle = resourceSidebar.locator(
       '[data-lorebook-folder-id="folder-expansion-regression"] > [role="button"]',
@@ -18325,11 +18453,7 @@ test("desktop Connections and Lorebooks folders expand without a React hook erro
     expect(errors).toEqual([]);
   } finally {
     if (!page.isClosed()) {
-      await Promise.all([
-        page.request.delete(`/api/connections/${connection.id}`),
-        page.request.delete(`/api/connection-folders/${connectionFolder.id}`),
-        page.request.delete(`/api/lorebooks/${lorebook.id}`),
-      ]);
+      await page.request.delete(`/api/lorebooks/${lorebook.id}`);
     }
   }
 });
@@ -18344,7 +18468,7 @@ test("Professor Mari chat fills the mobile home viewport and keeps its composer 
 
   const topBar = page.locator('[data-component="TopBar"]');
   const window = page.locator('[data-component="HomeProfessorMariChat.Window"]');
-  const composer = window.getByPlaceholder("Ask Professor Mari to check or change something");
+  const composer = window.getByPlaceholder("Ask Professor Mari… @ to link, / for commands");
   await expect(window).toBeVisible();
   await expect(composer).toBeVisible();
   await expect
@@ -18419,7 +18543,7 @@ test("Professor Mari follows an open conversation across chats and mobile naviga
     const omnibar = page.locator('[data-component="GlobalOmnibar"]');
     const professorWindow = omnibar.locator('[data-component="GlobalOmnibar.Mari"]');
     await expect(professorWindow).toBeVisible();
-    const composer = professorWindow.getByPlaceholder("Ask Professor Mari to check or change something");
+    const composer = professorWindow.getByPlaceholder("Ask Professor Mari… @ to link, / for commands");
     await composer.fill("Keep this question while the chat opens.");
 
     // Opening a conversation under her keeps her open, with the unsent question intact.
@@ -18876,10 +19000,18 @@ function respondWithProfessorMariAction(response: import("node:http").ServerResp
 test("Professor Mari creates a character when its own authorization quote omits the intent verb", async ({
   request,
 }) => {
-  // This scripted provider exercises the Classic JSON-frame protocol.
+  // This scripted provider exercises the Classic JSON-frame protocol. The runtime is shared server state, so the
+  // switch happens under the lock every runtime-switching Mari spec takes.
+  await acquireMariThreadLock();
   expect((await request.put("/api/professor-mari/workspace/runtime", { data: { runtime: "classic" } })).ok()).toBe(
     true,
   );
+  // The handbook gate (#7908) refuses a turn's first character write until its skill is read, and this scripted
+  // provider writes straight away, so the test turns the gate off and puts it back afterwards.
+  const skillGate = (await (await request.get("/api/professor-mari/workspace/skill-gate")).json()) as {
+    enabled: boolean;
+  };
+  expect((await request.put("/api/professor-mari/workspace/skill-gate", { data: { enabled: false } })).ok()).toBe(true);
   const suffix = Date.now().toString(36);
   const characterName = `Juli Bellona ${suffix}`;
   let callCount = 0;
@@ -18982,9 +19114,16 @@ test("Professor Mari creates a character when its own authorization quote omits 
     };
     expect(characterData.name).toBe(characterName);
   } finally {
+    await request
+      .put("/api/professor-mari/workspace/skill-gate", { data: { enabled: skillGate.enabled } })
+      .catch(() => undefined);
+    // Put back the default runtime, so later specs on this server get Pi.
+    await request.put("/api/professor-mari/workspace/runtime", { data: { runtime: "pi" } }).catch(() => undefined);
     if (characterId) await request.delete(`/api/characters/${characterId}`).catch(() => undefined);
     if (chatId) await request.delete(`/api/chats/internal/professor-mari/chats/${chatId}`).catch(() => undefined);
     if (connectionId) await request.delete(`/api/connections/${connectionId}`).catch(() => undefined);
+    // After its Mari thread is gone: a locked spec that starts next finds none of this test's state.
+    releaseMariThreadLock();
     await new Promise<void>((resolve, reject) => {
       providerServer.close((error) => (error ? reject(error) : resolve()));
     });
@@ -18998,10 +19137,18 @@ test("Professor Mari creates a character when its own authorization quote omits 
 test("Professor Mari creates a character from a German instruction and a card with quoted denial-like dialogue", async ({
   request,
 }) => {
-  // This scripted provider exercises the Classic JSON-frame protocol.
+  // This scripted provider exercises the Classic JSON-frame protocol. The runtime is shared server state, so the
+  // switch happens under the lock every runtime-switching Mari spec takes.
+  await acquireMariThreadLock();
   expect((await request.put("/api/professor-mari/workspace/runtime", { data: { runtime: "classic" } })).ok()).toBe(
     true,
   );
+  // The handbook gate (#7908) refuses a turn's first character write until its skill is read, and this scripted
+  // provider writes straight away, so the test turns the gate off and puts it back afterwards.
+  const skillGate = (await (await request.get("/api/professor-mari/workspace/skill-gate")).json()) as {
+    enabled: boolean;
+  };
+  expect((await request.put("/api/professor-mari/workspace/skill-gate", { data: { enabled: false } })).ok()).toBe(true);
   const suffix = Date.now().toString(36);
   const characterName = `Juli Bellona DE ${suffix}`;
   const cardWithQuotedDialogue = `Character - Juli
@@ -19124,9 +19271,16 @@ Her expression hardens slightly.
     };
     expect(characterData.name).toBe(characterName);
   } finally {
+    await request
+      .put("/api/professor-mari/workspace/skill-gate", { data: { enabled: skillGate.enabled } })
+      .catch(() => undefined);
+    // Put back the default runtime, so later specs on this server get Pi.
+    await request.put("/api/professor-mari/workspace/runtime", { data: { runtime: "pi" } }).catch(() => undefined);
     if (characterId) await request.delete(`/api/characters/${characterId}`).catch(() => undefined);
     if (chatId) await request.delete(`/api/chats/internal/professor-mari/chats/${chatId}`).catch(() => undefined);
     if (connectionId) await request.delete(`/api/connections/${connectionId}`).catch(() => undefined);
+    // After its Mari thread is gone: a locked spec that starts next finds none of this test's state.
+    releaseMariThreadLock();
     await new Promise<void>((resolve, reject) => {
       providerServer.close((error) => (error ? reject(error) : resolve()));
     });
@@ -19245,7 +19399,7 @@ test("Lorebook vectorization saves pending eligibility settings first", async ({
       (element as HTMLInputElement).click();
     });
 
-    const vectorPanel = page.locator(".mari-editor-panel").filter({ hasText: "Semantic Search (Embeddings)" });
+    const vectorPanel = page.locator(".mari-editor-panel").filter({ hasText: "Semantic search (embeddings)" });
     await vectorPanel.locator("select").selectOption(connection.id);
     const vectorizeButton = vectorPanel.getByRole("button", { name: "Vectorize 1 missing", exact: true });
     const firstVectorizeAttempt = vectorizeButton.click();
@@ -20899,6 +21053,13 @@ test("Character of the Day stays vertically centered inside its mobile widget", 
   });
   expect(characterResponse.ok()).toBeTruthy();
   const character = (await characterResponse.json()) as { id: string };
+  // The widget picks the day's character from the whole catalog, so characters other specs leave on the shared
+  // server can take its place. The catalog this page reads lists only this test's character.
+  await page.route("**/api/characters/catalog?*", async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as { items: Array<{ id: string }> };
+    await route.fulfill({ response, json: { ...body, items: body.items.filter((item) => item.id === character.id) } });
+  });
 
   try {
     await page.addInitScript(() => {
@@ -21026,7 +21187,7 @@ test("home browser hub scales cleanly and opens FAQ as a bookmark window", async
   // "Ask Prof. Mari about this" hands off to the omnibar (there is no "Professor" Home tab).
   await expect(page.locator('[data-component="HomeProfessorMariChat.Window"]')).toBeVisible();
   await expect(
-    page.locator('textarea[placeholder="Ask Professor Mari to check or change something"]:visible'),
+    page.locator('textarea[placeholder="Ask Professor Mari… @ to link, / for commands"]:visible'),
   ).toContainText("How do I connect Marinara to a model?");
   // Mari's omnibar pane covers the bookmark bar, so close it first.
   const omnibar = page.locator('[data-component="GlobalOmnibar"]');
@@ -21776,9 +21937,7 @@ test("chat mode tabs and new-chat actions stay reachable", { tag: "@smoke" }, as
   }
 });
 
-test("new-chat connection gates follow Chat Chrome Text Color and close before opening Connections", async ({
-  page,
-}) => {
+test("with no connection, new-chat opens Add connection directly for every mode", async ({ page }) => {
   const errors = collectUnexpectedErrors(page);
   await page.route("**/api/connections", async (route) => {
     const request = route.request();
@@ -21790,19 +21949,6 @@ test("new-chat connection gates follow Chat Chrome Text Color and close before o
   });
 
   await page.goto("/");
-  await page.evaluate(async () => {
-    const { useUIStore } = (await import("/src/stores/ui.store.ts" as string)) as {
-      useUIStore: {
-        getState: () => {
-          setAppAccentColor: (value: string) => void;
-          setChatChromeTextColor: (value: string) => void;
-        };
-      };
-    };
-    const ui = useUIStore.getState();
-    ui.setAppAccentColor("#ff1493");
-    ui.setChatChromeTextColor("#1ad1c8");
-  });
 
   const modes = [
     { mode: "conversation", tour: "chat-mode-conversation", label: "New Conversation" },
@@ -21810,7 +21956,7 @@ test("new-chat connection gates follow Chat Chrome Text Color and close before o
     { mode: "game", tour: "chat-mode-game", label: "New Game" },
   ] as const;
 
-  for (const [index, mode] of modes.entries()) {
+  for (const mode of modes) {
     const sidebar = page.locator('[data-component="ChatSidebar"]');
     const sidebarToggle = page.locator('[data-tour="sidebar-toggle"]');
     if ((await sidebarToggle.getAttribute("aria-pressed")) !== "true") await sidebarToggle.click();
@@ -21820,53 +21966,23 @@ test("new-chat connection gates follow Chat Chrome Text Color and close before o
     await sidebar.locator(`[data-tour="${mode.tour}"]`).click();
     await sidebar.getByLabel(mode.label, { exact: true }).click();
 
-    const gate = page.locator(`[data-new-chat-connection-gate="${mode.mode}"]`);
-    await expect(gate).toBeVisible();
-    const colors = await gate.evaluate((element) => {
-      const emptyState = element.querySelector<HTMLElement>("[data-new-chat-connection-empty]")!;
-      const openConnections = element.querySelector<HTMLElement>("[data-new-chat-open-connections]")!;
-      const probe = document.createElement("span");
-      element.append(probe);
-      const resolveColor = (value: string) => {
-        probe.style.color = value;
-        return getComputedStyle(probe).color;
-      };
-      const resolveBackground = (value: string) => {
-        probe.style.background = value;
-        return getComputedStyle(probe).backgroundColor;
-      };
-      const resolveBorder = (value: string) => {
-        probe.style.border = `1px solid ${value}`;
-        return getComputedStyle(probe).borderColor;
-      };
-      const result = {
-        scopedAccent: resolveColor("var(--marinara-chat-chrome-accent)"),
-        chromeText: resolveColor("var(--marinara-chat-chrome-text)"),
-        appAccent: resolveColor("var(--primary)"),
-        buttonText: getComputedStyle(openConnections).color,
-        expectedButtonText: resolveColor("var(--marinara-chat-chrome-button-text-active)"),
-        emptyBackground: getComputedStyle(emptyState).backgroundColor,
-        expectedEmptyBackground: resolveBackground("var(--marinara-chat-chrome-highlight-bg)"),
-        emptyBorder: getComputedStyle(emptyState).borderColor,
-        expectedEmptyBorder: resolveBorder("var(--marinara-chat-chrome-button-border-active)"),
-      };
-      probe.remove();
-      return result;
-    });
-    expect(colors.scopedAccent).toBe(colors.chromeText);
-    expect(colors.scopedAccent).not.toBe(colors.appAccent);
-    expect(colors.buttonText).toBe(colors.expectedButtonText);
-    expect(colors.emptyBackground).toBe(colors.expectedEmptyBackground);
-    expect(colors.emptyBorder).toBe(colors.expectedEmptyBorder);
+    // No dead-end gate box: the Add window opens at once (decision 29). #8456 made it add a provider only
+    // (7168593eb2), so it no longer names the chat that follows.
+    const dialog = page.getByRole("dialog", { name: "Add account", exact: true });
+    await expect(dialog).toBeVisible();
+    await expect(page.locator(`[data-new-chat-connection-gate="${mode.mode}"]`)).toHaveCount(0);
 
-    if (index < modes.length - 1) {
-      await gate.getByRole("button", { name: "Cancel", exact: true }).click();
-      await expect(gate).toHaveCount(0);
-    } else {
-      await gate.getByRole("button", { name: "Open Connections", exact: true }).click();
-      await expect(gate).toHaveCount(0);
-      await expect(page.locator('[data-component="RightPanel"][aria-label="Connections"]')).toBeVisible();
-    }
+    // Closing the window leaves the new chat too.
+    await dialog.getByRole("button", { name: "Close Add account", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect
+      .poll(() =>
+        page.evaluate(async () => {
+          const { useChatStore } = await import("/src/stores/chat.store.ts" as string);
+          return useChatStore.getState().pendingNewChatMode;
+        }),
+      )
+      .toBeNull();
   }
 
   expect(errors).toEqual([]);
@@ -24726,7 +24842,7 @@ test("Background cards keep names readable and load thumbnails", async ({ page }
   await page.getByRole("tab", { name: "Appearance" }).click();
   await page.getByPlaceholder("Search settings").fill("Backgrounds");
   await page.getByRole("button", { name: /Backgrounds Section/ }).click();
-  await page.getByRole("button", { name: "Browse library" }).click();
+  await page.getByRole("button", { name: "Browse library", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Background Library" })).toBeVisible();
 
   const card = page.locator('[data-background-id="user:collapsible-background-tags.png"]');
@@ -24770,7 +24886,7 @@ test("Background cards keep names readable and load thumbnails", async ({ page }
   await card.getByRole("button", { name: /Use .* for this chat/ }).click();
   // Selecting closes the modal, so the card detaches. Re-open and assert the persisted selection.
   await expect(page.getByRole("dialog", { name: "Background Library" })).toBeHidden();
-  await page.getByRole("button", { name: "Browse library" }).click();
+  await page.getByRole("button", { name: "Browse library", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Background Library" })).toBeVisible();
   await expect(page.locator('[data-background-id="user:collapsible-background-tags.png"]')).toHaveAttribute(
     "data-background-selected",
@@ -24835,7 +24951,7 @@ test("Roleplay displays a selected background when its file route is GET-only", 
           ),
       )
       .toBe(true);
-    await page.getByRole("button", { name: "Browse library" }).click();
+    await page.getByRole("button", { name: "Browse library", exact: true }).click();
     const library = page.getByRole("dialog", { name: "Background Library" });
     await expect(library).toBeVisible();
     await library
@@ -24896,6 +25012,11 @@ test("Roleplay displays a selected background when its file route is GET-only", 
 });
 
 test("Background library organization works with desktop drag and touch drag", async ({ page }, testInfo) => {
+  // ponytail: Linux WebKit r2370 (Playwright 1.64.x) composites backdrop-filter slowly (microsoft/playwright#43426).
+  // From Settings > Appearance on, CI draws about one frame per 1.2 s. Each of the 30 or so clicks waits two frames
+  // for a stable box, so the test needs about 95 s; with r2359 it passed in 24-31 s. 180 s holds up to about 2.3 s
+  // per frame. Drop this once Playwright's WebKit has the fix for https://bugs.webkit.org/show_bug.cgi?id=327701.
+  if (testInfo.project.name.includes("webkit")) test.setTimeout(180_000);
   const suffix = testInfo.project.name.includes("mobile") ? "mobile" : "desktop";
   const originalFilename = `background-folder-${suffix}.gif`;
   const uploadResponse = await page.request.post("/api/backgrounds/upload", {
@@ -24925,7 +25046,7 @@ test("Background library organization works with desktop drag and touch drag", a
     await page.getByRole("tab", { name: "Appearance" }).click();
     await page.getByPlaceholder("Search settings").fill("Backgrounds");
     await page.getByRole("button", { name: /Backgrounds Section/ }).click();
-    await page.getByRole("button", { name: "Browse library" }).click();
+    await page.getByRole("button", { name: "Browse library", exact: true }).click();
     await expect(page.getByRole("dialog", { name: "Background Library" })).toBeVisible();
     await expect(page.getByRole("button", { name: /My uploads/ })).toBeVisible();
     await page.getByRole("button", { name: /My uploads/ }).click();
@@ -24954,7 +25075,7 @@ test("Background library organization works with desktop drag and touch drag", a
     const backgroundLibrary = page.getByRole("dialog", { name: "Background Library" });
     await backgroundLibrary.getByRole("button", { name: "Close Background Library" }).click();
     await expect(backgroundLibrary).toBeHidden();
-    await page.getByRole("button", { name: "Browse library" }).click();
+    await page.getByRole("button", { name: "Browse library", exact: true }).click();
     await expect(backgroundLibrary).toBeVisible();
     await page.getByPlaceholder("Search backgrounds").fill(`rainy-arcade-${suffix}`);
 
@@ -25014,6 +25135,10 @@ test("Background library organization works with desktop drag and touch drag", a
     await expect(folder).toBeVisible();
     if (testInfo.project.name.includes("mobile")) {
       const dragHandle = backgroundRow.locator("[data-drag-surface]");
+      // Hold the card where a finger can: its centre sat below the visible list, inside the auto-scroll edge, so the
+      // held drag scrolled the library until it reached the end. At CI WebKit's frame rate that outlasted the test
+      // and the folder chip never held still (run 42029653525).
+      await dragHandle.evaluate((handle) => handle.scrollIntoView({ block: "center" }));
       const startRect = await dragHandle.boundingBox();
       expect(startRect).not.toBeNull();
       const start = {
@@ -25214,7 +25339,8 @@ test("character card fields can preview Markdown without changing their source",
     await description.locator("textarea").fill(source);
     await description.getByRole("button", { name: "Preview Markdown", exact: true }).click();
 
-    const preview = description.getByRole("region", { name: "Markdown preview", exact: true });
+    // #8689 moved Card fields into CardProse, which names the field's preview after the field.
+    const preview = description.getByRole("region", { name: "Description", exact: true });
     await expect(preview.locator("strong")).toHaveText("Bold detail");
     await expect(preview.locator("li")).toHaveText("First point");
 

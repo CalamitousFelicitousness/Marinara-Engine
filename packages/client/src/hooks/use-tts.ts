@@ -6,6 +6,7 @@ import { api } from "../lib/api-client";
 import type {
   GameAudioPurpose,
   TTSConfig,
+  TTSConfigResponse,
   TTSEffectiveConfigResponse,
   TTSModelsResponse,
   TTSVoiceAssignmentInput,
@@ -14,6 +15,9 @@ import type {
   TTSSource,
 } from "@marinara-engine/shared";
 import { TTS_API_KEY_MASK, TTS_SOURCES_WITH_MODEL_LISTING } from "@marinara-engine/shared";
+import type { ConnectionModelRow } from "../lib/connection-groups";
+import { voiceRowOf } from "../lib/connection-jobs";
+import { useConnections } from "./use-connections";
 
 export const ttsKeys = {
   /** Everything TTS. Connection mutations invalidate this: they change catalogs and resolution. */
@@ -60,7 +64,7 @@ const scopeQuery = (scope: TTSCatalogScope) => {
 export function useTTSConfig() {
   return useQuery({
     queryKey: ttsKeys.config,
-    queryFn: () => api.get<TTSConfig>("/tts/config"),
+    queryFn: () => api.get<TTSConfigResponse>("/tts/config"),
     staleTime: 60_000,
   });
 }
@@ -153,6 +157,13 @@ function invalidateSpeakingCast(qc: QueryClient) {
   qc.invalidateQueries({ queryKey: ttsKeys.all });
   // connectionKeys.all; importing it would cycle with use-connections.
   qc.invalidateQueries({ queryKey: ["connections"] });
+}
+
+/** The id of the audio row speech resolves to (`/tts/effective-config`), for the Voice badge. */
+export function useVoiceRowId() {
+  const { data: effective } = useEffectiveTTSConfig();
+  const { data: rows } = useConnections();
+  return voiceRowOf((rows ?? []) as ConnectionModelRow[], effective?.resolvedConnectionId).row?.id ?? null;
 }
 
 /** Sets or clears one character's voice in the speaking cast, leaving every other TTS setting as stored. */

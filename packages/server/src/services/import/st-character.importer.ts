@@ -33,6 +33,7 @@ import { join } from "path";
 import { randomUUID } from "crypto";
 import { DATA_DIR } from "../../utils/data-dir.js";
 import { isAllowedImageBuffer } from "../../utils/security.js";
+import { parseJsonBytes } from "../../utils/large-json.js";
 import { openZipArchive, type ZipArchive } from "../../lib/zip-reader.js";
 import { normalizeTimestampOverrides, type TimestampOverrides } from "./import-timestamps.js";
 import { restoreSprites } from "./marinara.importer.js";
@@ -44,14 +45,17 @@ export const IMPORT_BODY_LIMIT_BYTES = 256 * 1024 * 1024;
 const IMPORT_METADATA_KEY = "importMetadata";
 
 /** Remove Marinara sprite binaries from card metadata before the normalized card is stored. */
-export function takeEmbeddedMarinaraSprites(raw: Record<string, unknown>): unknown {
+export function takeEmbeddedMarinaraSprites(
+  raw: Record<string, unknown>,
+  key: "sprites" | "spriteCatalog" = "sprites",
+): unknown {
   const cardData = raw.data && typeof raw.data === "object" ? (raw.data as Record<string, unknown>) : raw;
   if (!cardData.extensions || typeof cardData.extensions !== "object") return undefined;
   const extensions = cardData.extensions as Record<string, unknown>;
   if (!extensions.marinara || typeof extensions.marinara !== "object") return undefined;
   const marinara = extensions.marinara as Record<string, unknown>;
-  const sprites = marinara.sprites;
-  delete marinara.sprites;
+  const sprites = marinara[key];
+  delete marinara[key];
   return sprites;
 }
 
@@ -230,6 +234,7 @@ export async function importSTCharacter(raw: Record<string, unknown>, db: DB, op
   const shouldImportEmbeddedLorebook = options?.importEmbeddedLorebook ?? true;
   const tagImportMode = options?.tagImportMode ?? "all";
   const embeddedMarinaraSprites = takeEmbeddedMarinaraSprites(raw);
+  const embeddedSpriteCatalog = takeEmbeddedMarinaraSprites(raw, "spriteCatalog");
 
   // Extract avatar data URL if present (from PNG import)
   const avatarDataUrl = raw._avatarDataUrl as string | null;
@@ -408,7 +413,7 @@ export async function importSTCharacter(raw: Record<string, unknown>, db: DB, op
 
   if (charId && embeddedMarinaraSprites !== undefined) {
     try {
-      await restoreSprites(embeddedMarinaraSprites, charId);
+      await restoreSprites(embeddedMarinaraSprites, charId, embeddedSpriteCatalog);
     } catch (err) {
       logger.warn(err, "Skipped optional embedded sprite restore for %s", charId);
     }
@@ -554,7 +559,7 @@ export function inspectCharX(buf: Buffer): STCharacterImportPreview {
 function readCharXCardJson(zip: ZipArchive): Record<string, unknown> | null {
   const cardEntry = zip.getEntry("card.json");
   if (!cardEntry) return null;
-  return JSON.parse(cardEntry.read(IMPORT_BODY_LIMIT_BYTES).toString("utf-8")) as Record<string, unknown>;
+  return parseJsonBytes(cardEntry.read(IMPORT_BODY_LIMIT_BYTES)) as Record<string, unknown>;
 }
 
 function normalizeCharacterData(raw: Record<string, unknown>): CharacterData {
@@ -622,7 +627,7 @@ function normalizeCharacterBookPosition(value: unknown): CharacterBookEntryPosit
     if (value === "after_char" || value === "at_depth" || value === "depth") return value;
     return "before_char";
   }
-  if (typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 6) {
+  if (typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 7) {
     return value as CharacterBookEntryPosition;
   }
   return "before_char";
@@ -679,6 +684,7 @@ const CHARACTER_BOOK_ENTRY_PASSTHROUGH_FIELDS = [
   "excludeRecursion",
   "delayUntilRecursion",
   "vectorized",
+  "outletName",
   "decisionStatement",
   "decisionMode",
 ];

@@ -87,7 +87,7 @@ export class NanoGptTTSProvider extends OpenAITTSProvider {
     const elevenLabsModel = isNanoGptElevenLabsModel(model);
     const text =
       this.cfg.source === "elevenlabs" || elevenLabsModel
-        ? buildElevenLabsTextInput(input.text, input.tone)
+        ? buildElevenLabsTextInput(input.text, input.tone, model)
         : input.text;
     const instructions =
       !elevenLabsModel && openAiModelSupportsSpeechInstructions(model)

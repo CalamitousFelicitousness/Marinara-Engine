@@ -1,21 +1,8 @@
-// What a model costs to call, as its own vendor states it.
+// What an audio model costs to call, as its vendor states it.
 //
-// Text and audio need different shapes rather than one. Every text model prices
-// the same two token streams, so a single unit works and each provider is
-// converted into it on read. Audio has no such agreement: across NanoGPT's 80
-// audio models the rate arrives under six different keys and no row carries a
-// unit field, so the key name is the unit. A per-generation flat fee and a
-// per-second rate cannot be expressed as each other, which is why the unit
-// travels with the amount instead of being normalized away.
-
-/** USD per million tokens. A provider publishing another unit is converted on read. */
-export interface TextModelPricing {
-  prompt: number;
-  completion: number;
-  /** Reading a cached prompt, where the provider prices that separately. */
-  cachedPrompt?: number;
-  currency: string;
-}
+// Audio has no unit field: across NanoGPT's 80 audio models the rate arrives under six
+// different keys, so the key name is the unit. A per-generation flat fee and a per-second
+// rate cannot be expressed as each other, so the unit travels with the amount.
 
 /** The quantity an audio model bills by, named after the field its vendor fills. */
 export type AudioPricingUnit = "per_second" | "per_minute" | "per_generation" | "per_thousand_chars";

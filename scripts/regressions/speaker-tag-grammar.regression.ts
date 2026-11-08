@@ -117,6 +117,8 @@ for (const root of ["packages/client/src", "packages/server/src", "packages/shar
   for (const path of walk(join(repoRoot, root))) {
     const relative = path.slice(repoRoot.length).replaceAll("\\", "/");
     if (relative === GRAMMAR_MODULE) continue;
+    // A prompt section wrapping the speaking character's card, not a speaker span.
+    if (relative === "packages/server/src/services/generation/html-artifact.ts") continue;
     for (const line of readFileSync(path, "utf8").split("\n")) {
       // Prose may name the tag; code may not define it.
       const code = line.trim();

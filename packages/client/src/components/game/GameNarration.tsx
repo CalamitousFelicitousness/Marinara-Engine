@@ -51,6 +51,7 @@ import { hasVisibleGameNarrationText, parseGmTags, stripGmTagsKeepReadables } fr
 import { truncateMessageContentAtSegment } from "../../lib/narration-truncation";
 import { audioManager } from "../../lib/game-audio";
 import { normalizeSpriteExpressionKey, resolveSpriteExpression } from "../../lib/sprite-expression-match";
+import { normalizeGameTtsEmotion } from "../../lib/game-tts-emotion";
 import type { SpriteInfo } from "../../hooks/use-characters";
 import { useTranslate } from "../../hooks/use-translate";
 import { useEffectiveTTSConfig } from "../../hooks/use-tts";
@@ -80,6 +81,7 @@ import { TTS_AUTOPLAY_VOICE_EVENT, type TTSAutoplayVoiceDetail } from "../../lib
 import { TTS_RETRY_BASE_DELAY_MS, type TTSSynthesisPolicy } from "../../lib/tts-synthesis-policy";
 import {
   findTTSCharacterIdBySpeakerName,
+  isTTSSpeakerAmbiguous,
   getTTSPersonaVoice,
   resolveTTSChunkCharLimit,
   resolveTTSNarratorVoice,
@@ -96,6 +98,7 @@ import {
   type PartyDialogueLine,
   type Message,
   type TTSConfig,
+  type GameTtsEmotion,
   type GameNpc,
   type SkillCheckResult,
   type GameDicePlaceholderRecord,
@@ -122,84 +125,8 @@ import {
 
 const GamePeekPromptButton = lazy(() => import("./GamePeekPromptButton"));
 
-const GAME_TTS_EMOTIONS = [
-  "neutral",
-  "happy",
-  "sad",
-  "angry",
-  "surprised",
-  "scared",
-  "disgusted",
-  "thinking",
-  "laughing",
-  "crying",
-  "blushing",
-  "smirk",
-  "embarrassed",
-  "determined",
-  "confused",
-  "sleepy",
-] as const;
-
-type GameTtsEmotion = (typeof GAME_TTS_EMOTIONS)[number];
-
-const GAME_TTS_EMOTION_SET = new Set<string>(GAME_TTS_EMOTIONS);
 const SIDE_VOICE_AUTOPLAY_MAX_FAILURES = 3;
 const SIDE_VOICE_AUTOPLAY_RETRY_DELAY_MS = 350;
-
-const GAME_TTS_EMOTION_ALIASES: Record<string, GameTtsEmotion> = {
-  afraid: "scared",
-  anger: "angry",
-  amused: "laughing",
-  blush: "blushing",
-  confused_look: "confused",
-  confusion: "confused",
-  cry: "crying",
-  determined_look: "determined",
-  disgust: "disgusted",
-  drowsy: "sleepy",
-  embarrassed_smile: "embarrassed",
-  fear: "scared",
-  fearful: "scared",
-  flustered: "blushing",
-  focused: "determined",
-  grin: "happy",
-  joyful: "happy",
-  laugh: "laughing",
-  nervous: "scared",
-  pensive: "thinking",
-  puzzled: "confused",
-  sad_look: "sad",
-  sadness: "sad",
-  serious: "determined",
-  shocked: "surprised",
-  shy: "blushing",
-  sleep: "sleepy",
-  sleepy_eyes: "sleepy",
-  smile: "happy",
-  smirking: "smirk",
-  sobbing: "crying",
-  startled: "surprised",
-  surprise: "surprised",
-  think: "thinking",
-  tired: "sleepy",
-  worried: "scared",
-};
-
-function normalizeGameTtsEmotion(value?: string | null): GameTtsEmotion | null {
-  const normalized = value ? normalizeSpriteExpressionKey(value) : "";
-  if (!normalized) return null;
-  if (GAME_TTS_EMOTION_SET.has(normalized)) return normalized as GameTtsEmotion;
-  if (GAME_TTS_EMOTION_ALIASES[normalized]) return GAME_TTS_EMOTION_ALIASES[normalized];
-
-  const parts = normalized.split("_").filter(Boolean);
-  for (const part of parts) {
-    if (GAME_TTS_EMOTION_SET.has(part)) return part as GameTtsEmotion;
-    if (GAME_TTS_EMOTION_ALIASES[part]) return GAME_TTS_EMOTION_ALIASES[part];
-  }
-
-  return null;
-}
 
 function resolveGameSegmentTtsEmotion(segment: NarrationSegment): GameTtsEmotion {
   return normalizeGameTtsEmotion(segment.sprite) ?? (segment.partyType === "thought" ? "thinking" : "neutral");
@@ -857,6 +784,8 @@ function findNpcVoiceHint(speaker: string | null | undefined, gameNpcs: GameNpc[
 type GameSegmentVoiceOptions = {
   playerSpeakerNames?: ReadonlySet<string>;
   persona?: TTSVoicePersona | null;
+  /** The speaker fits several active cards, so no card outside the game may voice them (#8638). */
+  isAmbiguousSpeaker?: (speaker?: string | null) => boolean;
 };
 
 function normalizeGameVoiceSpeakerName(value: string | null | undefined): string {
@@ -922,7 +851,13 @@ function getGameSegmentVoiceRequest(
     const tone = resolveGameSegmentTtsEmotion(segment);
     const voice = playerSpeaker
       ? getTTSPersonaVoice(config, options.persona)
-      : resolveTTSVoiceForSpeaker(config, segment.speaker, undefined, findNpcVoiceHint(segment.speaker, gameNpcs));
+      : resolveTTSVoiceForSpeaker(
+          config,
+          segment.speaker,
+          undefined,
+          findNpcVoiceHint(segment.speaker, gameNpcs),
+          Boolean(options.isAmbiguousSpeaker?.(segment.speaker)),
+        );
     if (config.source === "elevenlabs" && !voice) return null;
     return {
       chunks,
@@ -2664,6 +2599,11 @@ export function GameNarration({
     [queueLogScrollTopRestore, stopGameVoicePlayback],
   );
 
+  const isAmbiguousGameSpeaker = useCallback(
+    (speaker?: string | null) => isTTSSpeakerAmbiguous(speaker, activeCharacterEntries, personaInfo),
+    [activeCharacterEntries, personaInfo],
+  );
+
   const getVoiceRequestsForSegment = useCallback(
     (segment: NarrationSegment): GameSegmentVoiceRequest[] => {
       if (!ttsConfig) return [];
@@ -2672,12 +2612,13 @@ export function GameNarration({
       const baseRequest = getGameSegmentVoiceRequest(segment, ttsConfig, gameNpcs, {
         playerSpeakerNames: playerVoiceSpeakerNames,
         persona: personaInfo,
+        isAmbiguousSpeaker: isAmbiguousGameSpeaker,
       });
       if (baseRequest) requests.push(baseRequest);
 
       return requests;
     },
-    [gameNpcs, personaInfo, playerVoiceSpeakerNames, ttsConfig],
+    [gameNpcs, isAmbiguousGameSpeaker, personaInfo, playerVoiceSpeakerNames, ttsConfig],
   );
 
   const getVoiceRequestForSideLine = useCallback(
@@ -2698,10 +2639,11 @@ export function GameNarration({
       const request = getGameSegmentVoiceRequest(sideSegment, ttsConfig, gameNpcs, {
         playerSpeakerNames: playerVoiceSpeakerNames,
         persona: personaInfo,
+        isAmbiguousSpeaker: isAmbiguousGameSpeaker,
       });
       return request ? [request] : [];
     },
-    [gameNpcs, personaInfo, playerVoiceSpeakerNames, ttsConfig],
+    [gameNpcs, isAmbiguousGameSpeaker, personaInfo, playerVoiceSpeakerNames, ttsConfig],
   );
 
   const getVoiceKeyForSegment = useCallback(

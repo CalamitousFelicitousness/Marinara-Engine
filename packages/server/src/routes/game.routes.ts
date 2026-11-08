@@ -53,7 +53,7 @@ import {
   worldKitArtFamily,
 } from "@marinara-engine/shared";
 import { resolveCombatWeather } from "../services/game/weather.service.js";
-import { resolveGameConnection } from "../services/game/connection.service.js";
+import { resolveGameConnection, type GameChatModel } from "../services/game/connection.service.js";
 import { combatAiHintsSchema, combatTacticsSchema, combatInterruptFields } from "@marinara-engine/shared";
 import { findRulesetCreature, type RulesetCatalogEntriesById } from "@marinara-engine/shared";
 import { loadRulesetCatalogEntries } from "../services/game/ruleset-catalog.service.js";
@@ -98,7 +98,7 @@ import {
   worldTownForEditor,
   worldInteriorForEditor,
 } from "../services/game/world-editor.service.js";
-import { logger, logDebugOverride } from "../lib/logger.js";
+import { debugJson, logger, logDebugOverride } from "../lib/logger.js";
 import {
   buildWorldKitWritingPrompt,
   readWrittenWorldKit,
@@ -1465,7 +1465,7 @@ async function summarizeIllustrationFromNarration(args: {
     const { conn, baseUrl, defaultGenerationParameters } = await resolveConnection(
       args.connections,
       sceneConnId,
-      args.chat.connectionId,
+      args.chat,
     );
     const parameters = resolveStoredGameGenerationParameters(args.meta, defaultGenerationParameters, {
       includeChatParameters: inheritsChatGenerationParameters({
@@ -1498,7 +1498,7 @@ async function summarizeIllustrationFromNarration(args: {
       narration.length,
       args.illustration.prompt.length,
     );
-    args.debugLog?.("[debug/game/illustration-summarizer] prompt messages:\n%s", JSON.stringify(messages, null, 2));
+    args.debugLog?.("[debug/game/illustration-summarizer] prompt messages:\n%s", debugJson(messages));
 
     const result = await runGameChatComplete(
       provider,
@@ -1828,7 +1828,7 @@ async function createDynamicGameImagePromptGenerator(args: {
         request.sourcePrompt.length,
         request.maxCharacters,
       );
-      args.debugLog?.("[debug/game/dynamic-image-prompt] prompt messages:\n%s", JSON.stringify(messages, null, 2));
+      args.debugLog?.("[debug/game/dynamic-image-prompt] prompt messages:\n%s", debugJson(messages));
 
       const result = await runGameChatComplete(
         provider,
@@ -2414,7 +2414,7 @@ const stateTransitionSchema = z.object({
 });
 
 const worldKitWriteSchema = z.object({
-  connectionId: z.string().min(1),
+  connectionId: z.string().min(1).optional(),
   genre: z.string().min(1).max(200),
   // As long as a game's own setting may be (`gameSetupConfigSchema`), so a setting the game accepts
   // is never refused here.
@@ -2431,7 +2431,7 @@ const worldKitWriteSchema = z.object({
 });
 
 const worldBriefWriteSchema = z.object({
-  connectionId: z.string().min(1),
+  connectionId: z.string().min(1).optional(),
   kit: worldKitSchema,
   genre: z.string().min(1).max(200),
   setting: z.string().min(1),
@@ -3537,9 +3537,9 @@ async function updateLatestGameStateWithTrackerLocks(
 async function resolveConnection(
   connections: Pick<ReturnType<typeof createConnectionsStorage>, "getWithKey" | "listRandomPool">,
   connId: string | null | undefined,
-  chatConnectionId: string | null,
+  chat: GameChatModel,
 ) {
-  const { conn, baseUrl } = await resolveGameConnection(connections, connId, chatConnectionId);
+  const { conn, baseUrl } = await resolveGameConnection(connections, connId, chat);
   return { conn, baseUrl, defaultGenerationParameters: parseStoredGenerationParameters(conn.defaultParameters) };
 }
 
@@ -3785,6 +3785,7 @@ export function gameGenOptions(
       maxContext: options.maxContext,
       stream: options.stream,
       onToken: options.onToken,
+      onTokenKeepaliveOnly: options.onTokenKeepaliveOnly,
       onThinking: options.onThinking,
       onResponseParts: options.onResponseParts,
       signal: options.signal,
@@ -4691,7 +4692,7 @@ async function runGameLorebookKeeperAfterConclusion(args: {
     const { conn, baseUrl, defaultGenerationParameters } = await resolveConnection(
       connections,
       args.connectionId,
-      chat.connectionId,
+      chat,
     );
     const generationParameters = resolveStoredGameGenerationParameters(meta, defaultGenerationParameters);
     const provider = await createGameMainProvider(connections, conn, baseUrl);
@@ -4704,6 +4705,7 @@ async function runGameLorebookKeeperAfterConclusion(args: {
         stream: streaming,
         signal: args.signal,
         ...(streaming ? { onToken: args.onToken ?? (() => {}), onThinking: args.onToken } : {}),
+        onTokenKeepaliveOnly: true,
       },
       generationParameters,
       conn.provider,
@@ -7517,11 +7519,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     }
     const customHudWidgets = sanitizeGameHudWidgets(setupConfig.customHudWidgets);
 
-    const { conn, baseUrl, defaultGenerationParameters } = await resolveConnection(
-      connections,
-      connectionId,
-      chat.connectionId,
-    );
+    const { conn, baseUrl, defaultGenerationParameters } = await resolveConnection(connections, connectionId, chat);
     // The connection the setup was run on becomes the game's own, so the start screen and every turn
     // after it use the one the player picked, not one the chat held before (laptop playtest
     // 2026-10-24: the start screen offered the old connection). "random" stays a per-request pick.
@@ -7789,6 +7787,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       stream: streaming,
       signal: signal ? AbortSignal.any([signal, setupAbort.signal]) : setupAbort.signal,
       ...(streaming ? { onToken: () => setupAbort.touch(), onThinking: () => setupAbort.touch() } : {}),
+      onTokenKeepaliveOnly: true,
     };
     if (!setupGenerationParameters?.reasoningEffort) {
       setupOverrides.reasoningEffort = undefined;
@@ -8376,7 +8375,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           const { conn, baseUrl, defaultGenerationParameters } = await resolveConnection(
             connections,
             connectionId,
-            newChat.connectionId,
+            newChat,
           );
           const provider = await createGameMainProvider(connections, conn, baseUrl);
 
@@ -8565,11 +8564,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       const currentCampaignPlan = currentGameCampaignPlan(meta);
       const currentNpcs = Array.isArray(meta.gameNpcs) ? (meta.gameNpcs as GameNpc[]) : [];
 
-      const { conn, baseUrl, defaultGenerationParameters } = await resolveConnection(
-        connections,
-        connectionId,
-        chat.connectionId,
-      );
+      const { conn, baseUrl, defaultGenerationParameters } = await resolveConnection(connections, connectionId, chat);
       const conclusionGenerationParameters = resolveStoredGameGenerationParameters(meta, defaultGenerationParameters);
       const modelAccessPolicy = resolveGameModelAccessPolicy({
         provider: conn.provider,
@@ -8589,6 +8584,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           stream: streaming,
           signal: conclusionAbort.signal,
           ...(streaming ? { onToken: () => conclusionAbort.touch(), onThinking: () => conclusionAbort.touch() } : {}),
+          onTokenKeepaliveOnly: true,
         },
         conclusionGenerationParameters,
         conn.provider,
@@ -9126,11 +9122,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const currentCampaignPlan = currentGameCampaignPlan(meta);
     const currentNpcs = Array.isArray(meta.gameNpcs) ? (meta.gameNpcs as GameNpc[]) : [];
 
-    const { conn, baseUrl, defaultGenerationParameters } = await resolveConnection(
-      connections,
-      connectionId,
-      chat.connectionId,
-    );
+    const { conn, baseUrl, defaultGenerationParameters } = await resolveConnection(connections, connectionId, chat);
     const conclusionGenerationParameters = resolveStoredGameGenerationParameters(meta, defaultGenerationParameters);
     const modelAccessPolicy = resolveGameModelAccessPolicy({
       provider: conn.provider,
@@ -9153,6 +9145,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         stream: streaming,
         signal: conclusionAbort.signal,
         ...(streaming ? { onToken: () => conclusionAbort.touch(), onThinking: () => conclusionAbort.touch() } : {}),
+        onTokenKeepaliveOnly: true,
       },
       conclusionGenerationParameters,
       conn.provider,
@@ -9401,7 +9394,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const { conn, baseUrl, defaultGenerationParameters } = await resolveConnection(
       connections,
       connectionId,
-      currentChat.connectionId,
+      currentChat,
     );
     const progressionGenerationParameters = resolveStoredGameGenerationParameters(
       currentMeta,
@@ -9421,6 +9414,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         stream: streaming,
         signal: progressionAbort.signal,
         ...(streaming ? { onToken: () => progressionAbort.touch(), onThinking: () => progressionAbort.touch() } : {}),
+        onTokenKeepaliveOnly: true,
       },
       progressionGenerationParameters,
       conn.provider,
@@ -9806,7 +9800,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const { conn, baseUrl, defaultGenerationParameters } = await resolveConnection(
       connections,
       input.connectionId,
-      chat.connectionId,
+      chat,
     );
     const generationParameters = resolveStoredGameGenerationParameters(meta, defaultGenerationParameters);
     const modelAccessPolicy = resolveGameModelAccessPolicy({
@@ -10120,7 +10114,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         const { conn, baseUrl, defaultGenerationParameters } = await resolveConnection(
           connections,
           input.connectionId,
-          chat.connectionId,
+          chat,
         );
         const provider = await createGameMainProvider(connections, conn, baseUrl);
         const generationParameters = resolveStoredGameGenerationParameters(meta, defaultGenerationParameters);
@@ -10562,7 +10556,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
    */
   const askWorldModel = async <T>(args: {
     reply: FastifyReply;
-    connectionId: string;
+    connectionId?: string;
     debugMode?: boolean;
     /** The route, for the log: "world-kit". */
     route: string;
@@ -10777,11 +10771,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const chat = await chats.getById(chatId);
     if (!chat) throw new Error("Chat not found");
 
-    const { conn, baseUrl, defaultGenerationParameters } = await resolveConnection(
-      connections,
-      connectionId,
-      chat.connectionId,
-    );
+    const { conn, baseUrl, defaultGenerationParameters } = await resolveConnection(connections, connectionId, chat);
     const provider = await createGameMainProvider(connections, conn, baseUrl);
 
     const messages: ChatMessage[] = [
@@ -13333,7 +13323,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       const { conn, baseUrl, defaultGenerationParameters } = await resolveConnection(
         connections,
         input.connectionId,
-        chat.connectionId,
+        chat,
       );
       const gameGenerationParameters = resolveStoredGameGenerationParameters(meta, defaultGenerationParameters);
       const modelAccessPolicy = resolveGameModelAccessPolicy({
@@ -13880,7 +13870,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const { conn, baseUrl, defaultGenerationParameters } = await resolveConnection(
       connections,
       input.connectionId,
-      chat.connectionId,
+      chat,
     );
     const gameGenerationParameters = resolveStoredGameGenerationParameters(meta, defaultGenerationParameters);
 
@@ -14229,7 +14219,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const { conn, baseUrl, defaultGenerationParameters } = await resolveConnection(
       connections,
       requestedSceneConnId,
-      chat.connectionId,
+      chat,
     );
     const gameGenerationParameters = resolveStoredGameGenerationParameters(meta, defaultGenerationParameters, {
       includeChatParameters: inheritsChatGenerationParameters({
@@ -14555,7 +14545,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       }
 
       if (debugLogsEnabled) {
-        debugLog("[debug/game/scene-analysis:connection] final result:\n%s", JSON.stringify(parsed, null, 2));
+        debugLog("[debug/game/scene-analysis:connection] final result:\n%s", debugJson(parsed));
       }
 
       return { result: parsed };
@@ -14928,11 +14918,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           ? readTrimmedString(meta.gameSceneConnectionId) ||
             readTrimmedString((meta.gameSetupConfig as Record<string, unknown> | null)?.sceneConnectionId)
           : null);
-      const { conn, baseUrl, defaultGenerationParameters } = await resolveConnection(
-        connections,
-        sceneConnId,
-        chat.connectionId,
-      );
+      const { conn, baseUrl, defaultGenerationParameters } = await resolveConnection(connections, sceneConnId, chat);
       const includeChatParameters = inheritsChatGenerationParameters({
         requestedConnectionId: sceneConnId,
         resolvedConnectionId: conn.id,
@@ -15035,11 +15021,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           useNovelAiCharacterPrompts,
           providerSupportsStructuredCharacterPrompts,
         );
-        debugLog(
-          "[debug/%s/storyboard-planner] messages:\n%s",
-          ownerMode,
-          JSON.stringify(illustratorMessages.messages, null, 2),
-        );
+        debugLog("[debug/%s/storyboard-planner] messages:\n%s", ownerMode, debugJson(illustratorMessages.messages));
       }
 
       let illustratorErrorMessage: string | null = null;
@@ -15417,7 +15399,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
               "[debug/game/storyboard-image-assets] frame=%d nativeCharacterPrompts=%d prompts:\n%s",
               frame.index + 1,
               characterPrompts.length,
-              JSON.stringify(characterPrompts, null, 2),
+              debugJson(characterPrompts),
             );
           }
         }
@@ -15533,7 +15515,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
                       "[debug/%s/storyboard-animation-refinement] frame=%d messages:\n%s",
                       ownerMode,
                       frame.index + 1,
-                      JSON.stringify(redactStoryboardAnimationRefinementMessages(refinementMessages), null, 2),
+                      debugJson(redactStoryboardAnimationRefinementMessages(refinementMessages)),
                     );
                   }
                   const refinementResult = await runGameChatComplete(
@@ -15632,6 +15614,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
                       resolution: videoRuntime.resolution,
                       comfyWorkflow: videoRuntime.comfyWorkflow,
                       comfyLoras: videoRuntime.comfyLoras,
+                      customHeaders: videoRuntime.customHeaders,
                       fps: videoRuntime.comfyFps,
                       atlasModelOptions: videoRuntime.atlasModelOptions,
                       referenceImage: exactReferenceImage,
@@ -15948,6 +15931,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       comfyWorkflow,
       comfyLoras,
       comfyFps,
+      customHeaders,
       atlasModelOptions,
       activeDefaults: activeVideoDefaults,
       hasStoredDefaults,
@@ -16055,6 +16039,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         resolution,
         comfyWorkflow,
         comfyLoras,
+        customHeaders,
         fps: comfyFps,
         atlasModelOptions,
         referenceImage,
@@ -16510,22 +16495,18 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       if (debugLogsEnabled) {
         debugLog(
           "[debug/game/generate-assets] request payload:\n%s",
-          JSON.stringify(
-            {
-              chatId: input.chatId,
-              backgroundTag: input.backgroundTag ?? null,
-              backgroundDescriptionChars: input.backgroundDescription?.length ?? 0,
-              forceBackground: input.forceBackground === true,
-              npcsNeedingAvatars: input.npcsNeedingAvatars ?? [],
-              illustration: input.illustration ?? null,
-              illustrationNarrationChars: input.illustrationNarration?.length ?? 0,
-              useAvatarReferences: input.useAvatarReferences ?? null,
-              includeCharacterAppearance: input.includeCharacterAppearance ?? null,
-              queueImageGenerationRequests: input.queueImageGenerationRequests,
-            },
-            null,
-            2,
-          ),
+          debugJson({
+            chatId: input.chatId,
+            backgroundTag: input.backgroundTag ?? null,
+            backgroundDescriptionChars: input.backgroundDescription?.length ?? 0,
+            forceBackground: input.forceBackground === true,
+            npcsNeedingAvatars: input.npcsNeedingAvatars ?? [],
+            illustration: input.illustration ?? null,
+            illustrationNarrationChars: input.illustrationNarration?.length ?? 0,
+            useAvatarReferences: input.useAvatarReferences ?? null,
+            includeCharacterAppearance: input.includeCharacterAppearance ?? null,
+            queueImageGenerationRequests: input.queueImageGenerationRequests,
+          }),
         );
       }
 

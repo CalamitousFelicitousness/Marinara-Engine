@@ -18,13 +18,14 @@
 // docs/development/logging.md.
 // ──────────────────────────────────────────────
 import pino from "pino";
+import { readableJson } from "@marinara-engine/shared";
 import { randomBytes } from "node:crypto";
 import type { EventEmitter } from "node:events";
 import { writeSync } from "node:fs";
 import { hostname } from "node:os";
 import { isatty } from "node:tty";
 import prettyStream from "pino-pretty";
-import { getLogLevel, getNodeEnv } from "../config/runtime-config.js";
+import { getLogFormat, getLogLevel, getNodeEnv } from "../config/runtime-config.js";
 import { logContextMixin } from "./log-context.js";
 
 type TerminalLogStream = EventEmitter & {
@@ -116,21 +117,36 @@ function privateErrorLogArgument(value: unknown): unknown {
   return err || error ? { ...value, ...(err ? { err } : {}), ...(error ? { error } : {}) } : value;
 }
 
+// Readable lines wherever a person reads the console: `pnpm dev`, a launcher's terminal and the Windows launcher
+// window, so a prompt or reply that debug mode prints keeps its line breaks. Production output that goes anywhere
+// else (Docker logs, a pipe, a file) stays one JSON object per line for log tools. LOG_FORMAT=pretty|json decides
+// instead; the Termux launcher sets pretty, because its output reaches the terminal through tee.
+function wantsPrettyLogs() {
+  const developmentLogs = getNodeEnv() !== "production";
+  return (getLogFormat() ?? (developmentLogs || isatty(1) ? "pretty" : "json")) === "pretty";
+}
+
 /**
  * Left to itself pino writes to file descriptor 1, which on Windows reaches the
  * console through WriteFile and is decoded with the console's OEM code page, so
  * a character like U+0144 surfaces as two box-drawing glyphs. process.stdout is
  * a TTY stream and writes through WriteConsoleW, which carries Unicode whatever
  * the active code page is, and still emits plain UTF-8 once redirected to a file
- * or a pipe. Both modes need it: the pretty transport and the production default
+ * or a pipe. Both modes need it: the pretty transport and the JSON default
  * are each fd-based.
  */
 export function createLogDestination() {
-  if (getNodeEnv() === "production") return process.stdout;
-  // pino-pretty hides hostname by default; bootId is hidden too, since a dev terminal only
-  // ever shows one run. JSON output (production, log files) keeps both.
-  return prettyStream({ colorize: true, ignore: "hostname,bootId", destination: process.stdout });
+  if (!wantsPrettyLogs()) return process.stdout;
+  // pino-pretty hides hostname by default; bootId is hidden too, since a terminal only ever shows one run.
+  // JSON output keeps both. Colours only reach a terminal or the dev server's pipes, never a launcher's log file.
+  return prettyStream({
+    colorize: getNodeEnv() !== "production" || isatty(1),
+    ignore: "hostname,bootId",
+    destination: process.stdout,
+  });
 }
+
+export const prettyLogs = wantsPrettyLogs();
 
 export const logger = pino(
   {
@@ -151,7 +167,7 @@ export const logger = pino(
   },
   createLogDestination(),
 );
-protectTerminalLogger(logger, getNodeEnv() !== "production");
+protectTerminalLogger(logger, prettyLogs);
 
 /**
  * Keeps a child logger (Fastify's app.log) on the shared logger's level after
@@ -168,6 +184,19 @@ export function followLogLevel(child: { level: string }): () => void {
   return () => {
     logger.off("level-change", listener);
   };
+}
+
+/**
+ * A JSON value for a debug line (a prompt, a provider request body, a parsed reply), as readableJson prints it: each
+ * line break inside its strings is a real line break, so a multi-line prompt reads as it was written. Pass it to %s:
+ * it is rendered only when the line is printed, so a large prompt costs nothing while debug output is off.
+ */
+export function debugJson(
+  value: unknown,
+  replacer?: Parameters<typeof readableJson>[1],
+): { toString(): string; toJSON(): string } {
+  const render = () => readableJson(value, replacer);
+  return { toString: render, toJSON: render };
 }
 
 export function logDebugOverride(overrideEnabled: boolean, message: string, ...args: any[]) {

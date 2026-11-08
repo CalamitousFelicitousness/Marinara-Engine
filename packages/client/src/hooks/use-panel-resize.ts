@@ -90,10 +90,11 @@ export function usePanelResize({
 
       const handle = event.currentTarget;
       const host = handle.ownerDocument.defaultView ?? window;
+      const root = handle.ownerDocument.documentElement;
       const body = handle.ownerDocument.body;
-      const originalCursor = body.style.cursor;
       const originalUserSelect = body.style.userSelect;
-      body.style.cursor = "col-resize";
+      // The drag leaves the thin handle; the page keeps the resize cursor until it ends (globals.css, #8621).
+      root.dataset.marinaraResizing = "col";
       body.style.userSelect = "none";
 
       latestRef.current = width;
@@ -130,7 +131,7 @@ export function usePanelResize({
         pendingRef.current = null;
         publish(null);
         setDragging(false);
-        body.style.cursor = originalCursor;
+        delete root.dataset.marinaraResizing;
         body.style.userSelect = originalUserSelect;
         handle.removeEventListener("pointermove", onMove);
         handle.removeEventListener("pointerup", finish);

@@ -21,10 +21,13 @@ import {
   DEFAULT_NOVELAI_DEFAULTS,
   mergeNegativePrompt,
   mergePromptPrefix,
-  inferImageSource,
+  imageConnectionMakesAnimatedGif,
   isOpenAIGptImageModel,
   isOpenAIGptImage2Model,
   isOpenAIGptImage25Model,
+  OPENAI_GIF_MAX_FRAMES,
+  resolveImageBackend,
+  resolveOpenAIGifAnimation,
   supportsOpenAITransparentBackground,
   resolveOpenAIImageQuality,
   type Automatic1111Defaults,
@@ -47,7 +50,7 @@ import {
 } from "./image-generation-queue.js";
 import { runSharedGpuTurn } from "../generation/shared-gpu-turns.js";
 import { generateRunPodComfyUI } from "./runpod-comfyui.service.js";
-import { logger, logDebugOverride } from "../../lib/logger.js";
+import { debugJson, logger, logDebugOverride } from "../../lib/logger.js";
 import {
   assertInsideDir,
   normalizeLoopbackUrl,
@@ -145,52 +148,6 @@ function sanitizeErrorText(text: string): string {
 import type { ImageGenRequest, ImageGenResult } from "@marinara-engine/shared";
 export type { ImageGenRequest, ImageGenResult } from "@marinara-engine/shared";
 
-const EXPLICIT_IMAGE_SOURCES = new Set([
-  "openai",
-  "codex_chatgpt",
-  "arli",
-  "nanogpt",
-  "openrouter",
-  "pollinations",
-  "stability",
-  "togetherai",
-  "novelai",
-  "horde",
-  "xai",
-  "venice",
-  "zai",
-  "fal",
-  "spicyapi",
-  "atlas",
-  "comfyui",
-  "swarmui",
-  "automatic1111",
-  "runpod_comfyui",
-  "gemini_image",
-]);
-
-function normalizeExplicitImageSource(serviceHint: string): string {
-  const normalized = serviceHint.trim().toLowerCase();
-  if (!normalized) return "";
-  if (normalized === "drawthings") return "automatic1111";
-  return EXPLICIT_IMAGE_SOURCES.has(normalized) ? normalized : "";
-}
-
-function resolveImageBackend(source: string, baseUrl: string, serviceHint: string, requestModel?: string): string {
-  const inferredSource = inferImageSource(requestModel || source, baseUrl);
-  const explicitSource = normalizeExplicitImageSource(serviceHint);
-
-  if (!explicitSource) return inferredSource;
-
-  // Gemini image models exposed through OpenAI-compatible proxies (for example LinkAPI)
-  // must use the chat-completions path even if an older connection still says "openai".
-  if (explicitSource === "openai" && inferredSource === "gemini_image") {
-    return inferredSource;
-  }
-
-  return explicitSource;
-}
-
 type ReferencePictureTarget = { model: string; baseUrl: string; comfyWorkflow: string };
 
 /** A ComfyUI file-name slot, which SwarmUI workflows can't fill. */
@@ -274,6 +231,25 @@ export function imageConnectionTakesReferencePicture(connection: {
       });
 }
 
+/** Shown when a GIF is asked of an image connection that can't make one. */
+export const IMAGE_ANIMATION_UNSUPPORTED_MESSAGE =
+  "This image connection can't make GIFs. Use GPT Image 2.6 Flare or Sunburst on an OpenAI connection.";
+
+/** Shown when a GIF request carries a picture: OpenAI makes GIFs from text only. */
+export const IMAGE_ANIMATION_REFERENCE_MESSAGE =
+  "A GIF is drawn from the prompt alone, so it can't start from a picture.";
+
+/** Shown when a GIF request comes back as a still, which is never saved in its place. */
+export const IMAGE_ANIMATION_STILL_MESSAGE = "The image service sent back a still picture instead of a GIF.";
+
+/** A GIF request generateImage refuses before any paid call; routes answer it with 400 and its `code`. */
+export class ImageAnimationUnsupportedError extends Error {
+  readonly code = "animation-unsupported";
+}
+
+// The connection rule lives in shared so client gates ask the same question.
+export { imageConnectionMakesAnimatedGif };
+
 /** Default 30-minute timeout for image generation API calls (overridable via env). */
 const IMAGE_GEN_TIMEOUT = Number(process.env.IMAGE_GEN_TIMEOUT_MS ?? 1_800_000);
 const COMFYUI_GEN_TIMEOUT_SECONDS = Number(process.env.COMFYUI_GEN_TIMEOUT ?? 2400);
@@ -333,6 +309,15 @@ export async function generateImage(
   request: ImageGenRequest,
 ): Promise<ImageGenResult> {
   const resolvedSource = resolveImageBackend(source, baseUrl, serviceHint, request.model);
+  if (request.animation) {
+    // Refused before any queue slot or paid call. An empty reference list or field is no picture.
+    if (!imageConnectionMakesAnimatedGif({ source, baseUrl, serviceHint, model: request.model })) {
+      throw new ImageAnimationUnsupportedError(IMAGE_ANIMATION_UNSUPPORTED_MESSAGE);
+    }
+    if (openAIReferenceImages(request).length > 0 || request.referenceIsCanvas === true) {
+      throw new ImageAnimationUnsupportedError(IMAGE_ANIMATION_REFERENCE_MESSAGE);
+    }
+  }
   const normalizedBaseUrl = normalizeImageUrl(baseUrl);
   // Providers without native captions still need the identities and current outfits
   // the prompt writer put there, including when a NovelAI request falls back.
@@ -401,7 +386,7 @@ export async function generateImage(
           case "atlas":
             return generateAtlasCloudImage(normalizedBaseUrl, apiKey, scopedRequest);
           case "comfyui":
-            return generateComfyUI(normalizedBaseUrl, scopedRequest);
+            return generateComfyUI(normalizedBaseUrl, scopedRequest, apiKey);
           case "swarmui":
             return generateSwarmUI(normalizedBaseUrl, apiKey, scopedRequest);
           case "runpod_comfyui": {
@@ -415,7 +400,7 @@ export async function generateImage(
             return generateRunPodComfyUI(normalizedBaseUrl, endpointId, apiKey, scopedRequest);
           }
           case "automatic1111":
-            return generateAutomatic1111(normalizedBaseUrl, scopedRequest, serviceHint);
+            return generateAutomatic1111(normalizedBaseUrl, scopedRequest, serviceHint, apiKey);
           case "gemini_image":
             return generateViaChatCompletions(normalizedBaseUrl, apiKey, scopedRequest);
           case "openai":
@@ -450,6 +435,11 @@ export async function generateImage(
           task: () => withConnectionAdmission(admissionKey, primaryMode, physicalRequest),
         }),
     });
+    // A still is never saved as a GIF. It was paid for, so the attempt failed and a fallback that makes GIFs may run.
+    // The bytes decide: a provider's label can be wrong either way.
+    if (request.animation && detectImageMimeType(primaryResult.base64) !== "image/gif") {
+      throw new Error(IMAGE_ANIMATION_STILL_MESSAGE);
+    }
     outcome = "completed";
     const storedResult = request.preserveProviderOutput
       ? primaryResult
@@ -470,6 +460,14 @@ export async function generateImage(
       logger.warn(
         error,
         "[illustrator-fallback] Primary image edit failed; skipped fallback connection %s, which can't take a reference picture",
+        fallback.connectionId,
+      );
+      throw error;
+    }
+    if (request.animation && !imageConnectionMakesAnimatedGif(fallback)) {
+      logger.warn(
+        error,
+        "[illustrator-fallback] Primary GIF failed; skipped fallback connection %s, which can't make GIFs",
         fallback.connectionId,
       );
       throw error;
@@ -793,17 +791,55 @@ function imageFetch(url: string | URL, init?: RequestInit, options: ImageFetchOp
 function localImageBackendFetch(
   url: string | URL,
   init?: RequestInit,
-  options: { timeoutMs?: number; keepAliveInitialDelayMs?: number } = {},
+  options: {
+    timeoutMs?: number;
+    keepAliveInitialDelayMs?: number;
+    /** Extra headers for user-run backends behind auth or routing proxies. Explicit init headers win. */
+    headers?: Record<string, string>;
+  } = {},
 ) {
   const timeoutMs = options.timeoutMs ?? resolveComfyUiImageGenerationTimeoutMs();
-  return imageFetch(url, init, {
+  return imageFetch(url, withLocalBackendHeaders(init, options.headers), {
     allowLocal: true,
     agentOptions: { bodyTimeout: timeoutMs, headersTimeout: timeoutMs },
     keepAliveInitialDelayMs: options.keepAliveInitialDelayMs,
   });
 }
 
-const OPENAI_GPT_IMAGE_2_MIN_PIXELS = 1024 * 1024;
+/**
+ * Extra headers for a user-run local backend: the connection's non-secret custom
+ * headers plus `Authorization` from its API key (a bare token is sent as Bearer;
+ * a value that already carries a scheme, such as `Basic ...`, is sent as-is).
+ * Call-site headers such as Content-Type are never overridden here.
+ */
+export function resolveLocalBackendHeaders(
+  apiKey: string,
+  customHeaders?: Record<string, string> | null,
+): Record<string, string> {
+  const headers: Record<string, string> = { ...(customHeaders ?? {}) };
+  const token = apiKey.trim();
+  if (token) headers.Authorization = /\s/.test(token) ? token : `Bearer ${token}`;
+  return headers;
+}
+
+/** Merge extra local-backend headers under the call's own headers. */
+function withLocalBackendHeaders(
+  init: RequestInit | undefined,
+  extra: Record<string, string> | undefined,
+): RequestInit | undefined {
+  if (!extra || Object.keys(extra).length === 0) return init;
+  const headers = new Headers(init?.headers);
+  for (const [name, value] of Object.entries(extra)) {
+    if (!headers.has(name)) headers.set(name, value);
+  }
+  return { ...init, headers };
+}
+
+// The fewest pixels sent to GPT Image 2 and 2.5; a smaller request is scaled up in its own shape.
+// 2.5 accepts 655,360, but below OpenAI's recommended 1024x1536 the ~1 MP sizes packages ask for
+// (768x1344) draw small figures with broken hands and limbs.
+export const OPENAI_GPT_IMAGE_2_MIN_PIXELS = 1024 * 1024;
+export const OPENAI_GPT_IMAGE_25_MIN_PIXELS = 1024 * 1536;
 const OPENAI_GPT_IMAGE_2_SIZE_MULTIPLE = 32;
 
 function roundUpToMultiple(value: number, multiple: number): number {
@@ -820,10 +856,13 @@ function openAIGptImage2Size(width: number, height: number): string {
   return `${scaledWidth}x${scaledHeight}`;
 }
 
-function openAIGptImage25Size(width: number, height: number): string {
+function openAIGptImage25Size(
+  width: number,
+  height: number,
+  minPixels = OPENAI_GPT_IMAGE_25_MIN_PIXELS,
+  maxPixels = 8_294_400,
+): string {
   // https://developers.openai.com/api/docs/guides/image-generation#size-and-quality-options
-  const minPixels = 655_360;
-  const maxPixels = 8_294_400;
   const maxEdge = 3840;
   width = Number.isFinite(width) && width > 0 ? width : 1024;
   height = Number.isFinite(height) && height > 0 ? height : 1024;
@@ -848,6 +887,26 @@ function openAIGptImage25Size(width: number, height: number): string {
     else outputHeight -= 16;
   }
   return `${outputWidth}x${outputHeight}`;
+}
+
+// GPT Image 2.5's smallest request, which 2.6 GIF frames use.
+const OPENAI_GIF_FRAME_PIXELS = 655_360;
+
+/**
+ * One GIF frame's size: the smallest valid frame in the requested shape (816x816 square, 608x1088 portrait).
+ * ponytail: OpenAI doesn't publish a GIF request's pixel budget, so frames are the API minimum and there are at
+ * most 12. Upgrade path: size frames as budget / frameCount once the budget is published.
+ */
+export function openAIGifFrameSize(width?: number, height?: number): string {
+  const w = width && Number.isFinite(width) && width > 0 ? width : 1024;
+  const h = height && Number.isFinite(height) && height > 0 ? height : 1024;
+  const scale = Math.sqrt(OPENAI_GIF_FRAME_PIXELS / (w * h));
+  return openAIGptImage25Size(
+    w * scale,
+    h * scale,
+    OPENAI_GIF_FRAME_PIXELS,
+    Math.floor(8_294_400 / OPENAI_GIF_MAX_FRAMES),
+  );
 }
 
 function openAIImageSize(request: ImageGenRequest): string {
@@ -1162,6 +1221,10 @@ async function downloadImageUrl(
       allowedOrigins: resultPolicy.allowedOrigins,
     },
   );
+  return imageResultFromDownload(imgResp, normalizedImageUrl);
+}
+
+async function imageResultFromDownload(imgResp: Response, normalizedImageUrl: string): Promise<ImageGenResult> {
   if (!imgResp.ok) {
     throw new Error(`Failed to download generated image (${imgResp.status})`);
   }
@@ -1169,18 +1232,22 @@ async function downloadImageUrl(
   const arrayBuffer = await imgResp.arrayBuffer();
   const base64 = Buffer.from(arrayBuffer).toString("base64");
 
-  const contentType = imgResp.headers.get("content-type") ?? "";
-  let mimeType = detectImageMimeType(base64) ?? normalizeImageMimeType(contentType) ?? "image/png";
-  if (contentType.includes("jpeg") || contentType.includes("jpg") || normalizedImageUrl.match(/\.jpe?g/i)) {
-    mimeType = "image/jpeg";
-  } else if (contentType.includes("webp") || normalizedImageUrl.match(/\.webp/i)) {
-    mimeType = "image/webp";
-  } else if (contentType.includes("gif") || normalizedImageUrl.match(/\.gif/i)) {
-    mimeType = "image/gif";
-  } else if (contentType.includes("avif") || normalizedImageUrl.match(/\.avif/i)) {
-    mimeType = "image/avif";
-  } else if (contentType.includes("bmp") || normalizedImageUrl.match(/\.bmp/i)) {
-    mimeType = "image/bmp";
+  // The bytes decide, as for data URLs; the header and the URL's text only type bytes that match no known format.
+  let mimeType = detectImageMimeType(base64);
+  if (!mimeType) {
+    const contentType = imgResp.headers.get("content-type") ?? "";
+    mimeType = normalizeImageMimeType(contentType) ?? "image/png";
+    if (contentType.includes("jpeg") || contentType.includes("jpg") || normalizedImageUrl.match(/\.jpe?g/i)) {
+      mimeType = "image/jpeg";
+    } else if (contentType.includes("webp") || normalizedImageUrl.match(/\.webp/i)) {
+      mimeType = "image/webp";
+    } else if (contentType.includes("gif") || normalizedImageUrl.match(/\.gif/i)) {
+      mimeType = "image/gif";
+    } else if (contentType.includes("avif") || normalizedImageUrl.match(/\.avif/i)) {
+      mimeType = "image/avif";
+    } else if (contentType.includes("bmp") || normalizedImageUrl.match(/\.bmp/i)) {
+      mimeType = "image/bmp";
+    }
   }
 
   return { base64, mimeType, ext: imageExtensionFromMimeType(mimeType) };
@@ -1286,32 +1353,28 @@ async function fetchImageWithSizeFallback(
 }
 
 /** Format only the log copy; provider payloads and prompt text remain untouched. */
-function imagePayloadForLog(payload: unknown): string {
-  return JSON.stringify(
-    payload,
-    (key, value: unknown) => {
-      const normalizedKey = key.replace(/[_-]/g, "");
-      // Keep diagnostic token limits/counts, while hiding actual token credentials.
-      if (/(secret|password|apikey|authorization|cookie|credential|token$)/i.test(normalizedKey)) {
-        return "[REDACTED]";
+function imagePayloadForLog(payload: unknown) {
+  return debugJson(payload, (key, value: unknown) => {
+    const normalizedKey = key.replace(/[_-]/g, "");
+    // Keep diagnostic token limits/counts, while hiding actual token credentials.
+    if (/(secret|password|apikey|authorization|cookie|credential|token$)/i.test(normalizedKey)) {
+      return "[REDACTED]";
+    }
+    if (value instanceof Blob) return `[file: ${value.type || "unknown"}, ${value.size} bytes]`;
+    if (typeof value !== "string" || /prompt|^(?:text|content)$/i.test(key)) return value;
+    const trimmed = value.trim();
+    const mediaType = /^data:([^;,]+)/i.exec(trimmed)?.[1] ?? detectImageMimeType(trimmed);
+    if (mediaType) return `[redacted ${mediaType}: ${trimmed.length} encoded characters]`;
+    // Form fields and ComfyUI workflows can contain serialized objects with the same secrets.
+    if (/^[{[]/.test(trimmed)) {
+      try {
+        return JSON.parse(trimmed) as unknown;
+      } catch {
+        // Ordinary non-JSON parameter text remains useful in diagnostics.
       }
-      if (value instanceof Blob) return `[file: ${value.type || "unknown"}, ${value.size} bytes]`;
-      if (typeof value !== "string" || /prompt|^(?:text|content)$/i.test(key)) return value;
-      const trimmed = value.trim();
-      const mediaType = /^data:([^;,]+)/i.exec(trimmed)?.[1] ?? detectImageMimeType(trimmed);
-      if (mediaType) return `[redacted ${mediaType}: ${trimmed.length} encoded characters]`;
-      // Form fields and ComfyUI workflows can contain serialized objects with the same secrets.
-      if (/^[{[]/.test(trimmed)) {
-        try {
-          return JSON.parse(trimmed) as unknown;
-        } catch {
-          // Ordinary non-JSON parameter text remains useful in diagnostics.
-        }
-      }
-      return value;
-    },
-    2,
-  );
+    }
+    return value;
+  });
 }
 
 function withImageCustomParameters(request: ImageGenRequest, body: Record<string, unknown>): Record<string, unknown> {
@@ -1340,6 +1403,21 @@ function applyImageCustomFormParameters(request: ImageGenRequest, body: FormData
   );
 }
 
+/** Appended to a GIF request's prompt. */
+export const OPENAI_GIF_LOOP_PROMPT =
+  "Animate this as a short, seamless looping GIF: small motion, the same subject and framing in every frame, the last frame flowing back into the first.";
+
+// Custom parameters a GIF request can't take: OpenAI refuses streaming, partial images, custom compression and the
+// prompt rewriter with output_format "gif", and a GIF has no transparent background or URL response.
+const OPENAI_GIF_UNSUPPORTED_FIELDS = [
+  "background",
+  "output_compression",
+  "stream",
+  "partial_images",
+  "response_format",
+  "prompt_rewriter",
+];
+
 async function generateOpenAI(
   baseUrl: string,
   apiKey: string,
@@ -1359,6 +1437,45 @@ async function generateOpenAI(
   const usesGptImageApi = isOpenAIGptImageModel(request.model);
   const references = openAIReferenceImages(request);
   const prompt = openAITextPrompt(request);
+
+  // generateImage lets only GPT Image 2.6 without a picture through. GIFs come from /generations only.
+  if (request.animation) {
+    const { frameCount, frameDurationMs } = resolveOpenAIGifAnimation(request.animation);
+    const custom = request.imageDefaults?.customParameters;
+    // Set again over the connection's custom parameters, so they can't change the model or the frame budget.
+    const fixed: Record<string, unknown> = {
+      model: request.model,
+      n: 1,
+      size: openAIGifFrameSize(request.width, request.height),
+      output_format: "gif",
+      frame_count: frameCount,
+      frame_duration_ms: frameDurationMs,
+    };
+    // A custom quality wins, as on stills, but only a level 2.6 lists goes out. "auto" (the connection's default)
+    // and anything else leave the field off, so the API default applies.
+    const quality = resolveOpenAIImageQuality(custom?.quality ?? request.quality, request.model);
+    if (quality !== "auto") fixed.quality = quality;
+    // Complexity and other custom parameters pass through.
+    const body: Record<string, unknown> = {
+      prompt: `${prompt}\n\n${OPENAI_GIF_LOOP_PROMPT}`,
+      ...custom,
+    };
+    // A raw custom quality is replaced by the checked one above, or dropped with it.
+    for (const key of [...OPENAI_GIF_UNSUPPORTED_FIELDS, "quality"]) delete body[key];
+    Object.assign(body, fixed);
+    logDebugOverride(
+      request.debugMode === true,
+      "[debug/image/openai] GIF request payload:\n%s",
+      imagePayloadForLog(body),
+    );
+    const resp = await fetchImageWithSizeFallback(
+      openAIImagesUrl(baseUrl, "generations"),
+      apiKey,
+      JSON.stringify(body),
+      request,
+    );
+    return readOpenAIImageResult(resp, request, "generation");
+  }
 
   if (usesGptImageApi && references.length > 0) {
     const formData = new FormData();
@@ -2710,6 +2827,7 @@ export function getNovelAiDisplayPrompt(body: Record<string, unknown>): string {
     .join(" | ");
 }
 
+/** A whitespace run holding a line break becomes one "\n"; `\s*\n\s*` backtracked quadratically on long runs. */
 function sanitizeNovelAiV4Prompt(value: string, allowUnicode = false): string {
   return value
     .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
@@ -2722,7 +2840,7 @@ function sanitizeNovelAiV4Prompt(value: string, allowUnicode = false): string {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, allowUnicode ? "$&" : " ")
     .replace(/[ \t]+/g, " ")
-    .replace(/\s*\n\s*/g, "\n")
+    .replace(/\s+/g, (run) => (run.includes("\n") ? "\n" : run))
     .trim();
 }
 
@@ -3732,7 +3850,12 @@ function replaceComfyUiPlaceholders(value: unknown, replacements: Record<string,
   return value;
 }
 
-async function uploadComfyReferenceImage(base: string, reference: string, signal?: AbortSignal): Promise<string> {
+async function uploadComfyReferenceImage(
+  base: string,
+  reference: string,
+  signal?: AbortSignal,
+  extraHeaders?: Record<string, string>,
+): Promise<string> {
   const decoded = decodeReferenceImage(reference);
   const imageBytes = Buffer.from(decoded.base64, "base64");
   const hash = createHash("sha256").update(imageBytes).digest("hex").slice(0, 16);
@@ -3742,11 +3865,15 @@ async function uploadComfyReferenceImage(base: string, reference: string, signal
   formData.append("image", new Blob([imageBytes], { type: decoded.mimeType }), filename);
   formData.append("overwrite", "true");
 
-  const resp = await localImageBackendFetch(`${base}/upload/image`, {
-    method: "POST",
-    body: formData,
-    signal: imageRequestSignal({ signal }),
-  });
+  const resp = await localImageBackendFetch(
+    `${base}/upload/image`,
+    {
+      method: "POST",
+      body: formData,
+      signal: imageRequestSignal({ signal }),
+    },
+    { headers: extraHeaders },
+  );
 
   if (!resp.ok) {
     const errText = await resp.text().catch(() => "Unknown error");
@@ -3769,8 +3896,9 @@ function collectComfyReferenceImages(request: ImageGenRequest, defaults: ComfyUi
   return defaults.uploadPlaceholderOnMissingReference ? [COMFYUI_PLACEHOLDER_REFERENCE_BASE64] : [];
 }
 
-async function generateComfyUI(baseUrl: string, request: ImageGenRequest): Promise<ImageGenResult> {
+async function generateComfyUI(baseUrl: string, request: ImageGenRequest, apiKey = ""): Promise<ImageGenResult> {
   const base = baseUrl.replace(/\/+$/, "");
+  const extraHeaders = resolveLocalBackendHeaders(apiKey, request.imageDefaults?.customHeaders);
   const defaults = resolveComfyUiDefaults(request);
   const seed = resolveSeed(request.imageDefaults);
   const prompt = mergePromptPrefix(defaults.promptPrefix, request.prompt || "");
@@ -3821,7 +3949,7 @@ async function generateComfyUI(baseUrl: string, request: ImageGenRequest): Promi
     if (i === 0) replacements["%reference_image%"] = referenceBase64;
 
     if (workflowJson.includes(namePlaceholder) || (i === 0 && workflowJson.includes("%reference_image_name%"))) {
-      const uploadedName = await uploadComfyReferenceImage(base, reference, request.signal);
+      const uploadedName = await uploadComfyReferenceImage(base, reference, request.signal, extraHeaders);
       if (reference === COMFYUI_PLACEHOLDER_REFERENCE_BASE64) placeholderUploadedName = uploadedName;
       replacements[namePlaceholder] = uploadedName;
       if (i === 0) replacements["%reference_image_name%"] = uploadedName;
@@ -3839,6 +3967,7 @@ async function generateComfyUI(baseUrl: string, request: ImageGenRequest): Promi
         base,
         COMFYUI_PLACEHOLDER_REFERENCE_BASE64,
         request.signal,
+        extraHeaders,
       );
       logger.debug("Backfilled ComfyUI reference slot %s with the uploaded placeholder", placeholder);
       replacements[placeholder] = placeholderUploadedName;
@@ -3847,12 +3976,16 @@ async function generateComfyUI(baseUrl: string, request: ImageGenRequest): Promi
   const resolvedWorkflow = replaceComfyUiPlaceholders(workflow, replacements);
 
   // Queue the workflow
-  const queueResp = await localImageBackendFetch(`${base}/prompt`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt: resolvedWorkflow }),
-    signal: imageRequestSignal(request),
-  });
+  const queueResp = await localImageBackendFetch(
+    `${base}/prompt`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: resolvedWorkflow }),
+      signal: imageRequestSignal(request),
+    },
+    { headers: extraHeaders },
+  );
 
   if (!queueResp.ok) {
     const errText = await queueResp.text().catch(() => "Unknown error");
@@ -3872,9 +4005,13 @@ async function generateComfyUI(baseUrl: string, request: ImageGenRequest): Promi
   while (Date.now() - pollStartedAt < pollTimeoutMs) {
     await sleepWithAbort(1000, request.signal);
 
-    const historyResp = await localImageBackendFetch(`${base}/history/${promptId}`, {
-      signal: imageRequestSignal(request),
-    });
+    const historyResp = await localImageBackendFetch(
+      `${base}/history/${promptId}`,
+      {
+        signal: imageRequestSignal(request),
+      },
+      { headers: extraHeaders },
+    );
     if (!historyResp.ok) continue;
 
     const history = (await historyResp.json()) as Record<string, ComfyUiHistoryEntry>;
@@ -3901,9 +4038,13 @@ async function generateComfyUI(baseUrl: string, request: ImageGenRequest): Promi
             type: img.type || "output",
           });
 
-          const imgResp = await localImageBackendFetch(`${base}/view?${params}`, {
-            signal: imageRequestSignal(request),
-          });
+          const imgResp = await localImageBackendFetch(
+            `${base}/view?${params}`,
+            {
+              signal: imageRequestSignal(request),
+            },
+            { headers: extraHeaders },
+          );
           if (!imgResp.ok) {
             throw new Error(`ComfyUI image fetch failed (${imgResp.status})`);
           }
@@ -3942,9 +4083,10 @@ function swarmUiApiError(value: unknown): string | null {
 }
 
 async function createSwarmUiSession(base: string, apiKey: string, request: ImageGenRequest): Promise<string> {
+  const extraHeaders = resolveLocalBackendHeaders(apiKey, request.imageDefaults?.customHeaders);
   const response = await localImageBackendFetch(`${base}/API/GetNewSession`, {
     method: "POST",
-    headers: swarmUiHeaders(apiKey),
+    headers: { ...extraHeaders, ...swarmUiHeaders(apiKey) },
     body: "{}",
     signal: imageRequestSignal(request),
   });
@@ -4085,6 +4227,7 @@ async function generateSwarmUiImageReference(
   apiKey: string,
   body: Record<string, unknown>,
   signal: AbortSignal,
+  customHeaders?: Record<string, string>,
 ): Promise<string> {
   const socketUrl = new URL(`${base}/API/GenerateText2ImageWS`);
   if (socketUrl.protocol === "https:") socketUrl.protocol = "wss:";
@@ -4099,7 +4242,9 @@ async function generateSwarmUiImageReference(
   return new Promise<string>((resolve, reject) => {
     const images = new Map<number, string>();
     const discarded = new Set<number>();
-    const socket = new WebSocket(socketUrl, { headers: swarmUiHeaders(apiKey) });
+    const socket = new WebSocket(socketUrl, {
+      headers: { ...resolveLocalBackendHeaders(apiKey, customHeaders), ...swarmUiHeaders(apiKey) },
+    });
     let settled = false;
 
     const closeSocket = () => {
@@ -4199,10 +4344,26 @@ async function generateSwarmUI(baseUrl: string, apiKey: string, request: ImageGe
     "[debug/image/swarmui] final request payload:\n%s",
     imagePayloadForLog(debugBody),
   );
-  const imageReference = await generateSwarmUiImageReference(base, apiKey, body, imageRequestSignal(request));
+  const imageReference = await generateSwarmUiImageReference(
+    base,
+    apiKey,
+    body,
+    imageRequestSignal(request),
+    request.imageDefaults?.customHeaders,
+  );
   if (imageReference.startsWith("data:")) return decodeImageDataUrl(imageReference);
-  const imageUrl = new URL(imageReference, `${base}/`).toString();
-  return downloadImageUrl(imageUrl, request.privateImageResultOrigin, request.signal);
+  const imageUrl = new URL(imageReference, `${base}/`);
+  // A saved image on the SwarmUI server sits behind the same auth as its API; any
+  // other origin keeps the headerless result-URL policy so credentials stay home.
+  if (imageUrl.origin !== new URL(base).origin) {
+    return downloadImageUrl(imageUrl.toString(), request.privateImageResultOrigin, request.signal);
+  }
+  const response = await localImageBackendFetch(
+    imageUrl,
+    { headers: swarmUiHeaders(apiKey), signal: imageRequestSignal(request) },
+    { headers: resolveLocalBackendHeaders(apiKey, request.imageDefaults?.customHeaders) },
+  );
+  return imageResultFromDownload(response, imageUrl.toString());
 }
 
 // ── AUTOMATIC1111 / SD Web UI / Forge ──
@@ -4211,6 +4372,7 @@ async function generateAutomatic1111(
   baseUrl: string,
   request: ImageGenRequest,
   serviceHint?: string,
+  apiKey = "",
 ): Promise<ImageGenResult> {
   const base = baseUrl.replace(/\/+$/, "");
   const isDrawThings = serviceHint?.trim().toLowerCase() === "drawthings";
@@ -4274,12 +4436,16 @@ async function generateAutomatic1111(
   const endpoint = useImg2Img ? `${base}/sdapi/v1/img2img` : `${base}/sdapi/v1/txt2img`;
   const label = isDrawThings ? "Draw Things" : "AUTOMATIC1111";
 
-  const resp = await localImageBackendFetch(endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    signal: imageRequestSignal(request),
-  });
+  const resp = await localImageBackendFetch(
+    endpoint,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: imageRequestSignal(request),
+    },
+    { headers: resolveLocalBackendHeaders(apiKey, request.imageDefaults?.customHeaders) },
+  );
 
   if (!resp.ok) {
     const errText = await resp.text().catch(() => "Unknown error");

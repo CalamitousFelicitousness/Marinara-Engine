@@ -36,6 +36,7 @@ import { startEnvWatcher } from "./config/env-watcher.js";
 import { migrateTaskbarShortcuts } from "./services/setup/taskbar-shortcut-migration.js";
 import { sidecarProcessService } from "./services/sidecar/sidecar-process.service.js";
 import { startRuntimeMemoryMonitor } from "./utils/runtime-memory.js";
+import { startModelCatalogRefresh } from "./services/connections/model-catalog.js";
 
 function isAddressInUseError(err: unknown): err is NodeJS.ErrnoException {
   return err instanceof Error && "code" in err && err.code === "EADDRINUSE";
@@ -82,6 +83,7 @@ async function main() {
   const host = getHost();
   let isShuttingDown = false;
   let stopRuntimeMemoryMonitor: () => void = () => undefined;
+  let stopModelCatalogRefresh: () => void = () => undefined;
 
   const reapSidecar = () => {
     sidecarProcessService.killCurrentChildForProcessExit();
@@ -143,6 +145,7 @@ async function main() {
       envWatcher.stop();
       stopRuntimeMemoryMonitor();
       stopFreezeDetector();
+      stopModelCatalogRefresh();
       await app.close();
       logger.info("Shutdown complete");
       process.exit(0);
@@ -187,6 +190,7 @@ async function main() {
     }
     if (!isLoopbackBind(boundHost)) enableLoginSetupCode();
     scheduleTaskbarShortcutMigration();
+    stopModelCatalogRefresh = startModelCatalogRefresh(app.db);
     // The platform launcher opens its browser only after this child has finished
     // loading configuration, registering routes and binding the listener.
     if (process.connected) {

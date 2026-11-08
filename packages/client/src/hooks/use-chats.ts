@@ -2,10 +2,13 @@
 // React Query: Chat hooks
 // ──────────────────────────────────────────────
 import { useCallback, useEffect, useRef } from "react";
+import { create } from "zustand";
 import {
+  infiniteQueryOptions,
   useQuery,
   useInfiniteQuery,
   useMutation,
+  useMutationState,
   useQueryClient,
   type InfiniteData,
   type QueryClient,
@@ -15,12 +18,18 @@ import { api, ApiError, isRequestTimeoutError, requestTimeoutSignal } from "../l
 import { EXPORT_FAILED_TOAST_ID } from "../lib/file-download";
 import { translate } from "../localization/i18n";
 import { useChatStore } from "../stores/chat.store";
+import { readChatMetadata } from "../lib/chat-wizard-defaults";
 import { useAgentStore } from "../stores/agent.store";
 import { useGameStateStore } from "../stores/game-state.store";
 import { useEncounterStore } from "../stores/encounter.store";
 import { useUIStore } from "../stores/ui.store";
 import { clearBrowserRuntimeCaches } from "../lib/browser-runtime";
-import { shouldRefetchMessagesOnReconnect } from "../lib/message-page-cache";
+import {
+  removeMessagesFromPages,
+  shouldRefetchMessagesOnReconnect,
+  stillHiddenDeletes,
+  type ConfirmedDelete,
+} from "../lib/message-page-cache";
 import { normalizeHydratedMessage } from "../lib/message-hydration";
 import { notifyTTSUserMessageReady } from "../lib/tts-autoplay";
 import { trackChatMetadataSave, waitForPendingChatMetadataSaves } from "../lib/chat-metadata-save-barrier";
@@ -32,6 +41,7 @@ import {
   agentLorebookAttachmentPatchesSchema,
   mergeAgentLorebookAttachments,
   normalizeAdvancedMemorySettings,
+  type ChatModelPick,
 } from "@marinara-engine/shared";
 import type {
   AdvancedMemoryStatus,
@@ -65,6 +75,9 @@ export const chatKeys = {
   list: () => [...chatKeys.all, "list"] as const,
   detail: (id: string) => [...chatKeys.all, "detail", id] as const,
   messages: (chatId: string) => [...chatKeys.all, "messages", chatId] as const,
+  /** Under `messages`, so whatever refreshes the transcript refreshes this count too. */
+  summaryBacklog: (chatId: string, coverageKey: string) =>
+    [...chatKeys.messages(chatId), "summaryBacklog", coverageKey] as const,
   messageCount: (chatId: string) => [...chatKeys.all, "messageCount", chatId] as const,
   trash: (chatId: string) => [...chatKeys.all, "trash", chatId] as const,
   messagePeek: (chatId: string) => [...chatKeys.all, "messagePeek", chatId] as const,
@@ -146,6 +159,39 @@ function findCachedMessage(data: InfiniteData<Message[]> | undefined, messageId:
     if (found) return found;
   }
   return null;
+}
+
+/** Mutation key shared by single and bulk message deletes, so the transcript can hide pending deletes. */
+const chatMessageDeleteKey = (chatId: string | null) => ["chat-message-delete", chatId ?? ""] as const;
+
+function deletedMessageIds(variables: unknown): string[] {
+  if (Array.isArray(variables)) return variables as string[];
+  if (typeof variables === "string") return [variables];
+  const messageId = (variables as { messageId?: unknown } | undefined)?.messageId;
+  return typeof messageId === "string" ? [messageId] : [];
+}
+
+/** Messages the server deleted, per chat, with the time the delete was confirmed. */
+const useDeletedMessages = create<{ byChat: Record<string, ConfirmedDelete[]> }>(() => ({ byChat: {} }));
+
+/**
+ * The server deleted them: hide them on read until a transcript fetch newer than the delete lands, and
+ * refetch in the background. The cached pages are never shortened, so Load more keeps the real oldest page.
+ */
+function settleDeletedMessages(qc: QueryClient, chatId: string, messageIds: string[]) {
+  const at = Date.now();
+  const dataUpdatedAt = qc.getQueryState(chatKeys.messages(chatId))?.dataUpdatedAt ?? 0;
+  useDeletedMessages.setState((state) => ({
+    byChat: {
+      ...state.byChat,
+      // Entries older than the cached data no longer hide anything, so drop them here.
+      [chatId]: [
+        ...(state.byChat[chatId] ?? []).filter((entry) => entry.at > dataUpdatedAt),
+        ...messageIds.map((id) => ({ id, at })),
+      ],
+    },
+  }));
+  void qc.invalidateQueries({ queryKey: chatKeys.messages(chatId) });
 }
 
 export function rememberRecentMessageContentEdit(
@@ -262,10 +308,30 @@ async function resetClientAfterExpunge(qc: ReturnType<typeof useQueryClient>) {
   qc.clear();
 }
 
+const chatUpdateKey = ["chat-update"] as const;
+
+/** Names of chats with a rename still in flight, so every chat query shows the new name at once. */
+function usePendingChatNames(): Map<string, string> {
+  const renames = useMutationState({
+    filters: { mutationKey: chatUpdateKey, status: "pending" },
+    select: (mutation) => mutation.state.variables as { id: string; name?: string } | undefined,
+  });
+  const names = new Map<string, string>();
+  for (const rename of renames) if (rename?.name !== undefined) names.set(rename.id, rename.name);
+  return names;
+}
+
+function withPendingName(chat: Chat, names: Map<string, string>): Chat {
+  const name = names.get(chat.id);
+  return name === undefined || name === chat.name ? chat : { ...chat, name };
+}
+
 export function useChats(options: { enabled?: boolean; refetchOnMount?: boolean | "always" } = {}) {
+  const pendingNames = usePendingChatNames();
   return useQuery({
     queryKey: chatKeys.list(),
     queryFn: () => api.get<Chat[]>("/chats"),
+    select: (chats) => (pendingNames.size ? chats.map((chat) => withPendingName(chat, pendingNames)) : chats),
     enabled: options.enabled ?? true,
     placeholderData: (previousData) => previousData,
     staleTime: 10_000,
@@ -286,8 +352,19 @@ export function useChats(options: { enabled?: boolean; refetchOnMount?: boolean 
 const CHAT_OPEN_TIMEOUT_MS = 15_000;
 
 export function useChat(id: string | null) {
-  return useQuery({
+  const queryClient = useQueryClient();
+  const pendingNames = usePendingChatNames();
+  return useQuery<Chat>({
     queryKey: chatKeys.detail(id ?? ""),
+    select: (chat) => (pendingNames.size ? withPendingName(chat, pendingNames) : chat),
+    // The list row already holds this chat, so the view can mount while the detail loads.
+    // Game and multiplayer chats restore and save scene state on mount, so they wait for the detail.
+    placeholderData: () => {
+      const listed = id ? queryClient.getQueryData<Chat[]>(chatKeys.list())?.find((chat) => chat.id === id) : undefined;
+      if (!listed || listed.mode === "game") return undefined;
+      const metadata = readChatMetadata(listed);
+      return metadata.multiplayer || metadata.multiplayerSetup ? undefined : listed;
+    },
     queryFn: ({ signal }) =>
       api.get<Chat>(`/chats/${id}`, { signal: requestTimeoutSignal(CHAT_OPEN_TIMEOUT_MS, signal) }),
     enabled: !!id,
@@ -321,6 +398,43 @@ function hasLocalGeneration(state: ReturnType<typeof useChatStore.getState>, cha
     state.abortControllers.has(chatId) ||
     (state.isStreaming && state.streamingChatId === chatId) ||
     state.backgroundIllustrationChatIds.has(chatId)
+  );
+}
+
+/** One definition for the transcript query, so a row can prefetch exactly what the chat view reads. */
+function chatMessagesQueryOptions(chatId: string, pageSize: number) {
+  return infiniteQueryOptions({
+    queryKey: chatKeys.messages(chatId),
+    queryFn: ({ pageParam, signal }) => {
+      const params = new URLSearchParams();
+      if (pageSize > 0) params.set("limit", String(pageSize));
+      if (pageParam) params.set("before", pageParam);
+      const qs = params.toString();
+      return api
+        .get<Message[]>(`/chats/${chatId}/messages${qs ? `?${qs}` : ""}`, { signal })
+        .then((messages) => messages.map((message) => preserveRecentMessageContentEdit(chatId, message)));
+    },
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => {
+      if (pageSize <= 0 || lastPage.length < pageSize) return undefined;
+      const oldestLoaded = lastPage[0];
+      if (!oldestLoaded) return undefined;
+      return `${oldestLoaded.createdAt}|${encodeURIComponent(oldestLoaded.id)}`;
+    },
+  });
+}
+
+/** Starts loading a chat's newest messages on pointer down, before the click opens it. */
+export function usePrefetchChatMessages() {
+  const queryClient = useQueryClient();
+  const pageSize = useUIStore((state) => state.messagesPerPage);
+  return useCallback(
+    (chatId: string) => {
+      // A cached transcript refreshes on open; prefetching it would re-download every loaded page.
+      if (queryClient.getQueryData(chatKeys.messages(chatId))) return;
+      void queryClient.prefetchInfiniteQuery(chatMessagesQueryOptions(chatId, pageSize));
+    },
+    [queryClient, pageSize],
   );
 }
 
@@ -378,26 +492,25 @@ export function useChatMessages(chatId: string | null, pageSize: number = 0, ena
     generationStatus?.translating,
     queryClient,
   ]);
+  const pendingDeleteIds = useMutationState({
+    filters: { mutationKey: chatMessageDeleteKey(chatId), status: "pending" },
+    select: (mutation) => deletedMessageIds(mutation.state.variables),
+  }).flat();
+  const confirmedDeletes = useDeletedMessages((state) => (chatId ? state.byChat[chatId] : undefined));
+  const pendingDeleteKey = pendingDeleteIds.join(",");
+  const hidePendingDeletes = useCallback(
+    (data: InfiniteData<Message[]>) => {
+      const dataUpdatedAt = queryClient.getQueryState(chatKeys.messages(chatId ?? ""))?.dataUpdatedAt ?? 0;
+      const pending = pendingDeleteKey ? pendingDeleteKey.split(",") : [];
+      const hidden = [...pending, ...stillHiddenDeletes(confirmedDeletes ?? [], dataUpdatedAt)];
+      return hidden.length ? (removeMessagesFromPages(data, hidden) ?? data) : data;
+    },
+    [pendingDeleteKey, confirmedDeletes, chatId, queryClient],
+  );
   const query = useInfiniteQuery({
-    queryKey: chatKeys.messages(chatId ?? ""),
-    queryFn: ({ pageParam, signal }) => {
-      const params = new URLSearchParams();
-      if (pageSize > 0) params.set("limit", String(pageSize));
-      if (pageParam) params.set("before", pageParam);
-      const qs = params.toString();
-      return api
-        .get<Message[]>(`/chats/${chatId}/messages${qs ? `?${qs}` : ""}`, { signal })
-        .then((messages) =>
-          chatId ? messages.map((message) => preserveRecentMessageContentEdit(chatId, message)) : messages,
-        );
-    },
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage) => {
-      if (pageSize <= 0 || lastPage.length < pageSize) return undefined;
-      const oldestLoaded = lastPage[0];
-      if (!oldestLoaded) return undefined;
-      return `${oldestLoaded.createdAt}|${encodeURIComponent(oldestLoaded.id)}`;
-    },
+    ...chatMessagesQueryOptions(chatId ?? "", pageSize),
+    // Pending and server-confirmed deletes are hidden on read; the cache is never shortened, so paging stays correct.
+    select: hidePendingDeletes,
     enabled: !!chatId && enabled,
     // #4703: a reconnect refetch re-drains every loaded page back-to-back, so
     // a scrolled-back chat on a flaky mobile connection re-downloads its whole
@@ -498,6 +611,16 @@ export function useProfessorMariChats() {
     queryKey: chatKeys.professorMari(),
     queryFn: ({ signal }) => api.get<Chat[]>("/chats/internal/professor-mari/chats", { signal }),
     staleTime: 30_000,
+  });
+}
+
+/** Older Roleplay messages no summary covers yet, which the next prompt still sends past the recent tail. */
+export function useSummaryBacklog(chatId: string, enabled: boolean, coverageKey: string) {
+  return useQuery({
+    queryKey: chatKeys.summaryBacklog(chatId, coverageKey),
+    queryFn: ({ signal }) => api.get<{ backlog: number }>(`/chats/${chatId}/summary-backlog`, { signal }),
+    enabled: enabled && !!chatId,
+    staleTime: 0,
   });
 }
 
@@ -608,9 +731,11 @@ export function useClearChatNotes(chatId: string | null) {
 }
 
 export function useChatGroup(groupId: string | null) {
+  const pendingNames = usePendingChatNames();
   return useQuery({
     queryKey: chatKeys.group(groupId ?? ""),
     queryFn: () => api.get<Chat[]>(`/chats/group/${groupId}`),
+    select: (chats) => (pendingNames.size ? chats.map((chat) => withPendingName(chat, pendingNames)) : chats),
     enabled: !!groupId,
   });
 }
@@ -949,6 +1074,25 @@ export function useDeleteChatGroup() {
   });
 }
 
+/**
+ * Point a chat at a saved Model, or (with `model`) run a catalog model on that Model's Connection for this chat
+ * only. The server keeps the chat's last two choices for "Recent" and Undo.
+ */
+export function useSetChatModel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ chatId, ...choice }: ChatModelPick & { chatId: string }) =>
+      api.put<Chat>(`/chats/${chatId}/model`, choice),
+    onMutate: ({ chatId }) => ({ metadataVersion: captureChatMetadataVersion(chatId) }),
+    onSuccess: (updatedChat, vars, context) => {
+      const guardedChat = updatedChat ? guardServerChatSnapshot(qc, updatedChat, context?.metadataVersion ?? 0) : null;
+      if (guardedChat) syncCachedChat(qc, guardedChat);
+      qc.invalidateQueries({ queryKey: chatKeys.detail(vars.chatId) });
+      qc.invalidateQueries({ queryKey: chatKeys.list() });
+    },
+  });
+}
+
 export function useUpdateChat() {
   const qc = useQueryClient();
   return useMutation({
@@ -965,6 +1109,8 @@ export function useUpdateChat() {
       personaCharacterId?: string | null;
       characterIds?: string[];
     }) => api.patch<Chat>(`/chats/${id}`, data),
+    // While pending, a new name shows at once through usePendingChatNames; a failed rename just stops showing.
+    mutationKey: chatUpdateKey,
     onMutate: ({ id }) => ({ metadataVersion: captureChatMetadataVersion(id) }),
     onSuccess: (updatedChat, vars, context) => {
       const guardedChat = updatedChat ? guardServerChatSnapshot(qc, updatedChat, context?.metadataVersion ?? 0) : null;
@@ -1118,6 +1264,10 @@ export function useUpdateChatMetadata(options?: { serialize?: boolean }) {
       qc.invalidateQueries({ queryKey: lorebookKeys.active(vars.id) });
       if (Object.hasOwn(vars, "enableMemoryRecall") || Object.hasOwn(vars, "advancedMemory")) {
         qc.invalidateQueries({ queryKey: ["advanced-memory", vars.id] });
+      }
+      // The optimistic value asks for the backlog before this save hides anything, so count again now (#8831).
+      if (["hideSummarisedMessages", "summaryTailMessages", "summaryEntries"].some((key) => Object.hasOwn(vars, key))) {
+        qc.invalidateQueries({ queryKey: [...chatKeys.messages(vars.id), "summaryBacklog"] });
       }
     },
   });
@@ -1470,8 +1620,17 @@ export function useDeleteMessage(chatId: string | null) {
         `/chats/${chatId}/messages/${messageId}${skipTrash ? "?trash=false" : ""}`,
       );
     },
-    onSuccess: (result) => {
+    // While pending, useChatMessages hides the message; a failed delete simply shows it again.
+    mutationKey: chatMessageDeleteKey(chatId),
+    // A refused delete (for example already removed in another tab) refetches; the cache is never rewritten.
+    onError: () => {
+      if (!chatId) return;
+      void qc.invalidateQueries({ queryKey: chatKeys.messages(chatId) });
+      void qc.invalidateQueries({ queryKey: chatKeys.messageCount(chatId) });
+    },
+    onSuccess: (result, target) => {
       if (chatId) {
+        settleDeletedMessages(qc, chatId, deletedMessageIds(target));
         if (result.trashed) {
           qc.invalidateQueries({ queryKey: chatKeys.trash(chatId) });
           toast.success(translate("ui.chat.messagetrash.movedToTrash", { count: 1 }), {
@@ -1479,7 +1638,6 @@ export function useDeleteMessage(chatId: string | null) {
           });
         }
         qc.invalidateQueries({ queryKey: ["chat-message-search", chatId] });
-        qc.invalidateQueries({ queryKey: chatKeys.messages(chatId) });
         qc.invalidateQueries({ queryKey: chatKeys.messagePeek(chatId) });
         qc.invalidateQueries({ queryKey: chatKeys.messageCount(chatId) });
         qc.invalidateQueries({ queryKey: chatKeys.list() });
@@ -1495,8 +1653,16 @@ export function useDeleteMessages(chatId: string | null) {
   return useMutation({
     mutationFn: (messageIds: string[]) =>
       api.post<{ trashed: boolean; trashedCount: number }>(`/chats/${chatId}/messages/bulk-delete`, { messageIds }),
-    onSuccess: (result) => {
+    mutationKey: chatMessageDeleteKey(chatId),
+    // A refused delete (for example already removed in another tab) refetches; the cache is never rewritten.
+    onError: () => {
+      if (!chatId) return;
+      void qc.invalidateQueries({ queryKey: chatKeys.messages(chatId) });
+      void qc.invalidateQueries({ queryKey: chatKeys.messageCount(chatId) });
+    },
+    onSuccess: (result, messageIds) => {
       if (chatId) {
+        settleDeletedMessages(qc, chatId, messageIds);
         if (result.trashed) {
           qc.invalidateQueries({ queryKey: chatKeys.trash(chatId) });
           toast.success(translate("ui.chat.messagetrash.movedToTrash", { count: result.trashedCount }), {
@@ -1504,7 +1670,6 @@ export function useDeleteMessages(chatId: string | null) {
           });
         }
         qc.invalidateQueries({ queryKey: ["chat-message-search", chatId] });
-        qc.invalidateQueries({ queryKey: chatKeys.messages(chatId) });
         qc.invalidateQueries({ queryKey: chatKeys.messagePeek(chatId) });
         qc.invalidateQueries({ queryKey: chatKeys.messageCount(chatId) });
         qc.invalidateQueries({ queryKey: chatKeys.list() });
@@ -1796,9 +1961,11 @@ function applyCachedSwipeToMessage(message: Message, swipe: MessageSwipe): Messa
 /** Peek at the assembled prompt for a chat */
 export function usePeekPrompt() {
   return useMutation({
-    mutationFn: (request: string | { chatId: string; messageId: string }) => {
+    // `current` builds the context now instead of returning the request saved for the last reply.
+    mutationFn: (request: string | { chatId: string; messageId?: string; current?: boolean }) => {
       const chatId = typeof request === "string" ? request : request.chatId;
       const messageId = typeof request === "string" ? undefined : request.messageId;
+      const current = typeof request !== "string" && request.current === true;
       return api.post<{
         messages: Array<{ role: string; content: string }>;
         chatMode?: string;
@@ -1831,7 +1998,7 @@ export function usePeekPrompt() {
         gameToolPlanning?: GameToolPlanningInfo | null;
         agentNote?: string;
         decisions?: { unanswered: string[]; dropped?: string[]; decisionModelSet: boolean };
-      }>(`/chats/${chatId}/peek-prompt`, messageId ? { messageId } : {});
+      }>(`/chats/${chatId}/peek-prompt`, messageId ? { messageId } : current ? { current } : {});
     },
   });
 }

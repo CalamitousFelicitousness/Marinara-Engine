@@ -18,10 +18,12 @@
 
 import { getConnectionRateLimit } from "../llm/connection-rate-limit-registry.js";
 
-/** Earliest wall-clock time the next request on a connection may start. */
+/** Earliest wall-clock time the next request on a key (connection id or account scope) may start. */
 const nextAllowedAt = new Map<string, number>();
 
 export interface ReserveOutboundSlotOptions {
+  /** Requests per minute for this key; omitted reads the connection's own cap. */
+  maxRpm?: number | null;
   signal?: AbortSignal;
   /** Called only when a wait is actually required, with its length. */
   onWait?: (delayMs: number) => void;
@@ -61,7 +63,7 @@ export function reserveOutboundSlot(
   connectionId: string,
   options: ReserveOutboundSlotOptions = {},
 ): Promise<void> | undefined {
-  const maxRpm = getConnectionRateLimit(connectionId);
+  const maxRpm = options.maxRpm === undefined ? getConnectionRateLimit(connectionId) : options.maxRpm;
   if (!maxRpm || maxRpm <= 0) return undefined;
   const minIntervalMs = Math.ceil(60_000 / maxRpm);
   const now = Date.now();

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -10,7 +10,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 // #7115: native character/persona exports embedded every gallery image at once and a large gallery killed
 // the server. The export now streams one image at a time, so a server with a small heap exports ~64 MB galleries.
-// Leave room for the loaded server and one streamed image; the buffered-export control below must still OOM.
+// #8917: each image is also written as small base64 slices, never as one heap string of its own size; those strings
+// had pushed the old generation to this limit. The limit caps the old generation (young garbage is scavenged): the
+// loaded server holds ~88 MB and peaks near 100 MB while exporting, and the buffered control needs ~170 MB, so it OOMs.
 const HEAP_LIMIT_MB = 128;
 const IMAGE_COUNT = 16;
 const IMAGE_BYTES = 4 * 1024 * 1024;
@@ -44,19 +46,36 @@ if (role === "server") {
   app.decorate("db", db);
   await app.register(charactersRoutes, { prefix: "/api/characters" });
   await app.listen({ host: "127.0.0.1", port: 0 });
+  const { getHeapSpaceStatistics } = await import("node:v8");
+  // The old generation is what the limit caps; large objects are where an image-sized string would land.
+  const heapSpaces = () => {
+    let oldGeneration = 0;
+    let largeObjects = 0;
+    for (const space of getHeapSpaceStatistics()) {
+      if (!space.space_name.startsWith("new_")) oldGeneration += space.space_used_size;
+      if (space.space_name.endsWith("large_object_space")) largeObjects += space.space_used_size;
+    }
+    return { oldGeneration, largeObjects };
+  };
   (globalThis as { gc?: () => void }).gc?.();
   const baselineHeap = process.memoryUsage().heapUsed;
+  const baselineLargeObjects = heapSpaces().largeObjects;
   let peakHeap = baselineHeap;
+  let peakOldGeneration = 0;
+  let peakLargeObjects = baselineLargeObjects;
   let peakRss = process.memoryUsage().rss;
   const sample = () => {
     const usage = process.memoryUsage();
+    const spaces = heapSpaces();
     peakHeap = Math.max(peakHeap, usage.heapUsed);
+    peakOldGeneration = Math.max(peakOldGeneration, spaces.oldGeneration);
+    peakLargeObjects = Math.max(peakLargeObjects, spaces.largeObjects);
     peakRss = Math.max(peakRss, usage.rss);
   };
   setInterval(sample, 2).unref();
   process.on("message", async () => {
     sample();
-    process.send!({ baselineHeap, peakHeap, peakRss });
+    process.send!({ baselineHeap, peakHeap, peakOldGeneration, baselineLargeObjects, peakLargeObjects, peakRss });
     await app.close();
     await closeDB();
     process.exit(0);
@@ -80,6 +99,7 @@ const { createCharacterGalleryStorage } =
   await import("../../packages/server/src/services/storage/character-gallery.storage.js");
 const { createPersonaGalleryStorage } =
   await import("../../packages/server/src/services/storage/persona-gallery.storage.js");
+const { readSpriteCatalog } = await import("../../packages/server/src/services/sprites/sprite-catalog.js");
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const sha = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
@@ -164,6 +184,13 @@ try {
   const spriteDir = join(dataDir, "sprites", character.id);
   await mkdir(spriteDir, { recursive: true });
   await writeFile(join(spriteDir, "happy.png"), avatarBytes);
+  const spriteFolderId = randomUUID();
+  const spriteCatalog = {
+    version: 1,
+    folders: [{ id: spriteFolderId, name: "Faces", category: "expressions" }],
+    sprites: { happy: { label: "joyful", folderId: spriteFolderId } },
+  };
+  await writeFile(join(spriteDir, "catalog.json"), JSON.stringify(spriteCatalog));
 
   const persona = (await characters.createPersona("Big Persona", "Large persona gallery"))!;
   const personaImages = await writeGallery("personas", persona.id);
@@ -224,14 +251,21 @@ try {
   const memory = messages.find((message) => "peakHeap" in message)!;
   const mb = (bytes: number) => Math.round(bytes / 1024 / 1024);
   console.log(
-    "Native export server memory with a %d MB heap limit: baseline heap %d MB, peak heap %d MB, peak RSS %d MB.",
-    HEAP_LIMIT_MB,
+    "Native export server memory: baseline heap %d MB, peak old generation %d MB of its %d MB limit (peak heap with young garbage %d MB), large-object growth %d MB, peak RSS %d MB.",
     mb(memory.baselineHeap!),
+    mb(memory.peakOldGeneration!),
+    HEAP_LIMIT_MB,
     mb(memory.peakHeap!),
+    mb(memory.peakLargeObjects! - memory.baselineLargeObjects!),
     mb(memory.peakRss!),
   );
+  // Without GC timing: a buffered image shows up as a multi-megabyte string, a streamed one never does.
+  assert.ok(
+    memory.peakLargeObjects! - memory.baselineLargeObjects! < IMAGE_BYTES,
+    "no exported image is held as one heap string the size of the file",
+  );
 
-  // ── The streamed files keep today's exact format and import back with every image. ──
+  // ── The streamed files include sprite metadata and import back with every image. ──
   db = await getDB();
   const characterText = exports.character!.toString("utf8");
   const characterExport = JSON.parse(characterText);
@@ -241,12 +275,14 @@ try {
     "spec",
     "spec_version",
     "data",
+    "spriteCatalog",
     "avatar",
     "sprites",
     "gallery",
     "metadata",
   ]);
   assert.equal(characterExport.data.data.name, "Big Export");
+  assert.deepEqual(characterExport.data.spriteCatalog, spriteCatalog);
   assert.equal(characterExport.data.data.extensions.characterSheetImageId, undefined);
   assert.deepEqual(decodeDataUrl(characterExport.data.avatar), avatarBytes);
   assert.deepEqual(
@@ -265,6 +301,7 @@ try {
   const personaExport = JSON.parse(personaText);
   assert.equal(JSON.stringify(personaExport), personaText);
   assert.equal(personaExport.type, "marinara_persona");
+  assert.deepEqual(personaExport.data.spriteCatalog, { version: 1, folders: [], sprites: {} });
   assert.deepEqual(Object.keys(personaExport.data).slice(-2), ["gallery", "metadata"]);
   assertGallery(personaExport.data.gallery);
 
@@ -292,6 +329,12 @@ try {
   for (const exported of [characterExport, personaExport]) {
     const imported = await importMarinara(exported, db);
     assert.equal(imported.success, true, imported.error);
+    if (exported.type === "marinara_character") {
+      const restoredCatalog = readSpriteCatalog(imported.id!);
+      assert.deepEqual(restoredCatalog.folders, spriteCatalog.folders);
+      assert.equal(restoredCatalog.sprites.happy?.label, "joyful");
+      assert.equal(restoredCatalog.sprites.happy?.folderId, spriteFolderId);
+    }
     const galleryRows =
       exported.type === "marinara_character"
         ? await createCharacterGalleryStorage(db).listByCharacterId(imported.id!)

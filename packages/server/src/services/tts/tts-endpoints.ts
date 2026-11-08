@@ -4,9 +4,15 @@
 // Shared by the providers and by the voice/model listing code that still lives
 // in tts.routes.ts.
 
-import { TTS_SOURCE_DEFINITIONS, type TTSConfig } from "@marinara-engine/shared";
+import {
+  ELEVENLABS_AUDIO_TAG_FOR_GAME_EMOTION,
+  elevenLabsModelSupportsAudioTags,
+  TTS_SOURCE_DEFINITIONS,
+  type GameTtsEmotion,
+  type TTSConfig,
+} from "@marinara-engine/shared";
 
-export function configuredBaseUrl(cfg: TTSConfig): string {
+export function configuredBaseUrl(cfg: Pick<TTSConfig, "source" | "baseUrl">): string {
   const fallbackBase = TTS_SOURCE_DEFINITIONS[cfg.source].defaultBaseUrl;
   return (cfg.baseUrl || fallbackBase).replace(/\/+$/, "");
 }
@@ -60,6 +66,12 @@ export function nanoGptHeaders(apiKey: string): Record<string, string> {
   return headers;
 }
 
+/** Auth headers for a source's model list: the same key headers a speech request sends. */
+export function ttsCatalogHeaders(source: string, apiKey: string): Record<string, string> {
+  if (source === "elevenlabs") return elevenLabsHeaders(apiKey);
+  return source === "nanogpt" ? nanoGptHeaders(apiKey) : openAiHeaders(apiKey);
+}
+
 export function optionalBearerHeaders(apiKey: string): Record<string, string> {
   const headers: Record<string, string> = {};
   if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
@@ -93,11 +105,21 @@ export function buildSpeechInstructions(input: {
   return parts.join(" ");
 }
 
-/** ElevenLabs steers emotion from a bracketed cue at the head of the text. */
-export function buildElevenLabsTextInput(text: string, tone?: string): string {
-  const normalizedTone = tone?.replace(/[[\]\r\n]/g, "").trim();
-  if (!normalizedTone || text.trimStart().startsWith(`[${normalizedTone}]`)) return text;
-  return `[${normalizedTone}] ${text}`;
+/**
+ * The text ElevenLabs speaks: the line's tone as a leading audio tag, only for a model that acts on tags (any other
+ * reads the bracket aloud). A game expression becomes the documented tag that means it, or no tag; any other tone is a
+ * cue written to be performed (the Roleplay speaker extractor's) and is kept as written (#8619).
+ */
+export function buildElevenLabsTextInput(text: string, tone: string | undefined, model: string): string {
+  if (!elevenLabsModelSupportsAudioTags(model)) return text;
+  const cue = tone?.replace(/[[\]\r\n]/g, "").trim();
+  if (!cue) return text;
+  const expression = cue.toLowerCase();
+  const tag = Object.hasOwn(ELEVENLABS_AUDIO_TAG_FOR_GAME_EMOTION, expression)
+    ? ELEVENLABS_AUDIO_TAG_FOR_GAME_EMOTION[expression as GameTtsEmotion]
+    : cue;
+  if (!tag || text.trimStart().startsWith(`[${tag}]`)) return text;
+  return `[${tag}] ${text}`;
 }
 
 export function buildOfficialPocketTtsForm(text: string, voice: string): FormData {

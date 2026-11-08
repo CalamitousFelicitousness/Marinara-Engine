@@ -1,3 +1,4 @@
+import { chooseConnection } from "./connection-picker.js";
 import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { WORLD_STARTER_KITS, parseWorldKit } from "@marinara-engine/shared";
@@ -51,6 +52,10 @@ async function mountWizard(page: Page, testInfo: TestInfo): Promise<Locator> {
     const { default: ReactDOM } = await import(dependencyUrl("react-dom_client"));
     const { QueryClient, QueryClientProvider } = await import(dependencyUrl("@tanstack_react-query"));
     const container = document.createElement("div");
+    // In the app the wizard's z-[10001] layers stay inside the shell, under the body-level pickers
+    // (z-[10000]). Mounted straight on <body> they would cover the "Model for …" picker, so the
+    // container holds them just under it and over the Home page.
+    container.style.cssText = "position: fixed; inset: 0; z-index: 9999";
     document.body.append(container);
     ReactDOM.createRoot(container).render(
       React.createElement(
@@ -75,11 +80,7 @@ async function mountWizard(page: Page, testInfo: TestInfo): Promise<Locator> {
   });
   const wizard = page.locator('[data-component="GameSetupWizard"]');
   await expect(wizard).toBeVisible();
-  await wizard
-    .locator("select")
-    .filter({ has: page.locator('option[value="wizard-connection"]') })
-    .first()
-    .selectOption("wizard-connection");
+  await chooseConnection(page, wizard.locator("[data-connection-value]").first(), "wizard-connection");
   return wizard;
 }
 

@@ -290,6 +290,8 @@ async function observeAgentCall(
               receive(chunk);
               options.onThinking?.(chunk);
             },
+            // Progress alone keeps no text; the scene check and a caller's own onToken do.
+            onTokenKeepaliveOnly: !sceneCheck && (options.onTokenKeepaliveOnly ?? !options.onToken),
           }
         : {}),
     });

@@ -25,6 +25,7 @@ import {
   parseAudioConnectionSettings,
   type AudioConnectionSettings,
   type TTSConfig,
+  type TTSConfigResponse,
   type TTSEffectiveConfigResponse,
   type TTSRoleplaySpeakerExtractorResponse,
   type TTSSourceProfiles,
@@ -37,6 +38,7 @@ import { createConnectionsStorage } from "../services/storage/connections.storag
 import { encryptApiKey } from "../utils/crypto.js";
 import { getChatGenerationTimeoutMs } from "../config/runtime-config.js";
 import { safeFetch } from "../utils/security.js";
+import { isLocalInferenceBaseUrl } from "../middleware/ip-allowlist.js";
 import { ttsUrlPolicy } from "../services/tts/url-policy.js";
 import { createTTSProvider } from "../services/tts/provider-registry.js";
 import { readTTSRateLimit } from "../services/tts/tts-rate-limit.js";
@@ -91,6 +93,7 @@ export {
   resolveTTSAudioResponseContentType,
 } from "../services/audio/audio-content-type.js";
 import { logger, logDebugOverride } from "../lib/logger.js";
+import { isRefusedFetch } from "../services/decision/system-one.client.js";
 import { createLLMProvider } from "../services/llm/provider-registry.js";
 import { resolveBaseUrl } from "../services/generation/connection-base-url.js";
 import { resolveStoredChatOptions, resolveStoredMaxTokens } from "../services/generation/generation-parameters.js";
@@ -390,6 +393,14 @@ export function maskTTSConfigForResponse(config: TTSConfig): TTSConfig {
     apiKey: configWithProfiles.apiKey ? TTS_API_KEY_MASK : "",
     sourceProfiles,
   };
+}
+
+/**
+ * A voice server the user hosts (#8921): PocketTTS, or any source at an address chat connections count as local
+ * (loopback, private network, LAN or container host). Connections lists it On this device; a cloud voice it does not.
+ */
+export function ttsRunsLocally(cfg: Pick<TTSConfig, "source" | "baseUrl">): boolean {
+  return cfg.source === "pockettts" || isLocalInferenceBaseUrl(configuredBaseUrl(cfg));
 }
 
 /**
@@ -1067,8 +1078,8 @@ export async function ttsRoutes(app: FastifyInstance) {
    */
   app.get("/config", async () => {
     const raw = await storage.get(TTS_SETTINGS_KEY);
-    const cfg = parseStoredConfig(raw);
-    return maskTTSConfigForResponse(cfg);
+    const masked = maskTTSConfigForResponse(parseStoredConfig(raw));
+    return { ...masked, local: ttsRunsLocally(masked) } satisfies TTSConfigResponse;
   });
 
   /**
@@ -1497,7 +1508,11 @@ export async function ttsRoutes(app: FastifyInstance) {
       const timedOut = name === "TimeoutError";
       req.log.error(err, "TTS provider request failed");
       return reply.status(502).send({
-        error: timedOut ? `TTS request timed out after ${Math.round(timeoutMs / 1000)}s` : "TTS provider unreachable",
+        error: timedOut
+          ? `TTS request timed out after ${Math.round(timeoutMs / 1000)}s`
+          : isRefusedFetch(err)
+            ? err.message
+            : "TTS provider unreachable",
         code: timedOut ? "timeout" : "unreachable",
       });
     }

@@ -11,6 +11,9 @@ import { join, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "../..");
 const serverRequire = createRequire(join(root, "packages/server/package.json"));
+// #8947: a pending notices lookup of raw.githubusercontent.com holds process.exit() until the resolver answers
+// (~30 s on a stalled CI resolver). Every server below (spawn, PTY and Windows fixtures) inherits this.
+process.env.MARINARA_NOTICES_ENABLED = "false";
 const dir = mkdtempSync(join(tmpdir(), "marinara-signal-shutdown-"));
 const probe = createServer();
 await new Promise<void>((done) => probe.listen(0, "127.0.0.1", done));
@@ -39,7 +42,9 @@ if (process.platform === "win32") {
         "-Port",
         String(port),
       ],
-      { stdio: "inherit", timeout: 45_000 },
+      // The fixture compiles its console bindings (23 s on a cold runner), then allows 25 s for readiness and
+      // 15 s for the exit; this caller must outlast all three, or it kills the run mid-shutdown.
+      { stdio: "inherit", timeout: 90_000 },
     );
   } catch (error) {
     for (const name of ["progress.log", "stdout.log", "stderr.log"]) {
@@ -51,7 +56,9 @@ if (process.platform === "win32") {
     }
     throw error;
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    // A server still closing keeps its files open on Windows for a moment; a failed cleanup must not replace the
+    // fixture's own error.
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
   process.exit(0);
 }

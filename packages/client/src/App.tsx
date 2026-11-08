@@ -1,4 +1,5 @@
 import { useRefreshLocalContext } from "./hooks/use-connections";
+import { useMigrateFeatureModels } from "./hooks/use-connection-accounts";
 // ──────────────────────────────────────────────
 // App: Root component with layout
 // ──────────────────────────────────────────────
@@ -529,6 +530,7 @@ export function App() {
   );
   useLegacyThemeMigration();
   useSettingsSync();
+  useMigrateFeatureModels();
   const showDownloadModal = useSidecarStore((s) => s.showDownloadModal);
   const setShowDownloadModal = useSidecarStore((s) => s.setShowDownloadModal);
   const fetchSidecarStatus = useSidecarStore((s) => s.fetchStatus);
@@ -880,26 +882,15 @@ export function App() {
       const liveAccent = resolveCssColor(mixedAccent, defaultSolidAccent);
 
       const liveGradient = getSolidAccentGradient(liveAccent);
-      if (appAccentRgbMode) {
-        applyAppAccentVariables({
-          root,
-          accent: liveAccent,
-          gradient: liveGradient,
-          surfaceAccent: accentIsGradient ? solidAccent : liveAccent,
-          theme,
-          updateCursor: false,
-        });
-      } else {
-        // Pulse only the foreground-facing accent tokens. Recomputing surface,
-        // sidebar, and glow tokens on every tick forces Firefox to restyle most
-        // of the app and can briefly starve an otherwise independent canvas.
-        root.style.setProperty("--primary", liveAccent);
-        root.style.setProperty("--ring", liveAccent);
-        root.style.setProperty("--marinara-app-accent-solid", liveAccent);
-        root.style.setProperty("--marinara-app-accent-gradient", liveGradient);
-        root.style.setProperty("--marinara-chat-chrome-accent", liveAccent);
-        root.style.setProperty("--marinara-chat-chrome-accent-gradient", liveGradient);
-      }
+      // Pulse and RGB only touch the foreground-facing accent tokens. Recomputing surface,
+      // sidebar, and glow tokens on every tick forces Firefox to restyle most
+      // of the app and can briefly starve an otherwise independent canvas.
+      root.style.setProperty("--primary", liveAccent);
+      root.style.setProperty("--ring", liveAccent);
+      root.style.setProperty("--marinara-app-accent-solid", liveAccent);
+      root.style.setProperty("--marinara-app-accent-gradient", liveGradient);
+      root.style.setProperty("--marinara-chat-chrome-accent", liveAccent);
+      root.style.setProperty("--marinara-chat-chrome-accent-gradient", liveGradient);
       setAccentModeDataset();
     };
 
@@ -966,6 +957,13 @@ export function App() {
     };
 
     if (accentAnimationEnabled) {
+      // Ticks only touch foreground tokens, so set surface, sidebar and glow once here.
+      if (accent) applyStaticAccent();
+      else {
+        for (const name of ["--accent", "--sidebar-accent", "--sidebar-accent-foreground", "--glow-primary"]) {
+          root.style.removeProperty(name);
+        }
+      }
       // Keep the custom cursor on the selected solid accent. Resolving it after
       // live root-token writes forces a synchronous app-wide style flush.
       applyCursorAccent(solidAccent);
@@ -1372,6 +1370,7 @@ export function App() {
           visibleToasts={TOAST_VISIBLE_LIMIT}
           toastOptions={{
             style: {
+              fontFamily: "var(--font-y2k)",
               background: "var(--card)",
               border: "1px solid var(--marinara-chat-chrome-panel-border)",
               color: "var(--foreground)",

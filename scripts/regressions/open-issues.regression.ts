@@ -600,7 +600,7 @@ assert.equal(
 );
 assert.match(
   characterRoutesSource,
-  /const sprites = await readSpritesForId\(char\.id, true\);[\s\S]*if \(!sprites\)[\s\S]*status\(413\)[\s\S]*buildCompatibleCharacterExport\(charData, sprites, \{ keepOnboarding: true \}\)/u,
+  /const sprites = await readSpritesForId\(char\.id, true\);[\s\S]*if \(!sprites\)[\s\S]*status\(413\)[\s\S]*buildCompatibleCharacterExport\(charData, sprites, \{\s*keepOnboarding: true,/u,
   "PNG export must reject sprite collections that cannot round-trip before building the card envelope",
 );
 assert.match(
@@ -610,7 +610,7 @@ assert.match(
 );
 assert.match(
   stCharacterImporterSource,
-  /await restoreSprites\(embeddedMarinaraSprites, charId\)/u,
+  /await restoreSprites\(embeddedMarinaraSprites, charId, embeddedSpriteCatalog\)/u,
   "PNG import must restore embedded sprites under the newly imported character ID",
 );
 const nativeGalleryRestoreMatch = marinaraImporterSource.match(
@@ -5919,7 +5919,7 @@ assert.match(
 assert.equal(
   roleplaySurfaceSource.match(/mergedGroupCharacterIds=\{activeChatCharacterIds\}/gu)?.length,
   6,
-  "Classic and VN historical, regenerating, and streaming Narrator messages must share the active avatar list",
+  "Classic and VN historical, regenerating, and streaming Narrator messages must all receive the live active roster; saved replies keep their own (#8762)",
 );
 assert.match(
   chatMessageSource,
@@ -6033,8 +6033,8 @@ assert.match(
 );
 assert.match(
   conversationGroupSettingsSource,
-  // The close button also closes a pinned window, hence `onClose({ force: true })` (#7036).
-  /if \(!\(await flushProseGuardianDrafts\(\)\)\) return false;[\s\S]{0,250}onClose\((?:\{ force: true \})?\)[\s\S]{0,100}return true/u,
+  // The close button also closes a pinned window: `force` defaults to true (#7036); a card link passes false (#8933).
+  /if \(!\(await flushProseGuardianDrafts\(\)\)\) return false;[\s\S]{0,250}onClose\((?:\{ force(?:: true)? \})?\)[\s\S]{0,100}return true/u,
   "Closing Chat Settings must persist changed Prose Guardian preferences before unmounting the drawer",
 );
 assert.match(
@@ -6279,6 +6279,14 @@ const characterEditorSource = readFileSync(
   new URL("../../packages/client/src/components/characters/CharacterEditor.tsx", import.meta.url),
   "utf8",
 );
+const cardEditorSource = readFileSync(
+  new URL("../../packages/client/src/components/cards/CardEditor.tsx", import.meta.url),
+  "utf8",
+);
+const cardColorsSource = readFileSync(
+  new URL("../../packages/client/src/components/cards/CardColors.tsx", import.meta.url),
+  "utf8",
+);
 const personaEditorSource = readFileSync(
   new URL("../../packages/client/src/components/personas/PersonaEditor.tsx", import.meta.url),
   "utf8",
@@ -6470,6 +6478,10 @@ const connectionsPanelSource = readFileSync(
   new URL("../../packages/client/src/components/panels/ConnectionsPanel.tsx", import.meta.url),
   "utf8",
 );
+const deviceDetailSource = readFileSync(
+  new URL("../../packages/client/src/components/connections/DeviceDetail.tsx", import.meta.url),
+  "utf8",
+);
 const presetsPanelSource = readFileSync(
   new URL("../../packages/client/src/components/panels/PresetsPanel.tsx", import.meta.url),
   "utf8",
@@ -6568,6 +6580,8 @@ assert.match(recentChatsSource, /index === 3 && "hidden md:block"/u);
 assert.match(recentChatsSource, /index >= 4 && "hidden"/u);
 assert.match(globalStyles, /@container \(min-width: 36rem\)[\s\S]*data-component="RecentChats"/u);
 for (const editorSource of [characterEditorSource, personaEditorSource]) {
+  assert.match(editorSource, /<CardEditor\b/u);
+  assert.match(editorSource, /<CardColors\b/u);
   assert.match(editorSource, /grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 md:grid-cols-4/u);
   assert.match(editorSource, /onClick=\{\(\) => void handleDelete\(lightbox\)\}/u);
   assert.match(editorSource, /loading="lazy"\s+decoding="async"/u);
@@ -6589,7 +6603,7 @@ assert.match(
   globalStyles,
   /\.mari-gallery-card \{\s*content-visibility: auto;\s*contain-intrinsic-size: auto 12rem;\s*\}/u,
 );
-assert.match(characterEditorSource, /ui\.characters\.colorstab\.value1AvatarPreview/u);
+assert.match(cardColorsSource, /ui\.characters\.colorstab\.value1AvatarPreview/u);
 assert.match(characterEditorSource, /getAvatarCropStyle/u);
 assert.match(characterEditorSource, /downloadSpriteFile/u);
 assert.match(personaEditorSource, /downloadSpriteFile/u);
@@ -6642,7 +6656,10 @@ assert.match(
 );
 assert.match(characterEditorSource, /if \(uploading \|\| !expression\) return;/u);
 assert.match(personaEditorSource, /if \(uploading \|\| !expression\) return;/u);
-assert.match(characterEditorSource, /className="flex flex-col gap-2 sm:flex-row"/u);
+assert.match(
+  characterEditorSource,
+  /className="grid grid-cols-2 items-stretch gap-2 md:flex md:flex-wrap md:items-center"/u,
+);
 assert.match(personaEditorSource, /className="flex flex-col gap-2 sm:flex-row"/u);
 assert.match(fileDownloadSource, /MarinaraAndroid/u);
 assert.match(spriteDownloadSource, /saveBlobToDevice/u);
@@ -6673,7 +6690,7 @@ assert.match(
   "The New Chat parameter toggle must stay within its card when Android enlarges text",
 );
 assert.match(
-  characterEditorSource,
+  cardEditorSource,
   /"mari-editor-avatar-tile group relative"/u,
   "The Metadata avatar preview must contain absolutely positioned saved crops",
 );
@@ -6683,14 +6700,9 @@ assert.match(
   "The shared editor avatar upload target must contain absolutely positioned crops",
 );
 assert.equal(
-  characterEditorSource.match(/className="pointer-events-none h-full w-full object-cover"/gu)?.length,
+  cardEditorSource.match(/className="pointer-events-none h-full w-full object-cover"/gu)?.length,
   1,
-  "The Character header avatar inside its upload target must not intercept page clicks",
-);
-assert.equal(
-  personaEditorSource.match(/className="pointer-events-none h-full w-full object-cover"/gu)?.length,
-  1,
-  "The Persona header avatar inside its upload target must not intercept page clicks",
+  "The shared header avatar inside its upload target must not intercept page clicks",
 );
 assert.match(gameJournalSource, /data-game-journal-scroll/u);
 assert.match(gameJournalSource, /\/game\/\$\{chatId\}\/journal\/entries\/\$\{editingEntry\.index\}/u);
@@ -6921,13 +6933,18 @@ assert.match(sidecarStoreSource, /loadModel: async \(\) =>/u);
 assert.match(sidecarProcessSource, /private manuallyUnloaded = false/u);
 assert.match(sidecarProcessSource, /if \(this\.manuallyUnloaded\) \{/u);
 assert.match(sidecarProcessSource, /this\.manuallyUnloaded = false;\s*this\.clearStartupFailure\(\)/u);
-assert.match(connectionsPanelSource, /ui\.panels\.sidecarcard\.failedToDeleteTheLocalWhisperModel/u);
-assert.match(connectionsPanelSource, /ui\.panels\.sidecarcard\.unloadLocalModel/u);
-assert.match(connectionsPanelSource, /ui\.panels\.sidecarcard\.loadLocalModel/u);
+assert.match(deviceDetailSource, /connections\.device\.whisper\.deleteFailed/u);
+assert.match(deviceDetailSource, /connections\.device\.unloadModel/u);
+assert.match(deviceDetailSource, /connections\.device\.loadModel/u);
 assert.match(
   connectionsPanelSource,
-  /className="grid min-w-0 grid-cols-2 gap-2"/u,
-  "LinkAPI actions must share the available banner width instead of overflowing it",
+  /className="grid grid-cols-\[repeat\(auto-fill,minmax\(8\.5rem,1fr\)\)\] gap-2"/u,
+  "First-run provider actions must share the panel width in an adaptive grid",
+);
+assert.match(
+  connectionsPanelSource,
+  /FIRST_RUN_SERVICES\.map\([\s\S]*?data-add-connection-service=\{service\}[\s\S]*?className="[^"]*min-w-0[^"]*"/u,
+  "First-run provider buttons must shrink within their grid cells",
 );
 assert.equal(
   resolvePresetArtwork({ name: "Marinara's Universal Preset", author: "Marinara" }),
@@ -9558,8 +9575,8 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
   );
   assert.match(
     connectionEditorSource,
-    /setRemoteModels\(\[\]\);[\s\S]{0,120}setRemoteLoras\(\[\]\);[\s\S]{0,120}setFetchError\(null\);/u,
-    "Changing media providers must clear stale remote LoRA choices",
+    /remoteLoras = useMemo\(\(\) => modelList\.data\?\.loras \?\? \[\], \[modelList\.data\]\)/u,
+    "Remote LoRA choices must come from the current model list, so a provider change cannot leave stale ones",
   );
   assert.match(
     connectionEditorSource,
@@ -9883,7 +9900,7 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
 // actions and Conversation Call duration rows size from their panel width.
 {
   const sidebarPanelSources = new Map(
-    ["Characters", "Personas", "Lorebooks", "Agents", "Presets", "Connections"].map((panelName) => [
+    ["Characters", "Personas", "Lorebooks", "Agents", "Presets"].map((panelName) => [
       panelName,
       readFileSync(join(REPOSITORY_ROOT, `packages/client/src/components/panels/${panelName}Panel.tsx`), "utf8"),
     ]),
@@ -9924,6 +9941,32 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
       `${panelName} must keep every focused fine-pointer action overlay interactive`,
     );
   }
+
+  // Connection Model rows (variant D): the star and "…" stay visible, so nothing overlays the row, and touch
+  // layouts get 44 px targets.
+  const connectionRowSource = readFileSync(
+    join(REPOSITORY_ROOT, "packages/client/src/components/connections/ConnectionRow.tsx"),
+    "utf8",
+  );
+  const modelRowSource = readFileSync(
+    join(REPOSITORY_ROOT, "packages/client/src/components/connections/ModelRow.tsx"),
+    "utf8",
+  );
+  for (const source of [connectionRowSource, modelRowSource]) {
+    assert.doesNotMatch(source, /opacity-0|group-hover:/u, "Connection rows must not hide actions behind hover");
+  }
+  // Row buttons use the shared chrome icon class, which grows to 44 px on phones and touch screens.
+  assert.match(connectionRowSource, /ROW_BUTTON = "mari-chrome-control[^"]*mari-chrome-control--icon[^"]*"/u);
+  const connectionStyles = readFileSync(join(REPOSITORY_ROOT, "packages/client/src/styles/globals.css"), "utf8");
+  assert.match(
+    connectionStyles,
+    /@media \(max-width: 47\.9375rem\), \(pointer: coarse\) \{[^}]*\.mari-connection-scope \.mari-chrome-control[^}]*min-height: 2\.75rem/u,
+  );
+  assert.match(
+    connectionStyles,
+    /@media \(max-width: 47\.9375rem\), \(pointer: coarse\) \{[\s\S]*?\.mari-connection-scope \.mari-chrome-control--icon \{[^}]*width: 2\.75rem/u,
+    "Connection icon buttons must retain a 44 px touch width",
+  );
 
   const personasPanelSource = sidebarPanelSources.get("Personas")!;
   const charactersPanelSource = sidebarPanelSources.get("Characters")!;
@@ -10616,7 +10659,7 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
   assert.match(turnGameCommandRuntimeSource, /debugLog: args\.debugLog/u);
   assert.match(
     turnGameBotRunnerSource,
-    /args\.debugLog\?\.\([\s\S]*?JSON\.stringify\(moveMessages, null, 2\)[\s\S]*?provider\.chatComplete\(moveMessages/u,
+    /args\.debugLog\?\.\([\s\S]*?debugJson\(moveMessages\)[\s\S]*?provider\.chatComplete\(moveMessages/u,
     "Turn-game bot moves must log the final provider prompt immediately before submission",
   );
 }
@@ -10860,5 +10903,43 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
 assert.match(gameSurfaceSource, /localStorage\.setItem\(`story-ending-closed:\$\{storyEndingKey\}`, "1"\)/u);
 assert.match(gameSurfaceSource, /readIntroPresentedFlag\(`story-ending-closed:\$\{storyEndingKey\}`\)/u);
 assert.match(gameSurfaceSource, /storyEndingKey !== storyEndingClosed &&\s*!storyEndingClosedBefore &&/u);
+
+// #8933: a member's name in Chat Settings opens their full card again (Characters and Game Mode party), only after
+// the drawer's guarded close (drafts and the inline card editor's saves finished; a pinned drawer stays open).
+{
+  const drawerSource = readFileSync(
+    join(REPOSITORY_ROOT, "packages/client/src/components/chat/ChatSettingsDrawer.tsx"),
+    "utf8",
+  );
+  const cardOpens = drawerSource.match(
+    /void requestClose\(false\)\.then\(\(closed\) => \{\s*if \(closed\) useUIStore\.getState\(\)\.openCharacterDetail\(c\.id, \{ initialTab: "card" \}\);/gu,
+  );
+  assert.equal(cardOpens?.length, 2, "both member-name buttons open the card after a guarded, unforced close");
+  assert.match(
+    drawerSource,
+    /if \(!\(await flushProseGuardianDrafts\(\)\)\) return false;\s*if \(!\(await \(inlineCardFlushRef\.current\?\.\(\) \?\? Promise\.resolve\(true\)\)\)\) return false;[\s\S]{0,80}onClose\(\{ force \}\);/u,
+    "the drawer's close waits for the inline card editor's saves",
+  );
+  assert.match(drawerSource, /onFlushChange=\{handleInlineCardFlushChange\}/u);
+  const inlineEditorSource = readFileSync(
+    join(REPOSITORY_ROOT, "packages/client/src/features/chat-settings/inline-editors/InlineChatCardEditor.tsx"),
+    "utf8",
+  );
+  assert.match(
+    inlineEditorSource,
+    /onFlushChange\(async \(\) => \{[\s\S]{0,400}commitField\(field\);\s*await saveQueueRef\.current;\s*return !lastSaveFailedRef\.current;/u,
+    "the inline card editor hands the drawer a flush that waits for its queued saves",
+  );
+  assert.match(
+    inlineEditorSource,
+    /onFlushChange\(async \(\) => \{[\s\S]{0,160}lastSaveFailedRef\.current = false;/u,
+    "a flush starts with no failure recorded",
+  );
+  assert.equal(
+    inlineEditorSource.match(/lastSaveFailedRef\.current = false;/gu)?.length,
+    1,
+    "a later successful save never clears a failure within the flush",
+  );
+}
 
 console.info("Open-issue regressions passed.");

@@ -38,4 +38,22 @@ assert.equal(
   "the Mari sheet peeks under the keyboard only while her composer is not focused",
 );
 
+// group-has-[...] and peer-has-[...] compile to a :has() on an unknown ancestor, which restyles the
+// whole page on every DOM change. Drag state reaches styles through data-marinara-drag-kind instead.
+const clientSrc = fileURLToPath(new URL("../../packages/client/src/", import.meta.url));
+function sourceFiles(dir) {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) return entry.name === "localization" ? [] : sourceFiles(path);
+    return /\.(tsx?|css)$/u.test(entry.name) ? [path] : [];
+  });
+}
+const ancestorHas = sourceFiles(clientSrc).flatMap((file) =>
+  [...readFileSync(file, "utf8").matchAll(/(?:group|peer)-has-\[/gu)].map(() => file),
+);
+assert.deepEqual(ancestorHas, [], "no client class uses a group-has or peer-has utility");
+const folderDrag = readFileSync(new URL("../../packages/client/src/hooks/use-touch-folder-drag.ts", import.meta.url), "utf8");
+assert.match(folderDrag, /setAttribute\("data-marinara-drag-kind"/u, "an active drag publishes its kind");
+assert.match(folderDrag, /removeAttribute\("data-marinara-drag-kind"\)/u, "and clears it when the drag ends");
+
 console.log("CSS :has focus negation regression passed.");

@@ -436,6 +436,8 @@ export function useTouchFolderDrag({
       drag.sourceElement.style.touchAction = TOUCH_DRAG_ACTIVE_TOUCH_ACTION;
       createPreviewElement(drag);
       drag.sourceElement.setAttribute("data-drag-source", "true");
+      // Read by drag-state styles, which an attribute serves without a :has() over the whole page.
+      document.documentElement.setAttribute("data-marinara-drag-kind", drag.sourceElement.dataset.dragKind ?? "");
       updateStackPreview(drag);
       if (drag.chatResourcePayload) {
         if (drag.touchIdentifier === null) beginChatResourceMouseDrag(drag.chatResourcePayload);
@@ -450,6 +452,7 @@ export function useTouchFolderDrag({
   const restoreSourceElement = useCallback((drag: TouchFolderDragState) => {
     removePreviewElement(drag);
     drag.sourceElement.removeAttribute("data-drag-source");
+    document.documentElement.removeAttribute("data-marinara-drag-kind");
     clearDropFeedback(drag);
     drag.stackedElements.forEach((element) => element.removeAttribute("data-drag-stacked"));
     if (drag.previousDraggable === null) {

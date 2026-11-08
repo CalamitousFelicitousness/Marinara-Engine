@@ -343,6 +343,17 @@ stay.
 
 Destined for upstream. Guarded by `scripts/regressions/css-has-focus-negation.regression.mjs`.
 
+### Sprite folder drags publish their kind on the root
+
+`use-touch-folder-drag.ts` sets `data-marinara-drag-kind` on `<html>` for the length of a drag, and
+the sprite folder row in `SpriteLibrary.tsx` turns off its hover highlight through
+`html[data-marinara-drag-kind^=sprite-][data-marinara-drag-kind$=-folder]`. Upstream's #8580 wrote it as
+`group-has-[[data-sprite-folder][data-drag-source=true]]/sprite-library:hover:`, which compiles to a
+`:has()` on an unknown ancestor and loads app-wide, so every keystroke in a message editor restyled
+about 7300 elements: 1.9 s of style work for 15 characters, against 50 ms without the rule.
+
+Destined for upstream. The same lane rejects any `group-has-` or `peer-has-` utility in client source.
+
 ## Fork-only additions
 
 ### Preset variables resolve in every mode, not only Roleplay

@@ -61,8 +61,14 @@ function registerServiceWorker() {
   scheduleAfterFirstLoad(() => {
     void import("virtual:pwa-register")
       .then(({ registerSW }) => {
+        // vite-plugin-pwa ignores updateSW's reloadPage argument and calls onNeedReload once any new worker takes
+        // control, so the quiet takeover below would reload the page too. Reload only after the prompt is accepted.
+        let reloadOnTakeover = false;
         const updateSW = registerSW({
           immediate: true,
+          onNeedReload() {
+            if (reloadOnTakeover) window.location.reload();
+          },
           onNeedRefresh() {
             // The page already runs what the server serves (loaded after a restart): the new worker
             // takes over quietly, with nothing to refresh.
@@ -74,6 +80,7 @@ function registerServiceWorker() {
                 }
                 showAppUpdatePrompt(() => {
                   recordClientReload("service-worker-update");
+                  reloadOnTakeover = true;
                   return updateSW(true);
                 });
               },

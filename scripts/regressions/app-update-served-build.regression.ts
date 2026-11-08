@@ -3,6 +3,9 @@
  * serves: a page loaded after a restart already runs the new build (playtest 2026-10-23).
  */
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 import { formatRuntimeBuild, runningBuildIsServed } from "../../packages/client/src/lib/runtime-build.js";
 
 const client = formatRuntimeBuild("2.4.6", "abc1234");
@@ -39,4 +42,16 @@ assert.equal(
   false,
   "a silent server prompts",
 );
+// The quiet takeover must not reload. vite-plugin-pwa's prompt mode ignores updateSW's reloadPage argument and calls
+// onNeedReload (or reloads itself) whenever a new worker takes control, so main.tsx gates the reload on the prompt.
+const pluginRequire = createRequire(new URL("../../packages/client/package.json", import.meta.url));
+const register = readFileSync(
+  join(dirname(pluginRequire.resolve("vite-plugin-pwa/package.json")), "dist/client/build/register.js"),
+  "utf8",
+);
+assert.match(register, /const updateServiceWorker = async \(_reloadPage = true\)/u, "the plugin ignores reloadPage");
+assert.match(register, /if \(onNeedReload\)\s*onNeedReload\(\);\s*else\s*window\.location\.reload\(\);/u);
+const main = readFileSync(new URL("../../packages/client/src/main.tsx", import.meta.url), "utf8");
+assert.match(main, /onNeedReload\(\) \{\s*if \(reloadOnTakeover\) window\.location\.reload\(\);/u);
+assert.match(main, /reloadOnTakeover = true;\s*return updateSW\(true\);/u, "only an accepted prompt reloads");
 console.info("App update: a waiting worker prompts only when the server serves another build.");

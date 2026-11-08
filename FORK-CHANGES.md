@@ -397,6 +397,18 @@ about 7300 elements: 1.9 s of style work for 15 characters, against 50 ms withou
 
 Destined for upstream. The same lane rejects any `group-has-` or `peer-has-` utility in client source.
 
+### A served build's new service worker takes over without reloading
+
+Upstream's #8212 lets a waiting worker take over quietly with `updateSW(false)` when the page already
+runs the build the server serves. vite-plugin-pwa 2.0.0's prompt mode ignores that argument: once
+the new worker controls the page, it calls `onNeedReload` or, with none given, `window.location.reload()`.
+So the first load after every rebuild, and any hard reload with a worker waiting, reloaded on its own
+a few seconds later. `main.tsx` now passes an `onNeedReload` that reloads only after the update
+prompt is accepted. `app-update-served-build.regression.ts` pins both the plugin's behavior and the
+gate, so a plugin upgrade that honors the argument fails there and the gate can go.
+
+Destined for upstream.
+
 ## Fork-only additions
 
 ### Preset variables resolve in every mode, not only Roleplay

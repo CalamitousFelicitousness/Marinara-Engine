@@ -1,7 +1,14 @@
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
+import { Spinner } from "./Spinner";
 
-export function PanelListSkeleton({ rows = 3 }: { rows?: number }) {
+export function PanelListSkeleton({
+  rows = 3,
+  rowClassName = "h-10 rounded-lg",
+}: {
+  rows?: number;
+  rowClassName?: string;
+}) {
   const { t: localizeUi } = useUiTranslation();
   return (
     <div
@@ -11,7 +18,7 @@ export function PanelListSkeleton({ rows = 3 }: { rows?: number }) {
       className="flex flex-col gap-2 px-2 py-4"
     >
       {Array.from({ length: rows }, (_, index) => (
-        <div key={index} className="shimmer h-10 rounded-lg" />
+        <div key={index} className={`shimmer ${rowClassName}`} />
       ))}
     </div>
   );
@@ -40,7 +47,7 @@ export function PanelErrorState({
           disabled={retrying}
           className="mari-chrome-control mari-chrome-control--compact mt-1 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {retrying ? <Loader2 size="0.75rem" className="animate-spin" aria-hidden="true" /> : null}
+          {retrying ? <Spinner size="sm" aria-hidden="true" /> : null}
           {localizeUi(retrying ? "ui.ui.panelstates.retrying" : "ui.panels.connectionspanel.retry")}
         </button>
       )}

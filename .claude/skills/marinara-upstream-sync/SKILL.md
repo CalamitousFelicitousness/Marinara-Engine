@@ -68,6 +68,20 @@ marker (see **When both lineages built the same feature**), and a "take
 upstream" import hunk revived names the fork had retired (see **Upstream
 reuses a key or helper the fork deleted**).
 
+On 2026-11-18: 848 commits, 138 overlapping files, 61 conflicts, storage format
+10 to 11, merged to the previewed commit because 62 more landed overnight and
+added `build.mjs` and `ui.store.ts` to the conflict set. Four read-only
+subagents previewed it. The costly finds carried no marker: upstream's Voice job
+checks merged into the fork's kept `TTSConfigCard` and would have stopped its
+switch from ever saving; upstream's new `regression:layout-check` in `check`
+rejected every top-level fork lane; and a moved file (`ChatSettingsDrawer.tsx`
+into `features/chat-settings/`) showed as modify/delete, so the fork's edits had
+to be carried across by hand. Two keep-both hunks again dropped a shared closing
+token (`) : null;`, `)}`); `tsc -b` in `packages/client` found both at once. On
+this Windows box, Node and git writes on F: intermittently fail with `UNKNOWN`;
+one left a stale `.git/index.lock`. Retry the write, and remove a lock only when
+its timestamp is minutes old and no writing git process runs.
+
 ## Merge, never rebase
 
 The remote layout assumes a merge. `staging` tracks `upstream/staging` for
@@ -434,6 +448,12 @@ On 2026-10-09 upstream deleted the `overrides` block from its
 `pnpm-workspace.yaml` as one pnpm 10 ignores (#7146). That block is the only
 one the fork reads, so the delete conflicts with the fork's list: keep the
 fork's block and add upstream's new `package.json#pnpm` pins to it.
+
+By the 2026-11-18 sync upstream had moved to pnpm 12 and dropped
+`package.json#pnpm` entirely; its pins (`hono`, `@hono/node-server`, `undici`)
+now arrive in the `overrides` block of `pnpm-workspace.yaml` and merge without
+help. Keep the diff above as a cheap check: an empty result is the expected
+one, and anything that reappears in `package.json#pnpm` still needs mirroring.
 
 **An upstream fix aimed at code this fork relocated.** Where the fork has gutted
 a file and moved its parts elsewhere, an upstream fix to the moved part arrives

@@ -32,6 +32,8 @@ import { cn } from "../../lib/utils";
 import { useUIStore } from "../../stores/ui.store";
 import { WordsField, useWritingSeconds } from "./GameSetupWorldKitChooser";
 import { GAME_SETUP_GHOST_BUTTON_CLASS, GAME_SETUP_INPUT_CLASS as INPUT } from "./game-setup-classes";
+import { Checkbox } from "../ui/Checkbox";
+import { Select } from "../ui/Select";
 
 /** What the wizard holds while a world is being made. */
 export interface WorldDraft {
@@ -353,8 +355,7 @@ export function GameSetupWorldChooser({
         </div>
       ) : (
         <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--border)] p-3 text-sm text-[var(--foreground)]">
-          <input
-            type="checkbox"
+          <Checkbox
             checked={Boolean(draft)}
             onChange={(event) => onChange(event.target.checked ? newWorldDraft() : null)}
             className="mt-1 size-4 accent-[var(--primary)]"
@@ -438,8 +439,7 @@ export function GameSetupWorldChooser({
               <legend className={FIELD_LABEL}>{t("game.world.setup.lore")}</legend>
               {lorebooks.map((book) => (
                 <label key={book.id} className="flex items-center gap-2 text-[var(--foreground)]">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={draft.lorebookIds.includes(book.id)}
                     onChange={(event) =>
                       edit((next) => {
@@ -458,17 +458,17 @@ export function GameSetupWorldChooser({
                   <label htmlFor="world-grounding" className={FIELD_LABEL}>
                     {t("game.world.setup.grounding")}
                   </label>
-                  <select
+                  <Select
                     id="world-grounding"
+                    label={t("game.world.setup.grounding")}
                     value={draft.grounding}
-                    onChange={(event) =>
-                      edit((next) => (next.grounding = event.target.value as WorldDraft["grounding"]))
-                    }
+                    onChange={(next) => edit((draft) => (draft.grounding = next as WorldDraft["grounding"]))}
                     className={INPUT}
-                  >
-                    <option value="expand">{t("game.world.setup.groundingExpand")}</option>
-                    <option value="strict">{t("game.world.setup.groundingStrict")}</option>
-                  </select>
+                    options={[
+                      { value: "expand", label: t("game.world.setup.groundingExpand") },
+                      { value: "strict", label: t("game.world.setup.groundingStrict") },
+                    ]}
+                  />
                 </div>
                 <button
                   type="button"

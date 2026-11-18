@@ -35,7 +35,6 @@ import {
   Trash2,
   Volume2,
   VolumeX,
-  Loader2,
   Wand2,
   RotateCcw,
   GitBranch,
@@ -122,6 +121,7 @@ import {
   nameColorStyle,
   type SpeakerAvatarInfo,
 } from "./GameNarrationVisuals";
+import { Spinner } from "../ui/Spinner";
 
 const GamePeekPromptButton = lazy(() => import("./GamePeekPromptButton"));
 
@@ -191,6 +191,8 @@ function narrationSegmentAnchorKey(segment: NarrationSegment): string {
 }
 
 type GameSegmentVoiceEntry =
+  // Text to speech is on but Game autoplay is off: the line can be voiced, and is generated only when asked for.
+  | { status: "idle"; speaker?: string; tone?: string; voice?: string; chunks: string[] }
   | { status: "loading"; speaker?: string; tone?: string; voice?: string; chunks: string[] }
   | {
       status: "ready";
@@ -204,6 +206,8 @@ type GameSegmentVoiceEntry =
   | { status: "error"; speaker?: string; tone?: string; voice?: string; chunks: string[] };
 
 const GAME_VOICE_CACHE_MAX_ENTRIES = 80;
+/** A line that can be voiced on demand (autoplay off) but has no audio yet; kept out of the bounded audio cache. */
+const GAME_VOICE_IDLE_ENTRY: GameSegmentVoiceEntry = { status: "idle", chunks: [] };
 
 function revokeGameVoiceEntry(entry: GameSegmentVoiceEntry | undefined): void {
   if (entry?.status !== "ready") return;
@@ -1054,7 +1058,9 @@ function formatSkillCheckLogContent(
         content: localizeUi(
           skillCheck.reason === "untrained"
             ? "game.narration.skillCheckUntrained"
-            : "game.narration.skillCheckUnknownRoller",
+            : skillCheck.reason === "not-pushable"
+              ? "game.narration.skillCheckNotPushable"
+              : "game.narration.skillCheckUnknownRoller",
           { skill: skillCheck.skill },
         ),
       };
@@ -1253,6 +1259,10 @@ export function GameNarration({
   const [gameVoicePlayingKey, setGameVoicePlayingKey] = useState<string | null>(null);
   const [gameVoicePausedKey, setGameVoicePausedKey] = useState<string | null>(null);
   const gameVoiceCacheRef = useRef<Map<string, GameSegmentVoiceEntry>>(new Map());
+  /** Lines that can be voiced on demand. Separate from the audio cache so its eviction never drops a play button. */
+  const gameVoiceIdleKeysRef = useRef(new Set<string>());
+  const getGameVoiceEntry = (key: string) =>
+    gameVoiceCacheRef.current.get(key) ?? (gameVoiceIdleKeysRef.current.has(key) ? GAME_VOICE_IDLE_ENTRY : undefined);
   const gameVoicePendingRef = useRef<Map<string, AbortController>>(new Map());
   const gameVoiceAudioRef = useRef<HTMLAudioElement | null>(null);
   // Every voice <audio> currently created/playing. gameVoiceAudioRef only tracks
@@ -2298,6 +2308,12 @@ export function GameNarration({
   const activeCopyKey = active ? `active:${active.id}` : null;
   const activeCopyText = active ? (active.readableContent ?? stripGmTagsKeepReadables(active.content)) : "";
   const gameVoiceEnabled = Boolean(gameSpeechEnabled && ttsConfig?.autoplayGame);
+  /** Lines can be voiced on demand (a play button) whenever text to speech is on, with or without autoplay. */
+  const gameVoiceAvailable = gameSpeechEnabled;
+  /** Voice keys the user asked to hear while autoplay is off; only these are generated. */
+  const requestedGameVoiceKeysRef = useRef(new Set<string>());
+  const playWhenReadyGameVoiceKeyRef = useRef<string | null>(null);
+  const [gameVoiceRequestTick, setGameVoiceRequestTick] = useState(0);
   const gameVoiceConfigSignature = useMemo(
     () => buildVoiceConfigSignature(ttsConfig, gameAudioConnectionId),
     [ttsConfig, gameAudioConnectionId],
@@ -2573,6 +2589,13 @@ export function GameNarration({
       event.stopPropagation();
       queueLogScrollTopRestore();
       audioManager.unlock();
+      if (!gameVoiceCacheRef.current.has(key) && gameVoiceIdleKeysRef.current.has(key)) {
+        // Generate this line now and play it once it is ready.
+        requestedGameVoiceKeysRef.current.add(key);
+        playWhenReadyGameVoiceKeyRef.current = key;
+        setGameVoiceRequestTick((tick) => tick + 1);
+        return;
+      }
       toggleGameVoiceKey(key);
     },
     [queueLogScrollTopRestore, toggleGameVoiceKey],
@@ -3477,13 +3500,47 @@ export function GameNarration({
   }, [active, narrationMessageChanged, scenePreparing, visibleChars, onReadable]);
 
   useEffect(() => {
-    if (!ttsConfig || !gameVoiceEnabled || isStreaming || generationFailed || disableVoiceGeneration) return;
+    if (!ttsConfig || !gameVoiceAvailable || isStreaming || generationFailed || disableVoiceGeneration) {
+      // A line asked for now can't be generated; drop the request so it never starts playing later on its own.
+      // A line already generating keeps its request and still plays once ready.
+      for (const key of requestedGameVoiceKeysRef.current) {
+        if (!gameVoicePendingRef.current.has(key)) requestedGameVoiceKeysRef.current.delete(key);
+      }
+      // Voice switched off drops it even then.
+      const voiceOff = !ttsConfig || !gameVoiceAvailable;
+      const playWhenReadyKey = playWhenReadyGameVoiceKeyRef.current;
+      if (playWhenReadyKey && (voiceOff || !gameVoicePendingRef.current.has(playWhenReadyKey))) {
+        playWhenReadyGameVoiceKeyRef.current = null;
+      }
+      if (voiceOff) {
+        // Stop the clips still generating too, and forget their unfinished entries so the lines show play again.
+        for (const [key, controller] of gameVoicePendingRef.current) {
+          controller.abort();
+          if (gameVoiceCacheRef.current.get(key)?.status === "loading") gameVoiceCacheRef.current.delete(key);
+        }
+        gameVoicePendingRef.current.clear();
+        requestedGameVoiceKeysRef.current.clear();
+      }
+      return;
+    }
 
     const plans: GameVoiceEntryPlan[] = [];
+    let idleAdded = false;
     const queuePlan = (key: string | null, requests: GameSegmentVoiceRequest[]) => {
-      if (!key || gameVoiceCacheRef.current.has(key) || gameVoicePendingRef.current.has(key)) return;
+      if (!key || gameVoicePendingRef.current.has(key)) return;
+      const wanted = gameVoiceEnabled || requestedGameVoiceKeysRef.current.has(key);
+      if (gameVoiceCacheRef.current.has(key)) return;
       const audioJobs = buildGameVoiceAudioJobs(key, requests, ttsConfig, gameAudioConnectionId ?? undefined);
       if (audioJobs.length === 0) return;
+      if (!wanted) {
+        // Autoplay is off: show a play button for the line without spending a request on it yet.
+        if (!gameVoiceIdleKeysRef.current.has(key)) {
+          gameVoiceIdleKeysRef.current.add(key);
+          idleAdded = true;
+        }
+        return;
+      }
+      requestedGameVoiceKeysRef.current.delete(key);
 
       const controller = new AbortController();
       gameVoicePendingRef.current.set(key, controller);
@@ -3511,7 +3568,10 @@ export function GameNarration({
       }
     }
 
-    if (plans.length === 0) return;
+    if (plans.length === 0) {
+      if (idleAdded) setGameVoiceVersion((version) => version + 1);
+      return;
+    }
     setGameVoiceVersion((version) => version + 1);
 
     const runPlans = async () => {
@@ -3574,8 +3634,10 @@ export function GameNarration({
     disableVoiceGeneration,
     gameAudioConnectionId,
     gameNpcs,
+    gameVoiceAvailable,
     gameVoiceConfigSignature,
     gameVoiceEnabled,
+    gameVoiceRequestTick,
     generationFailed,
     getVoiceRequestForSideLine,
     getVoiceRequestsForSegment,
@@ -3584,6 +3646,16 @@ export function GameNarration({
     segments,
     ttsConfig,
   ]);
+
+  // A line asked for while autoplay is off plays as soon as its voice is ready.
+  useEffect(() => {
+    const key = playWhenReadyGameVoiceKeyRef.current;
+    if (!key) return;
+    const entry = gameVoiceCacheRef.current.get(key);
+    if (!entry || entry.status === "loading" || entry.status === "idle") return;
+    playWhenReadyGameVoiceKeyRef.current = null;
+    if (entry.status === "ready" && gameVoiceAvailable) playGameVoiceKey(key);
+  }, [gameVoiceAvailable, gameVoiceVersion, playGameVoiceKey]);
 
   const activeVoiceKey = active ? getVoiceKeyForSegment(active) : null;
   const activeSideLines = useMemo(
@@ -3632,7 +3704,7 @@ export function GameNarration({
   }, [activeIndex, activeVoiceKey, clearSideVoiceAutoPlayRetry, stopGameVoicePlayback]);
 
   useEffect(() => {
-    if (gameVoiceEnabled && !isStreaming && !scenePreparing && !directionsActive && !gameVoicePlaybackBlocked) return;
+    if (gameVoiceAvailable && !isStreaming && !scenePreparing && !directionsActive && !gameVoicePlaybackBlocked) return;
     if (isStreaming || scenePreparing || directionsActive || gameVoicePlaybackBlocked) {
       if (isStreaming || scenePreparing || directionsActive || gameVoiceExternallyBlocked) {
         lastAutoPlayedVoiceKeyRef.current = null;
@@ -3651,7 +3723,7 @@ export function GameNarration({
   }, [
     clearSideVoiceAutoPlayRetry,
     directionsActive,
-    gameVoiceEnabled,
+    gameVoiceAvailable,
     gameVoiceExternallyBlocked,
     gameVoicePlaybackBlocked,
     gameVoicePlayingKey,
@@ -4097,7 +4169,7 @@ export function GameNarration({
           : localizeUi("ui.game.gamenarration.startCombat")
       }
     >
-      {combatStarting ? <Loader2 size={12} className="animate-spin" /> : <Sword size={12} />}
+      {combatStarting ? <Spinner size="sm" /> : <Sword size={12} />}
       <span className="hidden sm:inline">
         {combatGenerationFailed
           ? localizeUi("ui.game.gamenarration.retryCombat")
@@ -4116,7 +4188,7 @@ export function GameNarration({
         )}
       >
         <span className="flex min-w-0 items-center gap-2">
-          {combatStarting ? <Loader2 size={13} className="shrink-0 animate-spin" /> : <AlertTriangle size={13} />}
+          {combatStarting ? <Spinner size="sm" className="shrink-0" /> : <AlertTriangle size={13} />}
           <span>
             {combatStarting
               ? localizeUi("ui.game.gamenarration.combatStartingPleaseWait")
@@ -4498,7 +4570,7 @@ export function GameNarration({
             : "ui.chat.chatmessage.translate",
         )}
       >
-        {activeIsTranslating ? <Loader2 size={11} className="animate-spin" /> : <Languages size={11} />}
+        {activeIsTranslating ? <Spinner size="sm" /> : <Languages size={11} />}
       </button>
     ) : null;
   const activeEditButton =
@@ -4676,7 +4748,7 @@ export function GameNarration({
               : localizeUi("ui.chat.chatmessage.translate")
           }
         >
-          {isTranslating ? <Loader2 size={11} className="animate-spin" /> : <Languages size={11} />}
+          {isTranslating ? <Spinner size="sm" /> : <Languages size={11} />}
         </button>
       ) : null;
     const deleteButton = showDeleteButton ? (
@@ -4836,7 +4908,7 @@ export function GameNarration({
       ) : null;
 
     const voiceKey = getVoiceKeyForSegment(seg);
-    const voiceEntry = voiceKey ? gameVoiceCacheRef.current.get(voiceKey) : undefined;
+    const voiceEntry = voiceKey ? getGameVoiceEntry(voiceKey) : undefined;
     const voicePaused = gameVoicePausedKey === voiceKey;
     const voiceActive = gameVoicePlayingKey === voiceKey;
     const voiceButton =
@@ -4866,7 +4938,7 @@ export function GameNarration({
             }
           >
             {voiceEntry.status === "loading" ? (
-              <Loader2 size={11} className="animate-spin" />
+              <Spinner size="sm" />
             ) : voiceActive ? (
               voicePaused ? (
                 <Play size={11} />
@@ -4960,7 +5032,7 @@ export function GameNarration({
                   )}
                   title={localizeUi("ui.game.npcsview.generateNpcPortrait")}
                 >
-                  {logPortraitGenerating ? <Loader2 size="0.6rem" className="animate-spin" /> : <Wand2 size="0.6rem" />}
+                  {logPortraitGenerating ? <Spinner size="sm" /> : <Wand2 size="0.6rem" />}
                 </button>
               )}
             </div>
@@ -5181,7 +5253,7 @@ export function GameNarration({
                 const charColor = findNamedMapValue(speakerColors, line.character);
                 const charNameColor = findNamedMapValue(speakerNameColors, line.character);
                 const sideVoiceKey = active ? getVoiceKeyForSideLine(active, line, i) : null;
-                const voiceEntry = sideVoiceKey ? gameVoiceCacheRef.current.get(sideVoiceKey) : undefined;
+                const voiceEntry = sideVoiceKey ? getGameVoiceEntry(sideVoiceKey) : undefined;
                 const voicePaused = gameVoicePausedKey === sideVoiceKey;
                 const voiceActive = gameVoicePlayingKey === sideVoiceKey;
                 const sourceMessageId = line.voiceSourceMessageId ?? active?.sourceMessageId ?? null;
@@ -5247,7 +5319,7 @@ export function GameNarration({
                         }
                       >
                         {voiceEntry.status === "loading" ? (
-                          <Loader2 size={11} className="animate-spin" />
+                          <Spinner size="sm" />
                         ) : voiceActive ? (
                           voicePaused ? (
                             <Play size={11} />
@@ -5324,7 +5396,7 @@ export function GameNarration({
             {/* Scene preparation gate: wait for effects before showing narration */}
             {scenePreparing && (
               <div className="flex items-center gap-2 py-3">
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--muted)]/40 border-t-[var(--foreground)]/70 dark:border-white/30 dark:border-t-white" />
+                <Spinner size="md" className="text-[var(--foreground)]/70 dark:text-white/70" />
                 <span className="text-sm text-[var(--muted-foreground)] dark:text-white/70">
                   {assetsGenerating
                     ? localizeUi("ui.game.gamenarration.generatingSprites")
@@ -5456,11 +5528,7 @@ export function GameNarration({
                                 )}
                                 title={localizeUi("ui.game.npcsview.generateNpcPortrait")}
                               >
-                                {activePortraitGenerating ? (
-                                  <Loader2 size="0.75rem" className="animate-spin" />
-                                ) : (
-                                  <Wand2 size="0.75rem" />
-                                )}
+                                {activePortraitGenerating ? <Spinner size="sm" /> : <Wand2 size="0.75rem" />}
                               </button>
                             )}
                           </div>
@@ -6110,7 +6178,7 @@ export function GameNarration({
                                 : localizeUi("ui.chat.chatmessage.translate")
                             }
                           >
-                            {isTranslating ? <Loader2 size={11} className="animate-spin" /> : <Languages size={11} />}
+                            {isTranslating ? <Spinner size="sm" /> : <Languages size={11} />}
                           </button>
                         ) : null;
                       const deleteButton = showDeleteButton ? (
@@ -6157,7 +6225,7 @@ export function GameNarration({
                         ) : null;
 
                       const voiceKey = getVoiceKeyForSegment(seg);
-                      const voiceEntry = voiceKey ? gameVoiceCacheRef.current.get(voiceKey) : undefined;
+                      const voiceEntry = voiceKey ? getGameVoiceEntry(voiceKey) : undefined;
                       const voicePaused = gameVoicePausedKey === voiceKey;
                       const voiceActive = gameVoicePlayingKey === voiceKey;
                       const voiceButton =
@@ -6187,7 +6255,7 @@ export function GameNarration({
                               }
                             >
                               {voiceEntry.status === "loading" ? (
-                                <Loader2 size={11} className="animate-spin" />
+                                <Spinner size="sm" />
                               ) : voiceActive ? (
                                 voicePaused ? (
                                   <Play size={11} />
@@ -6416,11 +6484,7 @@ export function GameNarration({
                                     )}
                                     title={localizeUi("ui.game.npcsview.generateNpcPortrait")}
                                   >
-                                    {logPortraitGenerating ? (
-                                      <Loader2 size="0.6rem" className="animate-spin" />
-                                    ) : (
-                                      <Wand2 size="0.6rem" />
-                                    )}
+                                    {logPortraitGenerating ? <Spinner size="sm" /> : <Wand2 size="0.6rem" />}
                                   </button>
                                 )}
                               </div>

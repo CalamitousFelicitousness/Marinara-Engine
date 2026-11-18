@@ -2,6 +2,7 @@
 // Storage: Character Gallery Images
 // ──────────────────────────────────────────────
 import { and, desc, eq, gte, isNull, lte } from "../../db/file-query.js";
+import type { GalleryTagKind } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
 import { characterImages } from "../../db/schema/index.js";
 import { newId, now } from "../../utils/id-generator.js";
@@ -15,6 +16,9 @@ export interface CreateCharacterImageInput {
   model?: string;
   width?: number;
   height?: number;
+  customKind?: GalleryTagKind | null;
+  customName?: string | null;
+  description?: string | null;
 }
 
 export interface LegacyCharacterImageCandidateInput {
@@ -34,6 +38,14 @@ export function createCharacterGalleryStorage(db: DB) {
         .select()
         .from(characterImages)
         .where(eq(characterImages.characterId, characterId))
+        .orderBy(desc(characterImages.createdAt));
+    },
+
+    async listByCustomKind(customKind: GalleryTagKind) {
+      return db
+        .select()
+        .from(characterImages)
+        .where(eq(characterImages.customKind, customKind))
         .orderBy(desc(characterImages.createdAt));
     },
 
@@ -81,6 +93,9 @@ export function createCharacterGalleryStorage(db: DB) {
         model: input.model ?? "",
         width: input.width ?? null,
         height: input.height ?? null,
+        customKind: input.customKind ?? null,
+        customName: input.customKind ? (input.customName ?? null) : null,
+        description: input.description ?? null,
         createdAt: now(),
       });
       return this.getById(id);
@@ -90,9 +105,18 @@ export function createCharacterGalleryStorage(db: DB) {
       await db.delete(characterImages).where(eq(characterImages.id, id));
     },
 
+    /** Point an image at a new file (a cleaned-up copy), keeping its id, tag, prompt and place in the gallery. */
+    async replaceFile(id: string, patch: { filePath: string; width: number | null; height: number | null }) {
+      await db
+        .update(characterImages)
+        .set({ filePath: patch.filePath, width: patch.width, height: patch.height })
+        .where(eq(characterImages.id, id));
+      return this.getById(id);
+    },
+
     async setTag(
       id: string,
-      patch: { customKind: "emoji" | "sticker" | null; customName: string | null; width?: number; height?: number },
+      patch: { customKind: GalleryTagKind | null; customName: string | null; width?: number; height?: number },
     ) {
       await db
         .update(characterImages)

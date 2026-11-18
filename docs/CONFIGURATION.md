@@ -117,6 +117,7 @@ Marinara keeps your data as plain JSON files, so you can copy and read backups. 
 | `LOG_LEVEL` | `warn` | The level above. |
 | `LOG_PRESET` | `default` | `prompt-connections` shows the same prompt and model detail as `debug` but hides routine request lines such as `GET /api/chats`. |
 | `LOG_DISABLE_REQUEST_LOGGING` | `false` | `true` hides routine request lines and keeps your level. Needs a restart. |
+| `LOG_INLINE_MEDIA` | `short` | `short` prints images and other base64 files in debug output as a short marker with their type and size. `full` prints them whole, which can be several MB per prompt. |
 | `LOG_FORMAT` | automatic | `pretty` prints readable lines everywhere, for example to read **Debug mode** prompts in `docker logs`. `json` prints one JSON object per line. Needs a restart. |
 
 In a terminal, the server prints readable lines. Elsewhere, such as Docker logs, a production server prints JSON lines. The Termux launcher asks for readable lines. Browser logging is separate and not controlled by `LOG_LEVEL`.
@@ -165,7 +166,7 @@ On the server's own computer, these actions usually work without the secret. A r
 | `CUSTOM_TOOL_SCRIPT_ENABLED` | `false` | Turns on custom script tools. Keep off for untrusted or imported tools. |
 | `MARI_DB_ALLOW_UNSAFE_TRANSFORMS` | `false` | Lets Professor Mari's database transform scripts run on hosts with no OS sandbox (macOS Seatbelt or Linux Bubblewrap, used when present). Keep off unless you reviewed the script. |
 | `ENABLE_CUSTOM_AGENT_REPOS` | `false` | Turns on manual GitHub agent-repository preview and sync in Agent Organizer. See [Custom agent repositories](#custom-agent-repositories). |
-| `MARINARA_OVERWORLD_GAMES` | `false` | Lets players make Overworld games (a setting kit and a generated world) and turn a legacy game into one. Off, the wizard offers Classic games only. |
+| `MARINARA_OVERWORLD_GAMES` | `false` | Lets players make Overworld games (a setting kit and a generated world) and turn a legacy game into one. Off, the wizard offers VN games only. |
 | `ENABLE_EXTERNAL_EXTENSIONS` | `false` | First of two gates for third-party extension imports. See [External Extensions](#external-extensions). |
 | `IMPORT_ALLOWED_ROOTS` | empty | Folders bulk import may read without a picker token. |
 | `PROFILE_EXPORT_JSON_LIMIT_BYTES` | `268435456` (256 MiB) | Largest single JSON profile export the server builds. |

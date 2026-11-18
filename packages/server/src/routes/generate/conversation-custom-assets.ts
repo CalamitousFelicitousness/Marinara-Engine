@@ -1,6 +1,7 @@
 import { allowsDefaultChatModel } from "../../services/llm/local-context-limit.js";
 import {
   normalizeCustomEmojiSelection,
+  shortGalleryDescription,
   normalizeTextForMatch,
   parseGroupedSpeakerSegments,
   type CustomEmojiSelectionPrefs,
@@ -8,7 +9,16 @@ import {
   type MessageReaction,
 } from "@marinara-engine/shared";
 
+import { join } from "node:path";
+
 import { logger } from "../../lib/logger.js";
+import { DATA_DIR } from "../../utils/data-dir.js";
+import { resolveFlatMediaFile } from "../../utils/media-file-security.js";
+import { resolveStoredGalleryFile } from "../../services/image/gallery-file-lifecycle.js";
+import {
+  recordVisionAssetPath,
+  type ConversationAssetVisionCatalog,
+} from "../../services/generation/conversation-emoji-vision.js";
 import { cosineSimilarity } from "../../services/lorebook/embeddings.js";
 import { isLocalEmbedderAvailable, localEmbed } from "../../services/local-embedder.js";
 import { createLLMProvider } from "../../services/llm/provider-registry.js";
@@ -21,13 +31,33 @@ import { resolveBaseUrl } from "./generate-route-utils.js";
 type NamedAssetRow = {
   name?: unknown;
   filePath?: unknown;
+  description?: unknown;
 };
 
 type GalleryAssetRow = {
   customKind?: unknown;
   customName?: unknown;
   filePath?: unknown;
+  description?: unknown;
 };
+
+/** An emoji's or sticker's description by name, when it has one. */
+export type AssetDescriber = (name: string) => string | undefined;
+
+const noDescriptions: AssetDescriber = () => undefined;
+
+/** The text the embedder compares with the message: the name in words, then the description. */
+export function semanticAssetText(name: string, description: string | undefined): string {
+  const words = name.replace(/_/g, " ");
+  return description ? `${words}: ${description}` : words;
+}
+
+/** Keep the first description recorded for a name: callers record the responder's own, then the persona's, then global. */
+function recordAssetDescription(descriptions: Map<string, string>, name: unknown, description: unknown) {
+  if (typeof name !== "string" || !name || descriptions.has(name)) return;
+  const text = shortGalleryDescription(typeof description === "string" ? description : null, 120);
+  if (text) descriptions.set(name, text);
+}
 
 type ConversationCustomAssetStore = {
   list(): Promise<NamedAssetRow[]>;
@@ -55,14 +85,22 @@ function shuffleInPlace<T>(items: T[]): T[] {
 }
 
 /** Order emoji names by semantic relevance to `query` via the local embedder. Returns null when unavailable. */
-async function rankEmojiNamesBySemantic(names: string[], query: string): Promise<string[] | null> {
+async function rankEmojiNamesBySemantic(
+  names: string[],
+  query: string,
+  boosted: ReadonlySet<string> = new Set(),
+  describe: AssetDescriber = noDescriptions,
+): Promise<string[] | null> {
   if (names.length <= 1 || !query.trim() || !isLocalEmbedderAvailable()) return null;
   try {
-    const vectors = await localEmbed([query, ...names.map((name) => name.replace(/_/g, " "))]);
+    const vectors = await localEmbed([query, ...names.map((name) => semanticAssetText(name, describe(name)))]);
     if (!vectors || vectors.length !== names.length + 1) return null;
     const queryVector = vectors[0]!;
     return names
-      .map((name, index) => ({ name, score: cosineSimilarity(queryVector, vectors[index + 1]!) }))
+      .map((name, index) => ({
+        name,
+        score: cosineSimilarity(queryVector, vectors[index + 1]!) + (boosted.has(name) ? OWN_ASSET_SEMANTIC_BOOST : 0),
+      }))
       .sort((a, b) => b.score - a.score)
       .map((entry) => entry.name);
   } catch (err) {
@@ -71,16 +109,66 @@ async function rankEmojiNamesBySemantic(names: string[], query: string): Promise
   }
 }
 
+/** Added to a character's own emoji or sticker score, so it wins a close call against a shared one. */
+const OWN_ASSET_SEMANTIC_BOOST = 0.05;
+
+/**
+ * One responder, semantic mode: rank its own and the shared names as one pool (own ones slightly boosted), so the
+ * offered list runs from best to worst fit. Null when the embedder is unavailable; the caller keeps own-first order.
+ */
+export async function rankCombinedAssetNames(
+  ownNames: string[],
+  sharedNames: string[],
+  query: string,
+  describe: AssetDescriber = noDescriptions,
+): Promise<string[] | null> {
+  const pool = uniqueEmojiNames([...ownNames, ...sharedNames]);
+  if (pool.length <= 1) return pool;
+  return rankEmojiNamesBySemantic(pool, query, new Set(ownNames), describe);
+}
+
+/** The names an advertisement offers, in its order (mirrors buildCustomEmojiAdvertisement's capping). */
+export function listAdvertisedAssetNames(
+  responders: { charId: string }[],
+  orderedGlobal: string[],
+  orderedOwnByChar: Map<string, string[]>,
+  maxCount: number,
+): string[] {
+  if (responders.length === 1) {
+    const merged = [...(orderedOwnByChar.get(responders[0]!.charId) ?? [])];
+    for (const name of orderedGlobal) {
+      if (merged.length >= maxCount) break;
+      if (!merged.includes(name)) merged.push(name);
+    }
+    return merged.slice(0, maxCount);
+  }
+  const names = orderedGlobal.slice(0, maxCount);
+  for (const responder of responders) {
+    for (const name of (orderedOwnByChar.get(responder.charId) ?? []).slice(0, maxCount)) {
+      if (!names.includes(name)) names.push(name);
+    }
+  }
+  return names;
+}
+
+const CUSTOM_EMOJIS_ROOT = join(DATA_DIR, "custom-emojis");
+const CUSTOM_STICKERS_ROOT = join(DATA_DIR, "custom-stickers");
+
+function galleryAssetPath(filePath: unknown): string | null {
+  return typeof filePath === "string" ? (resolveStoredGalleryFile(filePath)?.absolutePath ?? null) : null;
+}
+
 /** Order a pool of emoji names per the selection mode (does NOT cap; the formatter slices to maxCount). */
 export async function orderEmojiNames(
   names: string[],
   prefs: CustomEmojiSelectionPrefs,
   query: string,
+  describe: AssetDescriber = noDescriptions,
 ): Promise<string[]> {
   if (names.length <= 1) return names;
   // Reached for random/semantic, and as the tool-call fallback path: rank semantically when possible.
   if (prefs.mode === "semantic" || prefs.mode === "tool-call") {
-    const ranked = await rankEmojiNamesBySemantic(names, query);
+    const ranked = await rankEmojiNamesBySemantic(names, query, new Set(), describe);
     if (ranked) return ranked;
   }
   return shuffleInPlace([...names]);
@@ -100,8 +188,13 @@ export async function selectCustomAssetNamesByToolCall(
   connectionId: string,
   connections: ReturnType<typeof createConnectionsStorage>,
   maxCount: number,
+  describe: AssetDescriber = noDescriptions,
 ): Promise<string[] | null> {
   if (candidates.length === 0 || !query.trim()) return null;
+  const described = candidates.some((name) => describe(name));
+  const candidateList = described
+    ? `\n${candidates.map((name) => (describe(name) ? `- ${name}: ${describe(name)}` : `- ${name}`)).join("\n")}`
+    : ` ${candidates.join(", ")}`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(new Error("custom-emoji tool-call timeout")), 5000);
   try {
@@ -135,7 +228,7 @@ export async function selectCustomAssetNamesByToolCall(
         },
         {
           role: "user",
-          content: `Available custom ${assetLabel}s: ${candidates.join(", ")}\n\nLatest message: "${query}"\n\nFitting ${assetLabel} names:`,
+          content: `Available custom ${assetLabel}s:${candidateList}\n\nLatest message: "${query}"\n\nFitting ${assetLabel} names:`,
         },
       ],
       { model: conn.model, temperature: 0.3, maxTokens: 200, signal: controller.signal },
@@ -158,6 +251,31 @@ export async function selectCustomAssetNamesByToolCall(
   } finally {
     clearTimeout(timeout);
   }
+}
+
+/**
+ * Order the shared and own pools for an advertisement. With one responder in semantic mode (or tool-call falling
+ * back to it), own and shared names are ranked together, so the list runs best fit first across both.
+ */
+async function orderAdvertisedPools(
+  responders: { charId: string }[],
+  sharedNames: string[],
+  ownByChar: Map<string, string[]>,
+  prefs: CustomEmojiSelectionPrefs,
+  query: string,
+  describe: AssetDescriber,
+): Promise<{ orderedShared: string[]; orderedOwnByChar: Map<string, string[]> }> {
+  if (responders.length === 1 && (prefs.mode === "semantic" || prefs.mode === "tool-call")) {
+    const charId = responders[0]!.charId;
+    const combined = await rankCombinedAssetNames(ownByChar.get(charId) ?? [], sharedNames, query, describe);
+    if (combined) return { orderedShared: [], orderedOwnByChar: new Map([[charId, combined]]) };
+  }
+  const orderedShared = await orderEmojiNames(sharedNames, prefs, query, describe);
+  const orderedOwnByChar = new Map<string, string[]>();
+  for (const [charId, names] of ownByChar) {
+    orderedOwnByChar.set(charId, await orderEmojiNames(names, prefs, query, describe));
+  }
+  return { orderedShared, orderedOwnByChar };
 }
 
 export function uniqueEmojiNames(names: Array<string | null | undefined>): string[] {
@@ -194,6 +312,8 @@ export async function appendConversationCustomAssetAdvertisements(args: {
    * there are no advertisements, so the macro token is still stripped). #3438
    */
   replyRulesMacroPlacement?: (content: string) => void;
+  /** Filled with every visible emoji and sticker file and the offered names, for the emoji vision sheet. */
+  visionCatalog?: ConversationAssetVisionCatalog;
 }): Promise<void> {
   if (args.chatMode !== "conversation") return;
 
@@ -257,8 +377,21 @@ export async function appendConversationCustomAssetAdvertisements(args: {
   ]);
   const ownEmojisByChar = new Map<string, string[]>();
   const ownStickersByChar = new Map<string, string[]>();
+  const vision = args.visionCatalog;
+  const characterAssetRowsById = new Map<string, GalleryAssetRow[]>();
   for (const info of respondingConversationChars) {
     const images = await args.characterGallery.listByCharacterId(info.charId);
+    characterAssetRowsById.set(info.charId, images);
+    if (vision) {
+      for (const img of images) {
+        if (!img.customName || (img.customKind !== "emoji" && img.customKind !== "sticker")) continue;
+        recordVisionAssetPath(
+          img.customKind === "emoji" ? vision.emojiPaths : vision.stickerPaths,
+          String(img.customName),
+          galleryAssetPath(img.filePath),
+        );
+      }
+    }
     const emojiNames = uniqueEmojiNames(
       images.filter((img) => img.customKind === "emoji" && img.customName).map((img) => img.customName as string),
     );
@@ -275,6 +408,99 @@ export async function appendConversationCustomAssetAdvertisements(args: {
     );
     if (emojiNames.length > 0) ownEmojisByChar.set(info.charId, emojiNames);
     if (stickerNames.length > 0) ownStickersByChar.set(info.charId, stickerNames);
+  }
+
+  if (vision) {
+    for (const img of personaAssetRows) {
+      if (!img.customName || (img.customKind !== "emoji" && img.customKind !== "sticker")) continue;
+      recordVisionAssetPath(
+        img.customKind === "emoji" ? vision.emojiPaths : vision.stickerPaths,
+        String(img.customName),
+        galleryAssetPath(img.filePath),
+      );
+    }
+    for (const emoji of globalEmojiRows) {
+      if (emoji.name) {
+        recordVisionAssetPath(
+          vision.emojiPaths,
+          String(emoji.name),
+          resolveFlatMediaFile(CUSTOM_EMOJIS_ROOT, emoji.filePath),
+        );
+      }
+    }
+    for (const sticker of globalStickerRows) {
+      if (sticker.name) {
+        recordVisionAssetPath(
+          vision.stickerPaths,
+          String(sticker.name),
+          resolveFlatMediaFile(CUSTOM_STICKERS_ROOT, sticker.filePath),
+        );
+      }
+    }
+  }
+
+  // Descriptions, first one per name: the responders' own, then the persona's, then global.
+  const selectionPrefs = normalizeCustomEmojiSelection(args.chatMeta.customEmojiSelection);
+  const emojiDescriptions = new Map<string, string>();
+  const stickerDescriptions = new Map<string, string>();
+  if (selectionPrefs.useDescriptions) {
+    for (const rows of [...characterAssetRowsById.values(), personaAssetRows]) {
+      for (const img of rows) {
+        if (img.customKind === "emoji") recordAssetDescription(emojiDescriptions, img.customName, img.description);
+        if (img.customKind === "sticker") recordAssetDescription(stickerDescriptions, img.customName, img.description);
+      }
+    }
+    for (const emoji of globalEmojiRows) recordAssetDescription(emojiDescriptions, emoji.name, emoji.description);
+    for (const sticker of globalStickerRows) {
+      recordAssetDescription(stickerDescriptions, sticker.name, sticker.description);
+    }
+  }
+  const describeEmoji: AssetDescriber = (name) => emojiDescriptions.get(name);
+  const describeSticker: AssetDescriber = (name) => stickerDescriptions.get(name);
+  // Ranking and the tool-call picker always use them; the prompt shows them only when asked, since each costs tokens.
+  const showEmoji: AssetDescriber = selectionPrefs.showDescriptions ? describeEmoji : noDescriptions;
+  const showSticker: AssetDescriber = selectionPrefs.showDescriptions ? describeSticker : noDescriptions;
+  if (vision && selectionPrefs.showDescriptions) {
+    vision.emojiDescriptions = emojiDescriptions;
+    vision.stickerDescriptions = stickerDescriptions;
+  }
+
+  // A reaction written with a sticker's name (":hug:" for sticker:hug:) shows that sticker, unless an emoji owns it.
+  const setStickerReactionUrl = (key: string, url: string) => {
+    if (!args.conversationCustomEmojiUrlByName.has(key)) args.conversationCustomEmojiUrlByName.set(key, url);
+  };
+  const emojiNameSet = new Set<string>([
+    ...globalEmojiRows.map((emoji) => String(emoji.name ?? "")),
+    ...personaEmojiNames,
+    ...[...ownEmojisByChar.values()].flat(),
+  ]);
+  for (const sticker of globalStickerRows) {
+    if (sticker.name && sticker.filePath && !emojiNameSet.has(String(sticker.name))) {
+      setStickerReactionUrl(
+        buildConversationCustomEmojiKey("global", null, String(sticker.name)),
+        buildGlobalCustomStickerUrl(String(sticker.filePath)),
+      );
+    }
+  }
+  if (args.personaId) {
+    for (const img of personaAssetRows) {
+      if (img.customKind === "sticker" && img.customName && img.filePath && !emojiNameSet.has(String(img.customName))) {
+        setStickerReactionUrl(
+          buildConversationCustomEmojiKey("persona", args.personaId, String(img.customName)),
+          buildPersonaGalleryEmojiUrl(args.personaId, getStoredFilename(String(img.filePath))),
+        );
+      }
+    }
+  }
+  for (const [charId, rows] of characterAssetRowsById) {
+    for (const img of rows) {
+      if (img.customKind === "sticker" && img.customName && img.filePath && !emojiNameSet.has(String(img.customName))) {
+        setStickerReactionUrl(
+          buildConversationCustomEmojiKey("character", charId, String(img.customName)),
+          buildCharacterGalleryEmojiUrl(charId, getStoredFilename(String(img.filePath))),
+        );
+      }
+    }
   }
 
   const assetQuery = latestHistoryUserContent(args.finalMessages) || args.currentUserInputContent() || "";
@@ -299,6 +525,7 @@ export async function appendConversationCustomAssetAdvertisements(args: {
         emojiPrefs.toolConnectionId,
         args.connections,
         emojiPrefs.maxCount,
+        describeEmoji,
       );
       if (picked !== null) {
         toolSelectionHandled = true;
@@ -308,23 +535,37 @@ export async function appendConversationCustomAssetAdvertisements(args: {
             [],
             new Map([[responder.charId, picked]]),
             emojiPrefs.maxCount,
+            showEmoji,
           );
+          if (vision) vision.offeredEmojis = picked.slice(0, emojiPrefs.maxCount);
         }
       }
     }
 
     if (!toolSelectionHandled && !emojiAdvertisement) {
-      const orderedShared = await orderEmojiNames(sharedEmojiNames, emojiPrefs, assetQuery);
-      const orderedOwnByChar = new Map<string, string[]>();
-      for (const [charId, names] of ownEmojisByChar) {
-        orderedOwnByChar.set(charId, await orderEmojiNames(names, emojiPrefs, assetQuery));
-      }
+      const { orderedShared, orderedOwnByChar } = await orderAdvertisedPools(
+        respondingConversationChars,
+        sharedEmojiNames,
+        ownEmojisByChar,
+        emojiPrefs,
+        assetQuery,
+        describeEmoji,
+      );
       emojiAdvertisement = buildCustomEmojiAdvertisement(
         respondingConversationChars,
         orderedShared,
         orderedOwnByChar,
         emojiPrefs.maxCount,
+        showEmoji,
       );
+      if (vision) {
+        vision.offeredEmojis = listAdvertisedAssetNames(
+          respondingConversationChars,
+          orderedShared,
+          orderedOwnByChar,
+          emojiPrefs.maxCount,
+        );
+      }
     }
   }
 
@@ -347,6 +588,7 @@ export async function appendConversationCustomAssetAdvertisements(args: {
         stickerPrefs.toolConnectionId,
         args.connections,
         stickerPrefs.maxCount,
+        describeSticker,
       );
       if (picked !== null) {
         toolSelectionHandled = true;
@@ -356,23 +598,37 @@ export async function appendConversationCustomAssetAdvertisements(args: {
             [],
             new Map([[responder.charId, picked]]),
             stickerPrefs.maxCount,
+            showSticker,
           );
+          if (vision) vision.offeredStickers = picked.slice(0, stickerPrefs.maxCount);
         }
       }
     }
 
     if (!toolSelectionHandled && !stickerAdvertisement) {
-      const orderedShared = await orderEmojiNames(sharedStickerNames, stickerPrefs, assetQuery);
-      const orderedOwnByChar = new Map<string, string[]>();
-      for (const [charId, names] of ownStickersByChar) {
-        orderedOwnByChar.set(charId, await orderEmojiNames(names, stickerPrefs, assetQuery));
-      }
+      const { orderedShared, orderedOwnByChar } = await orderAdvertisedPools(
+        respondingConversationChars,
+        sharedStickerNames,
+        ownStickersByChar,
+        stickerPrefs,
+        assetQuery,
+        describeSticker,
+      );
       stickerAdvertisement = buildCustomStickerAdvertisement(
         respondingConversationChars,
         orderedShared,
         orderedOwnByChar,
         stickerPrefs.maxCount,
+        showSticker,
       );
+      if (vision) {
+        vision.offeredStickers = listAdvertisedAssetNames(
+          respondingConversationChars,
+          orderedShared,
+          orderedOwnByChar,
+          stickerPrefs.maxCount,
+        );
+      }
     }
   }
 
@@ -390,6 +646,20 @@ export async function appendConversationCustomAssetAdvertisements(args: {
 }
 
 /**
+ * The offered tokens after a label's colon: on one line when none has a description, else one per line with its
+ * description, so the model knows what each shows.
+ */
+export function listAssetTokens(names: string[], token: (name: string) => string, describe: AssetDescriber): string {
+  if (!names.some((name) => describe(name))) return ` ${names.map(token).join(" ")}`;
+  return names
+    .map((name) => {
+      const description = describe(name);
+      return description ? `\n- ${token(name)} (${description})` : `\n- ${token(name)}`;
+    })
+    .join("");
+}
+
+/**
  * Build the Conversation-mode system-prompt block that tells the responding
  * character(s) which custom emojis they may use (`:name:`).
  */
@@ -398,8 +668,9 @@ export function buildCustomEmojiAdvertisement(
   orderedGlobal: string[],
   orderedOwnByChar: Map<string, string[]>,
   maxCount: number,
+  describe: AssetDescriber = noDescriptions,
 ): string | null {
-  const toTokens = (names: string[]) => names.map((name) => `:${name}:`).join(" ");
+  const toTokens = (names: string[]) => listAssetTokens(names, (name) => `:${name}:`, describe);
   const lead =
     "You can use custom emojis in your reply by writing their name between colons, e.g. :name: — they render as small inline images. Use them only where they fit naturally; do not overuse them.";
 
@@ -411,15 +682,15 @@ export function buildCustomEmojiAdvertisement(
     }
     const capped = merged.slice(0, maxCount);
     if (capped.length === 0) return null;
-    return `${lead}\nBeyond the full standard emoji set, you may use these custom emojis: ${toTokens(capped)}`;
+    return `${lead}\nBeyond the full standard emoji set, you may use these custom emojis:${toTokens(capped)}`;
   }
 
   const lines: string[] = [];
   const global = orderedGlobal.slice(0, maxCount);
-  if (global.length > 0) lines.push(`Available to everyone: ${toTokens(global)}`);
+  if (global.length > 0) lines.push(`Available to everyone:${toTokens(global)}`);
   for (const responder of responders) {
     const own = (orderedOwnByChar.get(responder.charId) ?? []).slice(0, maxCount);
-    if (own.length > 0) lines.push(`${responder.name} also has: ${toTokens(own)}`);
+    if (own.length > 0) lines.push(`${responder.name} also has:${toTokens(own)}`);
   }
   if (lines.length === 0) return null;
   return `${lead}\nBeyond the full standard emoji set, these custom emojis are available (use by typing :name:):\n${lines.join("\n")}`;
@@ -434,8 +705,9 @@ export function buildCustomStickerAdvertisement(
   orderedGlobal: string[],
   orderedOwnByChar: Map<string, string[]>,
   maxCount: number,
+  describe: AssetDescriber = noDescriptions,
 ): string | null {
-  const toTokens = (names: string[]) => names.map((name) => `sticker:${name}:`).join(" ");
+  const toTokens = (names: string[]) => listAssetTokens(names, (name) => `sticker:${name}:`, describe);
   const lead =
     "You can send a sticker by writing its name as sticker:name: — it posts as a large block image on its own line. Send one only when it genuinely fits the moment, not in every message.";
 
@@ -447,15 +719,15 @@ export function buildCustomStickerAdvertisement(
     }
     const capped = merged.slice(0, maxCount);
     if (capped.length === 0) return null;
-    return `${lead}\nAvailable stickers: ${toTokens(capped)}`;
+    return `${lead}\nAvailable stickers:${toTokens(capped)}`;
   }
 
   const lines: string[] = [];
   const global = orderedGlobal.slice(0, maxCount);
-  if (global.length > 0) lines.push(`Available to everyone: ${toTokens(global)}`);
+  if (global.length > 0) lines.push(`Available to everyone:${toTokens(global)}`);
   for (const responder of responders) {
     const own = (orderedOwnByChar.get(responder.charId) ?? []).slice(0, maxCount);
-    if (own.length > 0) lines.push(`${responder.name} also has: ${toTokens(own)}`);
+    if (own.length > 0) lines.push(`${responder.name} also has:${toTokens(own)}`);
   }
   if (lines.length === 0) return null;
   return `${lead}\nAvailable stickers (send by writing sticker:name:):\n${lines.join("\n")}`;
@@ -667,6 +939,10 @@ export function addMessageReactor(
   const next = [...current];
   next[index] = { ...entry, by: [...entry.by, reactor], ...(imageUrl && !entry.imageUrl ? { imageUrl } : {}) };
   return next;
+}
+
+export function buildGlobalCustomStickerUrl(filePath: string): string {
+  return `/api/custom-stickers/file/${encodeURIComponent(filePath)}`;
 }
 
 export function buildGlobalCustomEmojiUrl(filePath: string): string {

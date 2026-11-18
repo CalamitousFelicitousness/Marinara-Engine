@@ -1,13 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import {
-  ArrowLeft,
   Check,
   ChevronRight,
   Download,
   GitFork,
   Home,
   Info,
-  Loader2,
   MoreHorizontal,
   PackageCheck,
   RefreshCw,
@@ -64,6 +62,9 @@ import {
 } from "./organizer/OrganizerLists";
 import type { AgentUpdateResult } from "./AgentUpdateDialog";
 import { AgentPage } from "./organizer/AgentPage";
+import { SurfaceBackButton } from "../ui/SurfaceBackButton";
+import { SurfaceCloseButton } from "../ui/SurfaceCloseButton";
+import { Spinner } from "../ui/Spinner";
 
 type BulkActionProgress = {
   action: "install" | "uninstall";
@@ -86,6 +87,7 @@ export function AgentCatalogView() {
   const shownLanguage = i18n.resolvedLanguage ?? i18n.language;
   const closeAgentCatalog = useUIStore((state) => state.closeAgentCatalog);
   const initialPackageId = useUIStore((state) => state.agentCatalogInitialPackageId);
+  const setAgentCatalogPage = useUIStore((state) => state.setAgentCatalogPage);
   const catalog = useCapabilityCatalog();
   const installed = useInstalledCapabilityPackages();
   const install = useInstallCapabilityPackage();
@@ -217,6 +219,13 @@ export function AgentCatalogView() {
     setQuery("");
     setPage({ kind: "agent", id: initialPackageId });
   }, [initialPackageId]);
+
+  // Back from an agent's Settings remounts the catalog: keep the store on the agent page being viewed, not the one
+  // the catalog was opened for.
+  const viewedAgentId = page.kind === "agent" ? page.id : null;
+  useEffect(() => {
+    setAgentCatalogPage(viewedAgentId);
+  }, [setAgentCatalogPage, viewedAgentId]);
 
   const handleInstall = async (entry: CapabilityCatalogPackage) => {
     const isUpdate = installedById.has(entry.manifest.id);
@@ -546,7 +555,7 @@ export function AgentCatalogView() {
     ? localizeUi("ui.agents.organizer.backToSection", {
         section: localizeUi(sectionLabelKey(sectionOf(agentEntry))),
       })
-    : localizeUi("capabilities.actions.backToAgents");
+    : undefined;
 
   const searchField = (
     <div className="relative">
@@ -570,8 +579,7 @@ export function AgentCatalogView() {
   if (catalog.isLoading) {
     content = (
       <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-[var(--muted-foreground)]">
-        <Loader2 className="animate-spin" size="1rem" />{" "}
-        {localizeUi("ui.agents.agentcatalogview.loadingTheOfficialCatalog")}
+        <Spinner size="md" /> {localizeUi("ui.agents.agentcatalogview.loadingTheOfficialCatalog")}
       </div>
     );
   } else if (catalog.isError) {
@@ -656,15 +664,12 @@ export function AgentCatalogView() {
         className="mari-chrome-token-scope flex h-full min-h-0 flex-col overflow-hidden bg-[var(--marinara-editor-bg)]"
       >
         <header className="relative z-10 flex shrink-0 items-center gap-3 border-b border-[var(--border)]/50 bg-[var(--card)]/90 px-3 py-2 backdrop-blur-md md:px-6 md:py-3">
-          <button
-            type="button"
-            onClick={agentEntry ? () => go({ kind: "section", id: sectionOf(agentEntry) }) : closeAgentCatalog}
+          <SurfaceBackButton
+            onClick={agentEntry ? () => go({ kind: "section", id: sectionOf(agentEntry) }) : undefined}
+            label={backLabel}
             className="mari-chrome-control h-9 w-9 shrink-0 rounded-xl p-0 md:h-10 md:w-10"
-            title={backLabel}
-            aria-label={backLabel}
-          >
-            <ArrowLeft size="1rem" />
-          </button>
+            iconSize="1rem"
+          />
           <div className="min-w-0 flex-1">
             <p className="text-[0.625rem] font-semibold uppercase tracking-[0.24em] text-[var(--muted-foreground)]">
               {localizeUi("ui.agents.organizer.eyebrow")}
@@ -689,11 +694,16 @@ export function AgentCatalogView() {
             onClick={(event) => openMenu(null, event)}
           >
             {bulkActionPending ? (
-              <Loader2 size="0.95rem" className="animate-spin" aria-hidden="true" />
+              <Spinner size="md" aria-hidden="true" />
             ) : (
               <MoreHorizontal size="0.95rem" aria-hidden="true" />
             )}
           </button>
+          <SurfaceCloseButton
+            buttonClassName="mari-chrome-control h-9 w-9 shrink-0 rounded-xl p-0 md:h-10 md:w-10"
+            iconSize="1rem"
+            dividerClassName=""
+          />
         </header>
 
         {bulkProgress && (

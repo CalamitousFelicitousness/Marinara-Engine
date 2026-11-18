@@ -10,6 +10,8 @@ import { SmoothFolderContent } from "../ui/SmoothFolderContent";
 import { TOUCH_DRAG_PREVIEW_Z_INDEX, useTouchFolderDrag } from "../../hooks/use-touch-folder-drag";
 import { useLibraryFolderDrag } from "../../hooks/use-library-folder-drag";
 import { insertLibraryItems } from "../../lib/library-order";
+import { Checkbox } from "../ui/Checkbox";
+import { Select } from "../ui/Select";
 
 const control =
   "min-h-[44px] rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] md:min-h-8 md:py-1.5 md:text-xs";
@@ -93,27 +95,25 @@ export function SpriteFolderSelect({
 }) {
   const { t } = useTranslation();
   return (
-    <label className="block space-y-1 text-xs font-medium">
+    <div className="block space-y-1 text-xs font-medium">
       <span>{t("sprites.library.folder")}</span>
-      <select
+      <Select
+        label={t("sprites.library.folder")}
         className="min-h-11 w-full rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-3 py-2 text-sm"
         value={library.folders.some((folder) => folder.id === sprite.folderId) ? sprite.folderId! : "unfiled"}
         disabled={busy || library.mutation.isPending || !library.query.data}
-        onChange={(event) =>
+        onChange={(next) =>
           void library.mutate("post", "move", {
             expressions: [sprite.expression],
-            folderId: event.target.value === "unfiled" ? null : event.target.value,
+            folderId: next === "unfiled" ? null : next,
           })
         }
-      >
-        <option value="unfiled">{t("sprites.library.unfiled")}</option>
-        {library.folders.map((folder) => (
-          <option key={folder.id} value={folder.id}>
-            {folder.name}
-          </option>
-        ))}
-      </select>
-    </label>
+        options={[
+          { value: "unfiled", label: t("sprites.library.unfiled") },
+          ...library.folders.map((folder) => ({ value: folder.id, label: folder.name })),
+        ]}
+      />
+    </div>
   );
 }
 
@@ -577,7 +577,7 @@ function SpriteInlineFolder({
     >
       <div
         className={cn(
-          "group relative flex min-h-11 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--sidebar)] px-2 py-1.5 hover:bg-[var(--sidebar-accent)]/40 [html[data-marinara-drag-kind^=sprite-][data-marinara-drag-kind$=-folder]_&]:hover:bg-[var(--sidebar)] group-data-[drag-target=inside]/sprite-folder:border-[var(--marinara-chat-chrome-button-border-active)] group-data-[drag-target=inside]/sprite-folder:bg-[var(--marinara-chat-chrome-highlight-bg)] group-data-[drag-target=inside]/sprite-folder:text-[var(--marinara-chat-chrome-button-text-active)] md:min-h-9",
+          "mari-sprite-folder-row group relative flex min-h-11 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--sidebar)] px-2 py-1.5 hover:bg-[var(--sidebar-accent)]/40 group-data-[drag-target=inside]/sprite-folder:border-[var(--marinara-chat-chrome-button-border-active)] group-data-[drag-target=inside]/sprite-folder:bg-[var(--marinara-chat-chrome-highlight-bg)] group-data-[drag-target=inside]/sprite-folder:text-[var(--marinara-chat-chrome-button-text-active)] md:min-h-9",
           expanded && "rounded-b-none",
         )}
       >
@@ -681,8 +681,7 @@ export function SpriteSelection({
   if (!library.selecting) return null;
   return (
     <label className="absolute left-2 top-2 z-10 flex h-[44px] w-[44px] items-center justify-center rounded-lg bg-[var(--card)]/90 md:h-9 md:w-9">
-      <input
-        type="checkbox"
+      <Checkbox
         disabled={disabled}
         checked={library.selected.includes(sprite.expression)}
         onChange={() => library.toggle(sprite.expression)}

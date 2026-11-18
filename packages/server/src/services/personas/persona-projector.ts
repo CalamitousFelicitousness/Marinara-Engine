@@ -1,5 +1,6 @@
 import {
   normalizeConvoBehavior,
+  normalizeNameAliases,
   normalizeCardFieldAlternatives,
   normalizeAvatarCrop,
   normalizePersonaStats,
@@ -32,6 +33,7 @@ export function projectPersona(row: PersonaStorageRow): Persona {
     scenario: stringValue(row.scenario),
     backstory: stringValue(row.backstory),
     appearance: stringValue(row.appearance),
+    publicFace: stringValue(row.publicFace) || undefined,
     imageAppearanceEnabled: row.imageAppearanceEnabled === "true",
     imageAppearance: stringValue(row.imageAppearance),
     avatarPath: typeof row.avatarPath === "string" ? row.avatarPath : null,
@@ -46,6 +48,7 @@ export function projectPersona(row: PersonaStorageRow): Persona {
     personaStats: normalizePersonaStats(row.personaStats),
     tags: normalizePersonaStringArray(row.tags),
     savedStatusOptions: normalizePersonaStringArray(row.savedStatusOptions),
+    nameAliases: normalizeNameAliases(row.nameAliases),
     convoDisplayName: stringValue(row.convoDisplayName) || undefined,
     aboutMe: stringValue(row.aboutMe) || undefined,
     convoBehavior: normalizeConvoBehavior(row.convoBehavior),
@@ -77,6 +80,7 @@ export function encodePersonaUpdate(input: PersonaUpdateInput): EncodedPersonaUp
     "scenario",
     "backstory",
     "appearance",
+    "publicFace",
     "imageAppearance",
     "nameColor",
     "dialogueColor",
@@ -104,6 +108,7 @@ export function encodePersonaUpdate(input: PersonaUpdateInput): EncodedPersonaUp
   if (Object.hasOwn(input, "tags")) encoded.tags = encodeStructured(input.tags);
   if (Object.hasOwn(input, "savedStatusOptions"))
     encoded.savedStatusOptions = encodeStructured(input.savedStatusOptions);
+  if (Object.hasOwn(input, "nameAliases")) encoded.nameAliases = encodeStructured(input.nameAliases);
   if (Object.hasOwn(input, "convoBehavior"))
     encoded.convoBehavior = input.convoBehavior === null ? "" : encodeStructured(input.convoBehavior);
   return encoded;

@@ -1,3 +1,4 @@
+// regression-layout: source-path every speak call site must pass the synthesis policy, so the call sites' text is checked.
 // One synthesis request retries what is worth retrying, gives up on a deadline,
 // and never retries a request the engine already refused on its merits.
 //

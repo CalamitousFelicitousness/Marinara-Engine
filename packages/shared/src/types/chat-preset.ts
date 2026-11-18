@@ -262,6 +262,7 @@ export const CHAT_PROFILE_FOLLOWER_SYNC_KEYS: readonly string[] = [
   "activeToolIds", // Tools the model may call
   "cardCssMode", // How character card styles apply
   "colorInlineNames", // Colour character names in message text
+  "colorPersonaInlineNames", // Colour the persona's names in message text
   "scopedRegexMode", // Which scoped regex scripts run
   // Group chats
   "groupChatMode", // Merged or individual narration
@@ -269,6 +270,7 @@ export const CHAT_PROFILE_FOLLOWER_SYNC_KEYS: readonly string[] = [
   "groupTurnPromptEnabled", // Tell each character it is their turn
   "groupSpeakerColors", // Colour speaker names
   "groupSpeakerNamesInHistory", // Speaker names in the history
+  "groupPublicFacesEnabled", // Other characters' Public Faces in each turn
   "autoActiveCharacters", // Who keeps the active characters current
   // Conversation features
   "crossChatAwareness", // Characters remember their other chats

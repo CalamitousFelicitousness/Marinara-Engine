@@ -18,7 +18,7 @@ import {
   type WeekSchedule,
 } from "@marinara-engine/shared";
 import type { Message } from "@marinara-engine/shared";
-import { chatKeys, useUpdateChatMetadata } from "../../hooks/use-chats";
+import { chatKeys, conversationStatusKeys, useUpdateChatMetadata } from "../../hooks/use-chats";
 import { characterKeys, useUpdateCharacter } from "../../hooks/use-characters";
 import { useGenerate } from "../../hooks/use-generate";
 import { api } from "../../lib/api-client";
@@ -42,6 +42,7 @@ import {
 import { ConversationPresenceScheduleSection } from "./ConversationPresenceScheduleSection";
 import { formatRelativeContact } from "../../lib/relative-time";
 import { useTranslation as useUiTranslation } from "react-i18next";
+import { avatarPreviewSrc } from "../../lib/avatar-preview";
 
 type StatusEntry = {
   status: ConversationPresenceStatus;
@@ -182,7 +183,7 @@ export function ConversationPresenceCard({
     chatMeta.conversationSchedulesEnabled === true ||
     (chatMeta.conversationSchedulesEnabled == null && Object.keys(schedules).length > 0);
   const statusesQuery = useQuery({
-    queryKey: ["conversation-status", chatId],
+    queryKey: conversationStatusKeys.detail(chatId),
     queryFn: async ({ signal }) => api.get<StatusResponse>(`/conversation/status/${chatId}`, { signal }),
     enabled: !!chatId && chatCharIds.length > 0,
     refetchInterval: () => (document.hidden ? false : 60_000),
@@ -381,7 +382,7 @@ export function ConversationPresenceCard({
           );
           const failure = Object.values(result.results).find((entry) => entry.status.startsWith("error:"));
           if (failure) toast.error(failure.status.slice("error:".length).trim());
-          await queryClient.refetchQueries({ queryKey: ["chat", chatId] });
+          await queryClient.refetchQueries({ queryKey: chatKeys.detail(chatId) });
         }
         await refetchStatuses();
       } catch (error) {
@@ -581,7 +582,7 @@ export function ConversationPresenceCard({
               {characters[0].avatarUrl ? (
                 <span className={avatarShellClass}>
                   <img
-                    src={characters[0].avatarUrl}
+                    src={avatarPreviewSrc(characters[0].avatarUrl)}
                     alt={characters[0].name}
                     className="h-full w-full object-cover"
                     style={getAvatarCropStyle(characters[0].avatarCrop)}
@@ -617,7 +618,7 @@ export function ConversationPresenceCard({
                   {character.avatarUrl ? (
                     <span className={avatarShellClass}>
                       <img
-                        src={character.avatarUrl}
+                        src={avatarPreviewSrc(character.avatarUrl)}
                         alt={character.name}
                         className="h-full w-full object-cover"
                         style={getAvatarCropStyle(character.avatarCrop)}
@@ -729,7 +730,7 @@ export function ConversationPresenceCard({
                         {character.avatarUrl ? (
                           <span className="relative block h-9 w-9 shrink-0 overflow-hidden rounded-xl ring-1 ring-[var(--border)]/80">
                             <img
-                              src={character.avatarUrl}
+                              src={avatarPreviewSrc(character.avatarUrl)}
                               alt={character.name}
                               className="h-full w-full object-cover"
                               style={getAvatarCropStyle(character.avatarCrop)}

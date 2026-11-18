@@ -30,7 +30,7 @@ import { useTranslation } from "react-i18next";
 import { checkReply } from "../../lib/reply-checkup";
 import { countBlockingReviews } from "../../lib/professor-mari-presentation";
 import { useAgentConfigs } from "../../hooks/use-agents";
-import { useCharacters, usePersonas } from "../../hooks/use-characters";
+import { useCharacterListRows, usePersonas } from "../../hooks/use-characters";
 import { chatKeys, useChats, useProfessorMariChats, useUpdateChat, useUpdateChatMetadata } from "../../hooks/use-chats";
 import { requestChatRetryWithConnection } from "../../lib/chat-floating-ui-events";
 import { useConnections } from "../../hooks/use-connections";
@@ -212,6 +212,17 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
   );
   // Read before this dialog commits, so only another dialog (the wizard, a lightbox, a Modal) counts.
   const [overDialog] = useState(() => document.querySelector('[aria-modal="true"]') !== null);
+  // Published as an attribute for the sheet CSS: a `:has(:focus)` rule there restyled the whole app on every DOM insertion.
+  const [composerFocused, setComposerFocused] = useState(false);
+  // A focused composer that unmounts sends no blur, so let the next focus anywhere clear the flag.
+  useEffect(() => {
+    if (!composerFocused) return;
+    const clear = (event: FocusEvent) => {
+      if (!(event.target as Element).classList?.contains("mari-workspace-composer__input")) setComposerFocused(false);
+    };
+    document.addEventListener("focusin", clear);
+    return () => document.removeEventListener("focusin", clear);
+  }, [composerFocused]);
   useLayoutEffect(() => takePullHandoff()?.(dialogRef.current), []);
   // R33: how far the search field has to fall to land where Mari's composer sits.
   // Measured while the list is still up, because by the time it leaves the field
@@ -319,7 +330,7 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
     readOmnibarFrecencyEntries(),
   );
   const chats = useChats();
-  const characters = useCharacters();
+  const characters = useCharacterListRows();
   const personas = usePersonas();
   const lorebooks = useLorebooks(undefined, { includeHidden: true });
   const presets = usePresets();
@@ -874,6 +885,18 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
   );
   const idle = !query.trim() && presentation.groups.length === 0;
   const listVisible = pane !== "mari" && !idle;
+  // The suggestions shown before you type come from several lists that arrive at different times. They
+  // stay invisible (in place) until those have arrived, or for at most 0.6 s, so rows never pop in and
+  // push the list down while Search opens.
+  const idleSourcesSettled = [chats, characters, personas, lorebooks, mariChats, mariWorkspaceStatus].every(
+    (source) => source.isFetched || source.isError,
+  );
+  const [idleHoldExpired, setIdleHoldExpired] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setIdleHoldExpired(true), 600);
+    return () => window.clearTimeout(timer);
+  }, []);
+  const holdIdleList = !query.trim() && !queryScope && !idleSourcesSettled && !idleHoldExpired;
   // The filter bar only renders once there is a query, so availability always comes from the results.
   const tabAvailability = presentation.categoryAvailability;
   const availableFilters = COMMAND_CENTER_CATEGORY_FILTERS.filter(
@@ -1273,14 +1296,14 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
   // The chat sidebar applies the same rule.
   const leavePrompt = () => t("commandCenter.dirtyEditor", "You have unsaved changes. Leave this editor?");
   const confirmLeaveEditor = () => confirmEditorLeave(ui(), leavePrompt());
-  const navigate = (target: ProfessorMariNavigationTarget) => {
+  const navigate = async (target: ProfessorMariNavigationTarget) => {
     // Q2: a setting that lives in this omnibar opens its settings view here, so the omnibar stays
     // open and nothing is left behind (no editor-leave prompt, no close).
     if (target.kind === "settings" && isOmnibarSettingsTarget(target)) {
       openSettings(target.controlId ?? null);
       return false;
     }
-    if (!confirmLeaveEditor()) return false;
+    if (!(await confirmLeaveEditor())) return false;
     executeStateNavigation(target);
     return true;
   };
@@ -1291,12 +1314,12 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
     // O2: a no-op for Mari's row, enforced inside recordOmnibarFrecencyUse.
     setFrecencyEntries(recordOmnibarFrecencyUse(id, omnibarContext.surface));
   };
-  const runSystemAction = (result: OmnibarResult) => {
+  const runSystemAction = async (result: OmnibarResult) => {
     const definition = createSystemCommandDefinitions((key, fallback) =>
       t(`commandCenter.system.${key}`, fallback),
     ).find((item) => item.id === result.id);
     if (!definition) return false;
-    if (!confirmLeaveEditor()) return false;
+    if (!(await confirmLeaveEditor())) return false;
     if (
       definition.availability.status !== "available" &&
       !(
@@ -1313,14 +1336,14 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
     } else executeStateNavigation(definition.action.target);
     return true;
   };
-  const choose = (result: OmnibarResult) => {
+  const choose = async (result: OmnibarResult) => {
     // Slice 78: a pick after typing teaches "search" or "command"; a Try example teaches nothing.
     // Controls are counted where they flip; a row reaching here with one (a lorebook's Enabled
     // switch) is being opened, which is a search.
     if (query.trim() && result.id !== "ask-professor-mari" && result.action?.kind !== "refine-query")
       markTry(isOmnibarCommandPick({ action: result.action, chooseValue: result.chooseValue }) ? "command" : "search");
     if (result.action) {
-      runResultAction(result, result.action);
+      await runResultAction(result, result.action);
       return;
     }
     if (result.category === "lorebook" && !result.action) {
@@ -1328,7 +1351,7 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
       // there, the same unambiguous rule "add <character>" uses. Lorebook rows
       // never flip the global enabled flag; only the Lorebooks panel does.
       if (attachLorebookIfNotActive(result)) return;
-      if (result.target && navigate(result.target)) {
+      if (result.target && (await navigate(result.target))) {
         recordUse(result.id);
         onClose();
       }
@@ -1336,7 +1359,7 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
     }
     if (result.control) return;
     if (runDirectChatAction(result)) return;
-    if (runSystemAction(result)) {
+    if (await runSystemAction(result)) {
       recordUse(result.id);
       onClose();
       return;
@@ -1366,13 +1389,13 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
       return;
     }
     if (result.category === "connection") {
-      if (!confirmLeaveEditor()) return;
+      if (!(await confirmLeaveEditor())) return;
       ui().openConnectionDetail(result.id.slice("connection:".length));
       recordUse(result.id);
       onClose();
       return;
     }
-    if (result.target && navigate(result.target)) {
+    if (result.target && (await navigate(result.target))) {
       recordUse(result.id);
       onClose();
     }
@@ -1707,7 +1730,7 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
     });
   }, [mariActive]);
   const completionActions = mariFinished ? omnibarCompletionActions(mariHandoff.context) : [];
-  const runCompletionAction = (action: OmnibarCompletionAction) => {
+  const runCompletionAction = async (action: OmnibarCompletionAction) => {
     setSessionValue("mariHandoff", null);
     if (action.kind === "return") {
       leaveDetail();
@@ -1723,7 +1746,7 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
     if (!resource) return;
     if (isMariEditorKind(resource.kind)) {
       const fieldId = action.kind === "open-field" ? action.fieldId : undefined;
-      if (!openEditorAtField(resource.kind, resource.id, fieldId, leavePrompt())) return;
+      if (!(await openEditorAtField(resource.kind, resource.id, fieldId, leavePrompt()))) return;
       onClose();
       return;
     }
@@ -2007,6 +2030,9 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
       data-mode={pane === "mari" ? "work" : "find"}
       data-mari-companion={companionShape ?? undefined}
       data-mari-sheet-snap={companionShape === "sheet" ? sheetSnap : undefined}
+      data-mari-composer-focused={composerFocused ? "true" : undefined}
+      onFocus={(event) => setComposerFocused(event.target.classList.contains("mari-workspace-composer__input"))}
+      onBlur={() => setComposerFocused(false)}
       className={
         companion
           ? "pointer-events-none fixed inset-0 z-(--mari-layer-omnibar)"
@@ -2019,7 +2045,13 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
       animate={{ opacity: 1 }}
       transition={reduceMotion ? { duration: 0 } : { duration: 0.12, ease: "easeOut" }}
       onMouseDown={(event) => event.target === event.currentTarget && onClose()}
-      onKeyDown={companion ? closeCompanionOnEscape : trapFocus}
+      onKeyDown={(event) => {
+        // React bubbles keys from overlays portaled out of her window (the image lightbox and its model picker,
+        // #9387) up to here. They belong to that overlay: Escape there must not close her, nor Tab pull focus back.
+        if (!event.currentTarget.contains(event.target as Node)) return;
+        if (companion) closeCompanionOnEscape(event);
+        else trapFocus(event);
+      }}
     >
       {/* Slice 73: the height transition is the desktop dialog's. On a phone the panel is the full screen, and
           animating it let every keyboard close leave her composer up to ~200 px above the bottom for 300 ms. */}
@@ -2308,6 +2340,7 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
         {pane !== "mari" && idle ? <OmnibarEmpty /> : null}
         {!listVisible ? null : (
           <OmnibarResultList
+            held={holdIdleList}
             listRef={listRef}
             query={query}
             loading={loading}

@@ -17,6 +17,7 @@ export const createCustomEmojiSchema = z.object({
   filePath: z.string().min(1),
   width: z.number().int().positive().nullable().default(null),
   height: z.number().int().positive().nullable().default(null),
+  description: z.string().nullable().optional(),
 });
 
 export const updateCustomEmojiSchema = z.object({
@@ -40,7 +41,26 @@ export interface CustomEmojiSelectionPrefs {
   maxCount: number;
   /** Connection used for the tool-call selection mode (null = none). */
   toolConnectionId: string | null;
+  /**
+   * Let a model that reads images see custom emojis and stickers as a picture sheet: "off", the
+   * newest message's, or those in the last `visionRecentCount` messages.
+   */
+  visionMode: CustomEmojiVisionMode;
+  /** Messages scanned when `visionMode` is "recent". */
+  visionRecentCount: number;
+  /** How many of this turn's offered emojis and stickers also go on the sheet, in offered order (0 = none). */
+  visionOfferedCount: number;
+  /** Use the pictures' descriptions to choose which ones are offered (no prompt cost). */
+  useDescriptions: boolean;
+  /** Also show each offered one's description next to its name in the prompt (costs input tokens). */
+  showDescriptions: boolean;
 }
+
+export const CUSTOM_EMOJI_VISION_MODES = ["off", "last", "recent"] as const;
+export type CustomEmojiVisionMode = (typeof CUSTOM_EMOJI_VISION_MODES)[number];
+export const CUSTOM_EMOJI_VISION_RECENT_MIN = 2;
+export const CUSTOM_EMOJI_VISION_RECENT_MAX = 20;
+export const CUSTOM_EMOJI_VISION_OFFERED_MAX = 30;
 
 export const CUSTOM_EMOJI_SELECTION_MIN_COUNT = 1;
 export const CUSTOM_EMOJI_SELECTION_MAX_COUNT = 100;
@@ -48,7 +68,17 @@ export const CUSTOM_EMOJI_SELECTION_DEFAULTS: CustomEmojiSelectionPrefs = {
   mode: "semantic",
   maxCount: 20,
   toolConnectionId: null,
+  visionMode: "off",
+  visionRecentCount: 6,
+  visionOfferedCount: 6,
+  useDescriptions: true,
+  showDescriptions: false,
 };
+
+function clampWhole(value: unknown, min: number, max: number, fallback: number): number {
+  const whole = typeof value === "number" && Number.isFinite(value) ? Math.floor(value) : fallback;
+  return Math.min(max, Math.max(min, whole));
+}
 
 /** Coerce stored/partial/unknown chat metadata into valid selection prefs (fills defaults, clamps count). */
 export function normalizeCustomEmojiSelection(raw: unknown): CustomEmojiSelectionPrefs {
@@ -63,5 +93,33 @@ export function normalizeCustomEmojiSelection(raw: unknown): CustomEmojiSelectio
   const maxCount = Math.min(CUSTOM_EMOJI_SELECTION_MAX_COUNT, Math.max(CUSTOM_EMOJI_SELECTION_MIN_COUNT, rawMax));
   const toolConnectionId =
     typeof obj.toolConnectionId === "string" && obj.toolConnectionId.trim() ? obj.toolConnectionId.trim() : null;
-  return { mode, maxCount, toolConnectionId };
+  const visionMode = (CUSTOM_EMOJI_VISION_MODES as readonly string[]).includes(obj.visionMode as string)
+    ? (obj.visionMode as CustomEmojiVisionMode)
+    : CUSTOM_EMOJI_SELECTION_DEFAULTS.visionMode;
+  const visionRecentCount = clampWhole(
+    obj.visionRecentCount,
+    CUSTOM_EMOJI_VISION_RECENT_MIN,
+    CUSTOM_EMOJI_VISION_RECENT_MAX,
+    CUSTOM_EMOJI_SELECTION_DEFAULTS.visionRecentCount,
+  );
+  const visionOfferedCount = clampWhole(
+    obj.visionOfferedCount,
+    0,
+    CUSTOM_EMOJI_VISION_OFFERED_MAX,
+    CUSTOM_EMOJI_SELECTION_DEFAULTS.visionOfferedCount,
+  );
+  const useDescriptions =
+    typeof obj.useDescriptions === "boolean" ? obj.useDescriptions : CUSTOM_EMOJI_SELECTION_DEFAULTS.useDescriptions;
+  const showDescriptions =
+    typeof obj.showDescriptions === "boolean" ? obj.showDescriptions : CUSTOM_EMOJI_SELECTION_DEFAULTS.showDescriptions;
+  return {
+    mode,
+    maxCount,
+    toolConnectionId,
+    visionMode,
+    visionRecentCount,
+    visionOfferedCount,
+    useDescriptions,
+    showDescriptions,
+  };
 }

@@ -43,7 +43,7 @@ test("sheet uploads persist on refresh without saving unrelated card drafts", as
   const open = async () => {
     await page.evaluate(async (id) => {
       const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
-      useUIStore.getState().openCharacterDetail(id, { initialTab: "sprites" });
+      useUIStore.getState().openCharacterDetail(id, { initialTab: "character-sheet" });
     }, character.id);
     await expect(section).toBeVisible();
     await section.getByRole("button", { name: "Manage", exact: true }).click();
@@ -61,7 +61,7 @@ test("sheet uploads persist on refresh without saving unrelated card drafts", as
     await open();
     await expect(section.getByAltText(`${name} character sheet`, { exact: true })).toBeVisible();
     expect((await saved()).extensions.characterSheetImageId).toBe(firstId);
-    const reference = section.getByRole("checkbox", { name: "Use character sheet" });
+    const reference = section.getByRole("switch", { name: "Use character sheet" });
     await expect(reference).toBeEnabled();
     await reference.locator("..").click();
     await expect.poll(async () => (await saved()).extensions.useCharacterSheetAsReference).toBe(true);
@@ -174,11 +174,11 @@ test("applied character sheets use the avatar Full image presentation", async ({
     const sections = editor.getByRole("button", { name: "Editor sections", exact: true });
     if (await sections.isVisible()) {
       await sections.click();
-      await editor.getByRole("menuitemradio", { name: "Sprites", exact: true }).click();
+      await editor.getByRole("menuitemradio", { name: "Images", exact: true }).click();
     } else {
       await editor
         .getByRole("navigation", { name: "Editor sections" })
-        .getByRole("button", { name: "Sprites", exact: true })
+        .getByRole("button", { name: "Images", exact: true })
         .click();
     }
     await editor.getByRole("button", { name: "Open full image", exact: true }).click();

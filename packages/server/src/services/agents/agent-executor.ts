@@ -43,6 +43,7 @@ import {
   MIN_AGENT_MAX_TOKENS,
   normalizeTrackerHiddenFields,
   normalizeCustomAgentCapabilities,
+  getAgentCardContextMode,
   getAgentContextSources,
   previousAgentOutputText,
   publicAgentOutput,
@@ -310,6 +311,7 @@ export function buildAgentPromptMacroContext(
       personality: value(character.personality),
       backstory: value(character.backstory),
       appearance: value(character.appearance),
+      publicFace: value(character.publicFace),
       scenario: value(character.scenario),
       example: value(character.mesExample),
       systemPrompt: value(character.systemPrompt),
@@ -321,6 +323,7 @@ export function buildAgentPromptMacroContext(
           personality: value(firstCharacter.personality),
           backstory: value(firstCharacter.backstory),
           appearance: value(firstCharacter.appearance),
+          publicFace: value(firstCharacter.publicFace),
           scenario: value(firstCharacter.scenario),
           example: value(firstCharacter.mesExample),
           systemPrompt: value(firstCharacter.systemPrompt),
@@ -334,6 +337,7 @@ export function buildAgentPromptMacroContext(
           backstory: value(context.persona.backstory),
           appearance: value(context.persona.appearance),
           scenario: value(context.persona.scenario),
+          publicFace: value(context.persona.publicFace),
         }
       : undefined,
     lorebookEntryCounts: context.lorebookEntryCounts,
@@ -652,7 +656,8 @@ type AgentRequestOptions = Pick<
 
 /**
  * The connection-derived options every agent call sends (#7131). A reasoning level or Off chosen on the connection
- * wins; without one, a JSON reply keeps asking for reasoning off and other calls leave the provider default alone.
+ * wins, and so does medium on a model that cannot turn thinking off (Gemini 4 Argon and Carbon) with none saved;
+ * without one, a JSON reply keeps asking for reasoning off and other calls leave the provider default alone.
  */
 export function agentRequestOptions(config: AgentExecConfig, jsonResponse: boolean): AgentRequestOptions {
   const generation = config.generation ?? {};
@@ -3038,10 +3043,17 @@ function buildLoreBlock(context: AgentContext, sources: CustomAgentContextSource
   const parts: string[] = [];
   parts.push(`<lore>`);
 
-  if (sources.characters && context.characters.length > 0) {
+  // Public Face sends the name and that field only. An empty one sends the name alone, never the card.
+  const charactersMode = getAgentCardContextMode(sources, "characters");
+  if (charactersMode !== "off" && context.characters.length > 0) {
     parts.push(`<characters>`);
     for (const char of context.characters) {
       parts.push(`<character id="${char.id}" name="${char.name}">`);
+      if (charactersMode === "publicFace") {
+        pushLoreField(parts, "Public Face", char.publicFace);
+        parts.push(`</character>`);
+        continue;
+      }
       pushLoreField(parts, "Description", char.description);
       pushLoreField(parts, "Personality", char.personality);
       pushLoreField(parts, "Backstory", char.backstory);
@@ -3067,7 +3079,13 @@ function buildLoreBlock(context: AgentContext, sources: CustomAgentContextSource
     parts.push(`</characters>`);
   }
 
-  if (sources.persona && context.persona) {
+  const personaMode = getAgentCardContextMode(sources, "persona");
+  if (personaMode === "publicFace" && context.persona) {
+    parts.push(`<user_persona>`);
+    parts.push(`Name: ${context.persona.name}`);
+    pushLoreField(parts, "Public Face", context.persona.publicFace);
+    parts.push(`</user_persona>`);
+  } else if (personaMode === "full" && context.persona) {
     parts.push(`<user_persona>`);
     parts.push(`Name: ${context.persona.name}`);
     if (context.persona.description) parts.push(`Description: ${context.persona.description}`);

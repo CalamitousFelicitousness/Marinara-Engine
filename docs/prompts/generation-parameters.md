@@ -42,6 +42,8 @@ Each numeric parameter has an input box. On an account it also has a Send switch
 - When Reasoning Effort is sent, **Off** asks the service to turn thinking off, when the model is known to support that. Some models cannot turn thinking off and may still return reasoning. Choose a non-reasoning model when thinking must be absent.
 - When it is not sent, no reasoning preference goes out, and the service uses its own default.
 
+MiniMax M3.1 Flash on NanoGPT always reasons. It offers **Low** through **Max**. NanoGPT uses **Max** when it receives no effort, and Marinara sends **Low** for a previously saved **Off**.
+
 **Verbosity** sets how long and detailed replies should be: **None**, **Low**, **Medium** or **High**. Only some models use it.
 
 ## Tuning tips
@@ -162,13 +164,15 @@ The **Effective** line beside a parameter shows the value that wins and which la
 
 ## Parameters for agents
 
-Agent calls use the **Chat defaults** saved on the account they run on: the agent's own account, or the chat's account when the agent has none. The Send switches and model limits apply as for a chat reply. Presets and a chat's **Advanced Parameters** do not change agent calls, except for the temperature rule below.
+Agent calls use the **Chat defaults** saved on the account they run on: the agent's own account, or the chat's account when the agent has none. The Send switches and model limits apply as for a chat reply. The rules below explain when agents use a chat's **Advanced Parameters**.
+
+In Roleplay, a chat's **Reasoning Effort** and its Send switch also apply to Illustrator's **Prompt Model**. Automatic illustrations, narrator commands and manual illustrations use that chat setting when you set it. The fallback model uses its own saved effort when it has one.
 
 - **Sent to agents:** Temperature, Top P, Top K, Frequency, Presence, Reasoning Effort, Verbosity, Service Tier, Custom Parameters, custom headers, and the extra parameters you add under **Settings**, then **Advanced**, then **Parameters** (such as Top A or a seed). A parameter whose Send switch is off is not sent.
 - **Not sent to agents:** Max Output Tokens, stop sequences, prefills, Thinking Tags and other prompt-format settings. Each agent keeps its own **Max Output Tokens**.
 - **Temperature:** an agent uses the account's temperature, or 0.7 when none is saved. Beholder always uses 0, and the Illustrator's prompt writer uses its own value. During a chat reply, agents on the chat's account take the temperature and Send switches the chat resolved. Retries use the account's saved values.
-- **Reasoning Effort:** a level you pick, or **Off**, applies to every agent on that account whose model takes it. **Use custom defaults for this model** starts Reasoning Effort at **Maximum** on most accounts (**Default** on Codex), so agents think at the highest level, which is slower and costs more. Pick a lower level, or turn its Send switch off, to make them think less. With no level saved, agents that answer in JSON ask for thinking off, and other agents leave the model's default.
-- **Room to think:** when the account saves a Reasoning Effort, Marinara adds room for thinking on top of the agent's **Max Output Tokens**, within the account's output cap, the model's limit and the free context. A custom endpoint gets it even when it does not send the level.
+- **Reasoning Effort:** a level you pick, or **Off**, applies to every agent on that account whose model takes it. **Use custom defaults for this model** starts Reasoning Effort at **Maximum** on most accounts (**Default** on Codex), so agents think at the highest level, which is slower and costs more. Pick a lower level, or turn its Send switch off, to make them think less. With no level saved, agents that answer in JSON ask for thinking off, and other agents leave the model's default. Gemini 4 Argon and Carbon can't turn thinking off, so on Google AI Studio and Vertex their agents send **Medium** instead, and Gemini 4 Hydrogen's send **High**.
+- **Room to think:** when the account saves a Reasoning Effort, or the model is Gemini 4 Argon, Carbon or Hydrogen, Marinara adds room for thinking on top of the agent's **Max Output Tokens**, within the account's output cap, the model's limit and the free context. A custom endpoint gets it even when it does not send the level.
 
 Installed agent packages follow the same account values. A value the account saves and sends replaces what the package asks for, and anything unset keeps the package's own setting. **Reasoning Effort** or **Max Output Tokens** switched off on the account is not sent, even if the package asks. Temperature and Verbosity start switched off, so the package's own value stays.
 

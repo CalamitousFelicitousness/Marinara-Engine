@@ -3,7 +3,7 @@
 // that can serve the lane. A voice server, local or cloud, is an audio Connection, so On this device lists none.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { JOB, jobRowFilter, voiceRowOf } from "../../packages/client/src/lib/connection-jobs.js";
+import { JOB, foundForJob, jobRowFilter, voiceRowOf } from "../../packages/client/src/lib/connection-jobs.js";
 
 const rows = [
   { id: "flagged", provider: "audio", defaultForAgents: "true" },
@@ -72,7 +72,7 @@ const defaults = read("../../packages/client/src/components/connections/Connecti
 assert.match(defaults, /voiceRowOf\(connectionsList, speech\?\.resolvedConnectionId\)\.row/);
 // Speech switched off is a problem on the Voice row; the playback card sits behind its gear.
 assert.match(defaults, /speechOff = role\.key === "voice" && speech && !speech\.speechEnabled/);
-assert.match(defaults, /voice \? \([\s\S]*?<TTSConfigCard defaultExpanded \/>/);
+assert.match(defaults, /<TTSConfigCard defaultExpanded \/>/);
 assert.doesNotMatch(defaults, /makesEffects|tts\?\.connectionId/);
 
 // Set up means a speaking audio Connection; the blob's own source no longer lists an engine on this device.
@@ -81,5 +81,26 @@ assert.match(
   /speaking = !!speech\?\.speechEnabled && !!speech\.resolvedConnectionId/,
 );
 assert.doesNotMatch(read("../../packages/client/src/components/connections/DeviceDetail.tsx"), /tts\?\.local/);
+
+// An empty job counts what the accounts' catalogs offer it, and names those accounts.
+const catalogs = [
+  {
+    name: "NanoGPT",
+    provider: "nanogpt",
+    models: [
+      { id: "glm-5", name: "glm-5", outputModalities: ["text"], capabilities: { logprobs: true } },
+      { id: "veo-3", name: "veo-3", outputModalities: ["video"] },
+      { id: "text-embedding-3-small", name: "embed" },
+    ],
+  },
+  { name: "ComfyUI", provider: "comfyui", models: [{ id: "flux", name: "flux", outputModalities: ["image"] }] },
+];
+const drives = (provider: string, kind: string) => provider === "nanogpt" || kind === "image";
+assert.deepEqual(foundForJob(JOB.video, catalogs, drives), { count: 1, accounts: ["NanoGPT"] });
+assert.deepEqual(foundForJob(JOB.images, catalogs, drives), { count: 1, accounts: ["ComfyUI"] });
+assert.deepEqual(foundForJob(JOB.main, catalogs, drives), { count: 1, accounts: ["NanoGPT"] });
+assert.deepEqual(foundForJob(JOB.decision, catalogs, drives), { count: 1, accounts: ["NanoGPT"] });
+assert.deepEqual(foundForJob(JOB.embeddings, catalogs, drives), { count: 1, accounts: ["NanoGPT"] });
+assert.deepEqual(foundForJob(JOB.voice, catalogs, drives), { count: 0, accounts: [] });
 
 console.log("connection-voice-row regression passed");

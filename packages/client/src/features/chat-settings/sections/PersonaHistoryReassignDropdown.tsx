@@ -1,10 +1,12 @@
 import { useCallback, useMemo, useState } from "react";
-import { History, Loader2 } from "lucide-react";
+import { History } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { showConfirmDialog } from "../../../lib/app-dialogs";
 import { useChatPersonaAttributions, useReassignMessagePersonas } from "../../../hooks/use-chats";
 import { PickerDropdown } from "../PickerDropdown";
+import { Select } from "../../../components/ui/Select";
+import { Spinner } from "../../../components/ui/Spinner";
 
 interface PersonaHistoryReassignDropdownProps {
   chatId: string;
@@ -90,7 +92,7 @@ export function PersonaHistoryReassignDropdown({ chatId, targetName }: PersonaHi
         >
           {isLoading ? (
             <div className="flex items-center justify-center gap-2 px-3 py-6 text-xs text-[var(--muted-foreground)]">
-              <Loader2 size="0.875rem" className="animate-spin" />
+              <Spinner size="sm" />
               {localizeUi("ui.chat.chatsettingsdrawer.loadingAttributions")}
             </div>
           ) : (
@@ -119,20 +121,16 @@ export function PersonaHistoryReassignDropdown({ chatId, targetName }: PersonaHi
                   {scope === "persona" && currentSourceIdentity?.count}
                 </label>
                 {scope === "persona" && identities.length > 0 && (
-                  <select
+                  <Select
+                    label={localizeUi("ui.chat.chatsettingsdrawer.messagesSentAs")}
                     value={activeSourceKey}
-                    onChange={(event) => setSelectedSourceKey(event.target.value)}
+                    options={identities.map((identity) => ({
+                      value: `${identity.source}:${identity.personaId}`,
+                      label: `${identity.name} (${identity.count})`,
+                    }))}
+                    onChange={setSelectedSourceKey}
                     className="mt-2 w-full rounded border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs"
-                  >
-                    {identities.map((identity) => (
-                      <option
-                        key={`${identity.source}:${identity.personaId}`}
-                        value={`${identity.source}:${identity.personaId}`}
-                      >
-                        {identity.name} ({identity.count})
-                      </option>
-                    ))}
-                  </select>
+                  />
                 )}
               </div>
               <label className="flex cursor-pointer items-center justify-between gap-2 rounded-md px-2 py-1.5 hover:bg-[var(--accent)]">
@@ -148,7 +146,7 @@ export function PersonaHistoryReassignDropdown({ chatId, targetName }: PersonaHi
                 disabled={reassignMutation.isPending || !targetName || targetCount === 0}
                 className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 font-medium text-[var(--primary-foreground)] disabled:opacity-50"
               >
-                {reassignMutation.isPending && <Loader2 size="0.75rem" className="animate-spin" />}
+                {reassignMutation.isPending && <Spinner size="sm" />}
                 {localizeUi("ui.chat.chatsettingsdrawer.updateCountMessages", { count: targetCount })}
               </button>
             </div>

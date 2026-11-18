@@ -35,12 +35,24 @@ The builder groups the slots under **Chat**, **Story**, **Pictures** and **Behin
 
 How to fill the slots:
 
-- Pick items from each slot's list. **Agents**, **Tools** and **Lorebooks** allow several picks. Use the checkboxes in **Tools** to turn each tool on or off. For a single-item slot, choose **None** to clear it.
-- In the agents and lorebooks lists on a computer, hold <kbd>Ctrl</kbd> (<kbd>Command</kbd> on macOS) to pick several items. On a phone, use the selection controls. **Clear selection** empties a list.
+- Tap a slot's field to open a picker window with search and your library's folders, like the preset and lorebook pickers. For a single-item slot, choose **None** to clear it.
+- **Agents** and **Lorebooks** allow several picks: tick them in the window, or use **Add all** on a folder. Each pick shows under the field with a remove button, and **Clear selection** empties the slot. **Tools** is a checkbox list: tick each tool to turn it on.
 - On a computer you can open a library sidebar while the editor stays open and drag an item onto its field.
 - **Parameters**, **Memory & summary** and **Translation** only show whether the profile holds them. Change them in Chat Settings, then save into the profile.
 
-In the new chat wizard, the **Use a Profile** step also has **New profile…** at the top of the list and **Edit** beside a saved profile. After you save, the wizard selects that profile.
+In the new chat wizard, the **Use a Profile** step has **New** beside the profile field, and **Edit** beside a saved profile. After you save, the wizard selects that profile.
+
+## The Profiles tab
+
+To manage profiles outside a chat, open the **Presets** panel and choose the **Profiles** tab. It lists every Conversation and Roleplay profile, the **Default** of each mode first. The pills above the list (**All**, **Conversation**, **Roleplay**) filter it by mode, and **Search profiles** filters it by name. A star marks each mode's default for new chats.
+
+- Click a profile to open it in the profile editor in the middle of the screen. **Back** saves your changes; **Cancel** discards them. The **Default** profiles cannot be edited, so they don't open.
+- **Create settings profile** opens an empty profile. Pick its mode with the **Conversation** and **Roleplay** pills; a saved profile keeps its mode.
+- Hover a row to star it as the default, duplicate it, export it or delete it. On a phone these buttons always show at the row's right edge.
+- **Select profiles** exports or deletes several at once. **Select all profiles** skips the Default profiles, which cannot be deleted. Each profile exports as its own file.
+- **Import settings profile (.json)** loads a `.marinara-settings-profile.json` file.
+
+**Edit** in Chat Settings still opens the builder as a window over the chat.
 
 ## Save chat settings into a profile
 
@@ -100,7 +112,7 @@ A profile can also hold **starting picks**: a persona, lorebooks to switch on, a
 - Applying the profile copies the picks into the chat. If the profile leaves one empty, the chat keeps its own.
 - Other settings in the profile still replace the chat's settings.
 - The picks are not linked. A later change in the chat stays in that chat.
-- **Save current chat settings into this profile** keeps the profile's own persona, lorebooks and background. A profile without a background takes the chat's background when you save into it.
+- **Save current chat settings into this profile** replaces the profile's lorebooks with the ones added to the chat, with **Add Lorebook** or by applying a profile. A lorebook that Lorebook Keeper made for the chat is not saved. If no lorebooks were added, the profile has none after the save. The profile keeps its own persona and background. A profile without a background takes the chat's background when you save into it.
 - Updating other chats never changes their persona, lorebooks or background.
 
 A profile does not replace chat-owned content: characters, sprites, summary, tags, scene prompt and **Author's Notes**. It also holds no conversation history and no running state such as macro variables, the characters you turned off, or a multiplayer room. A profile saved in an earlier version may still hold **Author's Notes**, but applying it keeps the chat's own.

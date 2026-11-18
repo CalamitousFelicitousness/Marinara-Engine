@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useBackdropDismiss } from "../../hooks/use-backdrop-dismiss";
 import { Download, Pin, RefreshCw, X } from "lucide-react";
-import type { GeneratedSceneVideo } from "@marinara-engine/shared";
-import type { ChatImage } from "../../hooks/use-gallery";
+import { parseChatImageGenerationRecord, type GeneratedSceneVideo } from "@marinara-engine/shared";
+import { useGalleryImages, type ChatImage } from "../../hooks/use-gallery";
 import { useGalleryStore } from "../../stores/gallery.store";
 import { ImageDownloadButton } from "../ui/ImageDownloadButton";
 import { cn } from "../../lib/utils";
 import { ImagePromptPanel } from "./ImagePromptPanel";
-import { ImageRegeneratePanel } from "./ImageRegeneratePanel";
+import { ImageRegeneratePanel, type ImageRegenerator } from "./ImageRegeneratePanel";
 import { useTranslation as useUiTranslation } from "react-i18next";
 
 export function formatChatImageMeta(image: Pick<ChatImage, "model" | "provider" | "width" | "height">) {
@@ -44,6 +44,9 @@ export function getSceneVideoDownloadName(video: Pick<GeneratedSceneVideo, "file
   return fromUrl || `scene-video-${video.id}.mp4`;
 }
 
+const IMAGE_ACTION_CLASS =
+  "inline-flex size-11 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--sidebar)] text-[var(--foreground)] shadow-sm transition-colors hover:bg-[var(--accent)] focus-visible:outline-2 focus-visible:outline-[var(--ring)] disabled:opacity-50";
+
 interface ChatImageLightboxProps {
   image: ChatImage;
   alt?: string;
@@ -54,6 +57,15 @@ interface ChatImageLightboxProps {
    * message the image was opened from.
    */
   regenerate?: { messageId?: string };
+  /** Where Regenerate sends the draft when the image isn't a chat gallery row (Professor Mari's, #9387). */
+  regenerator?: ImageRegenerator;
+  /** Shown after the model, provider and size, e.g. the style profile that shaped the prompt. */
+  extraMeta?: string;
+  /**
+   * Opened from Professor Mari's window, which sits above the app's modals. The lightbox joins her layer, the one a
+   * Modal lifts itself to over her, so it lands above her window and the image-model picker still opens above it.
+   */
+  overMari?: boolean;
   onPin?: (image: ChatImage) => void;
   onClose: () => void;
 }
@@ -64,61 +76,77 @@ export function ChatImageLightbox({
   pinEnabled = true,
   downloadEnabled = true,
   regenerate,
+  regenerator,
+  extraMeta,
+  overMari = false,
   onPin,
   onClose,
 }: ChatImageLightboxProps) {
   const { t: localizeUi } = useUiTranslation();
-  const backdropDismiss = useBackdropDismiss(onClose);
   const pinImage = useGalleryStore((s) => s.pinImage);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   // A regeneration swaps in the new image so the user sees the result right away.
-  const [image, setImage] = useState(initialImage);
+  const [activeImage, setImage] = useState(initialImage);
   const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const backdropDismiss = useBackdropDismiss(onClose, busy);
   const portalRoot = typeof document !== "undefined" ? document.body : null;
-  const prompt = image.prompt.trim();
-  const meta = formatChatImageMeta(image);
+  // Lightweight message and storyboard images omit the generation record. Resolve
+  // it once here so viewing and editing use the same saved request.
+  const needsGalleryRow = !!regenerate && activeImage.generation === undefined;
+  const gallery = useGalleryImages(needsGalleryRow ? activeImage.chatId : undefined);
+  const galleryRow = needsGalleryRow ? gallery.data?.find((row) => row.id === activeImage.id) : undefined;
+  const image = galleryRow ?? activeImage;
+  const record = parseChatImageGenerationRecord(image.generation);
+  const prompt = record?.prompt ?? image.prompt;
+  const meta = [formatChatImageMeta(image), extraMeta].filter(Boolean).join(" | ");
   const downloadName = getChatImageDownloadName(image);
+  const loadingDetails = needsGalleryRow && gallery.isFetching && !gallery.data;
+  const detailsFailed = needsGalleryRow && gallery.isError && !gallery.data;
+  const hasDetails = !!(loadingDetails || detailsFailed || prompt.trim() || meta || record);
   // Nothing to re-send for an upload without a prompt.
-  const canRegenerate = !!regenerate && (!!prompt || !!image.generation);
+  const canRegenerate = !!regenerate && !loadingDetails && !detailsFailed && !!prompt.trim();
+  // Close is disabled while a regeneration runs, and the panel closes before `busy` clears: wait for both, or focus
+  // falls to the page and Escape no longer reaches the lightbox.
   useEffect(() => {
-    closeButtonRef.current?.focus();
-  }, []);
+    if (!editing && !busy) closeButtonRef.current?.focus();
+  }, [editing, busy]);
 
   if (!portalRoot) return null;
 
   return createPortal(
     <div
       data-chat-floating-panel
-      className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 max-md:pt-[env(safe-area-inset-top)]"
+      className={cn(
+        "fixed inset-0 flex items-center justify-center bg-black/80 max-md:pt-[env(safe-area-inset-top)]",
+        overMari ? "z-(--mari-layer-omnibar)" : "z-[10000]",
+      )}
       role="dialog"
       aria-modal="true"
       aria-label={localizeUi("ui.chat.chatimagelightbox.imagePreview")}
       tabIndex={-1}
       {...backdropDismiss}
       onKeyDown={(event) => {
-        if (event.key === "Escape") {
+        if (event.key === "Escape" && !event.defaultPrevented && event.currentTarget.contains(event.target as Node)) {
           event.stopPropagation();
-          // Leave the editor first so a stray Escape does not throw away edits.
+          if (busy) return;
           if (editing) setEditing(false);
           else onClose();
         }
       }}
     >
       <div
-        className={cn(
-          "flex max-h-[90vh] w-[min(90vw,64rem)] max-w-[90vw] flex-col items-center gap-2",
-          editing && "overflow-y-auto",
-        )}
+        className="flex max-h-[92dvh] w-[min(94vw,64rem)] flex-col items-center gap-2"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="relative flex min-h-0 max-w-full shrink-0 justify-center">
           <img
             src={image.url}
-            alt={alt || image.prompt || "Gallery image"}
+            alt={alt || localizeUi("ui.chat.conversationmessagelightbox.expandedImage")}
             decoding="async"
             className={cn(
               "max-w-full rounded-lg object-contain shadow-2xl",
-              editing ? "max-h-[38vh]" : prompt || meta ? "max-h-[calc(90vh-10rem)]" : "max-h-[85vh]",
+              editing ? "max-h-[34dvh]" : hasDetails ? "max-h-[60dvh]" : "max-h-[85dvh]",
             )}
           />
           <div className="absolute right-2 top-2 flex gap-2">
@@ -132,7 +160,7 @@ export function ChatImageLightbox({
                   setEditing(true);
                 }}
                 aria-label={localizeUi("ui.chat.chatimagelightbox.regenerateImage")}
-                className="rounded-lg bg-black/60 p-2 text-white transition-colors hover:bg-black/80"
+                className={IMAGE_ACTION_CLASS}
                 title={localizeUi("ui.chat.chatimagelightbox.regenerateImage")}
               >
                 <RefreshCw size="0.875rem" />
@@ -141,6 +169,7 @@ export function ChatImageLightbox({
             {pinEnabled && (
               <button
                 type="button"
+                disabled={busy}
                 onPointerDown={(event) => event.stopPropagation()}
                 onClick={(event) => {
                   event.preventDefault();
@@ -150,19 +179,22 @@ export function ChatImageLightbox({
                   onClose();
                 }}
                 aria-label={localizeUi("ui.chat.chatgallery.pinImageToChat")}
-                className="rounded-lg bg-black/60 p-2 text-white transition-colors hover:bg-black/80"
+                className={IMAGE_ACTION_CLASS}
                 title={localizeUi("ui.chat.chatgallery.pinToChat")}
               >
                 <Pin size="0.875rem" />
               </button>
             )}
-            {downloadEnabled && <ImageDownloadButton url={image.url} filename={downloadName} />}
+            {downloadEnabled && (
+              <ImageDownloadButton url={image.url} filename={downloadName} className={IMAGE_ACTION_CLASS} />
+            )}
             <button
               type="button"
               ref={closeButtonRef}
               onClick={onClose}
+              disabled={busy}
               aria-label={localizeUi("ui.chat.chatimagelightbox.closeImage")}
-              className="rounded-lg bg-black/60 p-2 text-white transition-colors hover:bg-black/80"
+              className={IMAGE_ACTION_CLASS}
             >
               <X size="0.875rem" />
             </button>
@@ -170,17 +202,45 @@ export function ChatImageLightbox({
         </div>
         {editing && canRegenerate ? (
           <ImageRegeneratePanel
+            key={image.id}
             image={image}
+            regenerator={regenerator}
+            record={record}
             messageId={regenerate?.messageId}
+            onBusyChange={setBusy}
             onCancel={() => setEditing(false)}
             onRegenerated={(next) => {
               setImage(next);
               setEditing(false);
             }}
-            className="w-full max-w-3xl shrink-0"
+            className="w-full max-w-3xl"
           />
+        ) : loadingDetails ? (
+          <p
+            role="status"
+            className="w-full max-w-3xl rounded-xl bg-[var(--sidebar)] px-4 py-3 text-sm text-[var(--foreground)]"
+          >
+            {localizeUi("ui.chat.chatimagelightbox.loadingPrompt")}
+          </p>
         ) : (
-          <ImagePromptPanel prompt={prompt} meta={meta} className="w-full max-w-3xl" />
+          <>
+            {detailsFailed && (
+              <button
+                type="button"
+                className={cn(IMAGE_ACTION_CLASS, "w-auto px-3")}
+                onClick={() => void gallery.refetch()}
+              >
+                {localizeUi("ui.chat.chatimagelightbox.retryPrompt")}
+              </button>
+            )}
+            <ImagePromptPanel
+              prompt={prompt}
+              negativePrompt={record?.negativePrompt}
+              characterPrompts={record?.characterPrompts}
+              meta={meta}
+              className="w-full max-w-3xl"
+            />
+          </>
         )}
       </div>
     </div>,

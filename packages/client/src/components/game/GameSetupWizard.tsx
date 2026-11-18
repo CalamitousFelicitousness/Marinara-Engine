@@ -1,4 +1,13 @@
+import { GameStoryBoundariesFields } from "./GameStoryBoundariesFields";
 import {
+  defaultGameRatingGuidelines,
+  defaultGameViolenceLevel,
+  mergeGameContentBoundaries,
+  parseGamePresetStorySettings,
+  GAME_RATING_GUIDELINES_MAX_CHARS,
+  type GameStoryStyle,
+  type GameViolenceLevel,
+  storedGameRatingGuidelines,
   compileGameWorld,
   LOCAL_SIDECAR_CONNECTION_ID,
   gameWorldFromSnapshot,
@@ -21,7 +30,6 @@ import {
   Wand2,
   ArrowRight,
   ArrowLeft,
-  Loader2,
   Search,
   Plus,
   X,
@@ -150,6 +158,7 @@ import { useEffectiveTTSConfig, useGameAudioLaneReadiness } from "../../hooks/us
 
 import { NewGameExperienceChooser } from "./NewGameExperienceChooser";
 import { LegacyExperienceSetupDialog } from "./LegacyExperienceSetupDialog";
+import { PresetPickerField } from "../ui/LibraryPickers";
 import { MAX_EXPERIENCE_SEED, buildExperienceSetup, parseExperienceSeed } from "../../lib/game-experience-setup";
 import {
   SETTING_GENRE,
@@ -158,6 +167,9 @@ import {
   setupSuggestionKeys,
 } from "../../lib/game-setup-suggestions";
 import { restoredRulesetLayers, rulesetLayerOptions, toggleRulesetLayer } from "../../lib/ruleset-layers";
+import { Spinner } from "../ui/Spinner";
+import { Checkbox } from "../ui/Checkbox";
+import { Select } from "../ui/Select";
 
 /** The "Surprise me!" chip, told apart from the localized ideas by this value, never by its text. */
 const SURPRISE_SUGGESTION = "__surprise__";
@@ -625,6 +637,10 @@ export function GameSetupWizard({
   const [gmNamedControl, setGmNamedControl] = useState(true);
   // A cruel opponent may strike the fallen (combat AI T3): off unless asked for.
   const [cruelOpponents, setCruelOpponents] = useState(false);
+  const [marinaraClasses, setMarinaraClasses] = useState(false);
+  // Every new game is on MRPG classes, an Experience too (owner 2026-11-06).
+  const classicClasses = isNewGame || marinaraClasses;
+  const [permadeath, setPermadeath] = useState(false);
   // Companions fight on their own unless the player plays them (Alyssa 2026-10-26): on unless asked.
   const [companionsOnTheirOwn, setCompanionsOnTheirOwn] = useState(true);
   const [gmMode, setGmMode] = useState<GameGmMode>("standalone");
@@ -663,6 +679,13 @@ export function GameSetupWizard({
   const [generationParameters, setGenerationParameters] =
     useState<EditableGenerationParameters>(ROLEPLAY_PARAMETER_DEFAULTS);
   const [rating, setRating] = useState<"sfw" | "nsfw">("sfw");
+  // The player's own rating guidelines; null follows the built-in text for the rating.
+  const [ratingGuidelinesDraft, setRatingGuidelinesDraft] = useState<string | null>(null);
+  // Gentle storytelling (game-story-style.ts). A null violence follows the rating, as it always has.
+  const [storyStyle, setStoryStyle] = useState<GameStoryStyle>("standard");
+  const [violence, setViolence] = useState<GameViolenceLevel | null>(null);
+  const [contentBoundaries, setContentBoundaries] = useState("");
+  const ratingOptions = { violence: violence ?? defaultGameViolenceLevel(rating), storyStyle };
   const [useLocalScene, setUseLocalScene] = useState(true);
   const [enableSpriteGeneration, setEnableSpriteGeneration] = useState(false);
   const [gameImageDynamicPromptEnabled, setGameImageDynamicPromptEnabled] = useState(false);
@@ -909,6 +932,7 @@ export function GameSetupWizard({
         id: string;
         name: string;
         gamePrompt?: string;
+        gameStorySettings?: string;
         isDefault?: boolean | string;
       }>) ?? [],
     [promptPresetsList],
@@ -1102,11 +1126,22 @@ export function GameSetupWizard({
     }
   }, [enableSpriteGeneration, imageConnectionId, preferredImageConnectionId]);
 
+  // A preset that carries story settings brings its style and violence, and adds its boundaries to
+  // the ones already written here.
+  const applyPresetStorySettings = useCallback((stored: unknown) => {
+    const carried = parseGamePresetStorySettings(stored);
+    if (!carried) return;
+    setStoryStyle(carried.storyStyle);
+    setViolence(carried.violence);
+    setContentBoundaries((current) => mergeGameContentBoundaries(current, carried.contentBoundaries));
+  }, []);
+
   useEffect(() => {
     if (!promptPresetTouched && !promptPresetId && defaultPreset?.id) {
       setPromptPresetId(defaultPreset.id);
+      applyPresetStorySettings((defaultPreset as { gameStorySettings?: unknown }).gameStorySettings);
     }
-  }, [defaultPreset?.id, promptPresetId, promptPresetTouched]);
+  }, [applyPresetStorySettings, defaultPreset, promptPresetId, promptPresetTouched]);
 
   useEffect(() => {
     if (!gameSystemPromptEdited) {
@@ -1171,10 +1206,16 @@ export function GameSetupWizard({
     [localizeUi],
   );
 
-  const handlePromptPresetChange = useCallback((presetId: string | null) => {
-    setPromptPresetTouched(true);
-    setPromptPresetId(presetId);
-  }, []);
+  const handlePromptPresetChange = useCallback(
+    (presetId: string | null) => {
+      setPromptPresetTouched(true);
+      setPromptPresetId(presetId);
+      if (presetId) {
+        applyPresetStorySettings(promptPresets.find((preset) => preset.id === presetId)?.gameStorySettings);
+      }
+    },
+    [applyPresetStorySettings, promptPresets],
+  );
 
   const spatialMapTargetLocationCountValid =
     normalizeSpatialMapTargetLocationCount(spatialMapTargetLocationCountInput) !== null;
@@ -1398,8 +1439,14 @@ export function GameSetupWizard({
     setGmBossControl(config.gmBossControl ?? true);
     setGmNamedControl(config.gmNamedControl ?? false);
     setCruelOpponents(config.cruelOpponents === true);
+    setMarinaraClasses(config.marinaraClasses === true);
+    setPermadeath(config.permadeath === true);
     setCompanionsOnTheirOwn(config.playerRunsCompanions !== true);
     setRating(config.rating);
+    setRatingGuidelinesDraft(config.ratingGuidelines?.trim() ? config.ratingGuidelines : null);
+    setStoryStyle(config.storyStyle === "gentle" ? "gentle" : "standard");
+    setViolence(config.violence ?? null);
+    setContentBoundaries(config.contentBoundaries ?? "");
     setLanguage(config.language?.trim() || "English");
     setAutoTranslate(config.autoTranslate === true);
     setTranslationLanguage(config.translationOutputTargetLang?.trim() || "en");
@@ -1572,6 +1619,10 @@ export function GameSetupWizard({
       gmBossControl,
       ...(gmBossControl ? { gmNamedControl } : {}),
       ...(cruelOpponents ? { cruelOpponents } : {}),
+      // Every new game fights with Classic classes (owner 2026-11-06): Legacy sheets stay only in games
+      // made before, which can upgrade from their Journal. A game set up again keeps what it had.
+      ...(classicClasses ? { marinaraClasses: true } : {}),
+      ...(classicClasses && permadeath ? { permadeath } : {}),
       ...(companionsOnTheirOwn ? {} : { playerRunsCompanions: true }),
       // The board's size is the Game Master's to choose, by the place (2026-10-24, Alyssa).
       spatialMapInstructions:
@@ -1591,6 +1642,13 @@ export function GameSetupWizard({
       spatialMapGroundingMode:
         enableAgents && hierarchicalMapsInstalled && draftSpatialMap ? spatialMapGroundingMode : undefined,
       rating,
+      ratingGuidelines:
+        ratingGuidelinesDraft === null
+          ? undefined
+          : (storedGameRatingGuidelines(ratingGuidelinesDraft, rating, ratingOptions) ?? undefined),
+      ...(storyStyle === "gentle" ? { storyStyle } : {}),
+      ...(violence ? { violence } : {}),
+      ...(contentBoundaries.trim() ? { contentBoundaries: contentBoundaries.trim() } : {}),
       gmMode,
       gmCharacterId: gmMode === "character" && gmCharacterId ? gmCharacterId : undefined,
       ...(gameIntroForSetup(gameIntro) ? { gameIntro: gameIntroForSetup(gameIntro) } : {}),
@@ -2348,8 +2406,7 @@ export function GameSetupWizard({
                         </p>
                       )}
                       <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--border)] p-3 text-sm text-[var(--foreground)]">
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           checked={gmBossControl}
                           onChange={(e) => setGmBossControl(e.target.checked)}
                           className="mt-1 size-4 accent-[var(--primary)]"
@@ -2363,8 +2420,7 @@ export function GameSetupWizard({
                       </label>
                       {gmBossControl && (
                         <label className="mt-2 flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--border)] p-3 text-sm text-[var(--foreground)]">
-                          <input
-                            type="checkbox"
+                          <Checkbox
                             checked={gmNamedControl}
                             onChange={(e) => setGmNamedControl(e.target.checked)}
                             className="mt-1 size-4 accent-[var(--primary)]"
@@ -2378,8 +2434,7 @@ export function GameSetupWizard({
                         </label>
                       )}
                       <label className="mt-2 flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--border)] p-3 text-sm text-[var(--foreground)]">
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           checked={companionsOnTheirOwn}
                           onChange={(e) => setCompanionsOnTheirOwn(e.target.checked)}
                           className="mt-1 size-4 accent-[var(--primary)]"
@@ -2392,8 +2447,7 @@ export function GameSetupWizard({
                         </span>
                       </label>
                       <label className="mt-2 flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--border)] p-3 text-sm text-[var(--foreground)]">
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           checked={cruelOpponents}
                           onChange={(e) => setCruelOpponents(e.target.checked)}
                           className="mt-1 size-4 accent-[var(--primary)]"
@@ -2405,6 +2459,21 @@ export function GameSetupWizard({
                           </span>
                         </span>
                       </label>
+                      {classicClasses && (
+                        <label className="mt-2 flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--border)] p-3 text-sm text-[var(--foreground)]">
+                          <Checkbox
+                            checked={permadeath}
+                            onChange={(e) => setPermadeath(e.target.checked)}
+                            className="mt-1 size-4 accent-[var(--primary)]"
+                          />
+                          <span>
+                            {localizeUi("game.combat.director.permadeathLabel")}
+                            <span className="mt-1 block text-xs text-[var(--muted-foreground)]">
+                              {localizeUi("game.combat.director.permadeathHelp")}
+                            </span>
+                          </span>
+                        </label>
+                      )}
                     </div>
 
                     {!isNewGame && chatMetadata?.gameRuleset != null && (
@@ -2470,7 +2539,7 @@ export function GameSetupWizard({
                     {/* Content Rating */}
                     <div>
                       <label className="mb-1.5 block text-xs font-medium text-[var(--foreground)]">
-                        {localizeUi("ui.game.gamesetupwizard.contentRating")}
+                        {localizeUi("ui.game.gamesetupwizard.sexualContentRating")}
                       </label>
                       <div className="flex gap-1.5">
                         <button
@@ -2502,16 +2571,62 @@ export function GameSetupWizard({
                       </div>
                       <p className="mt-1 text-[0.575rem] text-[var(--muted-foreground)]">
                         {rating === "nsfw"
-                          ? localizeUi("ui.game.gamesetupwizard.anythingGoesViolenceDarkThemesAndExplicitContentAre")
-                          : localizeUi("ui.game.gamesetupwizard.darkThemesAndProfanityAllowedButExplicitScenesCut")}
+                          ? localizeUi("ui.game.gamesetupwizard.nsfwSexualContentOnlyHelp")
+                          : localizeUi("ui.game.gamesetupwizard.sfwSexualContentOnlyHelp")}
                       </p>
+                      <details className="mt-1.5">
+                        <summary className="cursor-pointer text-[0.625rem] text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
+                          {localizeUi("ui.game.gamesetupwizard.editRatingGuidelines")}
+                        </summary>
+                        <textarea
+                          value={ratingGuidelinesDraft ?? defaultGameRatingGuidelines(rating, ratingOptions)}
+                          onChange={(e) =>
+                            // Text that matches the built-in guidelines stays unset, so it keeps
+                            // following the rating, violence and story style if they change later.
+                            setRatingGuidelinesDraft(
+                              e.target.value === defaultGameRatingGuidelines(rating, ratingOptions)
+                                ? null
+                                : e.target.value,
+                            )
+                          }
+                          aria-label={localizeUi("ui.game.gamesetupwizard.editRatingGuidelines")}
+                          maxLength={GAME_RATING_GUIDELINES_MAX_CHARS}
+                          rows={7}
+                          spellCheck={false}
+                          className="mt-1.5 w-full resize-y rounded-lg bg-[var(--secondary)] px-3 py-2 font-mono text-[0.6875rem] leading-relaxed text-[var(--foreground)] outline-none ring-1 ring-transparent transition-all focus:ring-[var(--primary)]/40"
+                        />
+                        <div className="mt-1 flex items-center justify-between gap-2">
+                          <span className="text-[0.575rem] text-[var(--muted-foreground)]">
+                            {localizeUi("ui.game.gamesetupwizard.ratingGuidelinesHelp")}
+                          </span>
+                          {ratingGuidelinesDraft !== null && (
+                            <button
+                              type="button"
+                              onClick={() => setRatingGuidelinesDraft(null)}
+                              className="shrink-0 rounded-md bg-[var(--secondary)] px-2 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+                            >
+                              {localizeUi("ui.game.gamesetupwizard.resetRatingGuidelines")}
+                            </button>
+                          )}
+                        </div>
+                      </details>
                     </div>
+
+                    {/* Story style, violence and content boundaries */}
+                    <GameStoryBoundariesFields
+                      compact
+                      value={{ storyStyle, violence: ratingOptions.violence, contentBoundaries }}
+                      onChange={(patch) => {
+                        if (patch.storyStyle) setStoryStyle(patch.storyStyle);
+                        if (patch.violence) setViolence(patch.violence);
+                        if (patch.contentBoundaries !== undefined) setContentBoundaries(patch.contentBoundaries);
+                      }}
+                    />
 
                     {/* Language */}
                     <div>
                       <label className="mb-2 flex items-center gap-2 text-xs">
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           checked={autoTranslate}
                           onChange={(event) => setAutoTranslate(event.target.checked)}
                         />
@@ -2651,31 +2766,29 @@ export function GameSetupWizard({
                         <div className="mt-1.5 overflow-hidden rounded-lg bg-[var(--card)] ring-1 ring-[var(--border)]">
                           <div className="flex items-center gap-2 px-3 py-2">
                             <FolderOpen size="0.75rem" className="shrink-0 text-[var(--muted-foreground)]" />
-                            <select
-                              value={partyFolderId}
-                              onChange={(event) => setPartyFolderId(event.target.value)}
+                            <Select
+                              label={localizeUi("ui.game.gamesetupwizard.addPartyMembersFromFolder")}
+                              value={partyFolderId || null}
+                              placeholder={localizeUi("ui.noodle.noodlehome.addFromFolder")}
+                              onChange={(next) => setPartyFolderId(next)}
                               className="min-w-0 flex-1 bg-transparent text-xs text-[var(--foreground)] outline-none"
-                              aria-label={localizeUi("ui.game.gamesetupwizard.addPartyMembersFromFolder")}
-                            >
-                              <option value="">{localizeUi("ui.noodle.noodlehome.addFromFolder")}</option>
-                              {characterFolders.map((folder) => {
+                              options={characterFolders.map((folder) => {
                                 const newCount = folder.characterIds.filter(
                                   (id) =>
                                     validCharacterIds.has(id) &&
                                     id !== gmCharacterId &&
                                     !partyCharacterIds.includes(id),
                                 ).length;
-                                return (
-                                  <option key={folder.id} value={folder.id}>
-                                    {folder.name} (
-                                    {newCount > 0
+                                return {
+                                  value: folder.id,
+                                  label: `${folder.name} (${
+                                    newCount > 0
                                       ? localizeUi("ui.game.gamesetupwizard.value1New", { value1: newCount })
-                                      : localizeUi("ui.game.gamesetupwizard.allAdded")}
-                                    )
-                                  </option>
-                                );
+                                      : localizeUi("ui.game.gamesetupwizard.allAdded")
+                                  })`,
+                                };
                               })}
-                            </select>
+                            />
                             <button
                               type="button"
                               onClick={() => addPartyMembersFromFolder(partyFolderId)}
@@ -2758,7 +2871,7 @@ export function GameSetupWizard({
 
                         {installedAgentsLoading ? (
                           <div className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--border)] px-4 py-4 text-xs text-[var(--muted-foreground)]">
-                            <Loader2 size={13} className="animate-spin" />
+                            <Spinner size="sm" />
                             {localizeUi("ui.game.gamesetupwizard.loadingInstalledAgents")}
                           </div>
                         ) : (
@@ -2848,14 +2961,15 @@ export function GameSetupWizard({
 
                             {enableSpotifyDj && (
                               <div className="mt-2 space-y-2 rounded-lg bg-[var(--background)]/55 p-3 ring-1 ring-[var(--border)]">
-                                <label className="flex flex-col gap-1">
+                                <div className="flex flex-col gap-1">
                                   <span className="text-[0.625rem] font-medium text-[var(--muted-foreground)]">
                                     {localizeUi("ui.game.gamesetupwizard.musicSource")}
                                   </span>
-                                  <select
+                                  <Select
+                                    label={localizeUi("ui.game.gamesetupwizard.musicSource")}
                                     value={gameSpotifySourceType}
-                                    onChange={(event) => {
-                                      const next = normalizeSpotifySourceType(event.target.value);
+                                    onChange={(value) => {
+                                      const next = normalizeSpotifySourceType(value);
                                       setGameSpotifySourceType(next);
                                       if (next !== "playlist") {
                                         setGameSpotifyPlaylistId("");
@@ -2866,54 +2980,63 @@ export function GameSetupWizard({
                                       }
                                     }}
                                     className="w-full rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-2.5 py-1.5 text-xs text-[var(--foreground)]"
-                                  >
-                                    {GAME_SPOTIFY_SOURCE_OPTIONS.map((option) => (
-                                      <option key={option.id} value={option.id}>
-                                        {option.label}
-                                      </option>
-                                    ))}
-                                  </select>
+                                    options={GAME_SPOTIFY_SOURCE_OPTIONS.map((option) => ({
+                                      value: option.id,
+                                      label: option.label,
+                                    }))}
+                                  />
                                   <span className="text-[0.5625rem] text-[var(--muted-foreground)]">
                                     {GAME_SPOTIFY_SOURCE_OPTIONS.find((option) => option.id === gameSpotifySourceType)
                                       ?.description ?? ""}
                                   </span>
-                                </label>
+                                </div>
 
                                 {gameSpotifySourceType === "playlist" && (
-                                  <label className="flex flex-col gap-1">
+                                  <div className="flex flex-col gap-1">
                                     <span className="text-[0.625rem] font-medium text-[var(--muted-foreground)]">
                                       {localizeUi("ui.game.gamesetupwizard.playlist")}
                                     </span>
                                     {spotifyPlaylistsQuery.data?.playlists.length ? (
-                                      <select
+                                      <Select
+                                        label={localizeUi("ui.game.gamesetupwizard.playlist")}
                                         value={gameSpotifyPlaylistId}
-                                        onChange={(event) => {
+                                        placeholder={localizeUi("ui.game.gamesetupwizard.choosePlaylist")}
+                                        onChange={(next) => {
                                           const playlist = spotifyPlaylistsQuery.data?.playlists.find(
-                                            (entry) => entry.id === event.target.value,
+                                            (entry) => entry.id === next,
                                           );
-                                          setGameSpotifyPlaylistId(event.target.value);
+                                          setGameSpotifyPlaylistId(next);
                                           setGameSpotifyPlaylistName(playlist?.name ?? "");
                                         }}
                                         className="w-full rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-2.5 py-1.5 text-xs text-[var(--foreground)]"
-                                      >
-                                        <option value="">{localizeUi("ui.game.gamesetupwizard.choosePlaylist")}</option>
-                                        {spotifyPlaylistsQuery.data.playlists.map((playlist) => {
-                                          const suffix =
-                                            typeof playlist.trackCount === "number"
-                                              ? ` (${playlist.trackCount})`
-                                              : playlist.owned === false
-                                                ? " (followed — unavailable)"
-                                                : "";
-                                          return (
-                                            <option key={playlist.id} value={playlist.id}>
-                                              {playlist.name}
-                                              {suffix}
-                                            </option>
-                                          );
-                                        })}
-                                      </select>
+                                        options={[
+                                          { value: "", label: localizeUi("ui.game.gamesetupwizard.choosePlaylist") },
+                                          // A saved playlist outside the fetched page still shows as the pick.
+                                          ...(gameSpotifyPlaylistId &&
+                                          !spotifyPlaylistsQuery.data.playlists.some(
+                                            (entry) => entry.id === gameSpotifyPlaylistId,
+                                          )
+                                            ? [
+                                                {
+                                                  value: gameSpotifyPlaylistId,
+                                                  label: gameSpotifyPlaylistName || gameSpotifyPlaylistId,
+                                                },
+                                              ]
+                                            : []),
+                                          ...spotifyPlaylistsQuery.data.playlists.map((playlist) => {
+                                            const suffix =
+                                              typeof playlist.trackCount === "number"
+                                                ? ` (${playlist.trackCount})`
+                                                : playlist.owned === false
+                                                  ? " (followed — unavailable)"
+                                                  : "";
+                                            return { value: playlist.id, label: `${playlist.name}${suffix}` };
+                                          }),
+                                        ]}
+                                      />
                                     ) : (
                                       <input
+                                        aria-label={localizeUi("ui.game.gamesetupwizard.playlist")}
                                         value={gameSpotifyPlaylistId}
                                         onChange={(event) => {
                                           setGameSpotifyPlaylistId(event.target.value);
@@ -2932,7 +3055,7 @@ export function GameSetupWizard({
                                         {localizeUi("ui.game.gamesetupwizard.connectSpotifyInTheMusicDjAgentToLoad")}
                                       </span>
                                     )}
-                                  </label>
+                                  </div>
                                 )}
 
                                 {gameSpotifySourceType === "artist" && (
@@ -3385,8 +3508,7 @@ export function GameSetupWizard({
                                 .sort((a, b) => Number(b.constant) - Number(a.constant) || a.order - b.order)
                                 .map((entry) => (
                                   <label key={entry.id} className="flex min-h-11 items-start gap-2 py-2 text-xs">
-                                    <input
-                                      type="checkbox"
+                                    <Checkbox
                                       checked={selectedEntryIds.includes(entry.id)}
                                       disabled={
                                         isLoading ||
@@ -3792,7 +3914,7 @@ export function GameSetupWizard({
                           <Suspense
                             fallback={
                               <div className="flex h-full items-center justify-center gap-2 text-xs text-[var(--muted-foreground)]">
-                                <Loader2 size={14} className="animate-spin" />
+                                <Spinner size="sm" />
                                 {localizeUi("ui.game.gamesetupwizard.loadingAssets")}
                               </div>
                             }
@@ -3817,14 +3939,16 @@ export function GameSetupWizard({
                         <Sparkles size={12} />
                         {localizeUi("settings.sections.gamePresentation.title")}
                       </label>
-                      <select
+                      <Select
+                        label={localizeUi("settings.sections.gamePresentation.title")}
                         value={gamePresentation}
-                        onChange={(event) => setGamePresentation(event.target.value === "anime" ? "anime" : "standard")}
+                        onChange={(next) => setGamePresentation(next === "anime" ? "anime" : "standard")}
                         className={GAME_SETUP_INPUT_CLASS}
-                      >
-                        <option value="standard">{localizeUi("ui.game.gamesetupwizard.standard")}</option>
-                        <option value="anime">{localizeUi("ui.game.gamesetupwizard.storyboardOptimized")}</option>
-                      </select>
+                        options={[
+                          { value: "standard", label: localizeUi("ui.game.gamesetupwizard.standard") },
+                          { value: "anime", label: localizeUi("ui.game.gamesetupwizard.storyboardOptimized") },
+                        ]}
+                      />
                       <p className="mt-1 text-[0.575rem] leading-relaxed text-[var(--muted-foreground)]">
                         {gamePresentation === "anime"
                           ? localizeUi("ui.game.gamesetupwizard.storyboardOptimizedNarrationDescription")
@@ -3836,18 +3960,13 @@ export function GameSetupWizard({
                         <Feather size={12} />
                         {localizeUi("ui.game.gamesetupwizard.basePromptPreset")}
                       </label>
-                      <select
+                      <PresetPickerField
                         value={promptPresetId ?? ""}
-                        onChange={(event) => handlePromptPresetChange(event.target.value || null)}
-                        className={GAME_SETUP_INPUT_CLASS}
-                      >
-                        <option value="">{localizeUi("ui.game.gamesurfacecomponent.none")}</option>
-                        {promptPresets.map((preset) => (
-                          <option key={preset.id} value={preset.id}>
-                            {preset.name}
-                          </option>
-                        ))}
-                      </select>
+                        presets={promptPresets}
+                        ariaLabel={localizeUi("ui.game.gamesetupwizard.basePromptPreset")}
+                        triggerClassName={GAME_SETUP_INPUT_CLASS}
+                        onChange={(id) => handlePromptPresetChange(id || null)}
+                      />
                       <p className="mt-1 text-[0.575rem] leading-relaxed text-[var(--muted-foreground)]">
                         {gamePresentation === "anime"
                           ? localizeUi("ui.game.gamesetupwizard.theStoryboardGamePromptReplacesTheSelectedPresetS")
@@ -4093,7 +4212,7 @@ export function GameSetupWizard({
                     >
                       {isLoading ? (
                         <>
-                          <Loader2 size={14} className="animate-spin" />
+                          <Spinner size="sm" />
                           {isDraftingMap
                             ? localizeUi("ui.game.gamesetupwizard.draftingMap")
                             : isLinkingSharedWorld

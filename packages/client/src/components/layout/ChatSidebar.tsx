@@ -1,4 +1,5 @@
 import { insertLibraryItems } from "../../lib/library-order";
+import { librarySortOptions } from "../../lib/library-sort-options";
 import { useLibraryFolderDrag } from "../../hooks/use-library-folder-drag";
 import { useLibraryOrder } from "../../hooks/use-library-order";
 // ──────────────────────────────────────────────
@@ -60,11 +61,12 @@ import { cn, getAvatarCropStyle } from "../../lib/utils";
 import { chatBackgroundMetadataToUrl } from "../../lib/backgrounds";
 import { formatRelativeContact } from "../../lib/relative-time";
 import { ChatRowPeek } from "./ChatRowPeek";
-import { Fragment, lazy, Suspense, useState, useCallback, useMemo, useRef, useEffect } from "react";
+import { Fragment, lazy, Suspense, useState, useCallback, useMemo, useRef, useEffect, type ReactNode } from "react";
 import { useTouchFolderDrag } from "../../hooks/use-touch-folder-drag";
 import { usePresenceClock } from "../../hooks/use-presence-clock";
 import { usePanelKeyboardFocus } from "./use-panel-keyboard-focus";
 import { PanelErrorState, PanelListSkeleton } from "../ui/PanelStates";
+import { Select } from "../ui/Select";
 import { toast } from "sonner";
 import {
   BACKGROUND_THUMBNAIL_WIDTH,
@@ -100,6 +102,8 @@ import { useTranslation, useTranslation as useUiTranslation } from "react-i18nex
 import { useLocalizedUiText } from "../../localization/use-localized-ui-text";
 import { PersonalExtensionContributionSlot } from "../extensions/PersonalExtensionContributionSlot";
 import { ChatModeIcon } from "../chat/ChatModeIcon";
+import { avatarPreviewSrc } from "../../lib/avatar-preview";
+import { Spinner } from "../ui/Spinner";
 
 // Opened from a menu only, so it loads on first use instead of weighing on the AppShell chunk.
 const CharacterScheduleManagerModal = lazy(async () => ({
@@ -114,7 +118,38 @@ type ChatListEntry = {
   branchCount: number;
   branchRows?: BranchTreeRow<Chat>[];
 };
-const CHAT_LIST_PAGE_SIZE = 100;
+// 40 rows at a time, the next 40 joining as you scroll near the end: every row is ~45 elements, and 100 of
+// them made each sidebar toggle and chat switch re-style ~4,500 elements (1-2 s on an iPad, Nov 14).
+const CHAT_LIST_PAGE_SIZE = 40;
+
+/** "Load more", pressed for you when it scrolls within reach (you can still press it). */
+function LoadMoreChatsButton({ onLoadMore, children }: { onLoadMore: () => void; children: ReactNode }) {
+  const ref = useRef<HTMLButtonElement | null>(null);
+  const latest = useRef(onLoadMore);
+  latest.current = onLoadMore;
+  useEffect(() => {
+    const button = ref.current;
+    if (!button || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) latest.current();
+      },
+      { rootMargin: "0px 0px 600px 0px" },
+    );
+    observer.observe(button);
+    return () => observer.disconnect();
+  }, []);
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={() => latest.current()}
+      className="mari-chrome-control mari-chrome-control--primary justify-center text-xs"
+    >
+      {children}
+    </button>
+  );
+}
 
 const CONVERSATION_STATUS_PRIORITY: Record<ConversationPresenceStatus, number> = {
   online: 0,
@@ -294,7 +329,8 @@ export function ChatSidebar() {
   const sidebarKeyboard = usePanelKeyboardFocus({
     open: sidebarIsOpen,
     containerRef: sidebarNavRef,
-    toggleSelector: '[data-component="TopBar"] [data-tour="sidebar-toggle"]',
+    // On a phone Chats is a row of the top bar's More menu, so focus goes back to More.
+    toggleSelector: '[data-component="TopBar"] [data-tour="sidebar-toggle"], [data-topbar-more]',
     onClose: closeSidebarFromKeyboard,
   });
   const chatModeShortcutRequest = useUIStore((s) => s.chatModeShortcutRequest);
@@ -1338,7 +1374,7 @@ export function ChatSidebar() {
                   <div className="relative h-7 w-7 flex-shrink-0 transition-transform group-active:scale-90">
                     <span className="relative block h-7 w-7 overflow-hidden rounded-lg">
                       <img
-                        src={a.avatarUrl}
+                        src={avatarPreviewSrc(a.avatarUrl)}
                         alt={a.name}
                         className="h-full w-full object-cover"
                         style={getAvatarCropStyle(a.avatarCrop)}
@@ -1369,7 +1405,7 @@ export function ChatSidebar() {
                         )}
                       >
                         <img
-                          src={a.avatarUrl}
+                          src={avatarPreviewSrc(a.avatarUrl)}
                           alt={a.name}
                           className="h-full w-full object-cover"
                           style={getAvatarCropStyle(a.avatarCrop)}
@@ -1671,26 +1707,33 @@ export function ChatSidebar() {
               className="mari-chrome-field h-10 w-full py-0 pl-8 pr-3 text-xs md:h-9"
             />
           </div>
-          <div className="relative">
-            <select
+          <div className="relative" title={localize("Sort chats")}>
+            {/* The sort icon below stands in for the Select's own chevron, so that one is hidden. */}
+            <Select<"manual" | ChatSortOption>
               value={manualOrderActive ? "manual" : sort}
-              onChange={(e) => {
-                manualOrder.setActive(e.target.value === "manual");
-                if (e.target.value !== "manual") setSort(e.target.value as ChatSortOption);
+              options={[
+                { value: "custom", label: localizeUi("ui.layout.chatsidebar.customOrder") },
+                {
+                  value: "manual",
+                  label: localizeUi("dragDrop.manualOrder"),
+                  description: localizeUi("dragDrop.manualOrderHelp"),
+                },
+                { value: "recent", label: localizeUi("ui.layout.chatsidebar.recent") },
+                ...librarySortOptions<ChatSortOption>(localizeUi, {
+                  newest: "newest",
+                  oldest: "oldest",
+                  az: "name-asc",
+                  za: "name-desc",
+                }),
+              ]}
+              searchable={false}
+              onChange={(value) => {
+                manualOrder.setActive(value === "manual");
+                if (value !== "manual") setSort(value);
               }}
-              className="mari-chrome-field mari-chrome-sort-field mari-accent-animated h-10 appearance-none py-0 pl-2.5 pr-7 text-[0.6875rem] md:h-9"
-              title={localize("Sort chats")}
-            >
-              <option value="custom">{localizeUi("ui.layout.chatsidebar.customOrder")}</option>
-              <option value="manual" title={localizeUi("dragDrop.manualOrderHelp")}>
-                {localizeUi("dragDrop.manualOrder")}
-              </option>
-              <option value="recent">{localizeUi("ui.layout.chatsidebar.recent")}</option>
-              <option value="newest">{localize("Newest")}</option>
-              <option value="oldest">{localize("Oldest")}</option>
-              <option value="name-asc">{localizeUi("ui.panels.backgroundpicker.aZ")}</option>
-              <option value="name-desc">{localizeUi("ui.panels.backgroundpicker.zA")}</option>
-            </select>
+              className="mari-chrome-field mari-chrome-sort-field mari-accent-animated h-10 py-0 pl-2.5 pr-7 text-[0.6875rem] md:h-9 [&>svg]:hidden"
+              label={localize("Sort chats")}
+            />
             <ArrowUpDown
               size="0.625rem"
               className="mari-chrome-field-icon mari-chrome-sort-icon mari-accent-animated pointer-events-none absolute right-2 top-1/2 -translate-y-1/2"
@@ -1902,13 +1945,12 @@ export function ChatSidebar() {
           {unfiledChats.map(renderChatRow)}
 
           {hasMoreDisplayChats && (
-            <button
-              type="button"
-              onClick={() => setVisibleChatLimit((limit) => limit + CHAT_LIST_PAGE_SIZE)}
-              className="mari-chrome-control mari-chrome-control--primary justify-center text-xs"
+            <LoadMoreChatsButton
+              key={visibleDisplayChats.length}
+              onLoadMore={() => setVisibleChatLimit((limit) => limit + CHAT_LIST_PAGE_SIZE)}
             >
               {t("navigation.chatSidebar.loadMore", { count: visibleDisplayChats.length })}
-            </button>
+            </LoadMoreChatsButton>
           )}
         </div>
       </div>
@@ -2084,7 +2126,7 @@ function BranchRow({
       >
         {name}
       </span>
-      {isBusy && <Loader2 className="h-2.5 w-2.5 shrink-0 animate-spin text-[var(--muted-foreground)]" />}
+      {isBusy && <Spinner size="sm" className="shrink-0 text-[var(--muted-foreground)]" />}
       {!isActive && !multiSelectMode && unread > 0 && (
         <span className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-md bg-red-500 px-1 text-[0.5625rem] font-bold leading-none text-white">
           {unread > 99 ? "99+" : unread}
@@ -2473,7 +2515,7 @@ function UserStatusFooter({
             aria-label={localizeUi("ui.layout.chatsidebar.characterScheduleManager")}
             className="mari-chrome-control mari-chrome-control--small ml-1 h-7 w-7 shrink-0 justify-center p-0! max-md:h-9 max-md:min-h-9 max-md:w-9"
           >
-            <CalendarClock className="shrink-0" size="1.25rem" strokeWidth={2.25} />
+            <CalendarClock className="shrink-0" size="1rem" strokeWidth={2.25} />
           </button>
         )}
       </div>

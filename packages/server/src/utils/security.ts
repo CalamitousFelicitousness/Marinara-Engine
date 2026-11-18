@@ -61,8 +61,21 @@ export interface SafeFetchOptions extends Omit<RequestInit, "dispatcher"> {
   allowMissingContentType?: boolean;
   bufferResponse?: boolean;
   decodeCompressedResponse?: boolean;
+  /**
+   * Return the first `maxResponseBytes` of an oversized body instead of failing the request.
+   * Buffered responses only. Use it when the caller reads a prefix of the body anyway, such as a
+   * page's readable text, and a truncated document is still useful.
+   */
+  truncateResponseBody?: boolean;
+  /** Called when `truncateResponseBody` cut the body short, so the caller can say so. */
+  onResponseTruncated?: () => void;
   /** Observe nonempty raw response chunks before buffering or decoding. */
   onResponseData?: () => void;
+  /**
+   * Called once with the address that produced the returned response, after any redirects. A
+   * buffered Response is rebuilt from the body, so its own `url` is empty and cannot report this.
+   */
+  onFinalUrl?: (url: string) => void;
   agentOptions?: Omit<AgentOptions, "connect">;
   /** Start TCP keepalive probes after this many idle milliseconds without exposing custom DNS/connect hooks. */
   keepAliveInitialDelayMs?: number;
@@ -94,6 +107,27 @@ export function safeBasename(value: string, fallback = "file"): string {
     .replace(/[\u0000-\u001f<>:"|?*]/g, "")
     .trim();
   return name || fallback;
+}
+
+const IMAGE_DATA_URL_MIME_RE = /^image\/(?:png|jpe?g|webp|gif|avif|bmp)$/;
+
+/**
+ * A `data:` URL's image type and encoded body, or null when it is not one. The header is sliced, never matched over
+ * the whole URL: V8's regexp interpreter recurses once per subject character, so a multi-megabyte inline image
+ * exhausted the stack with "Maximum call stack size exceeded" in a server that had stopped tiering the pattern up
+ * (#9060).
+ */
+export function parseImageDataUrl(value: string): { mimeType: string; encoded: string } | null {
+  const trimmed = value.trim();
+  const separator = trimmed.indexOf(",");
+  if (separator < 0 || trimmed.slice(0, "data:".length).toLowerCase() !== "data:") return null;
+  const header = trimmed.slice("data:".length, separator);
+  if (!header.toLowerCase().endsWith(";base64")) return null;
+  const mimeType = header.slice(0, -";base64".length).toLowerCase();
+  if (!IMAGE_DATA_URL_MIME_RE.test(mimeType)) return null;
+  const encoded = trimmed.slice(separator + 1);
+  // No body is not an image, as the `([\s\S]+)` each parser used before required.
+  return encoded ? { mimeType: mimeType.replace("image/jpg", "image/jpeg"), encoded } : null;
 }
 
 export function isAllowedImageBuffer(buffer: Buffer, _expectedExt?: string): { ext: string; mimeType: string } | null {
@@ -578,6 +612,8 @@ async function readCappedResponse(
   dispatcher?: Dispatcher,
   decodeCompressedResponse = false,
   onResponseData?: () => void,
+  truncate = false,
+  onTruncated?: () => void,
 ): Promise<Response> {
   if (!response.body) {
     await dispatcher?.close().catch(() => undefined);
@@ -591,11 +627,20 @@ async function readCappedResponse(
       const { done, value } = await reader.read();
       if (done) break;
       if (value.byteLength) onResponseData?.();
-      total += value.byteLength;
-      if (total > maxBytes) {
+      const nextTotal = total + value.byteLength;
+      if (nextTotal > maxBytes) {
+        if (!truncate) {
+          await reader.cancel().catch(() => undefined);
+          throw new Error(`Outbound response exceeded ${maxBytes} bytes`);
+        }
+        const room = maxBytes - total;
+        if (room > 0) chunks.push(value.subarray(0, room));
+        total = maxBytes;
+        onTruncated?.();
         await reader.cancel().catch(() => undefined);
-        throw new Error(`Outbound response exceeded ${maxBytes} bytes`);
+        break;
       }
+      total = nextTotal;
       chunks.push(value);
     }
   } finally {
@@ -800,7 +845,10 @@ export async function safeFetch(url: string | URL, options: SafeFetchOptions = {
     allowMissingContentType = false,
     bufferResponse = true,
     decodeCompressedResponse = false,
+    truncateResponseBody = false,
+    onResponseTruncated,
     onResponseData,
+    onFinalUrl,
     agentOptions,
     keepAliveInitialDelayMs,
     dispatcher,
@@ -888,8 +936,17 @@ export async function safeFetch(url: string | URL, options: SafeFetchOptions = {
       }
     }
 
+    onFinalUrl?.(current.url.toString());
     return bufferResponse
-      ? readCappedResponse(response, maxResponseBytes, internalDispatcher, decodeCompressedResponse, onResponseData)
+      ? readCappedResponse(
+          response,
+          maxResponseBytes,
+          internalDispatcher,
+          decodeCompressedResponse,
+          onResponseData,
+          truncateResponseBody,
+          onResponseTruncated,
+        )
       : capStreamingResponse(response, maxResponseBytes, internalDispatcher, onResponseData);
   }
 

@@ -58,7 +58,6 @@ import {
   BookOpen,
   FolderOpen,
   Upload,
-  Loader2,
   ImageIcon,
   Shield,
   ShieldCheck,
@@ -73,6 +72,7 @@ import {
 } from "../../hooks/use-knowledge-sources";
 import { cn } from "../../lib/utils";
 import { MacroTextarea } from "../ui/MacroTextarea";
+import { Select } from "../ui/Select";
 import { formatEstimatedTokens } from "../../lib/character-token-count";
 import { StoryboardAgentSettingsPanel } from "./StoryboardAgentSettingsPanel";
 import {
@@ -89,8 +89,10 @@ import {
 } from "../../lib/echo-chamber-queue";
 import { HelpTooltip } from "../ui/HelpTooltip";
 import { SettingsSwitch } from "../panels/settings/SettingControls";
+import { CommandCenterSegmentedChoice } from "../command-center/CommandCenterSegmentedChoice";
 import {
   BUILT_IN_AGENTS,
+  agentSupportsActivationGate,
   estimateTextTokens,
   BUILT_IN_TOOLS,
   DEFAULT_AGENT_CONTEXT_SIZE,
@@ -106,6 +108,8 @@ import {
   UTILITY_SIDECAR_CONNECTION_ID,
   MAX_CUSTOM_AGENT_ACTIVATION_SCAN_DEPTH,
   MIN_AGENT_MAX_TOKENS,
+  DEFAULT_LOREBOOK_WRITER_ORDER,
+  parseLorebookWriterOrder,
   getDefaultBuiltInAgentSettings,
   getDefaultAgentPrompt,
   isAgentConfigDeleted,
@@ -114,7 +118,9 @@ import {
   mergeBuiltInAgentSettings,
   normalizeAgentPhaseForType,
   normalizeCustomAgentCapabilities,
+  getAgentCardContextMode,
   getAgentContextSources,
+  setAgentCardContextMode,
   normalizeAgentPromptTemplateOptions,
   normalizeStoryboardAgentSettings,
   normalizeIllustratorRunInterval,
@@ -123,6 +129,8 @@ import {
   homeAgentWidgetsSchema,
   type HomeAgentWidgetDefinition,
   CUSTOM_AGENT_CONTEXT_SOURCE_IDS,
+  type AgentCardContextMode,
+  type AgentCardContextSource,
   type AgentPhase,
   type AgentPromptTemplateOption,
   type StoryboardAgentSettings,
@@ -143,6 +151,8 @@ import { CUSTOM_AGENT_RESULT_EXAMPLES, type CustomAgentResultType } from "../../
 import { downloadZipFile } from "../../lib/download-zip";
 import { useSidecarStore } from "../../stores/sidecar.store";
 import { Trans, useTranslation as useUiTranslation } from "react-i18next";
+import { LorebookListField, LorebookPickerField } from "../ui/LibraryPickers";
+import { Spinner } from "../ui/Spinner";
 
 // The 2D and 3D Avatars setup loads only on those agents' pages.
 const AvatarAgentSetup = lazy(() =>
@@ -354,7 +364,7 @@ const CUSTOM_AGENT_CAPABILITY_META: Array<{
 ];
 
 const CUSTOM_AGENT_CONTEXT_SOURCE_META: Array<{
-  id: CustomAgentContextSource;
+  id: Exclude<CustomAgentContextSource, "charactersPublicFace" | "personaPublicFace">;
   label: string;
   description: string;
   requiredCapability?: CustomAgentCapability;
@@ -410,7 +420,10 @@ const CUSTOM_AGENT_CONTEXT_SOURCE_META: Array<{
 if (import.meta.env.DEV) {
   const sourceIds = CUSTOM_AGENT_CONTEXT_SOURCE_META.map((source) => source.id);
   const uniqueSourceIds = new Set(sourceIds);
-  const hasEverySource = CUSTOM_AGENT_CONTEXT_SOURCE_IDS.every((source) => uniqueSourceIds.has(source));
+  // The Public Face keys belong to the Characters and Persona rows' three-way choice.
+  const hasEverySource = CUSTOM_AGENT_CONTEXT_SOURCE_IDS.filter(
+    (source) => source !== "charactersPublicFace" && source !== "personaPublicFace",
+  ).every((source) => uniqueSourceIds.has(source as (typeof sourceIds)[number]));
   if (!hasEverySource || uniqueSourceIds.size !== sourceIds.length) {
     throw new Error("Custom agent context source metadata must contain every source exactly once.");
   }
@@ -756,6 +769,9 @@ export function AgentEditor() {
   // Custom agent = DB entry with no matching built-in
   const isCustomAgent = !builtIn && !!dbConfig;
   const isNewCustomAgent = agentDetailId === "__new__";
+  // Built-ins the Engine gates itself (host workflows, Illustrator, Knowledge Router) keep their own activation.
+  const activationGateAvailable =
+    isCustomAgent || isNewCustomAgent || (!!builtIn && agentSupportsActivationGate(builtIn.id));
   // Downloaded agents show their store logo and banner, like their Organizer page.
   const { data: capabilityAgents } = useCapabilityAgentRegistry();
   const capabilityCatalog = useCapabilityCatalog();
@@ -826,6 +842,13 @@ export function AgentEditor() {
   const [localLorebookWriteEnabled, setLocalLorebookWriteEnabled] = useState(false);
   const [localWritableLorebookId, setLocalWritableLorebookId] = useState("");
   const [localLorebookReadBehindMessages, setLocalLorebookReadBehindMessages] = useState(0);
+  const [localLorebookOrderMode, setLocalLorebookOrderMode] = useState<"fixed" | "growing" | "legacy">("fixed");
+  const [localFixedLorebookOrder, setLocalFixedLorebookOrder] = useState(String(DEFAULT_LOREBOOK_WRITER_ORDER));
+  const newLorebookEntryOrder = parseLorebookWriterOrder(
+    localLorebookOrderMode === "fixed" && localFixedLorebookOrder !== ""
+      ? Number(localFixedLorebookOrder)
+      : localLorebookOrderMode,
+  );
   const [localLorebookBackfillEnabled, setLocalLorebookBackfillEnabled] = useState(false);
   const [localLorebookBackfillChunkSize, setLocalLorebookBackfillChunkSize] = useState(
     DEFAULT_LOREBOOK_BACKFILL_CHUNK_SIZE,
@@ -1027,6 +1050,9 @@ export function AgentEditor() {
       );
       setLocalWritableLorebookId(writableLorebookId);
       setLocalLorebookReadBehindMessages(normalizeLorebookReadBehindMessages(settings.lorebookReadBehindMessages));
+      const writerOrder = parseLorebookWriterOrder(settings.newLorebookEntryOrder);
+      setLocalLorebookOrderMode(writerOrder === "growing" ? "growing" : writerOrder === undefined ? "legacy" : "fixed");
+      setLocalFixedLorebookOrder(String(typeof writerOrder === "number" ? writerOrder : DEFAULT_LOREBOOK_WRITER_ORDER));
       setLocalLorebookBackfillEnabled(settings.lorebookBackfillEnabled === true);
       setLocalLorebookBackfillChunkSize(normalizeLorebookBackfillChunkSize(settings.lorebookBackfillChunkSize));
       setLocalMusicProvider(normalizeMusicProvider(settings));
@@ -1159,6 +1185,8 @@ export function AgentEditor() {
       setLocalLorebookWriteEnabled(false);
       setLocalWritableLorebookId("");
       setLocalLorebookReadBehindMessages(0);
+      setLocalLorebookOrderMode("fixed");
+      setLocalFixedLorebookOrder(String(DEFAULT_LOREBOOK_WRITER_ORDER));
       setLocalLorebookBackfillEnabled(false);
       setLocalLorebookBackfillChunkSize(DEFAULT_LOREBOOK_BACKFILL_CHUNK_SIZE);
       setLocalMusicProvider(normalizeMusicProvider(defaultSettings));
@@ -1227,6 +1255,8 @@ export function AgentEditor() {
       setLocalLorebookWriteEnabled(false);
       setLocalWritableLorebookId("");
       setLocalLorebookReadBehindMessages(0);
+      setLocalLorebookOrderMode("fixed");
+      setLocalFixedLorebookOrder(String(DEFAULT_LOREBOOK_WRITER_ORDER));
       setLocalLorebookBackfillEnabled(false);
       setLocalLorebookBackfillChunkSize(DEFAULT_LOREBOOK_BACKFILL_CHUNK_SIZE);
       setLocalMusicProvider("spotify");
@@ -1472,7 +1502,8 @@ export function AgentEditor() {
     const selectedPhase = resolveCustomAgentPhase(localPhase, localResultType, isEditingCustomAgent);
     const savedPhase = normalizeAgentPhaseForType(agentType, selectedPhase);
     const mayIncludeTurnData = isEditingCustomAgent && savedPhase === "post_processing";
-    const activationKeywords = isEditingCustomAgent ? parseActivationKeywordsText(localActivationKeywordsText) : [];
+    const activationGateAvailable = isEditingCustomAgent || (!!builtIn && agentSupportsActivationGate(builtIn.id));
+    const activationKeywords = activationGateAvailable ? parseActivationKeywordsText(localActivationKeywordsText) : [];
     const activationScanDepth =
       localActivationScanDepth === ""
         ? DEFAULT_CUSTOM_AGENT_ACTIVATION_SCAN_DEPTH
@@ -1495,6 +1526,13 @@ export function AgentEditor() {
       writableLorebookId.length > 0;
     if (lorebookWriterEnabled && !writableLorebookId) {
       return "Select a target lorebook before enabling lorebook writing for this agent.";
+    }
+    if (
+      (lorebookWriterEnabled || lorebookReadBehindEnabled) &&
+      localLorebookOrderMode === "fixed" &&
+      newLorebookEntryOrder === undefined
+    ) {
+      return localizeUi("ui.agents.agenteditor.invalidFixedLorebookOrder");
     }
     const effectiveEnabledTools = Array.from(
       new Set(
@@ -1555,7 +1593,7 @@ export function AgentEditor() {
               activationScanDepth,
             }
           : {}),
-        ...(isEditingCustomAgent && localActivationQuestion.trim()
+        ...(activationGateAvailable && localActivationQuestion.trim()
           ? {
               activationQuestion: localActivationQuestion.trim(),
               activationThreshold: localActivationThreshold,
@@ -1591,6 +1629,7 @@ export function AgentEditor() {
               writableLorebookIds: [writableLorebookId],
             }
           : {}),
+        ...(lorebookWriterEnabled || lorebookReadBehindEnabled ? { newLorebookEntryOrder } : {}),
         ...(lorebookReadBehindEnabled ? { lorebookReadBehindMessages: localLorebookReadBehindMessages } : {}),
         ...(lorebookReadBehindEnabled
           ? {
@@ -1682,6 +1721,8 @@ export function AgentEditor() {
     localLorebookWriteEnabled,
     localWritableLorebookId,
     localLorebookReadBehindMessages,
+    localLorebookOrderMode,
+    newLorebookEntryOrder,
     localLorebookBackfillEnabled,
     localLorebookBackfillChunkSize,
     localMusicProvider,
@@ -1825,7 +1866,8 @@ export function AgentEditor() {
     const selectedPhase = resolveCustomAgentPhase(localPhase, localResultType, isEditingCustomAgent);
     const savedPhase = normalizeAgentPhaseForType(agentType, selectedPhase);
     const mayIncludeTurnData = isEditingCustomAgent && savedPhase === "post_processing";
-    const activationKeywords = isEditingCustomAgent ? parseActivationKeywordsText(localActivationKeywordsText) : [];
+    const activationGateAvailable = isEditingCustomAgent || (!!builtIn && agentSupportsActivationGate(builtIn.id));
+    const activationKeywords = activationGateAvailable ? parseActivationKeywordsText(localActivationKeywordsText) : [];
     const activationScanDepth =
       localActivationScanDepth === ""
         ? DEFAULT_CUSTOM_AGENT_ACTIVATION_SCAN_DEPTH
@@ -1861,6 +1903,14 @@ export function AgentEditor() {
     const savedAuthor = localAuthor.trim() || (builtIn ? DEFAULT_AGENT_AUTHOR : "Unknown");
     const savedPromptTemplates = normalizeAgentPromptTemplateOptions(localPromptTemplates);
     const exportingMusicAgent = agentType === "spotify";
+    if (
+      (lorebookWriterEnabled || lorebookReadBehindEnabled) &&
+      localLorebookOrderMode === "fixed" &&
+      newLorebookEntryOrder === undefined
+    ) {
+      toast.error(localizeUi("ui.agents.agenteditor.invalidFixedLorebookOrder"));
+      return;
+    }
     const settings = sanitizeAgentSettingsForTransfer({
       author: savedAuthor,
       promptTemplates: savedPromptTemplates,
@@ -1872,7 +1922,7 @@ export function AgentEditor() {
       ...(isEditingCustomAgent ? localOutputOptions : {}),
       ...(isEditingCustomAgent ? { triggerLorebooksForAgentCalls: localTriggerLorebooksForAgentCalls } : {}),
       ...(activationKeywords.length > 0 ? { activationKeywords, activationScanDepth } : {}),
-      ...(isEditingCustomAgent && localActivationQuestion.trim()
+      ...(activationGateAvailable && localActivationQuestion.trim()
         ? {
             activationQuestion: localActivationQuestion.trim(),
             activationThreshold: localActivationThreshold,
@@ -1905,6 +1955,7 @@ export function AgentEditor() {
             writableLorebookIds: [writableLorebookId],
           }
         : {}),
+      ...(lorebookWriterEnabled || lorebookReadBehindEnabled ? { newLorebookEntryOrder } : {}),
       ...(lorebookReadBehindEnabled ? { lorebookReadBehindMessages: localLorebookReadBehindMessages } : {}),
       ...(lorebookReadBehindEnabled
         ? {
@@ -1996,6 +2047,7 @@ export function AgentEditor() {
   // without a saved config has no record for her to change.
   const mariContentRef = useRef<HTMLDivElement>(null);
   const descriptionLabelId = useId();
+  const growingOrderDescriptionId = useId();
   const agentRecordId = dbConfig?.id ?? null;
   const scrollToMariField = useCallback(
     (field: HTMLElement) => field.scrollIntoView({ block: "center", behavior: "smooth" }),
@@ -2520,7 +2572,7 @@ export function AgentEditor() {
               expanded={avatarSetupOpen}
               onExpandedChange={setAvatarSetupOpen}
             >
-              <Suspense fallback={<Loader2 size="1rem" className="animate-spin text-[var(--muted-foreground)]" />}>
+              <Suspense fallback={<Spinner size="md" className="text-[var(--muted-foreground)]" />}>
                 <AvatarAgentSetup agentId={currentAgentType} />
               </Suspense>
             </FieldGroup>
@@ -2610,26 +2662,27 @@ export function AgentEditor() {
                         markDirty();
                       }}
                     />
-                    <label className="flex items-center gap-2 text-xs">
-                      {localizeUi("ui.agents.agenteditor.homeWidgetSize")}
-                      <select
+                    <div className="flex items-center gap-2 text-xs">
+                      <label htmlFor={`home-widget-size-${widget.id}`}>
+                        {localizeUi("ui.agents.agenteditor.homeWidgetSize")}
+                      </label>
+                      <Select
+                        id={`home-widget-size-${widget.id}`}
+                        label={localizeUi("ui.agents.agenteditor.homeWidgetSize")}
                         value={widget.size}
-                        onChange={(event) => {
+                        onChange={(next) => {
                           setLocalHomeWidgets((widgets) =>
-                            widgets.map((item) =>
-                              item.id === widget.id
-                                ? { ...item, size: event.target.value as "compact" | "large" }
-                                : item,
-                            ),
+                            widgets.map((item) => (item.id === widget.id ? { ...item, size: next } : item)),
                           );
                           markDirty();
                         }}
-                        className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 py-1"
-                      >
-                        <option value="compact">{localizeUi("ui.agents.agenteditor.homeWidgetCompact")}</option>
-                        <option value="large">{localizeUi("ui.agents.agenteditor.homeWidgetLarge")}</option>
-                      </select>
-                    </label>
+                        className="min-h-11 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 py-1"
+                        options={[
+                          { value: "compact", label: localizeUi("ui.agents.agenteditor.homeWidgetCompact") },
+                          { value: "large", label: localizeUi("ui.agents.agenteditor.homeWidgetLarge") },
+                        ]}
+                      />
+                    </div>
                     <span className="sr-only">{index + 1}</span>
                   </div>
                 ))}
@@ -2705,6 +2758,21 @@ export function AgentEditor() {
                 {CUSTOM_AGENT_CONTEXT_SOURCE_META.map((source) => {
                   const allowed =
                     !source.requiredCapability || localCustomCapabilities[source.requiredCapability] === true;
+                  if (source.id === "characters" || source.id === "persona") {
+                    const cardSource: AgentCardContextSource = source.id;
+                    return (
+                      <AgentCardSourceRow
+                        key={source.id}
+                        label={localizeUi(source.label)}
+                        description={localizeUi(source.description)}
+                        value={getAgentCardContextMode(localContextSources, cardSource)}
+                        onChange={(mode) => {
+                          setLocalContextSources((current) => setAgentCardContextMode(current, cardSource, mode));
+                          markDirty();
+                        }}
+                      />
+                    );
+                  }
                   return (
                     <EditorSwitchRow
                       key={source.id}
@@ -2860,28 +2928,86 @@ export function AgentEditor() {
                     {localizeUi("ui.agents.agenteditor.targetLorebook")}
                   </p>
                   {allLorebooks && allLorebooks.length > 0 ? (
-                    <select
+                    <LorebookPickerField
                       value={localWritableLorebookId}
+                      lorebooks={allLorebooks}
+                      ariaLabel={localizeUi("ui.agents.agenteditor.targetLorebook")}
+                      noneLabel={localizeUi("ui.agents.agenteditor.selectALorebook")}
                       disabled={!canConfigureLorebookTarget}
-                      onChange={(event) => {
-                        setLocalWritableLorebookId(event.target.value);
+                      onChange={(id) => {
+                        setLocalWritableLorebookId(id);
                         markDirty();
                       }}
-                      className="w-full rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm ring-1 ring-[var(--border)] disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
-                    >
-                      <option value="">{localizeUi("ui.agents.agenteditor.selectALorebook")}</option>
-                      {allLorebooks.map((lorebook) => (
-                        <option key={lorebook.id} value={lorebook.id}>
-                          {lorebook.name}
-                        </option>
-                      ))}
-                    </select>
+                      triggerClassName="w-full rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm ring-1 ring-[var(--border)] disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                    />
                   ) : (
                     <p className="rounded-lg border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-[0.625rem] text-amber-200">
                       {localizeUi("ui.agents.agenteditor.createALorebookBeforeEnablingWritesForThisAgent")}
                     </p>
                   )}
                 </div>
+
+                {(canConfigureLorebookTarget || canConfigureLorebookReadBehind) && (
+                  <>
+                    <div className="flex min-w-0 flex-col gap-1.5 text-[0.6875rem] text-[var(--muted-foreground)]">
+                      <label
+                        htmlFor={`${growingOrderDescriptionId}-field`}
+                        className="font-medium text-[var(--foreground)]"
+                      >
+                        {localizeUi("ui.agents.agenteditor.newLorebookEntryOrder")}
+                      </label>
+                      <Select
+                        id={`${growingOrderDescriptionId}-field`}
+                        label={localizeUi("ui.agents.agenteditor.newLorebookEntryOrder")}
+                        value={localLorebookOrderMode}
+                        aria-describedby={localLorebookOrderMode === "growing" ? growingOrderDescriptionId : undefined}
+                        onChange={(mode) => {
+                          if (mode !== "fixed" && mode !== "growing" && mode !== "legacy") return;
+                          setLocalLorebookOrderMode(mode);
+                          markDirty();
+                        }}
+                        className="min-h-11 w-full rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm text-[var(--foreground)] ring-1 ring-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
+                        options={[
+                          { value: "fixed", label: localizeUi("ui.agents.agenteditor.lorebookOrderFixed") },
+                          { value: "growing", label: localizeUi("ui.agents.agenteditor.lorebookOrderGrowing") },
+                          {
+                            value: "legacy",
+                            label:
+                              localResultType === "lorebook_update"
+                                ? localizeUi("ui.agents.agenteditor.lorebookOrderAgentSupplied")
+                                : localizeUi("ui.agents.agenteditor.lorebookOrderDefault"),
+                          },
+                        ]}
+                      />
+                    </div>
+                    {localLorebookOrderMode === "growing" && (
+                      <p
+                        id={growingOrderDescriptionId}
+                        className="text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]"
+                      >
+                        {localizeUi("ui.agents.agenteditor.lorebookOrderGrowingDescription")}
+                      </p>
+                    )}
+                    {localLorebookOrderMode === "fixed" && (
+                      <label className="flex min-w-0 flex-col gap-1.5 text-[0.6875rem] text-[var(--muted-foreground)]">
+                        <span className="font-medium text-[var(--foreground)]">
+                          {localizeUi("ui.agents.agenteditor.fixedLorebookOrder")}
+                        </span>
+                        <input
+                          type="number"
+                          step={1}
+                          value={localFixedLorebookOrder}
+                          onChange={(event) => {
+                            setLocalFixedLorebookOrder(event.target.value);
+                            setLocalLorebookOrderMode("fixed");
+                            markDirty();
+                          }}
+                          className="min-h-11 w-full rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm text-[var(--foreground)] ring-1 ring-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
+                        />
+                      </label>
+                    )}
+                  </>
+                )}
 
                 <label className="flex min-w-0 flex-col gap-1.5 text-[0.6875rem] text-[var(--muted-foreground)]">
                   <span className="font-medium text-[var(--foreground)]">
@@ -3416,7 +3542,7 @@ export function AgentEditor() {
             </FieldGroup>
           )}
 
-          {(isCustomAgent || isNewCustomAgent) && (
+          {activationGateAvailable && (
             <FieldGroup
               label={localizeUi("ui.agents.agenteditor.activationKeywords")}
               icon={<Activity size="0.875rem" className="text-[var(--primary)]" />}
@@ -4443,48 +4569,22 @@ export function AgentEditor() {
                       ))}
                   </div>
                   {allLorebooks && allLorebooks.length > 0 ? (
-                    <div className="max-h-48 overflow-y-auto space-y-1 rounded-lg border border-[var(--border)] bg-[var(--secondary)]/30 p-2">
-                      {allLorebooks.map((lb) => {
-                        const selected = localSourceLorebookIds.includes(lb.id);
-                        return (
-                          <button
-                            key={lb.id}
-                            type="button"
-                            onClick={() => {
-                              setLocalSourceLorebookIds((prev) =>
-                                selected ? prev.filter((id) => id !== lb.id) : [...prev, lb.id],
-                              );
-                              setDirty(true);
-                            }}
-                            className={cn(
-                              "w-full flex items-center gap-2.5 rounded-lg px-3 py-2 text-left transition-all text-xs",
-                              selected
-                                ? "bg-amber-500/10 border border-amber-500/20 text-amber-300"
-                                : "bg-[var(--secondary)] border border-transparent text-[var(--foreground)] hover:bg-[var(--accent)]",
-                            )}
-                          >
-                            <div
-                              className={cn(
-                                "flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-all",
-                                selected
-                                  ? "border-amber-500/50 bg-amber-500/20"
-                                  : "border-[var(--border)] bg-[var(--background)]",
-                              )}
-                            >
-                              {selected && <Check size="0.625rem" />}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate font-medium">{lb.name}</p>
-                              {lb.description && (
-                                <p className="truncate text-[0.625rem] text-[var(--muted-foreground)]">
-                                  {lb.description}
-                                </p>
-                              )}
-                            </div>
-                          </button>
+                    <LorebookListField
+                      lorebooks={allLorebooks}
+                      selectedIds={localSourceLorebookIds}
+                      onToggle={(id) => {
+                        setLocalSourceLorebookIds((prev) =>
+                          prev.includes(id) ? prev.filter((other) => other !== id) : [...prev, id],
                         );
-                      })}
-                    </div>
+                        setDirty(true);
+                      }}
+                      onAdd={(ids) => {
+                        setLocalSourceLorebookIds((prev) => [...prev, ...ids.filter((id) => !prev.includes(id))]);
+                        setDirty(true);
+                      }}
+                      ariaLabel={localizeUi("ui.agents.agenteditor.fixedSourceOverride")}
+                      triggerClassName="w-full rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm ring-1 ring-[var(--border)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                    />
                   ) : (
                     <p className="text-[0.625rem] text-[var(--muted-foreground)]">
                       {localizeUi("ui.agents.agenteditor.noLorebooksAvailable")}
@@ -4607,7 +4707,7 @@ export function AgentEditor() {
                     >
                       {uploadSource.isPending ? (
                         <>
-                          <Loader2 size="0.875rem" className="animate-spin" />
+                          <Spinner size="sm" />
                           {localizeUi("ui.noodle.noodleprofilesurface.uploading")}
                         </>
                       ) : (
@@ -5010,6 +5110,49 @@ function EditorSwitchRow({
       )}
       labelClassName={cn("text-xs [&>span:first-child]:font-semibold", labelClassName)}
     />
+  );
+}
+
+/** The Characters and Persona context sources: Off, Full card or Public Face (#9426). */
+function AgentCardSourceRow({
+  label,
+  description,
+  value,
+  onChange,
+}: {
+  label: string;
+  description: string;
+  value: AgentCardContextMode;
+  onChange: (mode: AgentCardContextMode) => void;
+}) {
+  const { t: localizeUi } = useUiTranslation();
+  return (
+    <div
+      className={cn(
+        "flex w-full flex-col gap-2 rounded-xl p-3 text-left text-xs ring-1",
+        value === "off"
+          ? "bg-[var(--secondary)]/55 text-[var(--muted-foreground)] ring-[var(--border)]"
+          : "bg-[var(--primary)]/10 text-[var(--foreground)] ring-[var(--primary)]/40",
+      )}
+    >
+      {/* Same label and description styles as the switch rows beside it (SettingsSwitch). */}
+      <div className="flex flex-col">
+        <span className="font-semibold">{label}</span>
+        <span className="mt-0.5 block text-[0.625rem] leading-relaxed text-[var(--marinara-chat-chrome-panel-muted)]">
+          {description}
+        </span>
+      </div>
+      <CommandCenterSegmentedChoice<AgentCardContextMode>
+        value={value}
+        label={label}
+        onValueChange={onChange}
+        options={[
+          { value: "off", label: localizeUi("ui.agents.agenteditor.cardSourceMode.off") },
+          { value: "full", label: localizeUi("ui.agents.agenteditor.cardSourceMode.full") },
+          { value: "publicFace", label: localizeUi("ui.agents.agenteditor.cardSourceMode.publicFace") },
+        ]}
+      />
+    </div>
   );
 }
 

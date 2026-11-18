@@ -41,7 +41,7 @@ Upstream gives the logger `transport: { target: "pino-pretty" }` outside product
 
 Both modes needed it, so the built server behind `start.bat` was affected as well as `pnpm dev`. Formatting now runs in-process rather than on a transport worker, with upstream's `ignore: "hostname,bootId"` carried into the in-process stream; log volume is low at the default `LOG_LEVEL=warn`. `protectTerminalLogger` wraps the same stream and is a no-op on Windows.
 
-Guarded by `scripts/regressions/log-encoding.regression.ts`.
+Guarded by `scripts/regressions/server/log-encoding.regression.ts`.
 
 ### Regression lanes that assume a POSIX path layout
 
@@ -235,7 +235,7 @@ lease can neither name the holder nor reclaim a crashed writer's lease by PID. U
 
 Unsupervised starts (`node dist/index.js`, `start-local.bat`, the dev watcher) keep the lease error,
 as does a holder on another port, host binding, or self-signed TLS. `docs/TROUBLESHOOTING.md`
-describes the takeover. Covered by `scripts/regressions/running-copy-takeover.regression.ts`.
+describes the takeover. Covered by `scripts/regressions/launcher/running-copy-takeover.regression.ts`.
 
 ### Apply to all accepts the chat connection default
 
@@ -302,7 +302,7 @@ Upstream-owned files touched: `config/runtime-config.ts` (the settings file, wit
 pulled out of `saveRequestTimeoutSettings` into `writeSettingsFile`), `services/tools/tool-executor.ts`
 (`runWebSearch()` and one function per engine), `routes/admin.routes.ts`, `lib/connection-jobs.ts`
 and `ConnectionDefaults.tsx`. The card (`settings/WebSearchSettings.tsx`), its hooks and the shared
-schema are fork-owned. Covered by `scripts/regressions/web-search-searxng.regression.ts`.
+schema are fork-owned. Covered by `scripts/regressions/agents/web-search-searxng.regression.ts`.
 
 ### Arli AI receives reasoning effort, Top K and Min P
 
@@ -372,30 +372,6 @@ dialogue colors. Upstream saves it as `rgba(..., 0.25)`, a transparency written 
 `5c679e847a`, which made Roleplay Messages Background Opacity replace the alpha of authored
 colors. Under the slider's 90% default that 25% never applied, and a light avatar gave a nearly solid
 light bubble. The opaque value says what the bubble shows.
-
-### Mari sheet tracks composer focus with an attribute
-
-Three Mari bottom-sheet rules in `packages/client/src/styles/mari.css` read
-`html[data-mari-software-keyboard-open]:not([data-mari-composer-focused])`, and `AppShell.tsx` sets
-`data-mari-composer-focused` on the root beside the keyboard flag. Upstream's `cd71df343d` wrote them
-as `.mari-companion-panel:not(:has(.mari-workspace-composer__input:focus))`. While such a selector is
-live, Chrome invalidates `<body>` and every descendant on any DOM change, so each keystroke in a
-message editor restyled about 9500 elements three times: 1.6 s of style work for 15 characters in an
-83-message chat, against 50 ms without those rules. The positive `:has(...:focus)` rules are cheap and
-stay.
-
-Destined for upstream. Guarded by `scripts/regressions/css-has-focus-negation.regression.mjs`.
-
-### Sprite folder drags publish their kind on the root
-
-`use-touch-folder-drag.ts` sets `data-marinara-drag-kind` on `<html>` for the length of a drag, and
-the sprite folder row in `SpriteLibrary.tsx` turns off its hover highlight through
-`html[data-marinara-drag-kind^=sprite-][data-marinara-drag-kind$=-folder]`. Upstream's #8580 wrote it as
-`group-has-[[data-sprite-folder][data-drag-source=true]]/sprite-library:hover:`, which compiles to a
-`:has()` on an unknown ancestor and loads app-wide, so every keystroke in a message editor restyled
-about 7300 elements: 1.9 s of style work for 15 characters, against 50 ms without the rule.
-
-Destined for upstream. The same lane rejects any `group-has-` or `peer-has-` utility in client source.
 
 ### A served build's new service worker takes over without reloading
 
@@ -528,7 +504,7 @@ writing, which on an overwrite is the user's own.
 `importSTLorebook` already took an `existingLorebookId` for character re-import
 and cleared only the entries, so every re-import left the previous run's folders
 behind, empty. Its swap transaction now deletes those folders too. Covered by
-`scripts/regressions/lorebook-import-overwrite.regression.ts`, which forces the
+`scripts/regressions/lorebook/lorebook-import-overwrite.regression.ts`, which forces the
 swap to fail.
 
 One dialog serves a whole batch, with a per-row choice and an apply-to-all,
@@ -572,7 +548,7 @@ Upstream-hot files touched: `routes/tts.routes.ts` (carrying lane and pricing th
 
 ### Profile import marker coverage beyond upstream's lane
 
-`scripts/regressions/profile-import-native-marker.regression.ts` pins the root
+`scripts/regressions/server/profile-import-native-marker.regression.ts` pins the root
 (`game-assets/.native`) and nested (`game-assets/music/combat/.native`) marker
 paths. Upstream's `profile-import-asset-security` lane covers only the flat
 `game-assets/sprites/` case.
@@ -633,7 +609,7 @@ to compile, so rename every reference, not just the conflicted hunks.
 Those three generation routes each re-derived the note and re-hardcoded the default depth of
 `4` independently. They now share `packages/server/src/services/prompt/author-notes.ts`, and
 the default lives in `packages/shared` as `DEFAULT_AUTHOR_NOTE_DEPTH`. Covered by
-`scripts/regressions/author-note-presets.regression.ts`, which runs in `pnpm regression:prompt`.
+`scripts/regressions/prompt/author-note-presets.regression.ts`, which runs in `pnpm regression:prompt`.
 
 Named preset sets switch several presets at once. A set is a name plus a list of preset ids,
 stored as one JSON array in `app_settings` under `author-note-preset-sets` and served by
@@ -736,7 +712,7 @@ Google providers, `packages/server/src/services/generation/generation-parameters
 `packages/client/src/components/chat/chat-area.types.ts`, `packages/client/src/hooks/use-chats.ts`,
 `packages/client/src/stores/ui.store.ts`, and `packages/client/src/localization/locales/en.json`.
 
-Covered by `scripts/regressions/parameter-trace.regression.ts`.
+Covered by `scripts/regressions/prompt/parameter-trace.regression.ts`.
 
 ### Chat parameters follow the connection unless the chat says otherwise
 
@@ -800,8 +776,8 @@ now a pure `resolveGenerationParameterRuntime`), `packages/server/src/routes/gen
 `docs/TROUBLESHOOTING.md`, `docs/chats/sending-and-streaming.md`, `e2e/core-flows.e2e.ts`,
 `e2e/prompt-controls.e2e.ts`, and `e2e/issue-sweep-settings.e2e.ts`.
 
-Covered by `scripts/regressions/chat-parameter-overrides.regression.ts` and
-`scripts/regressions/parameter-trace.regression.ts`.
+Covered by `scripts/regressions/prompt/chat-parameter-overrides.regression.ts` and
+`scripts/regressions/prompt/parameter-trace.regression.ts`.
 
 ### Multiswipe: several alternatives per turn, agents deferred until you pick
 
@@ -958,11 +934,11 @@ upstream rewrites it constantly. Re-check these after every sync:
   not only candidate 1's. Upstream records them per swipe and replays them when the active swipe
   changes; with candidate 1 alone holding them, browsing to another candidate undid every
   `{{setvar}}` the shared prompt ran. The candidate indices come from the run summary, keyed by
-  message id. Covered by `scripts/regressions/multi-swipe-chat-variables.regression.ts`.
+  message id. Covered by `scripts/regressions/chat/multi-swipe-chat-variables.regression.ts`.
 - Every fork use of the abort signal reads `generationSignal`, which also carries the multiplayer
   room's cancellation. `abortController.signal` still compiles, so a revert would be silent.
 
-Covered by `scripts/regressions/multi-swipe-generate-route.regression.ts`, which drives the real
+Covered by `scripts/regressions/chat/multi-swipe-generate-route.regression.ts`, which drives the real
 `POST /api/generate` against a mock OpenAI-compatible provider and asserts the whole wiring: three
 sequential provider calls, two silent swipes behind an unmoved active swipe, markers on every
 candidate, and `candidateCount: 1` producing byte-for-byte stock behavior with no multiswipe
@@ -1048,7 +1024,7 @@ existing dedup rule, plus `mergeTrackerNamedEntries`), `packages/server/src/rout
 since new tables are additive), `packages/client/src/components/panels/SettingsPanel.tsx` (one mount),
 and `packages/client/src/components/personas/PersonaEditor.tsx`.
 
-Covered by `scripts/regressions/tracker-presets.regression.ts`, which runs the routes and the
+Covered by `scripts/regressions/roleplay/tracker-presets.regression.ts`, which runs the routes and the
 service against real storage and pins the additive merge, idempotent re-apply, chat override
 versus global fallback, persona seeding, and the cleared pointer on delete.
 
@@ -1084,7 +1060,7 @@ creates a custom field, it only echoes existing ones. Rows enter tracker state b
 added one in the panel or something seeded it. That is why seeding is the mechanism rather than a
 convenience.
 
-Covered by `scripts/regressions/tracker-adopted-rows.regression.ts`, which drives learning through
+Covered by `scripts/regressions/roleplay/tracker-adopted-rows.regression.ts`, which drives learning through
 the real PATCH route: seeded rows are never learned, a deletion sticks while other chats still hold
 the row, Clear leaves the list alone, and an explicit message target compares against that swipe's
 snapshot rather than the newest one.
@@ -1107,7 +1083,7 @@ re-rolls its color. The panel's adds used `var(--primary)`, which fails the `#rr
 preset and learned-row schemas require, so a learned stat lost its color; a hex starting color
 survives learning. Patches two upstream files, `features/tracker-panel/hooks/use-tracker-mutations.ts`
 (`addPersonaStat`) and `features/tracker-panel/hooks/use-character-card-mutations.ts`
-(`addCharacterStat`), one line each. Covered by `scripts/regressions/random-stat-color.regression.ts`.
+(`addCharacterStat`), one line each. Covered by `scripts/regressions/roleplay/random-stat-color.regression.ts`.
 
 `tracker_presets` is registered in both table lists: `FILE_BACKED_TABLES` in
 `db/file-backed-store.ts` and the hand-maintained `SHARDED_TABLES` copy in
@@ -1131,7 +1107,7 @@ preserved on omission. A denylist rather than a required `extras` container, bec
 already in use emit their schema at the top level of each character and a container would break
 every one of them.
 
-Three rules, each pinned by `scripts/regressions/tracker-extras.regression.ts`:
+Three rules, each pinned by `scripts/regressions/roleplay/tracker-extras.regression.ts`:
 
 - **Preserve on omission**, matching `customFields`. A key the agent stops mentioning keeps its
   previous value. Arrays take their length from the agent, which is authoritative about list
@@ -1202,7 +1178,7 @@ from a regression) and so the upstream-hot store shrinks to re-exports plus stat
   never reached another device. It now calls `migrateSyncedTrackerPanelSize`, which migrates legacy
   keys only when present and otherwise clamps the width.
 
-Pinned by `scripts/regressions/tracker-panel-size.regression.ts`, mutation-verified.
+Pinned by `scripts/regressions/roleplay/tracker-panel-size.regression.ts`, mutation-verified.
 
 ### Thoughts read at the size of the fields beside them, and stop being cut off
 
@@ -1260,7 +1236,7 @@ auto-adopt toggle in Tracker preset settings.
 One consequence worth knowing: a newly added custom field has an empty value, so it disappears when
 edit mode is switched off until something is typed into it.
 
-`scripts/regressions/tracker-blank-values.regression.ts` covers the predicates directly, including
+`scripts/regressions/roleplay/tracker-blank-values.regression.ts` covers the predicates directly, including
 the footwear case both with and without `0` in the list, plus that edit mode reveals blank rows and
 that the lookup Set stays memoized, since it is passed down the extras tree past a memo boundary.
 Verified in a browser: a custom field with an empty value renders in edit mode and not outside.
@@ -1366,7 +1342,7 @@ of building persona/character parity in code. Seeding already covers both sides
 row-level preserve-on-omission and no nested extras -- tracking the persona as a character sidesteps
 both rather than duplicating them.
 
-`scripts/regressions/tracker-field-flex.regression.ts` pins the clamp's three rising tiers, that
+`scripts/regressions/roleplay/tracker-field-flex.regression.ts` pins the clamp's three rising tiers, that
 neither card truncates a detail value or reintroduces a fixed row height, and the position of the
 persona avatar lookup in the chain. Verified non-vacuous by restoring `truncate`.
 
@@ -1422,7 +1398,7 @@ tracker-card:<n>` lines while a tracker turn streams. It is inert unless that ke
 `shallowRecordEqual` moves to `lib/shallow-record-equal.ts`; `use-tracker-mutations.ts` had its own
 copy and `useStableRecord` needed the same thing.
 
-`scripts/regressions/tracker-render-cost.regression.ts` pins all four causes plus the containment
+`scripts/regressions/roleplay/tracker-render-cost.regression.ts` pins all four causes plus the containment
 placeholder, and covers `shallowRecordEqual` directly. Verified non-vacuous by removing a memo
 boundary, which fails the lane.
 
@@ -1484,7 +1460,7 @@ Two behaviour changes fall out of unifying:
 Net line count is roughly flat -- 342 lines leave the two cards, 331 arrive in the two shared files.
 The win is that each behaviour exists once, not that there is less code.
 
-`scripts/regressions/character-card-sections.regression.ts` pins the de-duplication: both cards mount
+`scripts/regressions/characters/character-card-sections.regression.ts` pins the de-duplication: both cards mount
 the shared tail, neither mounts `CharacterTrackerExtras` or renders field rows itself, neither
 re-declares a handler, and the per-field clearers keep their types. Verified non-vacuous by
 reintroducing the original bug, which fails the lane on the extras assertion.
@@ -1511,7 +1487,7 @@ like it worked and did not.
 The use case is switching a tracker prompt to another language: without a purge the old field names
 survive forever through the merge, so the panel ends up bilingual.
 
-Pinned by `scripts/regressions/tracker-data-reset.regression.ts`, mutation-verified that the per-chat
+Pinned by `scripts/regressions/roleplay/tracker-data-reset.regression.ts`, mutation-verified that the per-chat
 purge stays scoped to its chat.
 
 Note for anyone writing a regression here: `createFileNativeDB()` takes test hooks, not a path. It
@@ -1631,7 +1607,38 @@ Patches to upstream files: `packages/client/src/components/chat/ChatBranchesPane
 `packages/client/src/components/layout/ModalRenderer.tsx`, `packages/client/src/hooks/use-chats.ts`,
 and `packages/client/src/localization/locales/en.json`.
 
-Covered by `scripts/regressions/chat-branch-preview.regression.ts`.
+Covered by `scripts/regressions/chat/chat-branch-preview.regression.ts`.
+
+### Sync with upstream, 2026-11-18
+
+848 upstream commits, merge base `11489b413`, through `8b8939d931`. v2.5.2 on both sides, storage format
+10 to 11 (personas stored as character cards, #9023). 138 overlapping files, 61 conflicts, most from
+upstream's Connections jobs rework and its Voice job.
+
+- **Voice job.** Upstream's Voice job as the speech switch is not taken: it stores `connectionId` and a
+  built-in source in the TTS settings, which `audio-config-resolution.ts` does not read. Its job settings
+  window, Modal and found-models counts are taken; the Voice row keeps the fork's flag and
+  `/tts/effective-config` reading. `voiceJobMigration`, `voiceSources`, `useFollowVoiceJob`,
+  `useMigrateVoiceJob`, the "On this device" PocketTTS voice row and the shared `TTS_SOURCE_DEFAULTS`
+  table are gone; the TTS card keeps its switch and drops upstream's draft-dropping on a Voice job move.
+- **Web search** is a job settings window like Voice and Dictation (`JOB_SETTINGS` in
+  `ConnectionDefaults.tsx`).
+- **Speak buttons.** Upstream's one-tap Speak sits in the fork's extracted message bars; its Conversation
+  hook (`use-message-speech.ts`) speaks through the resolved audio connection, cache keys, concurrency
+  and synthesis policy.
+- **Illustrator chat reasoning** (59dc0b1599) reads the chat's Override or Off for Reasoning Effort
+  through `effectiveChatParameterOverrides`, not `chatParameters`; `assigned-chat-sweep.regression.ts`
+  seeds `chatParameterOverrides`.
+- **Ported by hand.** The Chat Settings Drawer moved to `features/chat-settings/` (#9120): Apply to all,
+  the game audio card (now in `RoleplayAgentsSection.tsx`) and the chat parameter Override props came
+  across. The tracker projection moved from `open-issues.regression.ts` to
+  `ui/ui-store-persistence.regression.ts`. The persona name lookup in `name-conflicts.ts` reads the card.
+- **Taken from upstream.** The Mari composer focus attribute (now on `GlobalOmnibar`) and the sprite
+  folder hover rule (`globals.css`) replace the fork's root attributes. The override Post-Processing
+  control uses the shared Select.
+- **Regression layout.** Upstream's `regression:layout-check` runs in `check`; the fork's top-level lanes
+  moved into area folders, and lanes that read source carry a `regression-layout: source-path` reason.
+- **Admin shutdown** keeps its own scheduled flag beside upstream's `isRestartPending()`.
 
 ### Sync with upstream, 2026-11-07
 
@@ -3015,7 +3022,7 @@ Reproduced from a real snapshot: one present character across 128 had no `charac
 crashed deterministically whenever its tracker was open.
 
 The normalizer moved to `lib/sprite-expressions.ts`, which is React-free and already owns
-`isSpriteLookupCharacterId`, so `scripts/regressions/tracker-sprite-lookup.regression.ts` can pin it.
+`isSpriteLookupCharacterId`, so `scripts/regressions/roleplay/tracker-sprite-lookup.regression.ts` can pin it.
 Mutation-verified. Every other `characterId` trim in the feature was already optional-chained; this
 was the only hole.
 
@@ -3087,7 +3094,7 @@ grouped layout counts neither, so it collapses rather than painting an empty the
 Patches to upstream files: `ui.store.ts`, `ChatMessage.tsx`, `ConversationMessage.tsx`,
 `ConversationMessageShared.tsx`, `ConversationMessageBubble.tsx`, `ConversationMessageLine.tsx`,
 `ConversationMessageGrouped.tsx`, `SettingsPanel.tsx`, and `en.json`. Covered by
-`scripts/regressions/message-controls-position.regression.mjs`.
+`scripts/regressions/chat/message-controls-position.regression.mjs`.
 
 ### Files can be attached to a sent message
 
@@ -3129,7 +3136,7 @@ Patches to upstream files: `chats.routes.ts`, `chats.storage.ts`, `generate.rout
 `ChatMessage.tsx`, `ConversationMessage.tsx`, `ConversationMessageActions.tsx`,
 `mari/use-mari-message-actions.ts`, `ChatInput.tsx`, `ConversationInput.tsx`, `use-chats.ts`,
 `packages/shared/src/index.ts`, and `en.json` (5 keys). Covered by
-`scripts/regressions/message-attachments.regression.ts`, which also reads the Anthropic request
+`scripts/regressions/chat/message-attachments.regression.ts`, which also reads the Anthropic request
 bodies from both `/generate` and `/generate/dryRun` and fails on either route when its user-turn
 gate is removed. `e2e/message-attachment-remove.e2e.ts` removes a file in Conversation and
 Roleplay after the server saved another one the page has not fetched.
@@ -3155,7 +3162,7 @@ mode), `ChatWindowFavoriteButton.tsx` (`ChatWindowApplyAllButton`), `ChatSetting
 `chats.routes.ts`, `app-settings.routes.ts` (the three keys and their validation), and
 `packages/shared/src/utils/chat-window-defaults.ts` (`getChatWindowSharedLayoutSettingsKey`,
 `isChatWindowLayoutShape` split out of `parseChatWindowDefault`). Covered by
-`scripts/regressions/chat-window-shared-layout.regression.ts` and
+`scripts/regressions/chat/chat-window-shared-layout.regression.ts` and
 `e2e/chat-window-shared-layout.e2e.ts`; `e2e/chat-settings-window.e2e.ts` lists the new header
 button in its two expected control orders.
 
@@ -3178,7 +3185,7 @@ upstream file; take upstream's side of every other change to it.
 
 ### Regression lane registration
 
-`pnpm regression:prompt` appends `scripts/regressions/author-note-presets.regression.ts` via the
+`pnpm regression:prompt` appends `scripts/regressions/prompt/author-note-presets.regression.ts` via the
 runner's `--filter`. Upstream replaced the per-script `regression:*` aliases with
 `scripts/run-regressions.mjs`, which discovers `scripts/regressions/**/*.regression.{ts,mjs,js}`
 recursively on a 30-second-per-file budget, so plain `pnpm regression` picks the script up with no

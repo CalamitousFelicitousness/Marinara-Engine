@@ -4,9 +4,16 @@
 import { existsSync, lstatSync } from "node:fs";
 import { mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, resolve } from "node:path";
-import { inferImageSource, isOpenAIGptImageModel, type ImagePromptKind } from "@marinara-engine/shared";
+import {
+  inferImageSource,
+  isOpenAIGptImageModel,
+  type ImageGenerationDefaultsProfile,
+  type ImagePromptKind,
+  type ImageStyleProfileSettings,
+} from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
 import { flushDB } from "../../db/connection.js";
+import { logger } from "../../lib/logger.js";
 import { realPathInAppFolder } from "../../utils/app-folder.js";
 import { DATA_DIR } from "../../utils/data-dir.js";
 import {
@@ -16,8 +23,14 @@ import {
   withSpriteCatalogLock,
 } from "../sprites/sprite-catalog.js";
 import { newId, now } from "../../utils/id-generator.js";
-import { assertInsideDir, extensionFromImageMime, isAllowedImageBuffer } from "../../utils/security.js";
+import {
+  assertInsideDir,
+  extensionFromImageMime,
+  isAllowedImageBuffer,
+  parseImageDataUrl,
+} from "../../utils/security.js";
 import { generateImage, type ImageGenResult } from "../image/image-generation.js";
+import { getSharp } from "../image/sharp-runtime.js";
 import { resolveConnectionImageDefaults, resolveConnectionImageQuality } from "../image/image-generation-defaults.js";
 import { loadImageGenerationUserSettings } from "../image/image-generation-settings.js";
 import { compileImagePrompt } from "../image/image-prompt-compiler.js";
@@ -82,7 +95,7 @@ type ImageCapability = {
   notes: string[];
 };
 
-type MariImageAsset = {
+export type MariImageAsset = {
   id: string;
   filename: string;
   filePath: string;
@@ -91,8 +104,15 @@ type MariImageAsset = {
   ext: string;
   operation: "generate" | "edit";
   kind: ImagePromptKind;
+  /** What the image model got. */
   prompt: string;
   negativePrompt: string;
+  /** What Mari asked for, before any style profile (#9329). Absent on assets saved before it. */
+  requestedPrompt?: string;
+  requestedNegativePrompt?: string;
+  styleMode?: "none" | "profile";
+  styleProfileId?: string | null;
+  styleProfileName?: string | null;
   width: number | null;
   height: number | null;
   connectionId: string;
@@ -125,8 +145,11 @@ type ImageTarget =
   | { type: "chat-gallery"; chatId: string; imageId?: string | null }
   | { type: "character-gallery"; characterId: string; imageId?: string | null };
 
-const BOOLEAN_FLAGS = new Set(["apply", "help", "edit", "generate", "json", "delete-file", "force"]);
+const BOOLEAN_FLAGS = new Set(["apply", "help", "edit", "generate", "json", "delete-file", "force", "no-style"]);
 const PREVIEW_CHAT_ID = "mari-images";
+// #9342: `look` sends at most this many pictures per call, each scaled to fit this long side.
+const LOOK_MAX_IMAGES = 4;
+const LOOK_LONG_SIDE = { high: 1024, low: 512 } as const;
 const GALLERY_DIR = join(DATA_DIR, "gallery");
 const PREVIEW_DIR = join(GALLERY_DIR, PREVIEW_CHAT_ID);
 const PREVIEW_MANIFEST_PATH = join(PREVIEW_DIR, "manifest.json");
@@ -250,6 +273,203 @@ function detectImageKind(target: ImageTarget | null, explicit?: string): ImagePr
     default:
       return "illustration";
   }
+}
+
+type StyleChoice =
+  { mode: "none" } | { mode: "profile"; profileId: string; chosenBy: "flag" | "connection" | "default" };
+
+// #9329: Mari writes whole prompts, so they go out as written unless she asks for a style profile with --style.
+// A bare --style (or --style default) means the engine default: the connection's own profile, else the global one.
+function resolveStyleChoice(
+  flags: Map<string, string | boolean>,
+  styleProfiles: ImageStyleProfileSettings,
+  imageDefaults: ImageGenerationDefaultsProfile | null | undefined,
+): StyleChoice {
+  const raw = ["style", "style-profile", "style-profile-id"]
+    .map((name) => flags.get(name))
+    .find((v) => v !== undefined);
+  if (hasFlag(flags, "no-style")) {
+    if (raw !== undefined && raw !== false) throw new Error("Use either --style or --no-style, not both.");
+    return { mode: "none" };
+  }
+  if (raw === undefined || raw === false) return { mode: "none" };
+  const wanted = typeof raw === "string" ? raw.trim() : "";
+  if (!wanted || wanted.toLowerCase() === "default") {
+    const own = imageDefaults?.styleProfileId?.trim();
+    if (own && styleProfiles.profiles.some((profile) => profile.id === own))
+      return { mode: "profile", profileId: own, chosenBy: "connection" };
+    return { mode: "profile", profileId: styleProfiles.defaultProfileId, chosenBy: "default" };
+  }
+  const profile = findStyleProfileByIdOrName(styleProfiles, wanted);
+  if (!profile) throw new Error(`Style profile not found: ${wanted}. Run mari images styles to list them.`);
+  return { mode: "profile", profileId: profile.id, chosenBy: "flag" };
+}
+
+function findStyleProfileByIdOrName(styleProfiles: ImageStyleProfileSettings, wanted: string) {
+  const lower = wanted.trim().toLowerCase();
+  return (
+    styleProfiles.profiles.find((profile) => profile.id === wanted.trim()) ??
+    styleProfiles.profiles.find((profile) => profile.name.trim().toLowerCase() === lower)
+  );
+}
+
+function defaultsPrefixes(defaults: ImageGenerationDefaultsProfile | null | undefined) {
+  const own =
+    defaults?.service === "automatic1111"
+      ? defaults.automatic1111
+      : defaults?.service === "comfyui"
+        ? defaults.comfyui
+        : defaults?.service === "novelai"
+          ? defaults.novelai
+          : undefined;
+  return { prompt: own?.promptPrefix ?? "", negative: own?.negativePromptPrefix ?? "" };
+}
+
+// The connection's prompt and negative prefixes are added again inside the provider call (NovelAI, A1111, ComfyUI), so
+// an as-written prompt blanks them here too. Sampler, steps, seed and custom parameters stay.
+function withoutPromptPrefixes<T extends ImageGenerationDefaultsProfile | null | undefined>(defaults: T): T {
+  if (!defaults) return defaults;
+  const blank = <D extends { promptPrefix: string; negativePromptPrefix: string }>(own: D | undefined) =>
+    own ? { ...own, promptPrefix: "", negativePromptPrefix: "" } : own;
+  return {
+    ...defaults,
+    automatic1111: blank(defaults.automatic1111),
+    comfyui: blank(defaults.comfyui),
+    novelai: blank(defaults.novelai),
+  };
+}
+
+function clip(value: string | undefined, max = 160) {
+  const text = (value ?? "").trim();
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+function pruneEmpty(values: Record<string, string | undefined>) {
+  return Object.fromEntries(Object.entries(values).filter(([, value]) => value?.trim())) as Record<string, string>;
+}
+
+// What goes to the image model, plus a `style` report so Mari can see what a profile added, removed or moved.
+function styleImagePrompt(args: {
+  flags: Map<string, string | boolean>;
+  kind: ImagePromptKind;
+  prompt: string;
+  negativePrompt: string;
+  styleProfiles: ImageStyleProfileSettings;
+  imageDefaults: ImageGenerationDefaultsProfile | null | undefined;
+}) {
+  const { kind, prompt, negativePrompt, styleProfiles, imageDefaults } = args;
+  const choice = resolveStyleChoice(args.flags, styleProfiles, imageDefaults);
+  const requested = { requestedPrompt: prompt, requestedNegativePrompt: negativePrompt };
+  if (choice.mode === "none") {
+    return {
+      prompt,
+      negativePrompt,
+      raw: true,
+      imageDefaults: withoutPromptPrefixes(imageDefaults),
+      style: {
+        mode: "none" as const,
+        note: "Sent as written: no style profile, no per-image tags, no connection prompt prefix, no rewriting. Pass --style to use the default style profile.",
+        kind,
+        ...requested,
+      },
+    };
+  }
+  const compiled = compileImagePrompt({
+    kind,
+    prompt,
+    negativePrompt,
+    styleProfiles,
+    styleProfileId: choice.profileId,
+    imageDefaults,
+  });
+  const profile = compiled.profile;
+  const prefixes = defaultsPrefixes(imageDefaults);
+  const dropped = droppedPromptTags(prompt, compiled.prompt, compiled.diagnostics.movedNegativeFragments);
+  return {
+    prompt: compiled.prompt,
+    negativePrompt: compiled.negativePrompt,
+    raw: false,
+    imageDefaults,
+    style: {
+      mode: "profile" as const,
+      profile: { id: profile.id, name: profile.name, promptGrammar: profile.promptMode },
+      chosenBy: choice.chosenBy,
+      kind,
+      ...requested,
+      // What the profile and connection can add; the final prompt shows what was kept.
+      added: pruneEmpty({
+        connectionPromptPrefix: prefixes.prompt,
+        positiveTags: profile.positiveTags,
+        perImageTags: profile.subjectTags[kind],
+        styleText: profile.styleText,
+        connectionNegativePrefix: prefixes.negative,
+        negativeTags: profile.negativeTags,
+      }),
+      removedDuplicates: [
+        ...compiled.diagnostics.removedPositiveDuplicates,
+        ...compiled.diagnostics.removedNegativeDuplicates,
+      ],
+      movedToNegative: compiled.diagnostics.movedNegativeFragments,
+      dropped,
+      ...(dropped.length > 0
+        ? {
+            note:
+              kind === "avatar"
+                ? "Kind avatar rewrote your prompt down to the visual tags it recognises; the tags in dropped never reached the image model. Use --kind illustration with --width/--height to keep your prompt."
+                : "Some of your tags never reached the image model (see dropped).",
+          }
+        : {}),
+    },
+  };
+}
+
+// The weightless, case-folded form of one prompt tag: `0.2::Uncensored::`, `{red_eyes}` and `(smile:1.2)` compare as
+// `uncensored`, `red eyes` and `smile`.
+function promptTagKey(tag: string) {
+  return tag
+    .toLowerCase()
+    .replace(/^-?\d*\.?\d+::|::$/g, "")
+    .replace(/:-?\d*\.?\d+\)?$/, "")
+    .replace(/[()[\]{}]/g, "")
+    .replace(/[_\s]+/g, " ")
+    .trim()
+    .replace(/[.!?;:]+$/, "")
+    .trim();
+}
+
+// The phrases the image prompt compiler reads as "move this to the negative".
+const NEGATION_PREFIX = /^(?:avoid|no|without|exclude|do not include|don't include)\s+/;
+// Commas, semicolons, line breaks and sentence ends. Wider than the compiler, which breaks a sentence only before
+// a negation ("garden. avoid hat"); a finer split only makes each tag easier to find in the final prompt.
+const PROMPT_TAG_SEPARATOR = /[,;\n]+|(?<=[.!?])\s+/;
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * The tags Mari wrote that the style left out of the final prompt (#9338). A tag counts as kept when it appears in the
+ * final prompt as a whole phrase; a tag the compiler moved to the negative ("no X", or "glasses" from "avoid hat,
+ * glasses") is not dropped. Commas, semicolons and line breaks separate tags, as in the compiler.
+ */
+function droppedPromptTags(requested: string, final: string, movedToNegative: string[]): string[] {
+  const finalText = final.split(PROMPT_TAG_SEPARATOR).map(promptTagKey).filter(Boolean).join(", ");
+  // Kind avatar distils "no glasses" into "avoid glasses" before it is moved, so both sides drop the negation word.
+  const movedText = movedToNegative.map((fragment) => promptTagKey(fragment).replace(NEGATION_PREFIX, "")).join(", ");
+  const appearsIn = (text: string, key: string) =>
+    new RegExp(`(?:^|[^\\p{L}\\p{N}])${escapeRegExp(key)}(?:$|[^\\p{L}\\p{N}])`, "u").test(text);
+  const seen = new Set<string>();
+  const dropped: string[] = [];
+  for (const raw of requested.split(PROMPT_TAG_SEPARATOR)) {
+    const tag = raw.trim();
+    const key = promptTagKey(tag);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    if (appearsIn(finalText, key)) continue;
+    if (appearsIn(movedText, key.replace(NEGATION_PREFIX, ""))) continue;
+    dropped.push(tag);
+  }
+  return dropped;
 }
 
 function isStabilityV1Base(baseUrl: string) {
@@ -449,6 +669,129 @@ async function readManifest() {
   return parseManifest(await readFile(path, "utf8"));
 }
 
+export const MARI_PREVIEW_CHAT_ID = PREVIEW_CHAT_ID;
+
+/**
+ * The file a preview asset URL (`/api/gallery/file/mari-images/<file>`) names, while the manifest still lists it.
+ * Preview assets have no gallery row, so the gallery file route asks here instead (#9329). A file in the folder that
+ * the manifest doesn't list, a link, or a refused manifest is not found.
+ */
+export async function findMariPreviewFile(
+  filename: string,
+): Promise<{ absolutePath: string; filename: string } | null> {
+  let listed: boolean;
+  try {
+    listed = (await readManifest()).some((asset) => asset.filename === filename);
+  } catch (error) {
+    logger.debug({ err: error, filename }, "[mari-images] Preview manifest unreadable; not serving %s", filename);
+    return null;
+  }
+  if (!listed) return null;
+  try {
+    return { absolutePath: realPathInAppFolder(PREVIEW_DIR, join(PREVIEW_DIR, filename)), filename };
+  } catch (error) {
+    logger.debug({ err: error, filename }, "[mari-images] Preview file refused; not serving %s", filename);
+    return null;
+  }
+}
+
+/** One preview asset's manifest record, or null once the manifest no longer lists it (it keeps the newest 200). */
+export async function getMariPreviewAsset(assetId: string): Promise<MariImageAsset | null> {
+  return (await readManifest()).find((asset) => asset.id === assetId) ?? null;
+}
+
+/**
+ * The reference `resolveImageReference` reads for an edited asset's saved source label (`asset:<id>`,
+ * `gallery:<chat>/<file>`, `avatar:<file>`...), or null when the label names nothing it can read again: a pasted
+ * data URL, raw base64 or a file path. Only app URLs and asset ids come out, never a path on disk.
+ */
+export function mariSourceReference(label: string | null | undefined): string | null {
+  const at = label?.indexOf(":") ?? -1;
+  if (!label || at <= 0) return null;
+  const kind = label.slice(0, at);
+  const rest = label.slice(at + 1);
+  if (!rest) return null;
+  const slash = rest.indexOf("/");
+  const pair = slash > 0 && slash < rest.length - 1 ? [rest.slice(0, slash), rest.slice(slash + 1)] : null;
+  const enc = encodeURIComponent;
+  switch (kind) {
+    case "asset":
+      return rest;
+    case "avatar":
+      return `/api/avatars/file/${enc(rest)}`;
+    case "lorebook-image":
+      return `/api/lorebooks/images/file/${enc(rest)}`;
+    case "background":
+      return `/api/backgrounds/file/${enc(rest)}`;
+    case "gallery":
+      return pair ? `/api/gallery/file/${enc(pair[0]!)}/${enc(pair[1]!)}` : null;
+    case "persona-gallery":
+      return pair ? `/api/characters/personas/${enc(pair[0]!)}/gallery/file/${enc(pair[1]!)}` : null;
+    case "character-gallery":
+      return pair ? `/api/characters/${enc(pair[0]!)}/gallery/file/${enc(pair[1]!)}` : null;
+    case "sprite":
+      return pair ? `/api/sprites/${enc(pair[0]!)}/file/${enc(pair[1]!)}` : null;
+    default:
+      return null;
+  }
+}
+
+/** Whether the lightbox can rerun an asset: a generate always, an edit while its source image can be read again. */
+export function isMariPreviewAssetRegenerable(asset: MariImageAsset): boolean {
+  return asset.operation !== "edit" || mariSourceReference(asset.sourceImage) !== null;
+}
+
+// The parts of Mari's reply extra that name the assets her tools made: the continuity she reads on later turns, the
+// work timeline and the action results.
+const MARI_ASSET_EXTRA_KEYS = ["mariWorkspaceContinuity", "mariWorkspaceTimeline", "mariWorkspaceActionResults"];
+
+/**
+ * After a lightbox regenerate, points one of Mari's replies at the new asset: her text shows the new picture, and the
+ * tool results she reads on later turns name the new asset, so "assign that one" afterwards means the picture the user
+ * sees. Returns the new content and the rewritten extra keys, for her window to apply as they are (#9388: rebuilding
+ * the swap on the client missed the filename and bare id); null when the message never showed the old asset.
+ */
+export async function swapMariPreviewAssetInMessage(
+  db: DB,
+  chatId: string,
+  messageId: string,
+  previous: Pick<MariImageAsset, "id" | "url" | "filename">,
+  next: Pick<MariImageAsset, "id" | "url" | "filename">,
+): Promise<{ content: string; extra: Json } | null> {
+  const chats = createChatsStorage(db);
+  const message = await chats.getMessage(messageId);
+  if (!message || message.chatId !== chatId || message.role !== "assistant") return null;
+  if (!message.content.includes(previous.url)) return null;
+  // The id is a fresh unique id and part of the url and filename, so plain replacement can't hit unrelated text.
+  const swap = (text: string) =>
+    text
+      .split(previous.url)
+      .join(next.url)
+      .split(previous.filename)
+      .join(next.filename)
+      .split(previous.id)
+      .join(next.id);
+  const content = swap(message.content);
+  await chats.updateMessageContent(messageId, content);
+
+  let extra: Json = {};
+  try {
+    const parsed = typeof message.extra === "string" ? (JSON.parse(message.extra) as unknown) : message.extra;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) extra = parsed as Json;
+  } catch {
+    // An unreadable extra has nothing to point at the new asset.
+  }
+  const partial: Json = {};
+  for (const key of MARI_ASSET_EXTRA_KEYS) {
+    if (extra[key] === undefined) continue;
+    const before = JSON.stringify(extra[key]);
+    const after = swap(before);
+    if (after !== before) partial[key] = JSON.parse(after) as unknown;
+  }
+  if (Object.keys(partial).length > 0) await chats.updateMessageExtra(messageId, partial);
+  return { content, extra: partial };
+}
+
 async function writeManifest(assets: MariImageAsset[]) {
   await writeAppFile(PREVIEW_DIR, PREVIEW_MANIFEST_PATH, JSON.stringify(assets, null, 2));
 }
@@ -459,6 +802,12 @@ async function savePreviewAsset(args: {
   kind: ImagePromptKind;
   prompt: string;
   negativePrompt: string;
+  style: {
+    mode: "none" | "profile";
+    requestedPrompt: string;
+    requestedNegativePrompt: string;
+    profile?: { id: string; name: string };
+  };
   width?: number;
   height?: number;
   connection: ImageConnection;
@@ -486,6 +835,11 @@ async function savePreviewAsset(args: {
     kind: args.kind,
     prompt: args.prompt,
     negativePrompt: args.negativePrompt,
+    requestedPrompt: args.style.requestedPrompt,
+    requestedNegativePrompt: args.style.requestedNegativePrompt,
+    styleMode: args.style.mode,
+    styleProfileId: args.style.profile?.id ?? null,
+    styleProfileName: args.style.profile?.name ?? null,
     width: args.width ?? null,
     height: args.height ?? null,
     connectionId: args.connection.id,
@@ -517,10 +871,10 @@ async function writeBackgroundMeta(meta: Record<string, { tags: string[] }>) {
 }
 
 function decodeDataImage(value: string): ResolvedImage | null {
-  const match = value.match(/^data:(image\/(?:png|jpe?g|webp|gif|avif));base64,([\s\S]+)$/i);
-  if (!match) return null;
-  const mimeType = match[1]!.toLowerCase().replace("image/jpg", "image/jpeg");
-  const base64 = match[2]!.replace(/\s+/g, "");
+  const data = parseImageDataUrl(value);
+  if (!data) return null;
+  const mimeType = data.mimeType;
+  const base64 = data.encoded.replace(/\s+/g, "");
   const buffer = Buffer.from(base64, "base64");
   const imageInfo = isAllowedImageBuffer(buffer, `.${extensionFromImageMime(mimeType)}`);
   if (!imageInfo) throw new Error("Unsupported or invalid data URL image");
@@ -657,6 +1011,9 @@ export class MariImagesService {
       case "connections":
       case "capabilities":
         return this.connections(context, parsed.flags);
+      case "styles":
+      case "style":
+        return this.styles(context, parsed.positionals);
       case "preview":
         return this.preview(context, parsed.flags);
       case "generate":
@@ -675,6 +1032,9 @@ export class MariImagesService {
         return this.list(context, parsed.flags, parsed.positionals);
       case "get":
         return this.get(context, parsed.flags, parsed.positionals);
+      case "look":
+      case "view":
+        return this.look(context, parsed.flags, parsed.positionals);
       default:
         return {
           ok: false,
@@ -752,6 +1112,53 @@ export class MariImagesService {
     };
   }
 
+  // A short list by default, since profiles get long and Mari may run on a small-context model; one profile in full
+  // (negative and per-image tags too) when she names it.
+  private async styles(context: ImageCommandContext, positionals: string[]): Promise<MariDbCommandResult> {
+    const { styleProfiles } = await loadImageGenerationUserSettings(this.db);
+    const wanted = positionals.join(" ").trim();
+    if (wanted) {
+      const profile = findStyleProfileByIdOrName(styleProfiles, wanted);
+      if (!profile) throw new Error(`Style profile not found: ${wanted}. Run mari images styles to list them.`);
+      return {
+        ok: true,
+        mode: "read",
+        command: context.command,
+        output: {
+          ...profile,
+          promptGrammar: profile.promptMode,
+          perImageTags: profile.subjectTags,
+          isDefault: profile.id === styleProfiles.defaultProfileId,
+          use: `mari images generate --style ${profile.id} --prompt <text>`,
+        },
+      };
+    }
+    const connectionProfiles = (await this.imageConnections())
+      .map((conn) => ({
+        connection: conn.name,
+        styleProfileId: resolveConnectionImageDefaults(conn)?.styleProfileId ?? null,
+      }))
+      .filter((entry) => entry.styleProfileId);
+    return {
+      ok: true,
+      mode: "read",
+      command: context.command,
+      output: {
+        note: "Without --style your prompt is sent as written. --style (or --style default) uses the default profile below, or a connection's own; --style <id> picks one. mari images styles <id> shows a profile in full, with its per-image tags.",
+        defaultProfileId: styleProfiles.defaultProfileId,
+        connectionProfiles,
+        profiles: styleProfiles.profiles.map((profile) => ({
+          id: profile.id,
+          name: profile.name,
+          ...(profile.id === styleProfiles.defaultProfileId ? { isDefault: true } : {}),
+          promptGrammar: profile.promptMode,
+          styleText: clip(profile.styleText),
+          positiveTags: clip(profile.positiveTags),
+        })),
+      },
+    };
+  }
+
   private async preview(
     context: ImageCommandContext,
     flags: Map<string, string | boolean>,
@@ -765,14 +1172,13 @@ export class MariImagesService {
     const negativePrompt = flagString(flags, "negative", "negative-prompt") ?? "";
     const kind = detectImageKind(target, flagString(flags, "kind"));
     const imageSettings = await loadImageGenerationUserSettings(this.db);
-    const imageDefaults = resolveConnectionImageDefaults(connection);
-    const compiled = compileImagePrompt({
+    const styled = styleImagePrompt({
+      flags,
       kind,
       prompt,
       negativePrompt,
       styleProfiles: imageSettings.styleProfiles,
-      styleProfileId: flagString(flags, "style-profile", "style-profile-id"),
-      imageDefaults,
+      imageDefaults: resolveConnectionImageDefaults(connection),
     });
     const size = this.resolveSize(flags, kind, imageSettings);
     const source = operation === "edit" ? await this.resolveSourceImage(flags, target, context, true) : null;
@@ -796,8 +1202,9 @@ export class MariImagesService {
         kind,
         width: size.width,
         height: size.height,
-        prompt: compiled.prompt,
-        negativePrompt: compiled.negativePrompt,
+        prompt: styled.prompt,
+        negativePrompt: styled.negativePrompt,
+        style: styled.style,
       },
     };
   }
@@ -819,26 +1226,30 @@ export class MariImagesService {
 
     const sourceImage = operation === "edit" ? await this.resolveSourceImage(flags, target, context, true) : null;
     const imageSettings = await loadImageGenerationUserSettings(this.db);
-    const imageDefaults = resolveConnectionImageDefaults(connection);
     const kind = detectImageKind(target, flagString(flags, "kind"));
     const size = this.resolveSize(flags, kind, imageSettings);
-    const compiled = compileImagePrompt({
+    const styled = styleImagePrompt({
+      flags,
       kind,
       prompt,
       negativePrompt,
       styleProfiles: imageSettings.styleProfiles,
-      styleProfileId: flagString(flags, "style-profile", "style-profile-id"),
-      imageDefaults,
+      imageDefaults: resolveConnectionImageDefaults(connection),
     });
+    const imageDefaults = styled.imageDefaults;
 
     const imgModel = connection.model || "";
     const imgBaseUrl = connection.baseUrl || "https://image.pollinations.ai";
     const imgSource = connection.imageGenerationSource || imgModel;
     const imgServiceHint = connection.imageService || imgSource;
-    const fallback = await resolveImageConnectionFallback(createConnectionsStorage(this.db), connection.id);
+    const resolvedFallback = await resolveImageConnectionFallback(createConnectionsStorage(this.db), connection.id);
+    const fallback =
+      styled.raw && resolvedFallback
+        ? { ...resolvedFallback, imageDefaults: withoutPromptPrefixes(resolvedFallback.imageDefaults) }
+        : resolvedFallback;
     const result = await generateImage(imgSource, imgBaseUrl, connection.apiKey || "", imgServiceHint, {
-      prompt: compiled.prompt,
-      negativePrompt: compiled.negativePrompt || undefined,
+      prompt: styled.prompt,
+      negativePrompt: styled.negativePrompt || undefined,
       model: imgModel || undefined,
       width: size.width,
       height: size.height,
@@ -854,8 +1265,9 @@ export class MariImagesService {
       result,
       operation,
       kind,
-      prompt: compiled.prompt,
-      negativePrompt: compiled.negativePrompt,
+      prompt: styled.prompt,
+      negativePrompt: styled.negativePrompt,
+      style: styled.style,
       width: size.width,
       height: size.height,
       connection,
@@ -873,9 +1285,46 @@ export class MariImagesService {
         message:
           "Image created as a preview asset. It is not assigned anywhere yet. Use mari images assign after the user approves it.",
         asset,
+        style: styled.style,
+        show: `![${kind}](${asset.url})`,
         targetSuggestion: target,
       },
     };
+  }
+
+  /**
+   * The lightbox's Regenerate: reruns one preview asset with an edited prompt and its saved kind, size and operation,
+   * as a new asset. Null when the manifest no longer lists it.
+   */
+  async regeneratePreviewAsset(
+    assetId: string,
+    input: { prompt: string; negativePrompt?: string; connectionId?: string },
+  ): Promise<{ previous: MariImageAsset; asset: MariImageAsset } | null> {
+    const previous = await getMariPreviewAsset(assetId);
+    if (!previous) return null;
+    const flags = new Map<string, string | boolean>([
+      ["prompt", input.prompt],
+      // Left out keeps the saved one; an empty string clears it.
+      ["negative", input.negativePrompt ?? previous.negativePrompt ?? ""],
+      ["connection", input.connectionId?.trim() || previous.connectionId],
+      ["kind", previous.kind],
+      // The lightbox shows and edits the prompt the model got, so a style profile it used is already in it.
+      ["no-style", true],
+    ]);
+    if (previous.width) flags.set("width", String(previous.width));
+    if (previous.height) flags.set("height", String(previous.height));
+    if (previous.operation === "edit") {
+      const source = mariSourceReference(previous.sourceImage);
+      if (!source) throw new Error("This image was edited from a picture that can't be read again.");
+      flags.set("source", source);
+    }
+    const result = await this.generateOrEdit(
+      previous.operation,
+      { command: "mari images regenerate (lightbox)", sessionId: "mari-image-lightbox" },
+      flags,
+    );
+    const asset = (result.output as { asset: MariImageAsset }).asset;
+    return { previous, asset };
   }
 
   private resolveOperation(flags: Map<string, string | boolean>): "generate" | "edit" {
@@ -1086,7 +1535,8 @@ export class MariImagesService {
     }
 
     const base64ish = value.replace(/\s+/g, "");
-    if (/^[A-Za-z0-9+/=]+$/.test(base64ish) && base64ish.length > 128) {
+    // A negative test walks the string; `^[A-Za-z0-9+/=]+$` recurses once per character in V8's regexp interpreter.
+    if (base64ish.length > 128 && !/[^A-Za-z0-9+/=]/.test(base64ish)) {
       const buffer = Buffer.from(base64ish, "base64");
       const imageInfo = isAllowedImageBuffer(buffer);
       if (imageInfo)
@@ -1200,7 +1650,7 @@ export class MariImagesService {
     const filename = `lorebook-${lorebookId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${source.ext}`;
     await writeAppFile(LOREBOOK_IMAGE_DIR, join(LOREBOOK_IMAGE_DIR, filename), source.buffer);
     const imagePath = `/api/lorebooks/images/file/${filename}`;
-    const updated = await store.update(lorebookId, { imagePath });
+    const updated = await store.update(lorebookId, { imagePath, imageCrop: null });
     return { imagePath, row: updated };
   }
 
@@ -1531,22 +1981,93 @@ export class MariImagesService {
     return { ok: true, mode: "read", command: context.command, output: asset };
   }
 
+  // #9342: Mari sees the pictures. Each one is scaled down and re-encoded, rides on `images` (her runtime attaches
+  // them to her next request), and the text output only names them, so history keeps a small stub, never pixels.
+  private async look(
+    context: ImageCommandContext,
+    flags: Map<string, string | boolean>,
+    positionals: string[],
+  ): Promise<MariDbCommandResult> {
+    const detail = flagString(flags, "detail")?.trim().toLowerCase() || "high";
+    if (detail !== "high" && detail !== "low") throw new Error("--detail takes low or high.");
+    const refs = [...positionals];
+    // --asset names the asset a --target asset points at; on its own it is one more ref.
+    const explicit =
+      flagString(flags, "source") ?? (flagString(flags, "target") ? undefined : flagString(flags, "asset"));
+    if (explicit) refs.push(explicit);
+    const target = this.parseTarget(flags, false);
+    if (target) {
+      const current = await this.currentImageReferenceForTarget(target);
+      if (!current) throw new Error(`That ${target.type} has no image to look at.`);
+      refs.push(current);
+    }
+    if (refs.length === 0)
+      throw new Error(
+        "Usage: mari images look <asset-id|app-url|file> [more, up to 4] [--detail low|high], or --target <target> for its current image.",
+      );
+    if (refs.length > LOOK_MAX_IMAGES)
+      throw new Error(`mari images look takes at most ${LOOK_MAX_IMAGES} images per call; you passed ${refs.length}.`);
+
+    // Resolve every ref first, so one bad ref fails the call before any image is processed.
+    const sources = [];
+    for (const ref of refs) sources.push({ ref, image: await this.resolveImageReference(ref, context) });
+    const sharp = await getSharp().catch(() => {
+      throw new Error("Looking at images needs image processing (sharp), which isn't available on this install.");
+    });
+    const longSide = LOOK_LONG_SIDE[detail];
+    const images: string[] = [];
+    const looked = [];
+    for (const { ref, image } of sources) {
+      const pipeline = sharp(image.buffer).rotate();
+      const meta = await pipeline.metadata();
+      const resized = pipeline.resize({ width: longSide, height: longSide, fit: "inside", withoutEnlargement: true });
+      // A transparent sprite keeps its alpha as PNG; JPEG would turn it black.
+      const { data, info } = await (meta.hasAlpha ? resized.png() : resized.jpeg({ quality: 85 })).toBuffer({
+        resolveWithObject: true,
+      });
+      const mimeType = meta.hasAlpha ? "image/png" : "image/jpeg";
+      images.push(`data:${mimeType};base64,${data.toString("base64")}`);
+      looked.push({
+        image: images.length,
+        ref: ref.startsWith("data:") || ref.length > 200 ? image.label : ref,
+        label: image.asset ? `asset:${image.asset.id}` : image.label,
+        ...(image.asset ? { kind: image.asset.kind, prompt: clip(image.asset.prompt, 300) } : {}),
+        original: meta.width && meta.height ? `${meta.width}x${meta.height}` : null,
+        sent: `${info.width}x${info.height}`,
+      });
+    }
+    return {
+      ok: true,
+      mode: "read",
+      command: context.command,
+      output: {
+        looked,
+        note: "The pictures are attached to your next message, in this order. Describe only what you see in them.",
+      },
+      images,
+    };
+  }
+
   private helpText() {
     return [
-      "Usage: mari images <command>",
+      "Usage: mari images <command> (mari images help shows this)",
       "Discovery: connections [--edit], capabilities [--edit], list assets|backgrounds|sprites|chat-gallery|character-gallery, get <asset-id>",
-      "HITL preview: preview --operation generate|edit --prompt <text> [--target <target>] [--source <asset|url|file>] [--connection <id|name|default>]",
-      "Create preview asset: generate --prompt <text> [--target <target>] [--width <n>] [--height <n>]",
-      "Create edited preview asset: edit --prompt <text> (--source <asset|url|file> | --target <existing-image-target>) [--connection <edit-capable>]",
-      "Apply: assign --asset <asset-id> --target character-avatar --character <id>",
-      "Apply: assign --asset <asset-id> --target persona-avatar --persona <id>",
-      "Apply: assign --asset <asset-id> --target lorebook-image --lorebook <id>",
-      "Apply: assign --asset <asset-id> --target sprite --character <id> --expression happy",
-      "Apply: assign --asset <asset-id> --target background --name <name> [--tags a,b]",
-      "Apply: assign --asset <asset-id> --target chat-gallery --chat <id>",
-      "Apply: assign --asset <asset-id> --target character-gallery --character <id>",
-      "Delete/clear: delete --target asset|character-avatar|persona-avatar|lorebook-image|sprite|background|chat-gallery|character-gallery ...",
-      "Notes: preview never generates or saves. generate/edit save a review asset only. assign/delete mutate app image state.",
+      "Styles: styles (short list), styles <id|name> (one profile in full, with its per-image tags)",
+      "Look at images: look <asset-id|app-url|file> [up to 4] [--detail low|high], or look --target <target> for its current image (alias: view). You see the pictures in your next message.",
+      "HITL preview: preview --operation generate|edit --prompt <text> [--negative <text>] [--kind <kind>] [--target <target>] [--source <asset|url|file>] [--connection <id|name|default>] [--style [default|<id|name>] | --no-style]",
+      "Create preview asset: generate --prompt <text> [--negative <text>] [--kind illustration|avatar|portrait|selfie|background|sprite] [--target <target>] [--width <n>] [--height <n>] [--connection <id|name|default>] [--style [default|<id|name>] | --no-style]",
+      "Create edited preview asset: edit --prompt <text> (--source <asset|url|file> | --target <existing-image-target>) [--connection <edit-capable>] [--style [default|<id|name>] | --no-style]",
+      "Style: without --style the prompt and negative go out as written (--no-style says so explicitly). --style or --style default applies the default style profile; --style <id|name> a chosen one, including its per-image tags for --kind. Results show a style block: what was added, removed or moved.",
+      "Show a result: put the result's show line, ![alt](asset.url), in your reply.",
+      "Apply: assign --asset <asset-id> --target character-avatar --character <id> --apply",
+      "Apply: assign --asset <asset-id> --target persona-avatar --persona <id> --apply",
+      "Apply: assign --asset <asset-id> --target lorebook-image --lorebook <id> --apply",
+      "Apply: assign --asset <asset-id> --target sprite --character <id> --expression happy --apply",
+      "Apply: assign --asset <asset-id> --target background --name <name> [--tags a,b] --apply",
+      "Apply: assign --asset <asset-id> --target chat-gallery --chat <id> --apply",
+      "Apply: assign --asset <asset-id> --target character-gallery --character <id> --apply",
+      "Delete/clear: delete --target asset|character-avatar|persona-avatar|lorebook-image|sprite|background|chat-gallery|character-gallery ... [--delete-file] --apply",
+      "Notes: preview never generates or saves. generate/edit save a review asset only. assign/delete change app images only with --apply; without it they show what would change.",
     ].join("\n");
   }
 }

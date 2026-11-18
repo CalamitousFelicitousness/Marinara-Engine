@@ -3,12 +3,20 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { LOCAL_SIDECAR_CONNECTION_ID, type ChatModelChoice } from "@marinara-engine/shared";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  LOCAL_SIDECAR_CONNECTION_ID,
+  isChatProvider,
+  speaksOpenAIChat,
+  type ChatModelChoice,
+} from "@marinara-engine/shared";
 import type { PickerKind } from "../../lib/connection-jobs";
 import { cn } from "../../lib/utils";
 import { Modal } from "../ui/Modal";
 import { usePickModel, useConnectionAccounts } from "../../hooks/use-connection-accounts";
 import {
+  connectionKeys,
+  type ConnectionModelList,
   useConnections,
   useCreateConnection,
   useDeleteConnection,
@@ -20,14 +28,18 @@ import { useDecisionOptions } from "../../hooks/use-decision-model";
 import { decisionConnectionTestMessage } from "../../lib/decision-test-message";
 import type { ConnectionModelRow } from "../../lib/connection-groups";
 import { openAddConnection } from "../../lib/add-connection";
+import type { JobKey } from "../../lib/connection-jobs";
+import { mediaRowFor, mediaSources, type MediaKind } from "../../lib/media-source";
+import { isDecisionCatalogModel } from "../../lib/connection-model-selection";
+import { NATIVE_DECISION_SOURCE, type ServiceId } from "../modals/create-connection/shared";
 import { ConnectionSwitcherBody } from "./ConnectionSwitcherBody";
 import { ProviderIcon } from "./ProviderIcon";
 
 type Extra = { value: string; label: string };
 
 /** The catalogs do not mark embedding models, so the id decides ("text-embedding-3-small", "bge-m3-embed"…). */
-/** A reason that fits on a row. */
-const short = (text: string) => (text.length > 38 ? `${text.slice(0, 36)}…` : text);
+/** What a tried model's line shows: a short pill, with the full reason one tap away (`detail`). */
+type TriedState = { label: string; state: "off" | "needs_key"; detail?: string };
 
 const isEmbeddingModel = (model: string) => /embed/i.test(model);
 
@@ -36,6 +48,7 @@ function ModelPickerSlot({
   onClose,
   title,
   jobName,
+  jobKey,
   kind,
   value,
   onChange,
@@ -55,6 +68,7 @@ function ModelPickerSlot({
   title: string;
   /** Names the job in the toast: "<job> now uses <model>". */
   jobName: string;
+  jobKey?: JobKey;
   kind: PickerKind;
   /** A Model row id, `null` (follows the default) or one of `extraOptions`. */
   value: string | null;
@@ -86,6 +100,10 @@ function ModelPickerSlot({
   const testRow = useTestConnection();
   const testEmbedding = useTestEmbedding();
   const decisionOptions = useDecisionOptions(decision && open);
+  const queryClient = useQueryClient();
+  /** The provider's own decision model, asked at its decision API rather than through log-probabilities (#9317). */
+  const nativeDecision = (provider: string, facts: { outputModalities?: readonly string[] } | undefined) =>
+    !!NATIVE_DECISION_SOURCE[provider as ServiceId] && !!facts && isDecisionCatalogModel(facts);
   // A Decision row exists only for a model that passed its test, so the saved rows are the memory.
   const decisionRows = new Set(
     ((rows ?? []) as Array<{ provider?: string; accountId?: string | null; model?: string | null }>)
@@ -93,7 +111,12 @@ function ModelPickerSlot({
       .map((row) => `${row.accountId}|${row.model}`),
   );
   // `accountId|model` → what the Decision test said; a model being tried or turned down shows it on its row.
-  const [tried, setTried] = useState<Record<string, { label: string; state: "off" | "needs_key" }>>({});
+  const [tried, setTried] = useState<Record<string, TriedState>>({});
+  // A failed try's pill: "Error 404" when the reason carries a status code; the whole reason opens from it.
+  const failLabel = (message: string) => {
+    const code = /\((\d{3})\)/.exec(message)?.[1];
+    return { label: code ? t("connections.error.pillCode", { code }) : t("connections.error.pill") };
+  };
   const known = useRef<Set<string> | null>(null);
   // Undo runs later, so it must reach the host's latest setter, not the one this render saw.
   const onChangeRef = useRef(onChange);
@@ -169,7 +192,7 @@ function ModelPickerSlot({
     const model = choice.model ?? anchor?.model;
     if (!account || !model) return false;
     const key = `${account.id}|${model}`;
-    const mark = (next: { label: string; state: "off" | "needs_key" } | null) =>
+    const mark = (next: TriedState | null) =>
       setTried((all) => {
         const { [key]: _drop, ...rest } = all;
         return next ? { ...rest, [key]: next } : rest;
@@ -178,6 +201,19 @@ function ModelPickerSlot({
     const existing = (
       rows as Array<{ id: string; provider?: string; accountId?: string | null; model?: string | null }> | undefined
     )?.find((row) => row.provider === "decision" && row.accountId === account.id && row.model === model);
+    // The account's list the picker browsed (shared query keys, one per saved Model of the account): a decision
+    // model there takes its native source.
+    const listed = (rows as Array<{ id: string; accountId?: string | null }> | undefined)
+      ?.filter((row) => row.accountId === account.id)
+      .map((row) =>
+        queryClient
+          .getQueryData<ConnectionModelList>(connectionKeys.models(row.id))
+          ?.models.find((entry) => entry.id === model),
+      )
+      .find(Boolean);
+    const native = nativeDecision(account.provider, listed)
+      ? NATIVE_DECISION_SOURCE[account.provider as ServiceId]
+      : undefined;
     let id = existing?.id;
     try {
       if (!id) {
@@ -187,7 +223,7 @@ function ModelPickerSlot({
           apiKey: "",
           baseUrl: account.baseUrl ?? "",
           accountId: account.id,
-          decisionSource: "openai_compatible",
+          decisionSource: native ?? "openai_compatible",
           model,
         })) as { id?: string };
         id = created.id;
@@ -197,21 +233,51 @@ function ModelPickerSlot({
       const noLogprobs = result.success && result.logprobs === false;
       if (!result.success || noLogprobs) {
         if (!existing) await deleteRow.mutateAsync(id);
+        const message = noLogprobs
+          ? t("connections.decision.noLogprobs")
+          : decisionConnectionTestMessage(t, result).message;
         mark({
-          label: noLogprobs
-            ? t("connections.decision.noLogprobs")
-            : short(decisionConnectionTestMessage(t, result).message),
+          ...(noLogprobs ? { label: message } : failLabel(message)),
           state: "needs_key",
+          detail: message,
         });
         return false;
       }
       mark(null);
       commit(id, choice.name ?? model);
-    } catch {
+    } catch (error) {
       if (!existing && id) await deleteRow.mutateAsync(id).catch(() => undefined);
-      mark({ label: t("connections.decision.errors.network"), state: "needs_key" });
+      const message = error instanceof Error && error.message ? error.message : "";
+      mark({
+        label: t("connections.decision.errors.network"),
+        state: "needs_key",
+        ...(message ? { detail: message } : {}),
+      });
       return false;
     }
+  };
+
+  const mediaKind = kind === "image" || kind === "video" || kind === "audio";
+  const applyMedia = async (choice: ChatModelChoice) => {
+    // A saved Model needs no new row: commit it, or the picker stays open on a row without an account.
+    if (!choice.model) return apply(choice);
+    const anchor = (rows as ConnectionModelRow[] | undefined)?.find(
+      (row) => row.id === choice.connectionId || row.accountId === choice.connectionId,
+    );
+    const account = accounts?.find((item) => item.id === anchor?.accountId);
+    const model = choice.model ?? anchor?.model;
+    if (!account || !model || !mediaSources(account.provider, kind as MediaKind).length) return false;
+    const id = await mediaRowFor(
+      kind as MediaKind,
+      account,
+      model,
+      choice.name,
+      (rows ?? []) as Parameters<typeof mediaRowFor>[4],
+      (data) => createRow.mutateAsync(data),
+    );
+    if (!id) throw new Error(t("connections.add.mediaCreateFailed"));
+    if (id === value) return keep(id);
+    commit(id, choice.name ?? model);
   };
 
   // Embeddings: the row keeps the embedding model; a pick that cannot embed leaves the old value in place.
@@ -224,10 +290,13 @@ function ModelPickerSlot({
     };
     const all = rows as EmbeddingRow[] | undefined;
     const row = all?.find((item) => item.id === choice.connectionId);
-    const model = choice.model ?? row?.embeddingModel ?? row?.model;
+    // A saved Model keeps "" when it has no embedding model of its own: it then embeds with its own model id.
+    const model = choice.model ?? (row?.embeddingModel?.trim() || row?.model?.trim());
     if (!row || !model) return false;
-    const key = row.accountId ? `${row.accountId}|${model}` : model;
-    const mark = (next: { label: string; state: "off" | "needs_key" } | null) =>
+    // The row's line is keyed by the model it shows: the catalog pick, or the saved Model's own id.
+    const shown = choice.model ?? row.model ?? model;
+    const key = row.accountId ? `${row.accountId}|${shown}` : shown;
+    const mark = (next: TriedState | null) =>
       setTried((tries) => {
         const { [key]: _drop, ...rest } = tries;
         return next ? { ...rest, [key]: next } : rest;
@@ -235,6 +304,8 @@ function ModelPickerSlot({
     mark({ label: t("connections.decision.testing"), state: "off" });
     let id = row.id;
     let before: string | null = row.embeddingModel ?? null;
+    // A catalog pick saves a new Model first; one that cannot embed is removed again, so a failed try adds nothing.
+    let created = false;
     try {
       if (choice.model && row.accountId) {
         const saved = await pickModel.mutateAsync({
@@ -243,26 +314,57 @@ function ModelPickerSlot({
           ...(choice.name ? { name: choice.name } : {}),
         });
         id = saved.connectionId;
-        before = all?.find((item) => item.id === id)?.embeddingModel ?? null;
+        const existing = all?.find((item) => item.id === id);
+        created = !existing;
+        before = existing?.embeddingModel ?? null;
       }
       await updateRow.mutateAsync({ id, embeddingModel: model });
       const result = await testEmbedding.mutateAsync(id);
       if (!result.success) {
-        await updateRow.mutateAsync({ id, embeddingModel: before ?? "" });
-        mark({ label: short(result.message) || t("connections.embeddingDefault.failed"), state: "needs_key" });
+        if (created) await deleteRow.mutateAsync(id).catch(() => undefined);
+        else await updateRow.mutateAsync({ id, embeddingModel: before ?? "" });
+        const message = result.message?.trim() || t("connections.embeddingDefault.failed");
+        mark({ ...failLabel(message), state: "needs_key", detail: message });
         return false;
       }
       mark(null);
       commit(id, choice.name ?? model);
-    } catch {
-      mark({ label: t("connections.embeddingDefault.failed"), state: "needs_key" });
+    } catch (error) {
+      if (created) await deleteRow.mutateAsync(id).catch(() => undefined);
+      const message = error instanceof Error && error.message ? error.message : "";
+      mark({
+        label: t("connections.embeddingDefault.failed"),
+        state: "needs_key",
+        ...(message ? { detail: message } : {}),
+      });
       return false;
     }
   };
 
+  // Decision assignments use a separate tested row; highlight the matching provider model in the shared list.
+  const assigned = (rows as ConnectionModelRow[] | undefined)?.find((row) => row.id === value);
+  const decisionPeers =
+    decision && assigned?.accountId
+      ? (rows as ConnectionModelRow[] | undefined)?.filter(
+          (row) => row.accountId === assigned.accountId && isChatProvider(row.provider),
+        )
+      : undefined;
+  const decisionAnchor = decisionPeers?.find((row) => row.model === assigned?.model) ?? decisionPeers?.[0];
+  const currentChoice =
+    decisionAnchor && assigned?.model
+      ? {
+          connectionId: decisionAnchor.id,
+          ...(decisionAnchor.model !== assigned.model
+            ? { model: assigned.model, name: assigned.name || assigned.model }
+            : {}),
+        }
+      : !decision && value && !extraOptions.some((extra) => extra.value === value)
+        ? { connectionId: value }
+        : null;
+
   const onAdd = () => {
     known.current = new Set((accounts ?? []).map((account) => account.id));
-    openAddConnection();
+    openAddConnection(jobKey ? { job: jobKey, assign: onChangeRef.current, previous: value } : undefined);
   };
 
   return (
@@ -282,13 +384,20 @@ function ModelPickerSlot({
         ownRole={jobName}
         kind={decision ? "chat" : kind}
         rowFilter={rowFilter}
-        catalogBrowse={decision || embedding || (kind === "chat" && !rowFilter)}
-        current={
-          !decision && value && !extraOptions.some((extra) => extra.value === value) ? { connectionId: value } : null
+        catalogBrowse
+        showUnstarred
+        accountFilter={
+          mediaKind ? (account) => mediaSources(account.provider, kind as MediaKind).length > 0 : undefined
         }
-        onApply={decision ? applyDecision : embedding ? applyEmbedding : apply}
+        catalogAnchor={
+          mediaKind
+            ? (account, all) => all.find((row) => row.accountId === account.id && row.provider === account.provider)
+            : undefined
+        }
+        current={currentChoice}
+        onApply={decision ? applyDecision : embedding ? applyEmbedding : mediaKind ? applyMedia : apply}
         onDone={onClose}
-        confirmCurrent={confirmCurrent}
+        confirmCurrent={confirmCurrent || decision}
         showLocalModel={includeLocalSidecar}
         followDefault={
           includeDefault
@@ -308,7 +417,20 @@ function ModelPickerSlot({
             ? {
                 label: t("connections.decision.knownGood"),
                 test: (accountId, model, facts) =>
-                  !!facts?.capabilities?.logprobs || decisionRows.has(`${accountId}|${model}`),
+                  !!facts?.capabilities?.logprobs ||
+                  decisionRows.has(`${accountId}|${model}`) ||
+                  nativeDecision(accounts?.find((item) => item.id === accountId)?.provider ?? "", facts),
+              }
+            : undefined
+        }
+        leadCatalog={
+          decision
+            ? {
+                label: t("connections.decision.nativeModels"),
+                restLabel: t("connections.decision.chatModels"),
+                test: (provider, _model, facts) => nativeDecision(provider, facts),
+                // Gemini answers no chat model's log-probabilities: a chat pick there would save a row that cannot run.
+                only: (provider) => !!NATIVE_DECISION_SOURCE[provider as ServiceId] && !speaksOpenAIChat(provider),
               }
             : undefined
         }
@@ -318,14 +440,28 @@ function ModelPickerSlot({
           ...(decision
             ? (decisionOptions.data?.options ?? [])
                 .filter((option) => option.group === "connection" && !option.unavailable)
-                .map((option) => ({
-                  value: option.id,
-                  icon: <ProviderIcon provider="custom" size="sm" />,
-                  label:
-                    (rows as Array<{ id: string; model?: string | null }> | undefined)
-                      ?.find((row) => row.id === option.id)
-                      ?.model?.trim() || option.label,
-                }))
+                .map((option) => {
+                  const row = (
+                    rows as
+                      | Array<{
+                          id: string;
+                          model?: string | null;
+                          accountId?: string | null;
+                          decisionSource?: string | null;
+                        }>
+                      | undefined
+                  )?.find((item) => item.id === option.id);
+                  const account = row?.accountId ? accounts?.find((item) => item.id === row.accountId) : undefined;
+                  // Line 2 says where the Model lives: its account, or its decision source when it has none (#9317).
+                  return {
+                    value: option.id,
+                    icon: <ProviderIcon provider={account?.provider ?? "custom"} size="sm" />,
+                    label: row?.model?.trim() || option.label,
+                    subtitle:
+                      account?.name ||
+                      (row?.decisionSource ? t(`connections.decision.sources.${row.decisionSource}`) : undefined),
+                  };
+                })
             : []),
         ].map((extra) => ({
           ...extra,
@@ -335,6 +471,11 @@ function ModelPickerSlot({
           },
         }))}
         modelFilter={embedding ? isEmbeddingModel : undefined}
+        catalogFilter={
+          rowFilter
+            ? (_model, facts) => !facts?.inputModalities?.length || facts.inputModalities.includes("image")
+            : undefined
+        }
         onAdd={onAdd}
         firstAccountId={firstAccountId}
         autoFocusSearch={typeof window !== "undefined" && !!window.matchMedia?.("(pointer: fine)").matches}

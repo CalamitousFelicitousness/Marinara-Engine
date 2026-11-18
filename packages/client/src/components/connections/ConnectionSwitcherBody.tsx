@@ -28,6 +28,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   LOCAL_SIDECAR_CONNECTION_ID,
+  PROVIDERS,
+  isChatProvider,
+  type APIProvider,
   rankModelMatch,
   readChatModelOverride,
   readChatRecentModels,
@@ -46,7 +49,7 @@ import {
   type CachedModelFacts,
   type SubscriptionUsage,
 } from "../../hooks/use-connections";
-import { matchesKind, type PickerKind } from "../../lib/connection-jobs";
+import { catalogMatchesKind, matchesKind, type PickerKind } from "../../lib/connection-jobs";
 import { useChat, useSetChatModel } from "../../hooks/use-chats";
 import {
   useCatalogSearch,
@@ -72,6 +75,7 @@ import {
 import { cn } from "../../lib/utils";
 import { modelBrand, ProviderIcon } from "./ProviderIcon";
 import { ServiceRow } from "./ServiceRow";
+import { PanelVirtualList } from "../panels/PanelVirtualList";
 import { sortPanelFolders } from "../../lib/panel-sort";
 import type { ConnectionModelRow } from "../../lib/connection-groups";
 import { modelRoleLabels } from "./ModelRow";
@@ -125,6 +129,32 @@ type Entry = {
   row?: SwitcherRow;
 };
 
+/** A long run of model lines draws only the rows in view; a short one renders in full. */
+const VIRTUAL_MIN = 60;
+function EntryRows({
+  listKey,
+  entries,
+  render,
+  scrollToIndex,
+}: {
+  listKey: string;
+  entries: readonly Entry[];
+  render: (entry: Entry) => ReactNode;
+  scrollToIndex?: number;
+}) {
+  if (entries.length < VIRTUAL_MIN) return <>{entries.map(render)}</>;
+  return (
+    <PanelVirtualList
+      listKey={`connection-switcher:${listKey}`}
+      count={entries.length}
+      getItemKey={(index) => entries[index]!.key}
+      renderRow={(index) => render(entries[index]!)}
+      estimateSize={window.matchMedia?.("(min-width: 768px)").matches ? 64 : 47}
+      scrollToIndex={scrollToIndex}
+    />
+  );
+}
+
 /** A model id under a Connection: its saved Model when there is one, otherwise a per-chat pick on `anchor`. */
 function entryFor(group: SwitcherGroup, anchor: SwitcherRow, model: string, title?: string): Entry {
   const saved = group.rows.find((row) => row.model === model);
@@ -164,6 +194,9 @@ function entryOfRow(row: SwitcherRow, group: SwitcherGroup | undefined, choice?:
 
 const unavailableOf = (group: SwitcherGroup | undefined) =>
   group?.account && group.account.state !== "ok" ? group.account.state : null;
+
+/** A Model's own address on its Connection's server, if it has one (its model list is that path's). */
+const ownAddressOf = (row: SwitcherRow) => !!(row as { modelBaseUrl?: string | null }).modelBaseUrl?.trim();
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error ?? ""));
 const rowLabel = (row: SwitcherRow) => row.name || row.model || row.id;
@@ -403,6 +436,7 @@ export function ConnectionSwitcherBody({
   className,
   listClassName,
   catalogBrowse = true,
+  showUnstarred = false,
   kind = "chat",
   rowFilter,
   extras,
@@ -410,7 +444,11 @@ export function ConnectionSwitcherBody({
   firstAccountId,
   ownRole,
   modelFilter,
+  catalogFilter,
+  accountFilter,
+  catalogAnchor,
   knownGood,
+  leadCatalog,
   rowState,
   confirmCurrent = false,
 }: {
@@ -444,10 +482,23 @@ export function ConnectionSwitcherBody({
   extras?: ReadonlyArray<{
     value: string;
     label: string;
+    /** Line 2: where the value lives, such as the account of a saved Model (#9317). */
+    subtitle?: string;
     icon?: ReactNode;
     active: boolean;
     onSelect: () => Promise<void>;
   }>;
+  /**
+   * Catalog models of a kind the slot's own kind would drop, listed first in an account's list under `label`
+   * (Decision: a provider's own decision models). The account's other models follow under `restLabel` (#9317).
+   */
+  leadCatalog?: {
+    label: string;
+    restLabel: string;
+    test: (provider: string, model: string, facts: CachedModelFacts | undefined) => boolean;
+    /** Providers whose list is only these models (Gemini: its chat models cannot answer the slot). */
+    only?: (provider: string) => boolean;
+  };
   /** Last row: adds a provider; the host reopens or keeps this picker. */
   onAdd?: () => void;
   /** Marks models known to suit the slot with a check and lists them first (Decision). */
@@ -461,9 +512,17 @@ export function ConnectionSwitcherBody({
    */
   confirmCurrent?: boolean;
   /** A pick that is being tried or was turned down, shown on its row. */
-  rowState?: (accountId: string, model: string) => { label: string; state: "off" | "needs_key" } | null;
+  rowState?: (
+    accountId: string,
+    model: string,
+  ) => { label: string; state: "off" | "needs_key"; detail?: string } | null;
   /** Lists only the catalog models this accepts (Embeddings); a provider with none is left out. */
   modelFilter?: (model: string) => boolean;
+  /** Catalog-only filter; saved rows remain selectable by their own kind. */
+  catalogFilter?: (model: string, facts: CachedModelFacts | undefined) => boolean;
+  accountFilter?: (account: ConnectionAccountListItem) => boolean;
+  /** Resolve the provider row whose catalog belongs to this job. */
+  catalogAnchor?: (account: ConnectionAccountListItem, rows: readonly SwitcherRow[]) => SwitcherRow | undefined;
   /** A provider just added: its group comes first. */
   firstAccountId?: string | null;
   listHeader?: ReactNode;
@@ -477,6 +536,8 @@ export function ConnectionSwitcherBody({
   listClassName?: string;
   /** False skips catalog search and Browse (Quick Switcher's connection-only mode). */
   catalogBrowse?: boolean;
+  /** Job pickers also list provider models below the stars in the initial pane. */
+  showUnstarred?: boolean;
 }) {
   const { t } = useTranslation();
   const voiceRowId = useVoiceRowId();
@@ -521,6 +582,7 @@ export function ConnectionSwitcherBody({
   }, [listsReady, connectionsRaw, hiddenIds, kind, rowFilter, current?.connectionId]);
   const groups = useMemo<SwitcherGroup[]>(() => {
     const { groups: byAccount, standalone } = groupModelsByAccount(rows, accounts ?? []);
+    const allRows = (connectionsRaw ?? []) as SwitcherRow[];
     // The panel orders accounts by all their Models; the language filter only trims the rows shown.
     const accountRank = new Map(
       orderAccountGroups(
@@ -532,9 +594,24 @@ export function ConnectionSwitcherBody({
     return [
       // A provider with no saved model still lists its catalog; one with only image or voice Models has nothing to pick here.
       ...byAccount
-        .filter(
-          (group) =>
-            group.rows.length > 0 || (kind === "chat" && rows.some((row) => row.accountId === group.account.id)),
+        .filter((group) =>
+          kind === "chat"
+            ? rows.some((row) => row.accountId === group.account.id)
+            : group.rows.length > 0 ||
+              (catalogBrowse &&
+                (!accountFilter || accountFilter(group.account)) &&
+                !!(catalogAnchor
+                  ? catalogAnchor(
+                      group.account,
+                      allRows.filter((row) => !hiddenIds.has(row.id)),
+                    )
+                  : allRows.find(
+                      (row) =>
+                        !hiddenIds.has(row.id) &&
+                        row.accountId === group.account.id &&
+                        row.provider &&
+                        (kind === "decision" || kind === "all" || row.provider !== "decision"),
+                    ))),
         )
         .sort((a, b) =>
           a.account.id === firstAccountId
@@ -553,7 +630,19 @@ export function ConnectionSwitcherBody({
         .map((row) => ({ key: row.id, account: null, name: rowLabel(row), rows: [row] }))
         .sort((a, b) => a.name.localeCompare(b.name)),
     ];
-  }, [accountManualOrder, accounts, connectionsRaw, rows, sort, firstAccountId, kind]);
+  }, [
+    accountManualOrder,
+    accounts,
+    connectionsRaw,
+    rows,
+    sort,
+    firstAccountId,
+    kind,
+    catalogBrowse,
+    accountFilter,
+    catalogAnchor,
+    hiddenIds,
+  ]);
   const groupOfRow = useMemo(() => {
     const map = new Map<string, SwitcherGroup>();
     for (const group of groups) for (const row of group.rows) map.set(row.id, group);
@@ -565,13 +654,32 @@ export function ConnectionSwitcherBody({
   );
 
   // Cost badges from the catalogs already cached for each Connection; nothing is fetched for them.
+  const catalogAnchors = groups.map((group) =>
+    group.account
+      ? catalogAnchor
+        ? catalogAnchor(
+            group.account,
+            ((connectionsRaw ?? []) as SwitcherRow[]).filter((row) => !hiddenIds.has(row.id)),
+          )?.id
+        : (connectionsRaw as SwitcherRow[] | undefined)?.find(
+            (row) =>
+              !hiddenIds.has(row.id) &&
+              row.accountId === group.account!.id &&
+              // A Model with its own address lists another path's models, not the Connection's.
+              !ownAddressOf(row) &&
+              row.provider &&
+              (kind === "chat"
+                ? isChatProvider(row.provider)
+                : kind === "decision" || kind === "all" || row.provider !== "decision"),
+          )?.id
+      : group.rows[0]?.id,
+  );
   const catalogs = useCachedCatalogFacts(
     catalogBrowse
-      ? groups.map((group) =>
-          group.rows.length > 0 || !group.account
-            ? group.rows.map((row) => row.id)
-            : [rows.find((row) => row.accountId === group.account!.id)?.id ?? ""].filter(Boolean),
-        )
+      ? groups.map((group, index) => [
+          ...(catalogAnchors[index] ? [catalogAnchors[index]!] : []),
+          ...group.rows.filter((row) => !group.account || !ownAddressOf(row)).map((row) => row.id),
+        ])
       : [],
   );
   const catalogOf = (group: SwitcherGroup | undefined) => (group ? catalogs[groups.indexOf(group)] : undefined);
@@ -585,10 +693,14 @@ export function ConnectionSwitcherBody({
   const anchorOf = useCallback(
     (group: SwitcherGroup) =>
       group.rows.find((row) => row.id === nowRow?.id) ??
-      group.rows[0] ??
+      (kind === "chat" ? group.rows[0] : undefined) ??
+      (group.account && catalogAnchor?.(group.account, (connectionsRaw ?? []) as SwitcherRow[])) ??
       // An account with no saved model still has its hidden catalog row.
-      (rows.find((row) => row.accountId === group.account?.id) as SwitcherRow),
-    [nowRow?.id, rows],
+      (((connectionsRaw as SwitcherRow[] | undefined)?.find(
+        (row) =>
+          row.accountId === group.account?.id && row.provider && (kind === "chat" || row.provider !== "decision"),
+      ) ?? group.rows[0]) as SwitcherRow),
+    [nowRow?.id, rows, connectionsRaw, kind, catalogAnchor],
   );
 
   // The search box shows once both lists are in, so it is focused then, not on the first frame.
@@ -773,16 +885,38 @@ export function ConnectionSwitcherBody({
     (!!followDefault?.active && !followDefault.own && choice.connectionId === mainRow?.id && !choice.model) ||
     (!!choice.model && !!nowRuns && runsKey(choice, rows) === nowRuns);
   const isNow = (entry: Entry) => matchesNow(entry.choice);
+  const leads = (group: SwitcherGroup | undefined, model: string, facts?: CachedModelFacts) =>
+    !!leadCatalog && !!group?.account && leadCatalog.test(group.account.provider, model, facts);
+  /** A provider the lead models are exclusive to: its other models are not offered, starred or saved. */
+  const leadOnly = (group: SwitcherGroup | undefined, model: string, facts?: CachedModelFacts) =>
+    !!group?.account && !!leadCatalog?.only?.(group.account.provider) && !leads(group, model, facts);
+  const acceptsCatalog = (model: string, facts?: CachedModelFacts, group?: SwitcherGroup) =>
+    !leadOnly(group, model, facts) &&
+    (!modelFilter || modelFilter(model)) &&
+    (!catalogFilter || catalogFilter(model, facts)) &&
+    (kind === "all" || !!modelFilter || catalogMatchesKind(model, facts, kind) || leads(group, model, facts));
   // Your models: each Connection's starred models, plus the saved Models a role or their own settings keep.
   const listed = useMemo(
     () =>
       groups.map((group) => {
         if (!group.account) return { group, entries: group.rows.map((row) => entryOfRow(row, group)) };
         const byModel = new Map<string, Entry>();
-        for (const model of starsOfRows(group.rows)) byModel.set(model, entryFor(group, anchorOf(group), model));
+        for (const model of starsOfRows(group.rows)) {
+          if (
+            !leadOnly(group, model, catalogOf(group)?.of(model)) &&
+            (kind === "chat" || !catalogFilter || acceptsCatalog(model, catalogOf(group)?.of(model)))
+          )
+            byModel.set(model, entryFor(group, anchorOf(group), model));
+        }
         for (const row of group.rows) {
           const kept = row.ownSettings || roleBadges(row).some((role) => role !== "random");
-          if (row.model && kept && !byModel.has(row.model)) {
+          if (
+            row.model &&
+            kept &&
+            !byModel.has(row.model) &&
+            !leadOnly(group, row.model, catalogOf(group)?.of(row.model)) &&
+            (kind === "chat" || !catalogFilter || acceptsCatalog(row.model, catalogOf(group)?.of(row.model)))
+          ) {
             byModel.set(row.model, entryFor(group, anchorOf(group), row.model));
           }
         }
@@ -809,23 +943,42 @@ export function ConnectionSwitcherBody({
   // A selected account scopes the search to its own models.
   const scopeGroup = paneGroup;
   // The open account's list: shares the cache loadCatalog fills, and tells the pane when it failed.
-  const scopeAnchorId = scopeGroup ? anchorOf(scopeGroup).id : null;
+  const scopeAnchorId = scopeGroup ? (catalogAnchors[groups.indexOf(scopeGroup)] ?? anchorOf(scopeGroup).id) : null;
   const scopeModels = useConnectionModels(scopeAnchorId, catalogBrowse);
   const refreshModels = useRefreshConnectionModels();
   /** An account's pane: its starred models, then its saved Models and the rest of its catalog. */
   const paneEntries = (group: SwitcherGroup) => {
     const anchor = anchorOf(group);
-    const starred = group.account ? [...starsOf(group)].map((model) => entryFor(group, anchor, model)) : [];
+    const starred = group.account
+      ? [...starsOf(group)]
+          .filter(
+            (model) =>
+              !leadOnly(group, model, catalogOf(group)?.of(model)) &&
+              (kind === "chat" || !catalogFilter || acceptsCatalog(model, catalogOf(group)?.of(model))),
+          )
+          .map((model) => entryFor(group, anchor, model))
+      : [];
     const seen = new Set(starred.map((entry) => entry.model));
     // A saved row without a model (an image server) is still a choice of its own.
-    const saved = group.rows.filter((row) => !row.model || !seen.has(row.model)).map((row) => entryOfRow(row, group));
+    const saved = group.rows
+      .filter(
+        (row) => !row.model || (!seen.has(row.model) && !leadOnly(group, row.model, catalogOf(group)?.of(row.model))),
+      )
+      .map((row) => entryOfRow(row, group));
     for (const entry of saved) seen.add(entry.model);
+    if (showUnstarred && nowEntry?.model && nowEntry.group?.key === group.key && !seen.has(nowEntry.model)) {
+      saved.unshift(nowEntry);
+      seen.add(nowEntry.model);
+    }
     const ids = catalogBrowse ? new Set((catalogOf(group)?.idSets ?? []).flatMap((set) => [...set])) : [];
     const fromCatalog = [...ids]
-      .filter((id) => !seen.has(id) && (!modelFilter || modelFilter(id)))
+      .filter((id) => !seen.has(id) && acceptsCatalog(id, catalogOf(group)?.of(id), group))
       .sort((x, y) => x.localeCompare(y))
       .map((id) => entryFor(group, anchor, id));
-    return { starred, rest: [...saved, ...fromCatalog] };
+    const lead = fromCatalog.filter(
+      (entry) => !!entry.model && leads(group, entry.model, catalogOf(group)?.of(entry.model)),
+    );
+    return { starred, lead, rest: [...saved, ...fromCatalog.filter((entry) => !lead.includes(entry))] };
   };
 
   // Search (decision 27): saved Models first (starred, then the rest), then catalog models not saved yet, each
@@ -840,9 +993,10 @@ export function ConnectionSwitcherBody({
     const starredIn = (group: SwitcherGroup | undefined, model: string | null | undefined) =>
       !!group?.account && !!model && starsOfRows(group.rows).has(model);
     const saved = byRank(
-      // A row with no model yet (an account's placeholder) is not something a job can use.
+      // A row with no model yet (an account's placeholder) is not something a job can use, unless its server
+      // answers with the model it has loaded: then it is that account's Default model.
       rows
-        .filter((row) => row.model)
+        .filter((row) => row.model || groupOfRow.get(row.id)?.account?.loadedModel)
         .map((row) => {
           const model = { id: row.model ?? "", name: row.name };
           const group = groupOfRow.get(row.id);
@@ -858,7 +1012,11 @@ export function ConnectionSwitcherBody({
     const added = byRank(
       (catalog.data ?? []).flatMap((hit) => {
         const group = groupByAccount.get(hit.accountId);
-        if (!group || group.rows.some((row) => row.model === hit.model) || (modelFilter && !modelFilter(hit.model)))
+        if (
+          !group ||
+          group.rows.some((row) => row.model === hit.model) ||
+          !acceptsCatalog(hit.model, catalogOf(group)?.of(hit.model), group)
+        )
           return [];
         const model = { id: hit.model, name: hit.name };
         return [
@@ -907,10 +1065,17 @@ export function ConnectionSwitcherBody({
     for (const group of groups) {
       if (!group.account) continue;
       const catalog = catalogOf(group);
+      const seen = new Set<string>();
       for (const facts of catalog?.factSets ?? []) {
         for (const [model, modelFacts] of facts) {
-          if (knownGood.test(group.account.id, model, modelFacts))
+          if (
+            !seen.has(model) &&
+            acceptsCatalog(model, modelFacts, group) &&
+            knownGood.test(group.account.id, model, modelFacts)
+          ) {
+            seen.add(model);
             out.push(entryFor(group, anchorOf(group), model, model));
+          }
         }
       }
     }
@@ -936,10 +1101,15 @@ export function ConnectionSwitcherBody({
         .filter((hit) => hit.rank >= 0)
         .sort((x, y) => x.rank - y.rank)
         .map((hit) => hit.entry);
-    const { starred, rest } = paneEntries(scopeGroup);
+    const { starred, lead, rest } = paneEntries(scopeGroup);
     allSections.push(
       { key: "starred", label: t("connections.switcher.starred"), entries: match(starred) },
-      { key: "all", label: t("connections.switcher.allModels"), entries: match(rest) },
+      ...(leadCatalog ? [{ key: "lead", label: leadCatalog.label, entries: match(lead) }] : []),
+      {
+        key: "all",
+        label: leadCatalog && lead.length ? leadCatalog.restLabel : t("connections.switcher.allModels"),
+        entries: match(rest),
+      },
     );
   } else if (searching) {
     const hits = [...savedHits, ...extraHits.filter((entry) => entry !== typedEntry)];
@@ -1024,6 +1194,10 @@ export function ConnectionSwitcherBody({
         .filter(Boolean)
         .join(" · ");
       if (routeId && entry.subtitle.includes(routeId)) routeId = undefined;
+    } else if (away && entry.row?.provider) {
+      // A saved Model with no account says which provider it runs on (#9317).
+      const service = PROVIDERS[entry.row.provider as APIProvider]?.name;
+      entry.subtitle = [service, entry.subtitle].filter(Boolean).join(" · ");
     }
     const isCurrent = now || isNow(entry) || sameChoice(entry.choice, current);
     const highlighted = index !== undefined && index === highlight;
@@ -1104,7 +1278,7 @@ export function ConnectionSwitcherBody({
         roles={roleLabels}
         status={
           rowStateOf
-            ? { label: rowStateOf.label, state: rowStateOf.state }
+            ? { label: rowStateOf.label, state: rowStateOf.state, detail: rowStateOf.detail }
             : stateLabel
               ? { label: stateLabel, state: unavailable ?? undefined }
               : limitReached(group, facts?.cost)
@@ -1198,7 +1372,16 @@ export function ConnectionSwitcherBody({
       className={cn(ROW_CLASS, extra.active && "bg-foreground/[0.07] font-semibold")}
     >
       {extra.icon}
-      <span className="min-w-0 flex-1 truncate">{extra.label}</span>
+      {extra.subtitle ? (
+        <span className="min-w-0 flex-1">
+          <span className="block truncate">{extra.label}</span>
+          <span className="block truncate text-[0.6875rem] font-normal leading-4 text-[var(--muted-foreground)]">
+            {extra.subtitle}
+          </span>
+        </span>
+      ) : (
+        <span className="min-w-0 flex-1 truncate">{extra.label}</span>
+      )}
       {extra.active && <Check size="0.75rem" className="shrink-0 text-[var(--marinara-chat-chrome-accent)]" />}
     </button>
   ));
@@ -1366,10 +1549,14 @@ export function ConnectionSwitcherBody({
     : [];
   // A filtered job (embeddings) skips accounts with nothing it can use, as the old list did.
   const accountGroups = groups.filter((group) => {
-    if (!group.account) return false;
-    if (!modelFilter) return true;
-    const { starred, rest } = paneEntries(group);
-    return starred.length + rest.length > 0;
+    const account = group.account;
+    if (!account) return false;
+    if (kind === "chat") return rows.some((row) => row.accountId === account.id);
+    // An account that needs a key stays listed, so its Add key button is reachable.
+    if (accountFilter && unavailableOf(group)) return true;
+    if (!modelFilter && !catalogFilter && kind === "all") return true;
+    const { starred, lead, rest } = paneEntries(group);
+    return starred.length + lead.length + rest.length > 0;
   });
   const standaloneGroups = groups.filter((group) => !group.account);
 
@@ -1419,7 +1606,7 @@ export function ConnectionSwitcherBody({
           </section>
         )}
         {standaloneGroups.flatMap((group) =>
-          group.rows.map((row) => renderEntry(entryOfRow(row, group), { pane: true })),
+          group.rows.map((row) => renderEntry(entryOfRow(row, group), { pane: true, away: true })),
         )}
         {showLocalModel && renderEntry(localEntry, { pane: true })}
       </ListFrame>
@@ -1430,12 +1617,24 @@ export function ConnectionSwitcherBody({
   const paneFolder = folderPanes.find((item) => item.key === paneKey);
   const shownGroup = paneFolder ? undefined : paneGroup;
   const shownEntries = shownGroup ? paneEntries(shownGroup) : null;
+  const restLabel =
+    leadCatalog && shownEntries?.lead.length ? leadCatalog.restLabel : t("connections.switcher.allModels");
   const paneTitle = (title: ReactNode, summary: string) => (
     <div className="flex min-w-0 shrink-0 items-baseline gap-2.5 px-3.5 pb-1 pt-2.5">
       <strong className="truncate text-[0.8125rem] font-semibold">{title}</strong>
       <span className="truncate text-[0.6875rem] max-sm:text-[13px] text-foreground/50">{summary}</span>
     </div>
   );
+  // The overview is hidden during search and account browsing; avoid walking every catalog on those renders.
+  const unstarredGroups =
+    showUnstarred && catalogBrowse && !query.trim() && !searching && !shownGroup && !paneFolder
+      ? groups
+          .map((group) => {
+            const { lead, rest } = paneEntries(group);
+            return { group, entries: [...lead, ...rest] };
+          })
+          .filter(({ entries }) => entries.length > 0)
+      : [];
   const starredAccounts = new Set(starredEntries.map((entry) => entry.group?.key)).size;
   const rightPane = (
     <div
@@ -1527,22 +1726,40 @@ export function ConnectionSwitcherBody({
                 )}
               </section>
             )}
+            {leadCatalog && shownEntries.lead.length > 0 && (
+              <section data-switcher-section="lead" aria-label={leadCatalog.label}>
+                {heading(leadCatalog.label, shownEntries.lead.length)}
+                <EntryRows
+                  listKey={`lead:${paneKey}`}
+                  entries={shownEntries.lead}
+                  render={(entry) => renderEntry(entry, { star: "all" })}
+                />
+              </section>
+            )}
             {shownEntries.rest.length > 0 && (
-              <section data-switcher-section="all" aria-label={t("connections.switcher.allModels")}>
-                {heading(t("connections.switcher.allModels"), shownEntries.rest.length)}
-                {shownEntries.rest.map((entry) => renderEntry(entry, { star: "all" }))}
+              <section data-switcher-section="all" aria-label={restLabel}>
+                {heading(restLabel, shownEntries.rest.length)}
+                <EntryRows
+                  listKey={`rest:${paneKey}`}
+                  entries={shownEntries.rest}
+                  render={(entry) => renderEntry(entry, { star: "all" })}
+                />
               </section>
             )}
             {scopeModels.isError && !refreshModels.isPending ? (
               <ListStatus>{t("connections.modelPicker.loadFailed")}</ListStatus>
             ) : (
-              shownEntries.starred.length + shownEntries.rest.length === 0 && (
+              shownEntries.starred.length + shownEntries.lead.length + shownEntries.rest.length === 0 && (
                 <ListStatus>{t("connections.switcher.noModels")}</ListStatus>
               )
             )}
           </>
         ) : paneFolder ? (
-          paneFolder.entries.map((entry) => renderEntry(entry, { star: "all" }))
+          <EntryRows
+            listKey={`folder:${paneKey}`}
+            entries={paneFolder.entries}
+            render={(entry) => renderEntry(entry, { star: "all" })}
+          />
         ) : (
           <>
             {knownEntries.length > 0 && (
@@ -1552,12 +1769,25 @@ export function ConnectionSwitcherBody({
               </section>
             )}
             <section data-switcher-section="starred" aria-label={t("connections.switcher.starred")}>
+              {showUnstarred &&
+                starredEntries.length > 0 &&
+                heading(t("connections.switcher.starred"), starredEntries.length)}
               {starredEntries.length > 1 && orderToggle}
               {starredEntries.map((entry) =>
                 renderEntry(entry, { star: "all", away: true, order: starredEntries.length > 1 }),
               )}
             </section>
-            {starredEntries.length === 0 && knownEntries.length === 0 && (
+            {unstarredGroups.map(({ group, entries }) => (
+              <section key={group.key} data-switcher-section="provider" aria-label={group.name}>
+                {heading(group.name, entries.length)}
+                <EntryRows
+                  listKey={`provider:${group.key}`}
+                  entries={entries}
+                  render={(entry) => renderEntry(entry, { star: "all", away: true })}
+                />
+              </section>
+            ))}
+            {starredEntries.length === 0 && knownEntries.length === 0 && unstarredGroups.length === 0 && (
               <ListStatus>{t("connections.switcher.starredEmpty")}</ListStatus>
             )}
           </>
@@ -1576,13 +1806,18 @@ export function ConnectionSwitcherBody({
         {searchSections.map((section) => (
           <section key={section.key} data-switcher-section={section.key} aria-label={section.label}>
             {section.label && heading(section.label, section.entries.length)}
-            {section.entries.map((entry) =>
-              renderEntry(entry, {
-                index: searchEntries.indexOf(entry),
-                star: "all",
-                away: section.key === "starred" && !scopeGroup,
-              }),
-            )}
+            <EntryRows
+              listKey={`search:${section.key}`}
+              entries={section.entries}
+              scrollToIndex={highlight - searchEntries.indexOf(section.entries[0]!)}
+              render={(entry) =>
+                renderEntry(entry, {
+                  index: searchEntries.indexOf(entry),
+                  star: "all",
+                  away: section.key === "starred" && !scopeGroup,
+                })
+              }
+            />
           </section>
         ))}
       </div>

@@ -4,6 +4,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { Volume2, Check, Loader2, Play, Square, ChevronDown, ChevronUp, Download, Trash2 } from "lucide-react";
 import { cn } from "../../../lib/utils";
+import { saveBlobToDevice } from "../../../lib/file-download";
 import { toast } from "sonner";
 import { useEffectiveTTSConfig, useTTSConfig, useUpdateTTSConfig } from "../../../hooks/use-tts";
 import { useConnections } from "../../../hooks/use-connections";
@@ -98,15 +99,11 @@ function safeTTSFileStem(value: string): string {
   );
 }
 
-function downloadTTSClip(entry: CachedTTSAudioExportEntry, index: number): void {
-  const url = URL.createObjectURL(entry.blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `${String(index + 1).padStart(3, "0")}-${safeTTSFileStem(entry.key)}.${extensionForTTSBlob(entry.blob)}`;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+function downloadTTSClip(entry: CachedTTSAudioExportEntry, index: number): Promise<void> {
+  return saveBlobToDevice(
+    entry.blob,
+    `${String(index + 1).padStart(3, "0")}-${safeTTSFileStem(entry.key)}.${extensionForTTSBlob(entry.blob)}`,
+  );
 }
 
 function ToggleRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
@@ -333,7 +330,7 @@ export function TTSConfigCard({ defaultExpanded = false }: { defaultExpanded?: b
         return;
       }
 
-      entries.forEach((entry, index) => downloadTTSClip(entry, index));
+      await Promise.all(entries.map((entry, index) => downloadTTSClip(entry, index)));
       setTtsCacheSummary({
         count: entries.length,
         bytes: entries.reduce((total, entry) => total + Math.max(0, entry.size || entry.blob.size), 0),

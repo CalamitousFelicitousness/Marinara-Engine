@@ -3,12 +3,15 @@
 // ──────────────────────────────────────────────
 import { useState } from "react";
 import { Modal } from "../ui/Modal";
+import { lorebookKeys } from "../../hooks/use-lorebooks";
 import { SHEET_BUTTON_PRIMARY, SHEET_BUTTON_QUIET } from "../ui/neutral-surface-styles";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api-client";
-import { Loader2, BookOpen, AlertCircle } from "lucide-react";
+import { BookOpen, AlertCircle } from "lucide-react";
 import type { LorebookCategory, LorebookScope } from "@marinara-engine/shared";
 import { useTranslation as useUiTranslation } from "react-i18next";
+import { Select } from "../ui/Select";
+import { Spinner } from "../ui/Spinner";
 
 const LOREBOOK_CATEGORIES: Array<{ id: LorebookCategory; label: string }> = [
   { id: "world", label: "World" },
@@ -56,7 +59,7 @@ export function CreateLorebookModal({
         entries: [],
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["lorebooks"] });
+      qc.invalidateQueries({ queryKey: lorebookKeys.all });
       onClose();
       setForm({ name: "", description: "", category: defaultCategory });
     },
@@ -76,11 +79,7 @@ export function CreateLorebookModal({
             disabled={!form.name.trim() || createLorebook.isPending}
             className={SHEET_BUTTON_PRIMARY}
           >
-            {createLorebook.isPending ? (
-              <Loader2 size="0.75rem" className="animate-spin" />
-            ) : (
-              <BookOpen size="0.75rem" />
-            )}
+            {createLorebook.isPending ? <Spinner size="sm" /> : <BookOpen size="0.75rem" />}
             {localizeUi("ui.modals.createlorebookmodal.createLorebook")}
           </button>
           <button type="button" onClick={onClose} className={SHEET_BUTTON_QUIET}>
@@ -129,22 +128,18 @@ export function CreateLorebookModal({
           />
         </label>
 
-        <label className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1">
           <span className="text-xs font-medium text-[var(--muted-foreground)]">
             {localizeUi("ui.lorebooks.lorebookeditor.category")}
           </span>
-          <select
+          <Select
             value={form.category}
-            onChange={(e) => setForm((f) => ({ ...f, category: e.target.value as LorebookCategory }))}
+            onChange={(next) => setForm((f) => ({ ...f, category: next as LorebookCategory }))}
+            label={localizeUi("ui.lorebooks.lorebookeditor.category")}
             className="w-full rounded-lg bg-[var(--secondary)] px-3 py-2 text-sm outline-none ring-1 ring-transparent transition-shadow focus:ring-[var(--primary)] max-sm:text-base"
-          >
-            {LOREBOOK_CATEGORIES.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.label}
-              </option>
-            ))}
-          </select>
-        </label>
+            options={LOREBOOK_CATEGORIES.map((category) => ({ value: category.id, label: category.label }))}
+          />
+        </div>
 
         {createLorebook.isError && (
           <div className="flex items-center gap-2 rounded-lg bg-[var(--destructive)]/10 p-2.5 text-xs text-[var(--destructive)]">

@@ -2,6 +2,12 @@
 // Storage: Characters, Personas & Groups
 // ──────────────────────────────────────────────
 import { and, asc, desc, eq, inArray, jsonStringArrayContainsAll, like, ne, or } from "../../db/file-query.js";
+import {
+  personaRowFromStored,
+  storedCardBase,
+  storedPersonaFromRow,
+  type PersonaStorageRow,
+} from "../personas/persona-card-storage.js";
 import type { DB } from "../../db/connection.js";
 import {
   characters,
@@ -18,6 +24,11 @@ import { newId, now } from "../../utils/id-generator.js";
 import {
   PROFESSOR_MARI_ID,
   parseCardTagSearchTerms,
+  matchesAllCardSearchTags,
+  compareTokenEstimates,
+  estimatePersonaTokens,
+  isTokenSort,
+  normalizeNameAliases,
   applyCharacterCardFieldAlternatives,
   applyPersonaCardFieldAlternatives,
   cardEntityBelongsToChat,
@@ -167,8 +178,8 @@ type CharacterListRow = {
   name: string;
   favorite: boolean;
 };
-/** Serialized row shape used by the file-table persistence layer. */
-export type PersonaStorageRow = typeof personas.$inferSelect;
+/** Flat serialized persona view; on disk the authored fields live in `personas.data`. */
+export type { PersonaStorageRow };
 /** Serialized Persona fields accepted by the normal create and update paths. */
 export type PersonaStorageWriteFields = Pick<
   PersonaStorageRow,
@@ -187,6 +198,7 @@ export type PersonaStorageWriteFields = Pick<
   | "scenario"
   | "backstory"
   | "appearance"
+  | "publicFace"
   | "imageAppearanceEnabled"
   | "imageAppearance"
   | "characterSheetImageId"
@@ -199,6 +211,7 @@ export type PersonaStorageWriteFields = Pick<
   | "personaStats"
   | "tags"
   | "savedStatusOptions"
+  | "nameAliases"
   | "convoDisplayName"
   | "aboutMe"
   | "convoBehavior"
@@ -264,18 +277,78 @@ function sortCharacterRows(rows: CharacterListRow[], sort: string | undefined) {
   }
 }
 
-function personaOrder(sort: string | undefined) {
+/** Flat columns the persona library search matches, as the column-level LIKE did before format 11. */
+const PERSONA_SEARCH_COLUMNS = [
+  "name",
+  "comment",
+  "creator",
+  "personaVersion",
+  "creatorNotes",
+  "summary",
+  "description",
+  "personality",
+  "scenario",
+  "backstory",
+  "appearance",
+  "mes_example",
+  "tags",
+] as const satisfies ReadonlyArray<keyof PersonaStorageRow>;
+
+function personaMatchesSearch(row: PersonaStorageRow, search: string | undefined) {
+  const needle = search?.trim().toLowerCase();
+  if (!needle) return true;
+  if (PERSONA_SEARCH_COLUMNS.some((column) => row[column].toLowerCase().includes(needle))) return true;
+  // Other names (#9040) are stored as a JSON array, so match each name rather than the raw column text.
+  if (normalizeNameAliases(row.nameAliases).some((alias) => alias.toLowerCase().includes(needle))) return true;
+  let tags: unknown;
+  try {
+    tags = JSON.parse(row.tags);
+  } catch {
+    return false;
+  }
+  return matchesAllCardSearchTags(tags, parseCardTagSearchTerms(search ?? ""));
+}
+
+function comparePersonaRows(sort: string | undefined, tokenEstimates?: ReadonlyMap<string, number>) {
+  const byId = (a: PersonaStorageRow, b: PersonaStorageRow) => a.id.localeCompare(b.id);
+  if (isTokenSort(sort)) {
+    return (a: PersonaStorageRow, b: PersonaStorageRow) =>
+      compareTokenEstimates(sort, tokenEstimates?.get(a.id), tokenEstimates?.get(b.id)) ||
+      a.name.localeCompare(b.name) ||
+      byId(a, b);
+  }
   switch (sort) {
     case "name-desc":
-      return [desc(personas.name), asc(personas.id)];
+      return (a: PersonaStorageRow, b: PersonaStorageRow) => b.name.localeCompare(a.name) || byId(a, b);
     case "newest":
-      return [desc(personas.createdAt), asc(personas.id)];
+      return (a: PersonaStorageRow, b: PersonaStorageRow) => b.createdAt.localeCompare(a.createdAt) || byId(a, b);
     case "oldest":
-      return [asc(personas.createdAt), asc(personas.id)];
+      return (a: PersonaStorageRow, b: PersonaStorageRow) => a.createdAt.localeCompare(b.createdAt) || byId(a, b);
     case "name-asc":
     default:
-      return [asc(personas.name), asc(personas.id)];
+      return (a: PersonaStorageRow, b: PersonaStorageRow) => a.name.localeCompare(b.name) || byId(a, b);
   }
+}
+
+/** Read every persona as its flat view. */
+async function selectPersonaRows(database: DB) {
+  const rows = await database.select().from(personas).orderBy(desc(personas.updatedAt));
+  return rows.map(personaRowFromStored);
+}
+
+/** Read one persona as its flat view. */
+async function selectPersonaRow(database: DB, id: string) {
+  const rows = await database.select().from(personas).where(eq(personas.id, id));
+  return rows[0] ? personaRowFromStored(rows[0]) : null;
+}
+
+/** Write a full flat persona view back as its stored row. */
+async function writePersonaRow(database: DB, row: PersonaStorageRow) {
+  // Overlay the stored card so extensions the flat view does not carry survive the save.
+  const [current] = await database.select().from(personas).where(eq(personas.id, row.id));
+  const base = storedCardBase(current?.data);
+  const { id: _id, createdAt: _createdAt, ...stored } = storedPersonaFromRow(row, base);
+  await database.update(personas).set(stored).where(eq(personas.id, row.id));
 }
 
 function getCharacterSummaryFromRow(row: typeof characters.$inferSelect) {
@@ -317,6 +390,7 @@ function buildPersonaSnapshot(persona: PersonaStorageRow): PersonaCardSnapshot {
     scenario: persona.scenario ?? "",
     backstory: persona.backstory ?? "",
     appearance: persona.appearance ?? "",
+    publicFace: persona.publicFace ?? "",
     imageAppearanceEnabled: persona.imageAppearanceEnabled ?? "false",
     imageAppearance: persona.imageAppearance ?? "",
     characterSheetImageId: persona.characterSheetImageId ?? "",
@@ -329,6 +403,7 @@ function buildPersonaSnapshot(persona: PersonaStorageRow): PersonaCardSnapshot {
     personaStats: persona.personaStats ?? "",
     tags: persona.tags ?? "[]",
     savedStatusOptions: persona.savedStatusOptions ?? "[]",
+    nameAliases: persona.nameAliases ?? "[]",
     convoDisplayName: persona.convoDisplayName ?? "",
     aboutMe: persona.aboutMe ?? "",
     convoBehavior: persona.convoBehavior ?? "",
@@ -363,6 +438,7 @@ function normalizePersonaSnapshot(data: PersonaCardSnapshot): PersonaCardSnapsho
     scenario: data.scenario ?? "",
     backstory: data.backstory ?? "",
     appearance: data.appearance ?? "",
+    publicFace: data.publicFace ?? "",
     imageAppearanceEnabled: data.imageAppearanceEnabled ?? "false",
     imageAppearance: data.imageAppearance ?? "",
     characterSheetImageId: data.characterSheetImageId ?? "",
@@ -375,6 +451,7 @@ function normalizePersonaSnapshot(data: PersonaCardSnapshot): PersonaCardSnapsho
     personaStats: data.personaStats ?? "",
     tags: data.tags ?? "[]",
     savedStatusOptions: data.savedStatusOptions ?? "[]",
+    nameAliases: data.nameAliases ?? "[]",
     convoDisplayName: data.convoDisplayName ?? "",
     aboutMe: data.aboutMe ?? "",
     convoBehavior: data.convoBehavior ?? "",
@@ -419,6 +496,24 @@ async function insertPersonaVersionSnapshot(
     createdAt: options?.createdAt ?? existing.updatedAt ?? now(),
   });
   return id;
+}
+
+// One queue per character for read-modify-write saves, shared by the character routes and the capability host
+// (api.runtime.resources.updateCharacterExtensions), so a package write and a UI save of the same card can't
+// interleave and drop one of them. Never call a queued storage method from inside a callback on the same id: the
+// callback would wait on itself.
+const characterUpdateQueues = new Map<string, Promise<unknown>>();
+
+export function withCharacterUpdateQueue<T>(id: string, update: () => Promise<T>): Promise<T> {
+  const previous = characterUpdateQueues.get(id);
+  const next = previous ? previous.catch(() => undefined).then(update) : update();
+  characterUpdateQueues.set(id, next);
+  void next
+    .finally(() => {
+      if (characterUpdateQueues.get(id) === next) characterUpdateQueues.delete(id);
+    })
+    .catch(() => undefined);
+  return next;
 }
 
 export function createCharactersStorage(db: DB) {
@@ -702,6 +797,47 @@ export function createCharactersStorage(db: DB) {
       return this.getById(id);
     },
 
+    /**
+     * Set top-level keys of `data.extensions` on the character's update queue, with no card version. Each key's value
+     * replaces the stored one whole (no nested merge); other keys stay. With
+     * `onlyMissingKeys`, a key the card already has (null included) is left alone. Resolves null for an unknown id,
+     * else the row and the keys actually written.
+     */
+    async updateExtensions(
+      id: string,
+      patch: Record<string, unknown>,
+      options: { onlyMissingKeys?: boolean; versionSource?: string } = {},
+    ): Promise<{ row: CharacterRow; changedKeys: string[] } | null> {
+      return withCharacterUpdateQueue(id, async () => {
+        const existing = await this.getById(id);
+        if (!existing) return null;
+        const current = parseCharacterData(existing.data).extensions;
+        const currentExtensions: Record<string, unknown> =
+          current && typeof current === "object" && !Array.isArray(current) ? (current as Record<string, unknown>) : {};
+        const extensions = Object.fromEntries(
+          Object.entries(patch).filter(
+            ([key, value]) =>
+              (!options.onlyMissingKeys || currentExtensions[key] === undefined) &&
+              // An unchanged value is no edit: no save, no new updatedAt.
+              JSON.stringify(value) !== JSON.stringify(currentExtensions[key]),
+          ),
+        );
+        const changedKeys = Object.keys(extensions);
+        if (changedKeys.length === 0) return { row: existing, changedKeys };
+        const row = await this.update(
+          id,
+          { extensions: { ...currentExtensions, ...extensions } } as CharacterDataUpdate,
+          undefined,
+          {
+            skipVersionSnapshot: true,
+            mergeExtensions: false,
+            versionSource: options.versionSource ?? "extensions",
+          },
+        );
+        return row ? { row, changedKeys } : null;
+      });
+    },
+
     async updateAvatar(id: string, avatarPath: string | null) {
       return withAvatarFileLifecycleLock(() =>
         db.transaction(async (tx) => {
@@ -949,7 +1085,7 @@ export function createCharactersStorage(db: DB) {
     // ── Personas ──
 
     async listPersonas(chatId?: string) {
-      const rows = await db.select().from(personas).orderBy(desc(personas.updatedAt));
+      const rows = await selectPersonaRows(db);
       if (!chatId) return rows;
       const [chat] = await db.select().from(chats).where(eq(chats.id, chatId));
       if (!chat) return rows;
@@ -959,45 +1095,22 @@ export function createCharactersStorage(db: DB) {
     },
 
     async listPersonasPage(options: PersonaListPageOptions) {
-      const pattern = likePattern(options.search);
-      const whereClause = pattern
-        ? or(
-            like(personas.name, pattern),
-            like(personas.comment, pattern),
-            like(personas.creator, pattern),
-            like(personas.personaVersion, pattern),
-            like(personas.creatorNotes, pattern),
-            like(personas.summary, pattern),
-            like(personas.description, pattern),
-            like(personas.personality, pattern),
-            like(personas.scenario, pattern),
-            like(personas.backstory, pattern),
-            like(personas.appearance, pattern),
-            like(personas.mes_example, pattern),
-            like(personas.tags, pattern),
-            jsonStringArrayContainsAll(personas.tags, parseCardTagSearchTerms(options.search ?? "")),
-          )
+      // `name` and the other searched fields live inside `data`, so search and sort run on the flat view.
+      const matching = (await selectPersonaRows(db)).filter((row) => personaMatchesSearch(row, options.search));
+      // Estimate each row once, not on every comparison.
+      const tokenEstimates = isTokenSort(options.sort)
+        ? new Map(matching.map((row) => [row.id, estimatePersonaTokens(row)]))
         : undefined;
-      const rows = await (whereClause
-        ? db
-            .select()
-            .from(personas)
-            .where(whereClause)
-            .orderBy(...personaOrder(options.sort))
-            .limit(options.limit + 1)
-            .offset(options.offset)
-        : db
-            .select()
-            .from(personas)
-            .orderBy(...personaOrder(options.sort))
-            .limit(options.limit + 1)
-            .offset(options.offset));
-      return toPaginatedList(rows, options.limit, options.offset);
+      const rows = matching.sort(comparePersonaRows(options.sort, tokenEstimates));
+      return toPaginatedList(
+        rows.slice(options.offset, options.offset + options.limit + 1),
+        options.limit,
+        options.offset,
+      );
     },
 
     async getPersona(id: string, chatId?: string) {
-      const rows = await db.select().from(personas).where(eq(personas.id, id));
-      const row = rows[0];
+      const row = await selectPersonaRow(db, id);
       return row ? applyPersonaCardFieldAlternatives(row, await eligibleChat(chatId, "persona", id)) : null;
     },
 
@@ -1074,7 +1187,7 @@ export function createCharactersStorage(db: DB) {
       }
       const id = newId();
       const timestamp = resolveTimestamps(timestampOverrides);
-      await db.insert(personas).values({
+      const row: PersonaStorageRow = {
         id,
         name,
         comment: extra?.comment ?? "",
@@ -1091,6 +1204,7 @@ export function createCharactersStorage(db: DB) {
         scenario: extra?.scenario ?? "",
         backstory: extra?.backstory ?? "",
         appearance: extra?.appearance ?? "",
+        publicFace: extra?.publicFace ?? "",
         imageAppearanceEnabled: extra?.imageAppearanceEnabled ?? "false",
         imageAppearance: extra?.imageAppearance ?? "",
         avatarPath: avatarPath ?? null,
@@ -1105,12 +1219,15 @@ export function createCharactersStorage(db: DB) {
         personaStats: extra?.personaStats ?? "",
         tags: extra?.tags ?? "[]",
         savedStatusOptions: extra?.savedStatusOptions ?? "[]",
+        nameAliases: extra?.nameAliases ?? "[]",
         convoDisplayName: extra?.convoDisplayName ?? "",
         aboutMe: extra?.aboutMe ?? "",
         convoBehavior: extra?.convoBehavior ?? "",
+        embedding: null,
         createdAt: timestamp.createdAt,
         updatedAt: timestamp.updatedAt,
-      });
+      };
+      await db.insert(personas).values(storedPersonaFromRow(row));
       return this.getPersona(id);
     },
 
@@ -1140,7 +1257,7 @@ export function createCharactersStorage(db: DB) {
         if (!source) return null;
         const newPId = newId();
         const timestamp = now();
-        await db.insert(personas).values({
+        const row: PersonaStorageRow = {
           id: newPId,
           name: `${source.name || "Persona"} (Copy)`,
           comment: source.comment ?? "",
@@ -1157,6 +1274,7 @@ export function createCharactersStorage(db: DB) {
           scenario: source.scenario ?? "",
           backstory: source.backstory ?? "",
           appearance: source.appearance ?? "",
+          publicFace: source.publicFace ?? "",
           imageAppearanceEnabled: source.imageAppearanceEnabled ?? "false",
           imageAppearance: source.imageAppearance ?? "",
           avatarPath: source.avatarPath,
@@ -1171,12 +1289,15 @@ export function createCharactersStorage(db: DB) {
           personaStats: source.personaStats ?? "",
           tags: source.tags ?? "[]",
           savedStatusOptions: source.savedStatusOptions ?? "[]",
+          nameAliases: source.nameAliases ?? "[]",
           convoDisplayName: source.convoDisplayName ?? "",
           aboutMe: source.aboutMe ?? "",
           convoBehavior: source.convoBehavior ?? "",
+          embedding: null,
           createdAt: timestamp,
           updatedAt: timestamp,
-        });
+        };
+        await db.insert(personas).values(storedPersonaFromRow(row));
         return this.getPersona(newPId);
       });
     },
@@ -1213,6 +1334,7 @@ export function createCharactersStorage(db: DB) {
       if (updates.scenario !== undefined) sets.scenario = updates.scenario;
       if (updates.backstory !== undefined) sets.backstory = updates.backstory;
       if (updates.appearance !== undefined) sets.appearance = updates.appearance;
+      if (updates.publicFace !== undefined) sets.publicFace = updates.publicFace;
       if (updates.imageAppearanceEnabled !== undefined) sets.imageAppearanceEnabled = updates.imageAppearanceEnabled;
       if (updates.imageAppearance !== undefined) sets.imageAppearance = updates.imageAppearance;
       if (updates.avatarPath !== undefined) sets.avatarPath = updates.avatarPath;
@@ -1228,12 +1350,12 @@ export function createCharactersStorage(db: DB) {
       if (updates.personaStats !== undefined) sets.personaStats = updates.personaStats;
       if (updates.tags !== undefined) sets.tags = updates.tags;
       if (updates.savedStatusOptions !== undefined) sets.savedStatusOptions = updates.savedStatusOptions;
+      if (updates.nameAliases !== undefined) sets.nameAliases = updates.nameAliases;
       if (updates.convoDisplayName !== undefined) sets.convoDisplayName = updates.convoDisplayName;
       if (updates.aboutMe !== undefined) sets.aboutMe = updates.aboutMe;
       if (updates.convoBehavior !== undefined) sets.convoBehavior = updates.convoBehavior;
       const persistUpdate = async (database: DB) => {
-        const currentRows = await database.select().from(personas).where(eq(personas.id, id));
-        const current = currentRows[0];
+        const current = await selectPersonaRow(database, id);
         if (!current) return null;
         const currentData = buildPersonaSnapshot(current);
         const nextData = mergePersonaSnapshot(currentData, {
@@ -1251,6 +1373,7 @@ export function createCharactersStorage(db: DB) {
           ...(updates.scenario !== undefined && { scenario: updates.scenario }),
           ...(updates.backstory !== undefined && { backstory: updates.backstory }),
           ...(updates.appearance !== undefined && { appearance: updates.appearance }),
+          ...(updates.publicFace !== undefined && { publicFace: updates.publicFace }),
           ...(updates.imageAppearanceEnabled !== undefined && {
             imageAppearanceEnabled: updates.imageAppearanceEnabled,
           }),
@@ -1269,6 +1392,7 @@ export function createCharactersStorage(db: DB) {
           ...(updates.personaStats !== undefined && { personaStats: updates.personaStats }),
           ...(updates.tags !== undefined && { tags: updates.tags }),
           ...(updates.savedStatusOptions !== undefined && { savedStatusOptions: updates.savedStatusOptions }),
+          ...(updates.nameAliases !== undefined && { nameAliases: updates.nameAliases }),
           ...(updates.convoDisplayName !== undefined && { convoDisplayName: updates.convoDisplayName }),
           ...(updates.aboutMe !== undefined && { aboutMe: updates.aboutMe }),
           ...(updates.convoBehavior !== undefined && { convoBehavior: updates.convoBehavior }),
@@ -1296,11 +1420,12 @@ export function createCharactersStorage(db: DB) {
             sets.personaVersion = bumpCardVersion(currentData.personaVersion);
           }
         }
-        await database.update(personas).set(sets).where(eq(personas.id, id));
-        const rows = await database.select().from(personas).where(eq(personas.id, id));
-        return rows[0] ?? null;
+        await writePersonaRow(database, { ...current, ...sets } as PersonaStorageRow);
+        return selectPersonaRow(database, id);
       };
-      return updates.avatarPath !== undefined ? db.transaction(persistUpdate) : persistUpdate(db);
+      // The whole card is rewritten from the row read above, so every update runs in a transaction:
+      // two concurrent saves of different fields must not drop each other's change.
+      return db.transaction(persistUpdate);
     },
 
     async restorePersonaVersion(personaId: string, versionId: string) {
@@ -1311,8 +1436,7 @@ export function createCharactersStorage(db: DB) {
       // an older version never discards the newer one and can't leave a
       // half-applied state (#4040). Skip the snapshot when they already match.
       const ok = await db.transaction(async (tx) => {
-        const rows = await tx.select().from(personas).where(eq(personas.id, personaId));
-        const existing = rows[0];
+        const existing = await selectPersonaRow(tx, personaId);
         if (!existing) return false;
         const currentSnapshot = buildPersonaSnapshot(existing);
         const alreadyMatches =
@@ -1332,43 +1456,43 @@ export function createCharactersStorage(db: DB) {
             createdAt: existing.updatedAt ?? now(),
           });
         }
-        await tx
-          .update(personas)
-          .set({
-            name: data.name,
-            comment: version.comment ?? "",
-            creator: data.creator,
-            personaVersion: data.personaVersion,
-            versioningEnabled: data.versioningEnabled,
-            creatorNotes: data.creatorNotes,
-            phoneticName: data.phoneticName ?? "",
-            cardFieldAlternatives: data.cardFieldAlternatives ?? "[]",
-            summary: data.summary ?? "",
-            mes_example: data.mes_example ?? "",
-            description: data.description,
-            personality: data.personality,
-            scenario: data.scenario,
-            backstory: data.backstory,
-            appearance: data.appearance,
-            imageAppearanceEnabled: data.imageAppearanceEnabled ?? "false",
-            imageAppearance: data.imageAppearance ?? "",
-            avatarPath: version.avatarPath ?? null,
-            characterSheetImageId: data.characterSheetImageId || null,
-            useCharacterSheetAsReference: data.useCharacterSheetAsReference,
-            avatarCrop: data.avatarCrop,
-            nameColor: data.nameColor,
-            dialogueColor: data.dialogueColor,
-            boxColor: data.boxColor,
-            trackerCardColors: data.trackerCardColors,
-            personaStats: data.personaStats,
-            tags: data.tags,
-            savedStatusOptions: data.savedStatusOptions,
-            convoDisplayName: data.convoDisplayName,
-            aboutMe: data.aboutMe,
-            convoBehavior: data.convoBehavior,
-            updatedAt: now(),
-          })
-          .where(eq(personas.id, personaId));
+        await writePersonaRow(tx, {
+          ...existing,
+          name: data.name,
+          comment: version.comment ?? "",
+          creator: data.creator,
+          personaVersion: data.personaVersion,
+          versioningEnabled: data.versioningEnabled,
+          creatorNotes: data.creatorNotes,
+          phoneticName: data.phoneticName ?? "",
+          cardFieldAlternatives: data.cardFieldAlternatives ?? "[]",
+          summary: data.summary ?? "",
+          mes_example: data.mes_example ?? "",
+          description: data.description,
+          personality: data.personality,
+          scenario: data.scenario,
+          backstory: data.backstory,
+          appearance: data.appearance,
+          publicFace: data.publicFace ?? "",
+          imageAppearanceEnabled: data.imageAppearanceEnabled ?? "false",
+          imageAppearance: data.imageAppearance ?? "",
+          avatarPath: version.avatarPath ?? null,
+          characterSheetImageId: data.characterSheetImageId || null,
+          useCharacterSheetAsReference: data.useCharacterSheetAsReference,
+          avatarCrop: data.avatarCrop,
+          nameColor: data.nameColor,
+          dialogueColor: data.dialogueColor,
+          boxColor: data.boxColor,
+          trackerCardColors: data.trackerCardColors,
+          personaStats: data.personaStats,
+          tags: data.tags,
+          savedStatusOptions: data.savedStatusOptions,
+          nameAliases: data.nameAliases ?? "[]",
+          convoDisplayName: data.convoDisplayName,
+          aboutMe: data.aboutMe,
+          convoBehavior: data.convoBehavior,
+          updatedAt: now(),
+        });
         return true;
       });
       if (!ok) return null;
@@ -1397,10 +1521,10 @@ export function createCharactersStorage(db: DB) {
 
     async resetPersonaVersions(personaId: string) {
       const reset = await db.transaction(async (tx) => {
-        const rows = await tx.select().from(personas).where(eq(personas.id, personaId));
-        if (!rows[0]) return false;
+        const existing = await selectPersonaRow(tx, personaId);
+        if (!existing) return false;
         await tx.delete(personaCardVersions).where(eq(personaCardVersions.personaId, personaId));
-        await tx.update(personas).set({ personaVersion: "1.0", updatedAt: now() }).where(eq(personas.id, personaId));
+        await writePersonaRow(tx, { ...existing, personaVersion: "1.0", updatedAt: now() });
         return true;
       });
       if (!reset) return null;

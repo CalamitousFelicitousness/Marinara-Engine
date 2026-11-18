@@ -1,7 +1,7 @@
 // Mesh avatar setup on the 2D Avatars agent page (lane: 2D): import a `.mavatar` and choose the look the
 // avatar shows for each feeling. The runtime itself is not loaded here; the stage loads it to draw.
 import { useRef, useState, type ChangeEvent } from "react";
-import { Loader2, Trash2, Upload } from "lucide-react";
+import { Trash2, Upload } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { AVATAR_EMOTIONS, type AvatarEmotion } from "@marinara-engine/shared";
@@ -11,6 +11,8 @@ import { SETTINGS_BUTTON_CLASS, SettingsSection } from "../../../../components/p
 import type { AvatarKindSetupPanelProps } from "../../contract";
 import { AVATAR_EMOTION_LABEL_KEYS, AVATAR_SETUP_SELECT_CLASS, errorMessage } from "../pngtuber/PngtuberSetupPanel";
 import { MESH_AVATAR_EMOTION_TAGS, MESH_AVATAR_EXTRA_EXPRESSIONS } from "./mesh-avatar-face";
+import { Spinner } from "../../../../components/ui/Spinner";
+import { Select } from "../../../../components/ui/Select";
 
 const EXTRA_LOOK_KEYS: Readonly<Record<(typeof MESH_AVATAR_EXTRA_EXPRESSIONS)[number], string>> = {
   smile: "avatars.meshAvatar.lookSmile",
@@ -93,26 +95,24 @@ export function MeshAvatarSetupPanel({ owner, config, onChanged }: AvatarKindSet
           <legend className="mb-1 text-[0.6875rem] font-semibold">{t("avatars.meshAvatar.feelings")}</legend>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {AVATAR_EMOTIONS.map((emotion) => (
-              <label key={emotion} className="flex flex-col gap-1 text-[0.6875rem]">
+              <div key={emotion} className="flex flex-col gap-1 text-[0.6875rem]">
                 <span>{t(AVATAR_EMOTION_LABEL_KEYS[emotion])}</span>
-                <select
+                <Select
+                  disabled={busy}
+                  id={`avatar-feeling-${emotion}`}
+                  label={t(AVATAR_EMOTION_LABEL_KEYS[emotion])}
                   value={stored.expressionMap[emotion]?.target ?? emotion}
-                  onChange={(event) => chooseLook(emotion, event.target.value)}
+                  onChange={(next) => chooseLook(emotion, next)}
                   className={AVATAR_SETUP_SELECT_CLASS}
-                  data-avatar-feeling={emotion}
-                >
-                  {MESH_AVATAR_EMOTION_TAGS.map((tag) => (
-                    <option key={tag} value={tag}>
-                      {t(AVATAR_EMOTION_LABEL_KEYS[tag])}
-                    </option>
-                  ))}
-                  {MESH_AVATAR_EXTRA_EXPRESSIONS.map((look) => (
-                    <option key={look} value={look}>
-                      {t(EXTRA_LOOK_KEYS[look])}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  options={[
+                    ...MESH_AVATAR_EMOTION_TAGS.map((tag) => ({
+                      value: tag,
+                      label: t(AVATAR_EMOTION_LABEL_KEYS[tag]),
+                    })),
+                    ...MESH_AVATAR_EXTRA_EXPRESSIONS.map((look) => ({ value: look, label: t(EXTRA_LOOK_KEYS[look]) })),
+                  ]}
+                />
+              </div>
             ))}
           </div>
         </fieldset>
@@ -126,7 +126,7 @@ export function MeshAvatarSetupPanel({ owner, config, onChanged }: AvatarKindSet
           onClick={() => fileInput.current?.click()}
         >
           {importFile.isPending ? (
-            <Loader2 size="0.75rem" className="animate-spin" aria-hidden="true" />
+            <Spinner size="sm" aria-hidden="true" />
           ) : (
             <Upload size="0.75rem" aria-hidden="true" />
           )}

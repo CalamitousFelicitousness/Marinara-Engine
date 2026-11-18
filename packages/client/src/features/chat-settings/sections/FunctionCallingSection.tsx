@@ -1,18 +1,26 @@
-import { Check, FilePlus2, Plus, Trash2, Wrench } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { FilePlus2, Plus, Trash2, Wrench } from "lucide-react";
+import {
+  isCustomToolSelectable,
+  useCustomToolCapabilities,
+  useCustomTools,
+  type CustomToolRow,
+} from "../../../hooks/use-custom-tools";
 import { cn } from "../../../lib/utils";
 import { SettingsSwitch } from "../../../components/panels/settings/SettingControls";
 import { DraftNumberInput } from "../../../components/ui/DraftNumberInput";
 import { ConnectionSelect } from "../../../components/connections/ConnectionSelect";
 import { ChatSettingsSection } from "../ChatSettingsSection";
-import { PickerDropdown } from "../PickerDropdown";
+import { PickerListWindow, type PickerListItem } from "../../../components/ui/PickerField";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import {
+  BUILT_IN_TOOLS,
   MAX_GAME_DICE_POOL_AGE_TURNS,
   MAX_GAME_DICE_POOL_WINDOW,
   supportsNativeToolCalls,
 } from "@marinara-engine/shared";
 
-export interface FunctionToolOption {
+interface FunctionToolOption {
   id: string;
   name: string;
   description: string;
@@ -21,6 +29,8 @@ export interface FunctionToolOption {
 interface FunctionCallingSectionProps {
   /** Game chats get the dice tool regardless of this toggle, so they need the extra context. */
   isGameMode: boolean;
+  /** update_about_me is Conversation-only, so other modes don't offer it. */
+  isConversation: boolean;
   narratorProvider?: string;
   connections: Array<{ id: string; name: string; model?: string; provider?: string }>;
   toolConnectionId: string;
@@ -45,22 +55,16 @@ interface FunctionCallingSectionProps {
   enableTools: boolean | undefined;
   forceToolCall: boolean | undefined;
   activeToolIds: string[];
-  pendingToolIds: string[];
-  availableTools: FunctionToolOption[];
-  showToolPicker: boolean;
-  toolSearch: string;
   onEnableToolsChange: (enabled: boolean) => void;
   onForceToolCallChange: (enabled: boolean) => void;
-  onToggleTool: (toolId: string) => void;
-  onShowToolPickerChange: (show: boolean) => void;
-  onToolSearchChange: (value: string) => void;
-  onPendingToolIdsChange: (updater: (previous: string[]) => string[]) => void;
-  onAddPendingTools: () => void;
+  onActiveToolIdsChange: (activeToolIds: string[]) => void;
+  /** Leaves Chat Settings for the tool editor; the section clears its picker first. */
   onCreateCustomTool: () => void;
 }
 
 export function FunctionCallingSection({
   isGameMode,
+  isConversation,
   narratorProvider,
   connections,
   toolConnectionId,
@@ -81,20 +85,49 @@ export function FunctionCallingSection({
   enableTools,
   forceToolCall,
   activeToolIds,
-  pendingToolIds,
-  availableTools,
-  showToolPicker,
-  toolSearch,
   onEnableToolsChange,
   onForceToolCallChange,
-  onToggleTool,
-  onShowToolPickerChange,
-  onToolSearchChange,
-  onPendingToolIdsChange,
-  onAddPendingTools,
+  onActiveToolIdsChange,
   onCreateCustomTool,
 }: FunctionCallingSectionProps) {
   const { t: localizeUi } = useUiTranslation();
+  const { data: customTools } = useCustomTools();
+  const { data: customToolCapabilities } = useCustomToolCapabilities();
+  // The picker lists every function the chat may use; the ones already enabled are ticked, and a tick applies at once.
+  const [showToolPicker, setShowToolPicker] = useState(false);
+  const addButtonRef = useRef<HTMLButtonElement>(null);
+  // Build the available tool list: built-in + custom tools from DB
+  const availableTools = useMemo(() => {
+    const tools: FunctionToolOption[] = [];
+    for (const t of BUILT_IN_TOOLS) {
+      // update_about_me is Conversation-only (enforced server-side); hide the
+      // toggle in other modes so it doesn't look available where it can't run.
+      if (t.name === "update_about_me" && !isConversation) continue;
+      tools.push({ id: t.name, name: t.name, description: t.description });
+    }
+    if (customTools) {
+      for (const ct of customTools as CustomToolRow[]) {
+        if (isCustomToolSelectable(ct, customToolCapabilities)) {
+          tools.push({ id: ct.name, name: ct.name, description: ct.description });
+        }
+      }
+    }
+    return tools;
+  }, [customToolCapabilities, customTools, isConversation]);
+  const toggleTool = (toolId: string) => {
+    const current = [...activeToolIds];
+    const idx = current.indexOf(toolId);
+    if (idx >= 0) current.splice(idx, 1);
+    else current.push(toolId);
+    onActiveToolIdsChange(current);
+  };
+  // "Add all" is never offered (the list has no folders); the window still takes the handler.
+  const addTools = (toolIds: string[]) =>
+    onActiveToolIdsChange([...activeToolIds, ...toolIds.filter((id) => !activeToolIds.includes(id))]);
+  const createCustomTool = () => {
+    setShowToolPicker(false);
+    onCreateCustomTool();
+  };
   const toolProvider =
     isGameMode && toolConnectionId
       ? connections.find((connection) => connection.id === toolConnectionId)?.provider
@@ -103,11 +136,15 @@ export function FunctionCallingSection({
   // unselected narrator must still allow configuring the chat in advance.
   const nativeToolsAvailable = toolProvider ? supportsNativeToolCalls(toolProvider) : !(isGameMode && toolConnectionId);
   const loreSearchUnavailable = isGameMode && !gameLorebookSearch;
-  const inactiveTools = availableTools.filter(
-    (tool) => !activeToolIds.includes(tool.id) && !(loreSearchUnavailable && tool.name === "search_lorebook"),
-  );
-  const visibleInactiveTools = inactiveTools.filter((tool) =>
-    tool.name.toLowerCase().includes(toolSearch.toLowerCase()),
+  // search_lorebook can only be added while Game lore search is on; once enabled it stays listed so it can be unticked.
+  const pickerItems = useMemo<PickerListItem[]>(
+    () =>
+      availableTools
+        .filter(
+          (tool) => !(loreSearchUnavailable && tool.name === "search_lorebook" && !activeToolIds.includes(tool.id)),
+        )
+        .map((tool) => ({ id: tool.id, label: tool.name, subtitle: tool.description })),
+    [activeToolIds, availableTools, loreSearchUnavailable],
   );
 
   return (
@@ -225,14 +262,7 @@ export function FunctionCallingSection({
               description={localizeUi("chat.settings.tools.loreSearchHelp")}
               checked={gameLorebookSearch}
               disabled={!nativeToolsAvailable}
-              onChange={(enabled) => {
-                if (!enabled) {
-                  onPendingToolIdsChange((previous) =>
-                    previous.filter((id) => availableTools.find((tool) => tool.id === id)?.name !== "search_lorebook"),
-                  );
-                }
-                onGameLorebookSearchChange(enabled);
-              }}
+              onChange={onGameLorebookSearchChange}
               labelPosition="start"
               className="justify-between rounded-lg bg-[var(--secondary)] px-3 py-2.5 text-left"
               labelClassName="text-xs font-medium"
@@ -320,7 +350,7 @@ export function FunctionCallingSection({
                         )}
                       </div>
                       <button
-                        onClick={() => onToggleTool(tool.id)}
+                        onClick={() => toggleTool(tool.id)}
                         className="flex h-5 w-5 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--destructive)]/15 hover:text-[var(--destructive)]"
                         title={localizeUi("ui.chatSettings.functioncallingsection.removeFromChat")}
                       >
@@ -332,102 +362,38 @@ export function FunctionCallingSection({
               </div>
             )}
 
-            {!showToolPicker ? (
-              <div className="mt-2 grid grid-cols-1 gap-2 @lg:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    onShowToolPickerChange(true);
-                    onToolSearchChange("");
-                    onPendingToolIdsChange(() => []);
-                  }}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-[var(--border)] px-3 py-2 text-xs text-[var(--muted-foreground)] transition-colors hover:border-[var(--primary)]/40 hover:text-[var(--primary)]"
-                >
-                  <Plus size="0.75rem" /> {localizeUi("ui.chatSettings.functioncallingsection.addFunctions")}
-                </button>
-                <button
-                  type="button"
-                  onClick={onCreateCustomTool}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-[var(--border)] px-3 py-2 text-xs text-[var(--muted-foreground)] transition-colors hover:border-[var(--primary)]/40 hover:text-[var(--primary)]"
-                >
-                  <FilePlus2 size="0.75rem" /> {localizeUi("ui.chatSettings.functioncallingsection.newCustomFunction")}
-                </button>
-              </div>
-            ) : (
-              <PickerDropdown
-                search={toolSearch}
-                onSearchChange={onToolSearchChange}
-                onClose={() => onShowToolPickerChange(false)}
-                placeholder={localizeUi("ui.chatSettings.functioncallingsection.searchFunctions")}
-                footer={
-                  <div className="grid gap-2 border-t border-[var(--border)] px-3 py-2 @lg:grid-cols-2">
-                    <button
-                      type="button"
-                      onClick={onCreateCustomTool}
-                      className="flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-[var(--muted-foreground)] ring-1 ring-[var(--border)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
-                    >
-                      <FilePlus2 size="0.75rem" />{" "}
-                      {localizeUi("ui.chatSettings.functioncallingsection.newCustomFunction")}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={pendingToolIds.length === 0}
-                      onClick={onAddPendingTools}
-                      className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-2 text-xs font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"
-                    >
-                      <Plus size="0.75rem" />
-                      {pendingToolIds.length > 0
-                        ? localizeUi("ui.chatSettings.functioncallingsection.addValue1FunctionValue2", {
-                            value1: pendingToolIds.length,
-                            value2: pendingToolIds.length === 1 ? "" : localizeUi("ui.noodle.stageprofileview.s"),
-                          })
-                        : localizeUi("ui.chatSettings.functioncallingsection.addSelected")}
-                    </button>
-                  </div>
-                }
+            <div className="mt-2 grid grid-cols-1 gap-2 @lg:grid-cols-2">
+              <button
+                ref={addButtonRef}
+                type="button"
+                aria-haspopup="dialog"
+                aria-expanded={showToolPicker}
+                onClick={() => setShowToolPicker((open) => !open)}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-[var(--border)] px-3 py-2 text-xs text-[var(--muted-foreground)] transition-colors hover:border-[var(--primary)]/40 hover:text-[var(--primary)]"
               >
-                {visibleInactiveTools.map((tool) => {
-                  const selected = pendingToolIds.includes(tool.id);
-                  return (
-                    <button
-                      key={tool.id}
-                      onClick={() =>
-                        onPendingToolIdsChange((previous) =>
-                          previous.includes(tool.id) ? previous.filter((id) => id !== tool.id) : [...previous, tool.id],
-                        )
-                      }
-                      className={cn(
-                        "flex items-center gap-2.5 rounded-lg px-3 py-2 text-left transition-all hover:bg-[var(--accent)]",
-                        selected && "bg-[var(--primary)]/10 ring-1 ring-[var(--primary)]/30",
-                      )}
-                    >
-                      <div
-                        className={cn(
-                          "flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors",
-                          selected
-                            ? "border-[var(--primary)] bg-[var(--primary)] text-white"
-                            : "border-[var(--border)]",
-                        )}
-                      >
-                        {selected && <Check size="0.625rem" />}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <span className="block truncate text-xs">{tool.name}</span>
-                        <span className="block truncate text-[0.625rem] text-[var(--muted-foreground)]">
-                          {tool.description}
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
-                {visibleInactiveTools.length === 0 && (
-                  <p className="px-3 py-2 text-[0.6875rem] text-[var(--muted-foreground)]">
-                    {inactiveTools.length === 0
-                      ? localizeUi("ui.chatSettings.functioncallingsection.allFunctionsAlreadyAdded")
-                      : localizeUi("ui.lorebooks.linkedresourcepicker.noMatches")}
-                  </p>
-                )}
-              </PickerDropdown>
+                <Plus size="0.75rem" /> {localizeUi("ui.chatSettings.functioncallingsection.addFunctions")}
+              </button>
+              <button
+                type="button"
+                onClick={createCustomTool}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-[var(--border)] px-3 py-2 text-xs text-[var(--muted-foreground)] transition-colors hover:border-[var(--primary)]/40 hover:text-[var(--primary)]"
+              >
+                <FilePlus2 size="0.75rem" /> {localizeUi("ui.chatSettings.functioncallingsection.newCustomFunction")}
+              </button>
+            </div>
+            {showToolPicker && (
+              <PickerListWindow
+                title={localizeUi("ui.chatSettings.functioncallingsection.addFunctions")}
+                anchorRef={addButtonRef}
+                items={pickerItems}
+                selectedIds={activeToolIds}
+                onToggle={toggleTool}
+                onAdd={addTools}
+                onClose={() => setShowToolPicker(false)}
+                searchLabel={localizeUi("ui.chatSettings.functioncallingsection.searchFunctions")}
+                emptyLabel={localizeUi("ui.select.empty")}
+                noMatchesLabel={localizeUi("ui.lorebooks.linkedresourcepicker.noMatches")}
+              />
             )}
           </>
         )}

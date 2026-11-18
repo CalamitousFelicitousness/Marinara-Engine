@@ -11,7 +11,6 @@ import {
   Users,
   UserCheck,
   Languages,
-  Loader2,
   FileText,
   Sparkles,
   WandSparkles,
@@ -57,15 +56,14 @@ import type { AvatarCrop } from "@marinara-engine/shared";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
 import { applyTextareaQuoteFormat } from "../../lib/textarea-quotes";
 import { translateDraftText } from "../../lib/draft-translation";
-import { prepareImageAttachment } from "../../lib/chat-attachment-images";
 import {
   CHAT_ATTACHMENT_ACCEPT,
   CHAT_ATTACHMENT_MAX_BYTES,
   PDF_ATTACHMENT_MIME_TYPE,
   inferAttachmentType,
   isSupportedChatAttachment,
-  readFileAsDataUrl,
 } from "../../lib/chat-attachment-files";
+import { prepareImageAttachment, readBlobAsDataUrl } from "../../lib/chat-attachment-images";
 import { CARD_ASSET_INSERT_EVENT, type CardAssetInsertDetail } from "../../lib/card-asset-links";
 import { isFileDrag } from "../../lib/chat-resource-drag";
 import { isGenerationSendBlocked, isIosWebKitBrowser } from "../../lib/generation-stream-policy";
@@ -77,6 +75,7 @@ import { QuickConnectionSwitcher } from "./QuickConnectionSwitcher";
 import { QuickPersonaSwitcher } from "./QuickPersonaSwitcher";
 import { QuickSwitcherMobile } from "./QuickSwitcherMobile";
 import { SlashCommandFeedback } from "./SlashCommandFeedback";
+import { createSubmittedDraftHold, runHeldSlashCommand } from "./slash-draft-hold";
 import { MessageReplyPreview } from "./MessageReplyPreview";
 import { QuickReplyMenu, type QuickReplyAction } from "./QuickReplyMenu";
 import { getChatInputShellClass } from "./chat-input-styles";
@@ -85,6 +84,7 @@ import { resolveChatContextBudget } from "../../lib/professor-mari-context-budge
 import { CapabilityElement } from "../capabilities/CapabilityElement";
 import type { PendingSpatialTransitionDraft } from "../../stores/chat.store";
 import { useTranslation, useTranslation as useUiTranslation } from "react-i18next";
+import { Spinner } from "../ui/Spinner";
 
 interface Attachment {
   type: string; // MIME type
@@ -101,6 +101,12 @@ const ROLEPLAY_AGENT_ACTION_BUTTON_CLASS =
 
 const ROLEPLAY_INPUT_RESIZE_IDLE_MS = 150;
 const ROLEPLAY_INPUT_DELETE_RESIZE_IDLE_MS = 450;
+
+const submittedDrafts = createSubmittedDraftHold({
+  get: (chatId) => useChatStore.getState().inputDrafts.get(chatId),
+  set: (chatId, text) => useChatStore.getState().setInputDraft(chatId, text),
+  clear: (chatId) => useChatStore.getState().clearInputDraft(chatId),
+});
 
 function getChatInputTextareaMaxHeightPx() {
   if (typeof window === "undefined") return 200;
@@ -156,7 +162,7 @@ interface ChatInputProps {
     options?: { immediate?: boolean },
   ) => void | Promise<void>;
   onPeekPrompt?: () => void;
-  onIllustrate?: (prompt?: string, messageRange?: [string, string]) => void | Promise<void>;
+  onIllustrate?: (prompt?: string, messageRange?: [string, string], promptTemplateId?: string) => void | Promise<void>;
   onHtml?: (prompt?: string) => void | Promise<void>;
   onRoleplayVideo?: (description?: string) => void | Promise<void>;
   combatAgentEnabled?: boolean;
@@ -463,7 +469,7 @@ export const ChatInput = memo(function ChatInput({
         if (prevText.trim()) {
           setInputDraft(prevChatIdRef.current, prevText);
         } else {
-          clearInputDraft(prevChatIdRef.current);
+          submittedDrafts.storeEmpty(prevChatIdRef.current);
         }
         const prevAttachments = attachmentsRef.current;
         if (prevAttachments.length > 0) {
@@ -476,7 +482,8 @@ export const ChatInput = memo(function ChatInput({
     }
     // Restore draft for the new active chat
     if (activeChatId && textareaRef.current) {
-      const draft = useChatStore.getState().inputDrafts.get(activeChatId) ?? "";
+      const storedDraft = useChatStore.getState().inputDrafts.get(activeChatId) ?? "";
+      const draft = submittedDrafts.shownDraft(activeChatId, storedDraft);
       textareaRef.current.value = draft;
       syncInputState(draft);
       // Resize textarea to fit content
@@ -507,7 +514,7 @@ export const ChatInput = memo(function ChatInput({
         if (text.trim()) {
           useChatStore.getState().setInputDraft(chatId, text);
         } else {
-          useChatStore.getState().clearInputDraft(chatId);
+          submittedDrafts.storeEmpty(chatId);
         }
       }
     };
@@ -523,7 +530,7 @@ export const ChatInput = memo(function ChatInput({
       if (text.trim()) {
         useChatStore.getState().setInputDraft(chatId, text);
       } else {
-        useChatStore.getState().clearInputDraft(chatId);
+        submittedDrafts.storeEmpty(chatId);
       }
     };
     window.addEventListener("pagehide", flushDraft);
@@ -682,7 +689,7 @@ export const ChatInput = memo(function ChatInput({
         }
 
         try {
-          const data = await readFileAsDataUrl(file);
+          const data = await readBlobAsDataUrl(file);
           appendAttachmentForChat(originChatId, { type: inferAttachmentType(file), data, name: displayName });
         } catch {
           toast.error(localizeUi("ui.chat.chatinput.failedToReadValue1", { value1: displayName }));
@@ -968,17 +975,8 @@ export const ChatInput = memo(function ChatInput({
       syncInputState("");
       setCompletions([]);
       replaceAttachments([]);
-      clearInputDraft(activeChatId);
 
-      try {
-        const result = await match.command.execute(
-          match.args,
-          withComposerReplyAndAttachments(ctx, { replyTo: replyDraft, attachments: submittedAttachments }),
-        );
-        if (result.feedback) {
-          setFeedback(result.feedback);
-        }
-      } catch (error) {
+      const restoreSubmittedDraft = () => {
         const activeChatIdAfterFailure = useChatStore.getState().activeChatId;
         const currentValue = textareaRef.current?.value ?? "";
         const canRestoreVisibleDraft = activeChatIdAfterFailure === activeChatId && currentValue.length === 0;
@@ -998,6 +996,25 @@ export const ChatInput = memo(function ChatInput({
         if (submittedDraft && (canRestoreVisibleDraft || activeChatIdAfterFailure !== activeChatId)) {
           setInputDraft(activeChatId, submittedDraft);
         }
+      };
+
+      try {
+        const result = await runHeldSlashCommand({
+          drafts: submittedDrafts,
+          chatId: activeChatId,
+          text: submittedDraft,
+          ctx,
+          execute: (trackedCtx) =>
+            match.command.execute(
+              match.args,
+              withComposerReplyAndAttachments(trackedCtx, { replyTo: replyDraft, attachments: submittedAttachments }),
+            ),
+          restore: restoreSubmittedDraft,
+        });
+        if (result.feedback) {
+          setFeedback(result.feedback);
+        }
+      } catch (error) {
         const msg = error instanceof Error ? error.message : "Command failed";
         toast.error(msg);
       }
@@ -1176,17 +1193,8 @@ export const ChatInput = memo(function ChatInput({
       if (!activeChatId) return;
       const submittingChatId = activeChatId;
       const match = matchSlashCommand(commandLine, { mode, availableCapabilityIds });
-      const baseCtx = buildContext();
-      if (!match || !baseCtx) return;
-      const generationStatus: { succeeded?: boolean } = {};
-      const ctx: SlashCommandContext = {
-        ...baseCtx,
-        generate: async (params) => {
-          const succeeded = await baseCtx.generate(params);
-          if (succeeded !== undefined) generationStatus.succeeded = succeeded;
-          return succeeded;
-        },
-      };
+      const ctx = buildContext();
+      if (!match || !ctx) return;
 
       const previousDraft = textareaRef.current?.value ?? "";
       const previousHeight = textareaRef.current?.style.height ?? "auto";
@@ -1215,32 +1223,25 @@ export const ChatInput = memo(function ChatInput({
       }
       syncInputState("");
       setCompletions([]);
-      clearInputDraft(submittingChatId);
 
       try {
-        const result = await match.command.execute(match.args, ctx);
+        const result = await runHeldSlashCommand({
+          drafts: submittedDrafts,
+          chatId: submittingChatId,
+          text: previousDraft,
+          ctx,
+          execute: (trackedCtx) => match.command.execute(match.args, trackedCtx),
+          restore: restoreSubmittedDraft,
+        });
         if (result.feedback) {
           setFeedback(result.feedback);
         }
-        if (generationStatus.succeeded === false) {
-          restoreSubmittedDraft();
-        }
       } catch (error) {
-        restoreSubmittedDraft();
         const msg = error instanceof Error ? error.message : fallbackError;
         toast.error(msg);
       }
     },
-    [
-      activeChatId,
-      availableCapabilityIds,
-      buildContext,
-      clearInputDraft,
-      completions,
-      mode,
-      setInputDraft,
-      syncInputState,
-    ],
+    [activeChatId, availableCapabilityIds, buildContext, completions, mode, setInputDraft, syncInputState],
   );
 
   const handleImpersonateQuickButton = useCallback(async () => {
@@ -1515,11 +1516,11 @@ export const ChatInput = memo(function ChatInput({
         if (text.trim()) {
           setInputDraft(chatId, text);
         } else {
-          clearInputDraft(chatId);
+          submittedDrafts.storeEmpty(chatId);
         }
       }, 300);
     },
-    [clearInputDraft, setInputDraft],
+    [setInputDraft],
   );
 
   const scheduleTextareaResize = useCallback((el: HTMLTextAreaElement, delay: number) => {
@@ -2017,7 +2018,7 @@ export const ChatInput = memo(function ChatInput({
           ))}
           {isReadingAttachments && (
             <div className="flex items-center gap-1.5 rounded-lg bg-foreground/10 px-2 py-1 text-xs text-foreground/60 ring-1 ring-foreground/10">
-              <Loader2 size="0.875rem" className="animate-spin" />
+              <Spinner size="sm" />
               {localizeUi("ui.chat.chatinput.readingFile")}
             </div>
           )}
@@ -2180,7 +2181,7 @@ export const ChatInput = memo(function ChatInput({
             )}
             title={t("chat.input.translateDraft")}
           >
-            {isTranslatingDraft ? <Loader2 size="0.9375rem" className="animate-spin" /> : <Languages size="1rem" />}
+            {isTranslatingDraft ? <Spinner size="md" /> : <Languages size="1rem" />}
           </button>
         )}
 
@@ -2238,7 +2239,7 @@ export const ChatInput = memo(function ChatInput({
           {isStreaming ? (
             <StopCircle size="1rem" />
           ) : isInputBusy ? (
-            <Loader2 size="1rem" className="animate-spin" />
+            <Spinner size="md" />
           ) : (
             <Send size="0.9375rem" className={cn(hasInput && "translate-x-[1px]")} />
           )}

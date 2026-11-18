@@ -79,6 +79,7 @@ Use the **Trigger Response** picker to choose a speaker. On a computer it is a b
 
 - **Add Turn To Prompt** is on by default. It adds a short instruction naming which character should reply.
 - **Name Prefix History** (Roleplay only) is off by default. It changes how past messages are labeled with speaker names. Leave it off unless a character keeps mixing up who said what.
+- **Others' Public Faces** (Roleplay only) is off by default. Each character gets only its own character card, so it knows the others only from the chat. Turn this on to add the other active characters' **Public Face** text to each character's turn: what anyone in the scene could know about them, without their secrets. Characters with an empty Public Face, and inactive characters, are left out. To write one, see [Card tab](../characters/creating-and-editing-characters.md#card-tab).
 
 ### Scenario Override (Roleplay)
 
@@ -98,6 +99,7 @@ Turn on **Character Exchanges** in **Chat Settings → Autonomous Messaging** to
 | **Response Order** | Individual | Sequential |
 | **Add Turn To Prompt** | Individual | On |
 | **Name Prefix History** | Roleplay, Individual | Off |
+| **Others' Public Faces** | Roleplay, Individual | Off |
 | **Scenario Override** | Roleplay | Empty |
 | **Character Exchanges** | Conversation, Autonomous Messaging | Off |
 
@@ -123,4 +125,4 @@ A hint under the setting tells you when something is missing: no Decision model 
 - **Nobody active is ignored.** A result that would turn everyone off is not applied.
 - **A Character Activity agent wins.** A chat with a custom agent using the **Character Activity** result type keeps that agent in charge.
 
-The Character Tracker writes its own name for each character. Marinara matches it to a card by card id, then name, then the name aliases on the **Colors** tab. A tracker list that names none of the chat's characters keeps the current list. Automation runs before every reply, swipe and regenerate, and skips **Continue** and impersonation. The setting is saved in settings profiles. Pins stay with the one chat.
+The Character Tracker writes its own name for each character. Marinara matches it to a card by card id, then name, then the **Other names** on the card's **Metadata** tab. A tracker list that names none of the chat's characters keeps the current list. Automation runs before every reply, swipe and regenerate, and skips **Continue** and impersonation. The setting is saved in settings profiles. Pins stay with the one chat.

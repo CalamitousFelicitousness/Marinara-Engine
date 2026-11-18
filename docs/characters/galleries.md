@@ -1,10 +1,10 @@
 # Character and Persona Galleries
 
-The **Gallery** tab in the character and persona editors keeps images and videos attached to a character or persona, so they stay even if you delete chats. Use it for reference sheets, outfit variants and imported image packs. You can also tag a gallery image as a custom emoji or sticker.
+The **Gallery**, part of the **Images** tab in the character and persona editors, keeps images and videos attached to a character or persona, so they stay even if you delete chats. Use it for reference sheets, outfit variants and imported image packs. You can also create new images with AI, and tag a gallery image as a custom emoji or sticker.
 
-## The Gallery tab
+## Find the Gallery
 
-Every character and persona has its own **Gallery** tab (camera icon). Open the character in the Character Editor or the persona in the Persona Editor, then click **Gallery**. A character's gallery is titled **Character Gallery**, and a persona's is **Persona Gallery**. They work the same way.
+Every character and persona has its own gallery. Open the character in the Character Editor or the persona in the Persona Editor, click the **Images** tab, then **Gallery** at the top of it. A character's gallery is titled **Character Gallery**, and a persona's is **Persona Gallery**. They work the same way.
 
 The Gallery has two sub-tabs:
 
@@ -15,7 +15,7 @@ A chat's own gallery is different. It holds scene illustrations and generated at
 
 ### Add images
 
-1. Open the **Gallery** tab and select **Images**.
+1. Open **Images → Gallery** and select **Images**.
 2. Drag image files onto **Upload Character Images**, or click it to pick files. In a persona the box reads **Upload Persona Images**.
 3. Wait for the upload to finish. The new images appear in the grid.
 
@@ -23,17 +23,50 @@ Click an image to see it larger. Each tile has a download control and a delete c
 
 ### Add videos
 
-1. Open the **Gallery** tab and select **Videos**.
+1. Open **Images → Gallery** and select **Videos**.
 2. Drag video files onto **Upload Character Videos**, or click it to pick files. In a persona the box reads **Upload Persona Videos**.
 3. Wait for the upload to finish.
 
 Supported types are MP4, WebM and MOV. Newest videos are listed first. To see which scene videos and clips appear for which character, see [Which videos are listed](#which-videos-are-listed).
 
+## Create images with AI
+
+**Create with AI** in the Gallery makes new pictures for this character or persona with your image generation connection. Pick what to make in **Type**:
+
+| Type                | What you get                                                                                                               |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| **Character sheet** | A reference sheet, saved the same way as from the **Character Sheet** section.                                             |
+| **Background**      | A wide picture of a place, started from the card's scenario. It is saved to the Gallery and labelled as a chat background. |
+| **Sticker sheet**   | One picture with several stickers, cut into one sticker per picture.                                                       |
+| **Emoji sheet**     | The same, as small face emoji.                                                                                             |
+
+Before you start: add an image generation connection.
+
+1. Open **Images → Gallery** and click **Create with AI**.
+2. Pick a **Type**, and edit the prompt if you want a different look or place.
+3. For a sticker or emoji sheet, list the names in **Stickers to draw** or **Emoji to draw**, separated by commas. Up to 16 fit on one sheet.
+4. Click **Generate**.
+5. Click **Save as Background**, **Save Stickers** or **Save Emoji**, or **Save as Character Sheet**.
+
+### Fix how a sheet was cut
+
+After a sticker or emoji sheet is generated, each sticker is found by its outline, its green background is removed, and it appears as its own tile with its name. Saved stickers are at most 512 by 512 pixels and emoji at most 256 by 256, and each is tagged with its name.
+
+- Click a tile to keep or skip it. Skipped tiles are not saved.
+- Edit the name under a tile to rename it.
+- Click **Recut with a box** on a tile to place a box on the whole sheet. Drag the box, pull its corners, or draw a new box around the sticker, then click **Use this box**.
+- Click **Add a sticker** or **Add an emoji** to cut out one that was missed.
+- Click **Cut again** to start the cutting over and undo your boxes.
+
+### Write the whole prompt yourself
+
+The prompt sent to the image model is built from the fields in the dialog. To change all of it, for example to ask for stickers of things the character likes and not only of the character, click **Edit full prompt**. It is sent exactly as you write it. Changes to the other fields are added only when you click **Rebuild**, which also replaces your edits. Click the close button next to **Rebuild** to go back to the built prompt.
+
 ## Tag a gallery image as a custom emoji or sticker
 
 A custom emoji is a small inline image written as `:name:`. A sticker is a larger block image written as `sticker:name:`. Both work only in Conversation Mode chats, the messenger-style mode.
 
-1. Open the **Gallery** tab and select **Images**.
+1. Open **Images → Gallery** and select **Images**.
 2. Click the small tag button in the image's top-left corner (tooltip **Tag as emoji or sticker**).
 3. Click **Make emoji** or **Make sticker**.
 4. In the **Custom Emoji** or **Custom Sticker** dialog, type a name and confirm.
@@ -51,6 +84,17 @@ Once an image is tagged, its overlay button shows the name. Click it for more op
 - **Remove emoji** or **Remove sticker** untags the image. The image stays in the Gallery.
 
 A gallery-tagged emoji or sticker works only for that one character or persona, in Conversation Mode chats that include them. This is separate from the global emoji and sticker pools in the message composer. If a gallery name matches a global name, the gallery version wins in that chat. Names are not checked for uniqueness, so pick a distinct name for each image.
+
+## Describe pictures
+
+Any gallery picture can have a short description of what it shows. Conversation chats use the descriptions of tagged emojis and stickers to choose which ones to offer (see [Describe emojis and stickers](../conversation/emoji-stickers-gifs.md#describe-emojis-and-stickers)). A description is saved with the picture and travels in a **Marinara Native** export.
+
+- To write one, click the tag button in the image's top-left corner and choose **Add description**, or **Edit description** to change it.
+- To have AI write them, click **Select images**, pick the pictures, then click **Describe with AI**. The **Image reading** model looks at each one and writes a short description. If some already have one, choose to describe only the ones without or all of them again.
+
+Before you start: AI descriptions need a model that can read images. Marinara uses the **Image reading** model if you set one under **Behind the scenes** in your connection settings, and otherwise your agents' model. Up to 8 pictures are sent at a time, so a large selection takes a moment.
+
+A chat's own gallery has the same **Describe with AI** in its select mode.
 
 ## Reuse a gallery image in messages and greetings
 

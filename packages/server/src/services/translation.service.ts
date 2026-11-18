@@ -7,6 +7,7 @@ import { isDebugAgentsEnabled } from "../config/runtime-config.js";
 import { logDebugOverride } from "../lib/logger.js";
 import { createConnectionsStorage } from "./storage/connections.storage.js";
 import { createChatsStorage } from "./storage/chats.storage.js";
+import { createAppSettingsStorage } from "./storage/app-settings.storage.js";
 import { parseExtra } from "./generation/prompt-attachments.js";
 import { createLLMProvider } from "./llm/provider-registry.js";
 import { withConnectionFallbackProvider } from "./llm/connection-fallback-provider.js";
@@ -17,8 +18,11 @@ import {
   localAuthProviderBaseUrl,
   buildGameTranslationSource,
   resolveTranslationSystemPrompt,
+  isStoredSecretPlaceholder,
+  TRANSLATOR_DEFAULTS_SETTINGS_KEY,
   type TranslationConfig,
 } from "@marinara-engine/shared";
+import { decryptStoredSecret, readChatMetadataSecret } from "../utils/stored-secrets.js";
 import { isDeeplxLocalUrlsEnabled } from "../config/runtime-config.js";
 import { safeFetch, validateOutboundUrl } from "../utils/security.js";
 import { resolveBaseUrl } from "../routes/generate/generate-route-utils.js";
@@ -47,6 +51,7 @@ const translateSchema = z.object({
 export async function translateText(db: DB, body: unknown, onFallback?: GenerationFallbackNotifier) {
   const input = translateSchema.parse(body);
   const connections = createConnectionsStorage(db);
+  if (input.provider === "deepl") input.deeplApiKey = await resolveDeeplApiKey(db, input);
   switch (input.provider) {
     case "ai":
       return translateWithAI(input, connections, onFallback);
@@ -107,7 +112,8 @@ export async function translateGeneratedMessage(
       targetLanguage: config.outputTargetLanguage,
       connectionId: config.connectionId,
       systemPrompt: config.outputSystemPrompt,
-      deeplApiKey: config.deeplApiKey,
+      // The chat's saved key is resolved from its settings (it is stored encrypted).
+      deeplApiKey: decryptStoredSecret(config.deeplApiKey) || undefined,
       deeplxUrl: config.deeplxUrl,
       debugMode: input.debugMode,
     },
@@ -255,6 +261,25 @@ async function translateWithDeepLX(input: z.infer<typeof translateSchema>) {
   const data = (await response.json()) as { data?: string; alternatives?: string[] };
   const translated = data.data || data.alternatives?.[0] || "";
   return { translatedText: translated };
+}
+
+/**
+ * Resolve the saved chat key, or translator defaults for requests without a chat id, on the server. Older clients
+ * can still send a plaintext key. A mask or encrypted value selects the saved key instead of being sent to DeepL.
+ */
+export async function resolveDeeplApiKey(
+  db: DB,
+  input: { chatId?: string; deeplApiKey?: string },
+): Promise<string | undefined> {
+  const sent = input.deeplApiKey?.trim();
+  if (sent && !isStoredSecretPlaceholder(sent)) return sent;
+  if (!input.chatId) {
+    const defaults = await createAppSettingsStorage(db).get(TRANSLATOR_DEFAULTS_SETTINGS_KEY);
+    return readChatMetadataSecret(parseExtra(defaults), "translationDeeplApiKey") || undefined;
+  }
+  const chat = await createChatsStorage(db).getById(input.chatId);
+  if (!chat) return undefined;
+  return readChatMetadataSecret(parseExtra(chat.metadata), "translationDeeplApiKey") || undefined;
 }
 
 // ── DeepL API Translation (official) ──

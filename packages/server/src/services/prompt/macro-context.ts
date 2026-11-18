@@ -38,6 +38,7 @@ import { createChatsStorage, parseCharacterIds } from "../storage/chats.storage.
 import { createGameStateStorage } from "../storage/game-state.storage.js";
 import { wrapContent } from "./format-engine.js";
 import { sanitizePromptLeaf } from "./prompt-escaping.js";
+import { impersonatePublicFaceText } from "./card-text.js";
 import { logger } from "../../lib/logger.js";
 import { normalizePromptTimeZone } from "../conversation/timezone.js";
 import { loadPresetVariables } from "./preset-variables.js";
@@ -266,6 +267,7 @@ function referencedCharacterProfile(data: CharacterData): CharacterMacroProfile 
     personality: data.personality ?? "",
     backstory: data.extensions?.backstory ?? "",
     appearance: data.extensions?.appearance ?? "",
+    publicFace: data.extensions?.publicFace ?? "",
     scenario: data.scenario ?? "",
     example: data.mes_example ?? "",
     systemPrompt: data.system_prompt ?? "",
@@ -356,6 +358,7 @@ function referencedPersonaMacroContext(macroCtx: MacroContext, persona: PersonaS
       personality: persona.personality ?? "",
       backstory: persona.backstory ?? "",
       appearance: persona.appearance ?? "",
+      publicFace: persona.publicFace ?? "",
       scenario: persona.scenario ?? "",
       example: persona.mes_example ?? "",
     },
@@ -764,6 +767,7 @@ export async function resolveCharacterMacroData(
       personality: data.personality ?? "",
       backstory: data.extensions?.backstory ?? "",
       appearance: data.extensions?.appearance ?? "",
+      publicFace: data.extensions?.publicFace ?? "",
       scenario: data.scenario ?? "",
       example: data.mes_example ?? "",
       systemPrompt: data.system_prompt ?? "",
@@ -780,6 +784,7 @@ export async function resolveCharacterMacroData(
         personality: profile.personality,
         backstory: profile.backstory,
         appearance: profile.appearance,
+        publicFace: profile.publicFace,
         scenario: profile.scenario,
         example: profile.example,
         systemPrompt: profile.systemPrompt,
@@ -978,6 +983,7 @@ function characterFieldsFromProfile(profile: CharacterMacroProfile): NonNullable
     personality: profile.personality ?? "",
     backstory: profile.backstory ?? "",
     appearance: profile.appearance ?? "",
+    publicFace: profile.publicFace ?? "",
     scenario: profile.scenario ?? "",
     example: profile.example ?? "",
     systemPrompt: profile.systemPrompt ?? "",
@@ -1087,6 +1093,7 @@ export async function collectCharacterDepthPromptEntries(
   db: DB,
   characterIds: string[],
   macroCtx: MacroContext,
+  impersonatePublicFaces?: boolean,
 ): Promise<PromptDepthEntry[]> {
   if (characterIds.length === 0) return [];
 
@@ -1096,6 +1103,7 @@ export async function collectCharacterDepthPromptEntries(
   for (const id of characterIds) {
     const row = await chars.getById(id, macroCtx.chatId);
     const data = parseCharacterData(row?.data);
+    if (impersonatePublicFaceText(data, impersonatePublicFaces)) continue;
     const depthPrompt = normalizeDepthPrompt(data?.extensions?.depth_prompt);
     if (!depthPrompt) continue;
 
@@ -1109,6 +1117,7 @@ export async function collectCharacterDepthPromptEntries(
         personality: data?.personality ?? "",
         backstory: data?.extensions?.backstory ?? "",
         appearance: data?.extensions?.appearance ?? "",
+        publicFace: data?.extensions?.publicFace ?? "",
         scenario: data?.scenario ?? "",
         example: data?.mes_example ?? "",
         systemPrompt: data?.system_prompt ?? "",
@@ -1130,6 +1139,7 @@ export async function collectCharacterPostHistoryEntries(
   macroCtx: MacroContext,
   wrapFormat: WrapFormat,
   onResolved?: (characterId: string, content: string) => void,
+  impersonatePublicFaces?: boolean,
 ): Promise<PromptDepthEntry[]> {
   if (characterIds.length === 0) return [];
 
@@ -1141,7 +1151,7 @@ export async function collectCharacterPostHistoryEntries(
     const row = await chars.getById(id, macroCtx.chatId);
     const data = parseCharacterData(row?.data);
     const raw = stripMacroComments(data?.post_history_instructions ?? "").trim();
-    if (!data || !raw) continue;
+    if (!data || !raw || impersonatePublicFaceText(data, impersonatePublicFaces)) continue;
 
     const content = resolveMacros(raw, {
       ...macroCtx,
@@ -1153,6 +1163,7 @@ export async function collectCharacterPostHistoryEntries(
         personality: data.personality ?? "",
         backstory: data.extensions?.backstory ?? "",
         appearance: data.extensions?.appearance ?? "",
+        publicFace: data.extensions?.publicFace ?? "",
         scenario: data.scenario ?? "",
         example: data.mes_example ?? "",
         systemPrompt: data.system_prompt ?? "",
@@ -1182,10 +1193,19 @@ export async function collectCharacterAdvancedPromptEntries(
   macroCtx: MacroContext,
   wrapFormat: WrapFormat,
   onPostHistoryResolved?: (characterId: string, content: string) => void,
+  /** #9427: leave out the depth prompt and post-history instructions of a card that sends its Public Face. */
+  impersonatePublicFaces?: boolean,
 ): Promise<PromptDepthEntry[]> {
   const [depthEntries, postHistoryEntries] = await Promise.all([
-    collectCharacterDepthPromptEntries(db, characterIds, macroCtx),
-    collectCharacterPostHistoryEntries(db, characterIds, macroCtx, wrapFormat, onPostHistoryResolved),
+    collectCharacterDepthPromptEntries(db, characterIds, macroCtx, impersonatePublicFaces),
+    collectCharacterPostHistoryEntries(
+      db,
+      characterIds,
+      macroCtx,
+      wrapFormat,
+      onPostHistoryResolved,
+      impersonatePublicFaces,
+    ),
   ]);
   return [...depthEntries, ...postHistoryEntries];
 }

@@ -1,3 +1,4 @@
+// regression-layout: source-path the audio connection screens' wiring is checked in their source; no Node harness renders them.
 // Speech is configured on an audio connection and spoken through that same
 // connection. The wiring that makes those one thing is spread across the client,
 // and every link in it fails quietly.
@@ -168,7 +169,7 @@ for (const [file, path] of [
 // change without starting a new game.
 {
   const card = readSource("packages/client/src/components/chat/GameAudioSettingsCard.tsx");
-  const drawer = readSource("packages/client/src/components/chat/ChatSettingsDrawer.tsx");
+  const drawer = readSource("packages/client/src/features/chat-settings/agents/RoleplayAgentsSection.tsx");
   for (const key of ["gameVoiceConnectionId", "gameSfxConnectionId", "gameMusicConnectionId"] as const) {
     assert.match(card, new RegExp(String.raw`renderLane\("${key}"`, "u"), `${key} must be settable per game`);
   }

@@ -6,7 +6,13 @@
 // ──────────────────────────────────────────────
 import type { PromptOverrideKeyDef } from "./types.js";
 
-import { CHARACTERS_REFERENCE_SHEET } from "./registry/characters.js";
+import {
+  CHARACTERS_EMOJI_SHEET,
+  CHARACTERS_GALLERY_BACKGROUND,
+  CHARACTERS_LOREBOOK_COVER,
+  CHARACTERS_REFERENCE_SHEET,
+  CHARACTERS_STICKER_SHEET,
+} from "./registry/characters.js";
 import {
   SPRITES_ANIMATED_PORTRAIT,
   SPRITES_EXPRESSION_SHEET,
@@ -36,6 +42,10 @@ import { NOODLE_IMAGE_POST, NOODLE_TIMELINE_BASE, NOODLE_TIMELINE_VOICE } from "
 
 export const PROMPT_OVERRIDE_REGISTRY = [
   CHARACTERS_REFERENCE_SHEET,
+  CHARACTERS_GALLERY_BACKGROUND,
+  CHARACTERS_STICKER_SHEET,
+  CHARACTERS_EMOJI_SHEET,
+  CHARACTERS_LOREBOOK_COVER,
   SPRITES_EXPRESSION_SHEET,
   SPRITES_SINGLE_PORTRAIT,
   SPRITES_ANIMATED_PORTRAIT,
@@ -84,6 +94,10 @@ export function listPromptOverrideKeys(): string[] {
 // Re-export the typed key defs for direct import at call sites.
 export {
   CHARACTERS_REFERENCE_SHEET,
+  CHARACTERS_GALLERY_BACKGROUND,
+  CHARACTERS_STICKER_SHEET,
+  CHARACTERS_EMOJI_SHEET,
+  CHARACTERS_LOREBOOK_COVER,
   SPRITES_EXPRESSION_SHEET,
   SPRITES_SINGLE_PORTRAIT,
   SPRITES_ANIMATED_PORTRAIT,
@@ -109,7 +123,7 @@ export {
   NOODLE_TIMELINE_BASE,
   NOODLE_TIMELINE_VOICE,
 };
-export type { CharactersReferenceSheetCtx } from "./registry/characters.js";
+export type { CharactersLorebookCoverCtx, CharactersReferenceSheetCtx } from "./registry/characters.js";
 export type {
   SpritesExpressionSheetCtx,
   SpritesSinglePortraitCtx,

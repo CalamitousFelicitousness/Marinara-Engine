@@ -136,7 +136,20 @@ export interface MarinaraHostV1 {
   readonly modules: { readonly [K in MarinaraHostModuleSpecifier]: Readonly<Record<string, unknown>> };
   /** The one QueryClient the Engine renders with. */
   readonly queryClient: QueryClient;
-  readonly components: { readonly Modal: typeof import("../components/ui/Modal").Modal };
+  readonly components: {
+    readonly Modal: typeof import("../components/ui/Modal").Modal;
+    /** Capability API 1.830. The shared switch. */
+    readonly Switch: typeof import("../components/ui/Switch").Switch;
+    /** Capability API 1.830. The shared checkbox. */
+    readonly Checkbox: typeof import("../components/ui/Checkbox").Checkbox;
+    /** Capability API 1.830. The shared loading ring; pass `label` to announce it. */
+    readonly Spinner: typeof import("../components/ui/Spinner").Spinner;
+    /** Capability API 1.830. The same confirm dialog as `services.dialogs.showConfirmDialog`, kept here so a package finds it next to the components. */
+    readonly showConfirmDialog: typeof import("./app-dialogs").showConfirmDialog;
+    /** Capability API 1.831. The shared dropdown: `value`, `options` ({ value, label, description?, group?,
+     *  disabledReason? }), `onChange`, `label`; a popover on desktop and a sheet on phones. */
+    readonly Select: typeof import("../components/ui/Select").Select;
+  };
   readonly data: { readonly emojiCatalog: typeof import("./emoji-catalog.generated") };
   /** The module namespace of lib/api-client.ts (api, ApiError, getApiErrorMessage, ...). */
   readonly api: typeof import("./api-client");
@@ -201,7 +214,7 @@ export const MARINARA_HOST_STORE_FIELDS = {
     "clearPendingSpatialTransition",
     "setPendingSpatialTransitionStatus",
   ],
-  agent: ["setYoutubePlay", "reset"],
+  agent: ["setYoutubePlay", "setPackageActivity", "reset"],
   sidecar: ["modelDownloaded", "modelDisplayName", "fetchStatus"],
   dialog: ["dialog", "openDialog", "closeDialog"],
   gallery: ["pinImage", "pinVideo"],

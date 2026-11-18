@@ -2,6 +2,7 @@ import { clickTopbarPanel } from "./topbar-navigation.js";
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { CONVERSATION_SCHEDULE_DAYS, type WeekSchedule } from "@marinara-engine/shared";
+import { chooseOption } from "./select-field.js";
 import { seedUIState } from "./ui-state-fixture.js";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
@@ -115,7 +116,7 @@ for (const theme of ["dark", "light"] as const) {
     try {
       await page.goto("/");
       await page.getByRole("button", { name: "Character Schedule Manager", exact: true }).click();
-      const manager = page.getByRole("dialog", { name: "Character Schedule Manager", exact: true });
+      const manager = page.getByRole("dialog", { name: "Character schedule manager", exact: true });
       await manager.getByRole("button", { name: `Edit ${name} schedule`, exact: true }).click();
       const dialog = page.getByRole("dialog", { name: `Edit ${name} Schedule`, exact: true });
       await dialog.getByText("Schedule AI", { exact: true }).click();
@@ -174,7 +175,11 @@ for (const theme of ["dark", "light"] as const) {
       await page.screenshot({ path: info.outputPath(`schedule-full-day-${theme}.png`), animations: "disabled" });
       await mondayTime.fill("00:00-00:00");
       await dialog.getByRole("textbox", { name: "Monday block activity", exact: true }).fill("Unsaved routine");
-      await dialog.getByRole("combobox", { name: "Weekly generation", exact: true }).selectOption("day");
+      await chooseOption(
+        page,
+        dialog.getByRole("combobox", { name: "Weekly generation", exact: true }),
+        "One request per day",
+      );
       calls = [];
       failDay = "Wednesday";
       await weekButton.click();
@@ -237,7 +242,11 @@ for (const theme of ["dark", "light"] as const) {
 
       await manager.getByRole("button", { name: `Edit ${name} schedule`, exact: true }).click();
       await dialog.getByText("Schedule AI", { exact: true }).click();
-      await dialog.getByRole("combobox", { name: "Weekly generation", exact: true }).selectOption("day");
+      await chooseOption(
+        page,
+        dialog.getByRole("combobox", { name: "Weekly generation", exact: true }),
+        "One request per day",
+      );
       calls = [];
       pauseRequests = true;
       await weekButton.click();
@@ -268,7 +277,8 @@ for (const theme of ["dark", "light"] as const) {
           await dialog.getByRole("button", { name: "Stop", exact: true }).click();
           await expect(dialog.getByRole("button", { name: "Regenerate Monday", exact: true })).toBeEnabled();
           await expect(dialog.getByText("Regenerating Monday...", { exact: true })).toHaveCount(0);
-          await dialog.getByRole("button", { name: `Close Edit ${name} Schedule`, exact: true }).click();
+          // Phones hide the header Close; Cancel closes the editor the same way on every screen.
+          await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
         } else {
           await dialog.getByRole("button", { name: "Stop", exact: true }).click();
           await expect(dialog.getByRole("button", { name: "Generate summary", exact: true })).toBeEnabled();

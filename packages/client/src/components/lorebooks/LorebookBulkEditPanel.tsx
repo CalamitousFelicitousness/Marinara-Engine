@@ -7,7 +7,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { ChevronDown, Loader2, SlidersHorizontal } from "lucide-react";
+import { ChevronDown, SlidersHorizontal } from "lucide-react";
 import {
   parseLorebookBulkKeyText,
   type LorebookBulkEditInput,
@@ -17,6 +17,8 @@ import {
 } from "@marinara-engine/shared";
 import { useBulkEditLorebookEntries } from "../../hooks/use-lorebooks";
 import { cn } from "../../lib/utils";
+import { Select } from "../ui/Select";
+import { Spinner } from "../ui/Spinner";
 
 interface Props {
   lorebookId: string;
@@ -107,7 +109,7 @@ export function LorebookBulkEditPanel({ lorebookId, selectedIds, folders, busy =
       >
         <SlidersHorizontal size="0.8125rem" className="mari-chrome-accent-icon mari-accent-animated shrink-0" />
         <span className="flex-1">{t("lorebook.editor.bulk.title", { count })}</span>
-        {bulkEdit.isPending && <Loader2 size="0.75rem" className="animate-spin text-[var(--muted-foreground)]" />}
+        {bulkEdit.isPending && <Spinner size="sm" className="text-[var(--muted-foreground)]" />}
         <ChevronDown
           size="0.8125rem"
           className={cn("shrink-0 text-[var(--muted-foreground)] transition-transform", open && "rotate-180")}
@@ -154,20 +156,17 @@ export function LorebookBulkEditPanel({ lorebookId, selectedIds, folders, busy =
           </Row>
 
           <Row label={t("lorebook.editor.bulk.folder")}>
-            <select
-              value={folderChoice}
-              onChange={(event) => setFolderChoice(event.target.value)}
-              aria-label={t("lorebook.editor.bulk.folder")}
+            <Select
+              value={folderChoice || null}
+              onChange={(next) => setFolderChoice(next)}
+              label={t("lorebook.editor.bulk.folder")}
+              placeholder={t("lorebook.editor.bulk.chooseFolder")}
               className={cn(fieldClass, "min-w-0 flex-1")}
-            >
-              <option value="">{t("lorebook.editor.bulk.chooseFolder")}</option>
-              <option value={ROOT_FOLDER}>{t("lorebook.editor.bulk.noFolder")}</option>
-              {folderOptions.map((folder) => (
-                <option key={folder.id} value={folder.id}>
-                  {folder.label}
-                </option>
-              ))}
-            </select>
+              options={[
+                { value: ROOT_FOLDER, label: t("lorebook.editor.bulk.noFolder") },
+                ...folderOptions.map((folder) => ({ value: folder.id, label: folder.label })),
+              ]}
+            />
             <button
               type="button"
               disabled={disabled || !folderChoice}
@@ -179,15 +178,16 @@ export function LorebookBulkEditPanel({ lorebookId, selectedIds, folders, busy =
           </Row>
 
           <Row label={t("lorebook.editor.bulk.keys")}>
-            <select
+            <Select
               value={keyField}
-              onChange={(event) => setKeyField(event.target.value as LorebookBulkKeyField)}
-              aria-label={t("lorebook.editor.bulk.keyField")}
+              onChange={(next) => setKeyField(next as LorebookBulkKeyField)}
+              label={t("lorebook.editor.bulk.keyField")}
               className={fieldClass}
-            >
-              <option value="keys">{t("lorebook.editor.bulk.primaryKeys")}</option>
-              <option value="secondaryKeys">{t("lorebook.editor.bulk.secondaryKeys")}</option>
-            </select>
+              options={[
+                { value: "keys", label: t("lorebook.editor.bulk.primaryKeys") },
+                { value: "secondaryKeys", label: t("lorebook.editor.bulk.secondaryKeys") },
+              ]}
+            />
             <input
               value={keyText}
               onChange={(event) => setKeyText(event.target.value)}

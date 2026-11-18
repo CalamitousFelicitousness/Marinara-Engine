@@ -5,13 +5,15 @@
 // ──────────────────────────────────────────────
 import {
   useId,
+  useRef,
+  useState,
   type ComponentProps,
   type ButtonHTMLAttributes,
   type HTMLAttributes,
   type MouseEvent,
   type ReactNode,
 } from "react";
-import { AudioLines, Film, ImageIcon, KeyRound, Power, Scale, UserCog, type LucideIcon } from "lucide-react";
+import { AudioLines, Film, ImageIcon, Info, KeyRound, Power, Scale, UserCog, type LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { type ConnectionAccountListItem, ConnectionModelCost, ModelCatalogPricing } from "@marinara-engine/shared";
@@ -24,6 +26,7 @@ import type { ModelKind } from "../../lib/connection-identity";
 import type { ConnectionRowData } from "./ConnectionRow";
 import { CostBadge, RetiringHint, costBadgeShows } from "./CostBadge";
 import { ProviderIcon } from "./ProviderIcon";
+import { ErrorDetailsDialog } from "./ErrorDetailsDialog";
 
 export const FOCUS =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--marinara-chat-chrome-focus-ring)]";
@@ -89,6 +92,7 @@ export function ModelRow({
   roles = [],
   roleSlots = 2,
   badgesBelow = false,
+  badgesWithNote = false,
   status,
   customized = false,
   facts,
@@ -127,8 +131,12 @@ export function ModelRow({
     roleSlots?: 1 | 2;
     /** The role and cost badges on a third line under the text instead of at the row end (folder view). */
     badgesBelow?: boolean;
-    /** Why it cannot run now (its Connection needs a key or is off…); replaces the role badge. */
-    status?: { label: string; state?: string } | null;
+    /** The title note (job rows: the model id) on its own line under the name, with the role and cost badges at
+     * its end, so the name gets the row's full width and the badges sit with the model they describe. */
+    badgesWithNote?: boolean;
+    /** Why it cannot run now (its Connection needs a key or is off…); replaces the role badge. With `detail`
+     * (a failed try's whole reason), the pill is its own button that opens the reason in full, with Copy. */
+    status?: { label: string; state?: string; detail?: string } | null;
     customized?: boolean;
     /** The model's catalog facts: its cost badge (CostBadge decides whether it shows; a known price replaces
      * "Paid") and, when the provider retires it, a quiet amber hint on line 2. */
@@ -164,8 +172,45 @@ export function ModelRow({
   const line2 = !!(pill || id || details || retiring || customized);
   // CostBadge's own rule, so the third line never shows empty.
   const costShown = useUIStore((s) => s.showCostBadges) && costBadgeShows(cost, showPaid, pricing);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const detailRef = useRef<HTMLButtonElement>(null);
+  const detail = status?.detail?.trim() || null;
+  // A status with a full reason is a button of its own beside the row's button (one button cannot hold another).
+  const detailPill = status && detail && (
+    <>
+      <button
+        ref={detailRef}
+        type="button"
+        data-connection-error
+        onClick={() => setDetailOpen(true)}
+        aria-label={t("connections.error.show", { label: status.label })}
+        title={detail}
+        className={cn(
+          "flex min-h-11 max-w-[45%] shrink-0 items-center rounded-lg px-1 md:min-h-9 [@media(pointer:coarse)]:min-h-11",
+          FOCUS,
+        )}
+      >
+        <span
+          className={cn(
+            "mari-connection-pill min-w-0 underline decoration-dotted underline-offset-2",
+            status.state === "needs_key" && "mari-connection-pill--warn",
+          )}
+        >
+          <Info size="0.5625rem" className="shrink-0" aria-hidden />
+          <span className="truncate">{status.label}</span>
+        </span>
+      </button>
+      <ErrorDetailsDialog
+        open={detailOpen}
+        onClose={() => setDetailOpen(false)}
+        title={title}
+        message={detail}
+        restoreFocusRef={detailRef}
+      />
+    </>
+  );
   // Role or status, as before: a status (Needs key, Off) replaces the role badge.
-  const badge = status ? (
+  const badge = detailPill ? null : status ? (
     <span
       data-connection-role
       className={cn("mari-connection-pill shrink-0", status.state === "needs_key" && "mari-connection-pill--warn")}
@@ -193,7 +238,7 @@ export function ModelRow({
     <div
       {...rowProps}
       className={cn(
-        "mari-connection-model group group/row relative flex min-w-0 items-center gap-1 pe-1 transition-colors hover:bg-foreground/[0.04]",
+        "mari-connection-model group group/row relative flex min-w-0 items-center gap-1 pe-0.5 transition-colors hover:bg-foreground/[0.04]",
         current && "bg-foreground/[0.06]",
         rowProps?.className,
       )}
@@ -235,21 +280,37 @@ export function ModelRow({
             data-model-title
             className={cn(
               "block min-w-0 text-[0.8125rem] font-medium leading-5",
-              wrapTitle ? "break-words" : "line-clamp-2 [overflow-wrap:anywhere]",
+              wrapTitle ? "break-words" : line2 ? "truncate" : "line-clamp-2 [overflow-wrap:anywhere]",
               dim ? "text-[var(--muted-foreground)]" : "text-[var(--foreground)]",
             )}
             title={tooltip ?? title}
           >
             {title}
-            {titleNote && (
+            {titleNote && !badgesWithNote && (
               <>
                 {" "}
-                <span className="inline-block max-w-full text-[0.6875rem] font-normal text-[var(--muted-foreground)]">
+                {/* One line: it moves under the name whole when it does not fit beside it, then truncates. */}
+                <span className="inline-block max-w-full truncate align-bottom text-[0.6875rem] font-normal text-[var(--muted-foreground)]">
                   {titleNote}
                 </span>
               </>
             )}
           </span>
+          {badgesWithNote && (titleNote || badge || costShown) && (
+            // The note's own line, the badges pinned to its right end so they line up from row to row; the name
+            // above keeps the row's full width.
+            <span className="-mt-0.5 flex min-w-0 items-center gap-1.5">
+              {titleNote && (
+                <span className="min-w-0 truncate text-[0.6875rem] text-[var(--muted-foreground)]" title={titleNote}>
+                  {titleNote}
+                </span>
+              )}
+              <span data-connection-badges className="ms-auto flex shrink-0 items-center gap-1">
+                {badge}
+                <CostBadge cost={cost} showPaid={showPaid} pricing={pricing} />
+              </span>
+            </span>
+          )}
           {line2 && (
             // A retiring hint that does not fit next to the id wraps to its own line, so a narrow row keeps the id readable.
             <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs leading-[1.125rem] text-[var(--muted-foreground)]">
@@ -297,7 +358,7 @@ export function ModelRow({
           )}
         </span>
         {/* Badges: one row at the row end, centred: what the model does (role or status), then its cost. */}
-        {!badgesBelow && (badge || cost) && (
+        {!badgesBelow && !badgesWithNote && (badge || cost) && (
           <span data-connection-badges className="flex shrink-0 items-center gap-1">
             {badge}
             {cost && (
@@ -309,6 +370,7 @@ export function ModelRow({
         )}
         {trailing}
       </button>
+      {detailPill}
       {end}
     </div>
   );

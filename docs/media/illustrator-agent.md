@@ -16,7 +16,7 @@ The Illustrator writes the prompt, but a separate image model draws the picture.
 
 Give it an image model one of two ways.
 
-1. Set the **Images** job under **Defaults** in the **Connections** panel.
+1. Set the **Images** job in the **Jobs** box in the **Connections** panel.
 2. Or give the Illustrator its own image model on its **Open Setup** screen.
 
 If no image model can be found, the picture fails and the app asks you to choose one.
@@ -50,6 +50,8 @@ The **Prompt Mode** picker (labeled **Prompt** on the card) sets the art style f
 | **Selfie** | An in-character selfie or casual portrait. |
 
 The final look also depends on your style profile. See [Image Style Profiles](style-profiles.md).
+
+To draw one picture in another style without changing the chat's choice, type `/illustrate template=` and the style's name, such as `/illustrate template="Comic Page"`. See [Slash Commands](../chats/slash-commands.md#illustrate-and-make-artifacts).
 
 ## Choose the prompt model
 

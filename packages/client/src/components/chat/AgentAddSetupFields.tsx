@@ -1,5 +1,7 @@
 import { useRef, type ReactNode } from "react";
-import { Check, FolderOpen, Loader2, Upload } from "lucide-react";
+import { SPOTIFY_SOURCE_OPTIONS } from "../../lib/spotify-source-options";
+import { LorebookListField } from "../ui/LibraryPickers";
+import { Check, FolderOpen, Upload } from "lucide-react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import {
   DEFAULT_AGENT_PROMPT_TEMPLATE_ID,
@@ -40,6 +42,8 @@ import {
 import { HAPTIC_SENSITIVITY_OPTIONS } from "./haptic-sensitivity-options";
 import { SettingsSwitch } from "../panels/settings/SettingControls";
 import { useTranslation as useUiTranslation } from "react-i18next";
+import { Select } from "../ui/Select";
+import { Spinner } from "../ui/Spinner";
 
 export type KnowledgeAgentType = "knowledge-retrieval" | "knowledge-router";
 export type MusicProvider = "spotify" | "youtube" | "custom";
@@ -103,13 +107,6 @@ export type AgentAddSpriteSubject = {
 export const DEFAULT_PROSE_GUARDIAN_BANNED_WORDS = "ozone";
 export const DEFAULT_PROSE_GUARDIAN_AVOID =
   "no repetition of any phrases or sentence structure from the last messages, if the last output started with dialogue line, this one needs to start with narration, no purple prose";
-
-const SPOTIFY_SOURCE_OPTIONS: Array<{ id: SpotifySourceType; label: string; description: string }> = [
-  { id: "liked", label: "Liked Songs", description: "Pick from the user's saved tracks first." },
-  { id: "playlist", label: "Playlist", description: "Keep choices inside one Spotify playlist." },
-  { id: "artist", label: "Artist", description: "Search only around a named artist, like HOYO-MiX." },
-  { id: "any", label: "Any Spotify", description: "Let the DJ use Spotify search when it fits." },
-];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -587,19 +584,21 @@ export function MusicFolderScope({
         : localizeUi("ui.chat.musicdjsetupfields.defaultFolder");
   return (
     <div className="space-y-1.5">
-      <label className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1">
         <SetupLabel>{localizeUi("ui.chat.musicdjsetupfields.applyTo")}</SetupLabel>
-        <select
+        <Select<MusicDjFolderSource>
+          label={localizeUi("ui.chat.musicdjsetupfields.applyTo")}
           value={target}
           disabled={disabled}
-          onChange={(event) => onTargetChange(event.target.value as MusicDjFolderSource)}
+          options={[
+            { value: "chat", label: localizeUi("ui.chat.musicdjsetupfields.thisChat") },
+            ...(character ? [{ value: "character" as const, label: character.name }] : []),
+            { value: "default", label: localizeUi("ui.chat.musicdjsetupfields.allChatsDefault") },
+          ]}
+          onChange={onTargetChange}
           className={MUSIC_FOLDER_SELECT_CLASS}
-        >
-          <option value="chat">{localizeUi("ui.chat.musicdjsetupfields.thisChat")}</option>
-          {character && <option value="character">{character.name}</option>}
-          <option value="default">{localizeUi("ui.chat.musicdjsetupfields.allChatsDefault")}</option>
-        </select>
-      </label>
+        />
+      </div>
       {showInUse && (
         <p className="flex flex-wrap items-center gap-1.5 text-[0.5625rem] text-[var(--muted-foreground)]">
           {localizeUi("ui.chat.musicdjsetupfields.folderInUse")}
@@ -744,21 +743,17 @@ function PromptTemplateSelect({
   const activeOption = options.find((option) => option.id === value) ?? options[0];
   return (
     <div className="rounded-lg bg-[var(--background)]/75 px-3 py-2 ring-1 ring-[var(--border)]">
-      <label className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-1.5">
         <SetupLabel>{localizeUi("ui.chat.prompttemplateselect.promptMode")}</SetupLabel>
-        <select
+        <Select
+          label={localizeUi("ui.chat.prompttemplateselect.promptMode")}
           value={activeOption?.id ?? DEFAULT_AGENT_PROMPT_TEMPLATE_ID}
           disabled={disabled}
-          onChange={(event) => onChange(event.target.value)}
+          options={options.map((option) => ({ value: option.id, label: option.name }))}
+          onChange={onChange}
           className="w-full rounded-md bg-[var(--secondary)] px-2 py-1.5 text-[0.6875rem] text-[var(--foreground)] ring-1 ring-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {options.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.name}
-            </option>
-          ))}
-        </select>
-      </label>
+        />
+      </div>
       {activeOption?.description ? (
         <p className="mt-1.5 text-[0.5625rem] leading-snug text-[var(--muted-foreground)]">
           {activeOption.description}
@@ -806,51 +801,25 @@ function KnowledgeSourceFields({
       <div className="space-y-1.5">
         <SetupLabel>{localizeUi("ui.chat.knowledgesourcefields.fixedSourceLorebooks")}</SetupLabel>
         {lorebooks.length > 0 ? (
-          <div className="max-h-36 space-y-1 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--background)]/75 p-2">
-            {lorebooks.map((lorebook) => {
-              const selected = sourceLorebookIds.includes(lorebook.id);
-              return (
-                <button
-                  key={lorebook.id}
-                  type="button"
-                  disabled={disabled}
-                  onClick={() =>
-                    onChange({
-                      sourceLorebookIds: selected
-                        ? sourceLorebookIds.filter((id) => id !== lorebook.id)
-                        : [...sourceLorebookIds, lorebook.id],
-                    })
-                  }
-                  className={cn(
-                    "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs transition-all disabled:cursor-not-allowed disabled:opacity-60",
-                    selected
-                      ? "bg-[var(--primary)]/10 text-[var(--foreground)] ring-1 ring-[var(--primary)]/30"
-                      : "bg-[var(--secondary)] text-[var(--foreground)] ring-1 ring-transparent hover:bg-[var(--accent)]",
-                  )}
-                  aria-pressed={selected}
-                >
-                  <span
-                    className={cn(
-                      "flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-all",
-                      selected
-                        ? "border-[var(--primary)]/60 bg-[var(--primary)]/20"
-                        : "border-[var(--border)] bg-[var(--background)]",
-                    )}
-                  >
-                    {selected && <Check size="0.625rem" />}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium">{lorebook.name}</span>
-                    {lorebook.description ? (
-                      <span className="block truncate text-[0.625rem] text-[var(--muted-foreground)]">
-                        {lorebook.description}
-                      </span>
-                    ) : null}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          <LorebookListField
+            lorebooks={lorebooks}
+            selectedIds={sourceLorebookIds}
+            onToggle={(id) =>
+              onChange({
+                sourceLorebookIds: sourceLorebookIds.includes(id)
+                  ? sourceLorebookIds.filter((other) => other !== id)
+                  : [...sourceLorebookIds, id],
+              })
+            }
+            onAdd={(ids) =>
+              onChange({
+                sourceLorebookIds: [...sourceLorebookIds, ...ids.filter((id) => !sourceLorebookIds.includes(id))],
+              })
+            }
+            ariaLabel={localizeUi("ui.chat.knowledgesourcefields.fixedSourceLorebooks")}
+            disabled={disabled}
+            triggerClassName="mari-chrome-field min-h-10 w-full min-w-0 rounded-lg px-3 py-2 text-base md:text-xs disabled:cursor-not-allowed disabled:opacity-60"
+          />
         ) : (
           <p className="rounded-lg bg-[var(--background)]/75 px-3 py-2 text-[0.625rem] text-[var(--muted-foreground)] ring-1 ring-[var(--border)]">
             {localizeUi("ui.agents.agenteditor.noLorebooksAvailable")}
@@ -944,7 +913,7 @@ function KnowledgeSourceFields({
           >
             {uploadSource.isPending ? (
               <>
-                <Loader2 size="0.8125rem" className="animate-spin" />
+                <Spinner size="sm" />
                 {localizeUi("ui.noodle.noodleprofilesurface.uploading")}
               </>
             ) : (
@@ -1304,13 +1273,15 @@ function MusicDjSetupFields({
       </p>
       {value.musicProvider === "spotify" ? (
         <>
-          <label className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1">
             <SetupLabel>{localizeUi("ui.chat.musicdjsetupfields.spotifySource")}</SetupLabel>
-            <select
+            <Select
+              label={localizeUi("ui.chat.musicdjsetupfields.spotifySource")}
               value={value.spotifySourceType}
               disabled={disabled}
-              onChange={(event) => {
-                const next = normalizeSpotifySourceType(event.target.value);
+              options={SPOTIFY_SOURCE_OPTIONS.map((option) => ({ value: option.id, label: option.label }))}
+              onChange={(picked) => {
+                const next = normalizeSpotifySourceType(picked);
                 onChange({
                   spotifySourceType: next,
                   spotifyPlaylistId: next === "playlist" ? value.spotifyPlaylistId : "",
@@ -1319,52 +1290,41 @@ function MusicDjSetupFields({
                 });
               }}
               className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-2 text-xs text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {SPOTIFY_SOURCE_OPTIONS.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            />
             <span className="text-[0.5625rem] text-[var(--muted-foreground)]">
               {SPOTIFY_SOURCE_OPTIONS.find((option) => option.id === value.spotifySourceType)?.description ?? ""}
             </span>
-          </label>
+          </div>
 
           {value.spotifySourceType === "playlist" && (
-            <label className="flex flex-col gap-1">
+            <div className="flex flex-col gap-1">
               <SetupLabel>{localizeUi("ui.chat.musicdjsetupfields.playlist")}</SetupLabel>
               {spotifyPlaylistsQuery.data?.playlists.length ? (
-                <select
+                <Select
+                  label={localizeUi("ui.chat.musicdjsetupfields.playlist")}
                   value={value.spotifyPlaylistId}
                   disabled={disabled}
-                  onChange={(event) => {
-                    const playlist = spotifyPlaylistsQuery.data?.playlists.find(
-                      (entry) => entry.id === event.target.value,
-                    );
+                  options={[
+                    { value: "", label: localizeUi("ui.chat.musicdjsetupfields.choosePlaylist") },
+                    ...spotifyPlaylistsQuery.data.playlists.map((playlist) => {
+                      const suffix =
+                        typeof playlist.trackCount === "number"
+                          ? ` (${playlist.trackCount})`
+                          : playlist.owned === false
+                            ? " (followed, unavailable)"
+                            : "";
+                      return { value: playlist.id, label: `${playlist.name}${suffix}` };
+                    }),
+                  ]}
+                  onChange={(picked) => {
+                    const playlist = spotifyPlaylistsQuery.data?.playlists.find((entry) => entry.id === picked);
                     onChange({
-                      spotifyPlaylistId: event.target.value || "",
+                      spotifyPlaylistId: picked || "",
                       spotifyPlaylistName: playlist?.name ?? null,
                     });
                   }}
                   className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-2 text-xs text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <option value="">{localizeUi("ui.chat.musicdjsetupfields.choosePlaylist")}</option>
-                  {spotifyPlaylistsQuery.data.playlists.map((playlist) => {
-                    const suffix =
-                      typeof playlist.trackCount === "number"
-                        ? ` (${playlist.trackCount})`
-                        : playlist.owned === false
-                          ? " (followed, unavailable)"
-                          : "";
-                    return (
-                      <option key={playlist.id} value={playlist.id}>
-                        {playlist.name}
-                        {suffix}
-                      </option>
-                    );
-                  })}
-                </select>
+                />
               ) : (
                 <input
                   value={value.spotifyPlaylistId}
@@ -1383,7 +1343,7 @@ function MusicDjSetupFields({
                   {localizeUi("ui.chat.musicdjsetupfields.connectSpotifyInTheMusicDjAgentToLoad")}
                 </span>
               )}
-            </label>
+            </div>
           )}
 
           {value.spotifySourceType === "artist" && (
@@ -1418,18 +1378,20 @@ function MusicDjSetupFields({
             onUnlink={() => onChange({ customMusicFolderTarget: "character", customMusicCharacterFolder: "" })}
           />
           {folderTarget === "default" && (
-            <label className="flex flex-col gap-1">
+            <div className="flex flex-col gap-1">
               <SetupLabel>{localizeUi("ui.chat.musicdjsetupfields.customMusicSource")}</SetupLabel>
-              <select
+              <Select<CustomMusicSource>
+                label={localizeUi("ui.chat.musicdjsetupfields.customMusicSource")}
                 value={value.customMusicSource}
                 disabled={disabled}
-                onChange={(event) => onChange({ customMusicSource: event.target.value as CustomMusicSource })}
+                options={[
+                  { value: "game-assets", label: localizeUi("game.toolbar.assets") },
+                  { value: "folder", label: localizeUi("ui.chat.musicdjsetupfields.folderOnThisDevice") },
+                ]}
+                onChange={(customMusicSource) => onChange({ customMusicSource })}
                 className={MUSIC_FOLDER_SELECT_CLASS}
-              >
-                <option value="game-assets">{localizeUi("game.toolbar.assets")}</option>
-                <option value="folder">{localizeUi("ui.chat.musicdjsetupfields.folderOnThisDevice")}</option>
-              </select>
-            </label>
+              />
+            </div>
           )}
 
           {folderTarget !== "default" || value.customMusicSource === "folder" ? (
@@ -1734,22 +1696,20 @@ export function AgentAddSetupFields({
 
       {agentId === "lorebook-keeper" && (
         <div className="grid gap-2 rounded-lg bg-[var(--background)]/65 px-3 py-2.5 ring-1 ring-[var(--border)] sm:grid-cols-2">
-          <label className="flex min-w-0 flex-col gap-1 text-[0.625rem] text-[var(--muted-foreground)]">
+          <div className="flex min-w-0 flex-col gap-1 text-[0.625rem] text-[var(--muted-foreground)]">
             <SetupLabel>{localizeUi("ui.chat.agentaddsetupfields.targetLorebook")}</SetupLabel>
-            <select
+            <Select
+              label={localizeUi("ui.chat.agentaddsetupfields.targetLorebook")}
               value={value.lorebookKeeperTargetLorebookId}
               disabled={disabled}
-              onChange={(event) => onChange({ lorebookKeeperTargetLorebookId: event.target.value })}
+              options={[
+                { value: "", label: localizeUi("ui.chat.agentaddsetupfields.autoSelectFirstWritableLorebook") },
+                ...lorebooks.map((lorebook) => ({ value: lorebook.id, label: lorebook.name })),
+              ]}
+              onChange={(lorebookKeeperTargetLorebookId) => onChange({ lorebookKeeperTargetLorebookId })}
               className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-2 text-xs text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <option value="">{localizeUi("ui.chat.agentaddsetupfields.autoSelectFirstWritableLorebook")}</option>
-              {lorebooks.map((lorebook) => (
-                <option key={lorebook.id} value={lorebook.id}>
-                  {lorebook.name}
-                </option>
-              ))}
-            </select>
-          </label>
+            />
+          </div>
           <label className="flex min-w-0 flex-col gap-1 text-[0.625rem] text-[var(--muted-foreground)]">
             <SetupLabel>{localizeUi("ui.chat.agentaddsetupfields.readBehind")}</SetupLabel>
             <input

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import { openConnectionsPanel, openJobSettings, ttsConfigCard } from "./connections-panel.js";
 import { seedUIState } from "./ui-state-fixture.js";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
@@ -50,8 +51,8 @@ test("PCM speech format persists through the audio connection editor and reload"
   }
 });
 
-// #7848: an Audio connection can be the card's Source. The card saves only its ID, hides the address, key and
-// model the connection keeps, and says so plainly when the connection is gone.
+// #7848: an Audio connection can be the voice's source. The setting saves only its ID, never the connection's key,
+// and the app says so plainly when the connection is gone.
 test("An Audio connection chosen as the Source is saved by ID and reported when it is gone", async ({
   page,
   request,
@@ -70,7 +71,7 @@ test("An Audio connection chosen as the Source is saved by ID and reported when 
     },
   });
   expect(created.ok()).toBeTruthy();
-  const { id } = await created.json();
+  const { id, accountId } = (await created.json()) as { id: string; accountId: string };
   let deleted = false;
   try {
     const saved = await request.put("/api/tts/config", {
@@ -85,48 +86,55 @@ test("An Audio connection chosen as the Source is saved by ID and reported when 
       await page.screenshot({ path, animations: "disabled" });
       await testInfo.attach(name, { path, contentType: "image/png" });
     };
-    const openCard = async () => {
+    // Since the Voice job (1e4664c38b) the card has no Source list: the voice's Model is picked in the Voice
+    // job's "Model for Voice" window, and the Voice settings window reports a missing account.
+    const studio = `Voice studio ${testInfo.project.name}`;
+    const voiceRow = () =>
+      page.locator("[data-connections-panel]").filter({ visible: true }).locator('[data-defaults-role="voice"]');
+    const openPicker = async () => {
       await page.goto("/");
-      await page.evaluate(async () => {
-        const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
-        useUIStore.getState().openRightPanel("connections");
-      });
-      const card = page
-        .locator('[data-component="RightPanel"]')
-        .getByText("Text to Speech", { exact: true })
-        .locator("xpath=../../..");
-      await card.getByTitle("Expand").click();
-      return card;
+      await openConnectionsPanel(page);
+      await voiceRow().getByRole("button").first().click();
+      const picker = page.getByRole("dialog", { name: "Model for Voice", exact: true });
+      await expect(picker).toBeVisible();
+      return picker;
     };
 
-    let card = await openCard();
-    const sourceSelect = card.getByLabel("Source", { exact: true });
-    await expect(card.getByText("API Key", { exact: true })).toBeVisible();
-    await sourceSelect.selectOption(`connection:${id}`);
+    // The card's own request timeout shows while voice uses a direct source; an Audio account keeps its own.
+    const cardTimeout = () => ttsConfigCard(page).getByText("Request timeout (seconds)", { exact: true });
+    await page.goto("/");
+    await openJobSettings(page, "voice");
+    await expect(cardTimeout()).toBeVisible();
+
+    let picker = await openPicker();
+    // With nothing chosen the picker opens on the starred models or the first account by name, and the shared
+    // server can hold other specs' accounts, so open this one first. A phone shows one view at a time: go back to
+    // the account list before choosing it.
+    if (testInfo.project.name.includes("mobile"))
+      await picker.getByRole("button", { name: "All connections", exact: true }).click();
+    await picker.locator(`[data-switcher-pane="${accountId}"]`).click();
+    await picker.getByRole("button", { name: new RegExp(`^${studio}, Audio\\b`, "u") }).click();
     await expect.poll(async () => (await (await request.get("/api/tts/config")).json()).connectionId).toBe(id);
-    await expect(card.getByText("Uses this connection's address, key and model.", { exact: true })).toBeVisible();
-    for (const field of ["Base URL", "API Key", "Model", "Request timeout (seconds)"]) {
-      await expect(card.getByText(field, { exact: true })).toBeHidden();
-    }
     const view = await (await request.get("/api/tts/config")).text();
     expect(view).not.toContain("e2e-connection-secret");
     expect(JSON.parse(view)).toMatchObject({ connectionId: id, model: "studio-model" });
+    await page.goto("/");
+    await openJobSettings(page, "voice");
+    await expect(ttsConfigCard(page)).toBeVisible();
+    await expect(cardTimeout()).toBeHidden();
 
-    card = await openCard();
-    await expect(card.getByLabel("Source", { exact: true })).toHaveValue(`connection:${id}`);
+    picker = await openPicker();
+    // The Model tab names the chosen model on every screen size.
+    await expect(picker.getByRole("tab", { name: `Model ${studio}`, exact: true })).toBeVisible();
     await capture("tts-card-audio-connection-source");
 
     expect((await request.delete(`/api/connections/${id}`)).ok()).toBeTruthy();
     deleted = true;
-    card = await openCard();
-    await expect(
-      card.getByText("Choose another source, because this Audio connection is missing or unavailable.", {
-        exact: true,
-      }),
-    ).toBeVisible();
-    // The collapsed header says so too, not only the open card.
-    await expect(card.locator("div").filter({ hasText: /^Missing Audio connection$/ })).toBeVisible();
-    await expect(card.getByLabel("Source", { exact: true })).toHaveValue(`connection:${id}`);
+    // The setting still names the account by its ID; the server fails rather than use another one.
+    expect((await (await request.get("/api/tts/config")).json()).connectionId).toBe(id);
+    await page.goto("/");
+    const settings = await openJobSettings(page, "voice");
+    await expect(settings.getByTitle("The voice account is missing", { exact: true })).toBeVisible();
     await capture("tts-card-missing-audio-connection");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   } finally {

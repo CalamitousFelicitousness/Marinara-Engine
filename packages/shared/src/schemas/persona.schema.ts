@@ -112,6 +112,7 @@ const LEGACY_PERSONA_FIELDS = [
   "personaStats",
   "tags",
   "savedStatusOptions",
+  "nameAliases",
   "convoBehavior",
 ] as const;
 
@@ -175,6 +176,7 @@ function canonicalizeLegacyPersonaField(field: LegacyPersonaField, value: unknow
     case "cardFieldAlternatives":
     case "tags":
     case "savedStatusOptions":
+    case "nameAliases":
       return decodeLegacyJson(value);
   }
 }
@@ -286,6 +288,7 @@ const personaFields = {
   scenario: z.string().optional(),
   backstory: z.string().optional(),
   appearance: z.string().optional(),
+  publicFace: z.string().optional(),
   /** Marinara Engine: use `imageAppearance` instead of `appearance` in image prompts. */
   imageAppearanceEnabled: z.boolean().optional(),
   /** Marinara Engine: appearance text used for image prompts when the override is enabled. */
@@ -298,6 +301,7 @@ const personaFields = {
   personaStats: personaStatsSchema.nullable().optional(),
   tags: z.array(z.string()).optional(),
   savedStatusOptions: z.array(z.string()).optional(),
+  nameAliases: z.array(z.string()).optional(),
   convoDisplayName: z.string().optional(),
   aboutMe: z.string().optional(),
   convoBehavior: convoBehaviorSchema.nullable().optional(),

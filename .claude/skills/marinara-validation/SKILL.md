@@ -168,7 +168,20 @@ lingering process; otherwise just wait a few seconds and rerun. A lease whose
 PID is dead is reclaimed automatically at next boot with a
 `Reclaimed the writer lease` WARN — that line is normal, not a problem.
 
-## Known-failing specs — do not chase these
+## Known-failing specs: do not chase these
+
+**Regression suite measured 2026-11-18 after the upstream sync, app running:
+1887/1981 on a full run; 83 of the 94 were timeouts under load and pass at
+`--concurrency 2`.** Three fail on their own, each proved against clean
+worktrees:
+
+| Lane | Fails at fork tip | Fails on upstream | Cause |
+| --- | --- | --- | --- |
+| `multiplayer/multiplayer-peer-server-security.regression.ts` | not run | yes | `ERR_TLS_CERT_ALTNAME_INVALID`: the test certificate names `localhost`, the client dials `::1` |
+| `game-assets-link-hardening.regression.ts` | yes | yes | times out on Windows after `Path escapes the allowed directory` in `assertInsideDir` |
+| `connection-model-discovery-errors.regression.ts` | yes | no | the fork's: the last request after `provider.close()` gets `ECONNRESET` instead of `ECONNREFUSED` |
+
+The last one is a fork bug, not yet traced; upstream passes it.
 
 **Regression suite re-measured 2026-08-29 after the upstream sync, with the app
 stopped: 196/197 pass. `launcher/update.regression.mjs` is the only failure, and
@@ -211,7 +224,7 @@ that lane exits before reaching `prompt-attachments`, `context-fit`, or
 `author-note-presets`. Run those three individually until upstream fixes it:
 
 ```bash
-node ./scripts/run-regressions.mjs --filter scripts/regressions/author-note-presets.regression.ts
+node ./scripts/run-regressions.mjs --filter scripts/regressions/prompt/author-note-presets.regression.ts
 ```
 
 ### Regression suite: 965/973, as of 2026-10-18

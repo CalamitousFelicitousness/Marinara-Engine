@@ -11,7 +11,6 @@ import {
   RIGHT_PANEL_WIDTH_MIN,
   RIGHT_PANEL_WIDTH_MAX,
   getDefaultAppAccentColor,
-  getDefaultAppBackgroundColor,
   getDefaultChatChromeTextColor,
   getDefaultChatTextColor,
   getTrackerPanelWidthForProfile,
@@ -34,6 +33,7 @@ import {
 import { SECRET_FIELD_PROPS } from "../../lib/secret-field-props";
 import { UILanguageSetting } from "./settings/UILanguageSetting";
 import { LanguagePicker } from "../ui/LanguagePicker";
+import { Select } from "../ui/Select";
 import { MultiplayerSettings } from "../../features/multiplayer/MultiplayerSettings";
 import { useLocalizedUiText } from "../../localization/use-localized-ui-text";
 import {
@@ -59,7 +59,17 @@ import {
   isRequestTimeoutError,
   requestTimeoutSignal,
 } from "../../lib/api-client";
-import { ANDROID_BRIDGE_READY_EVENT, getAndroidBridgeToken } from "../../lib/android-bridge";
+import {
+  SERVER_CONSOLE_WINDOW_ID,
+  isPhoneWindowLayout,
+  useFloatingWindowStore,
+} from "../../stores/floating-window.store";
+import {
+  ANDROID_BRIDGE_READY_EVENT,
+  getAndroidBridgeToken,
+  getMarinaraAndroidBridge,
+  isMarinaraAndroidShell,
+} from "../../lib/android-bridge";
 import { chatBackgroundUrlToMetadata } from "../../lib/backgrounds";
 import { normalizeThemeCss, sanitizeAppCss } from "../../lib/theme-css";
 import { getChatWidgetFontFamily } from "../../lib/font-family";
@@ -125,7 +135,6 @@ import {
   Trash2,
   Check,
   ChevronDown,
-  Loader2,
   Search,
   Palette,
   Puzzle,
@@ -201,6 +210,7 @@ import {
 } from "./settings/SettingControls";
 import { TrackerCardColorSettings } from "./settings/TrackerCardColorSettings";
 import { TrackerPresetSettings } from "./settings/TrackerPresetSettings";
+import { UiStyleSettings } from "./settings/UiStyleSettings";
 import { PromptOverridesEditor } from "./settings/PromptOverridesEditor";
 import { BackgroundPicker } from "./settings/BackgroundPicker";
 import { AccessStatusSettings, AdminSecretMaker } from "./settings/AccessStatusSettings";
@@ -214,6 +224,7 @@ import {
 } from "./settings/PersonalExtensionsSettings";
 import { usePersonalExtensionPolicy, useSetExternalExtensionsEnabled } from "../../hooks/use-personal-extensions";
 import { useAgentImportPolicy, useSetAgentImportsEnabled } from "../../hooks/use-agents";
+import { useCanRestartServer, useRestartServer } from "../../hooks/use-server-restart";
 import { DraftNumberInput } from "../ui/DraftNumberInput";
 import { ExportFormatDialog, type ExportFormatChoice } from "../ui/ExportFormatDialog";
 import { inspectCharacterFilesForEmbeddedLorebooks } from "../../lib/character-import";
@@ -234,6 +245,9 @@ import {
   HostDeviceFileManagerError,
   isHostDeviceBrowser,
 } from "../../lib/host-device";
+import { setTapTimingsEnabled, useTapTimingsEnabled } from "../layout/TapTimings";
+import { Spinner } from "@/components/ui/Spinner";
+import { Checkbox } from "@/components/ui/Checkbox";
 
 type CustomFontFace = {
   filename: string;
@@ -303,32 +317,6 @@ type _EveryTabIsRendered =
     : ["TABS is missing a settings tab", Exclude<SettingsTabId, (typeof TABS)[number]["id"]>];
 const _everyTabIsRendered: _EveryTabIsRendered = true;
 void _everyTabIsRendered;
-
-type MarinaraAndroidBridge = {
-  openLauncher?: (token?: string) => void;
-  openConsole?: {
-    (token: string): void;
-    (): void;
-  };
-  isStatusBarVisible?: {
-    (token: string): boolean;
-    (): boolean;
-  };
-  setStatusBarVisible?: {
-    (token: string, visible: boolean): void;
-    (visible: boolean): void;
-  };
-};
-
-function getMarinaraAndroidBridge(): MarinaraAndroidBridge | null {
-  if (typeof window === "undefined") return null;
-  const nativeWindow = window as Window & { MarinaraAndroid?: MarinaraAndroidBridge };
-  return nativeWindow.MarinaraAndroid ?? null;
-}
-
-function isMarinaraAndroidShell(): boolean {
-  return typeof navigator !== "undefined" && /\bMarinaraEngine\/Android\b/u.test(navigator.userAgent);
-}
 
 function readAndroidStatusBarVisibility(): boolean | null {
   const bridge = getMarinaraAndroidBridge();
@@ -412,28 +400,6 @@ function AndroidStatusBarSetting() {
       )}
     </>
   );
-}
-
-function isStandaloneIosInstall(): boolean {
-  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
-  const nav = navigator as Navigator & { standalone?: boolean };
-  const isIos = /\b(iPad|iPhone|iPod)\b/u.test(nav.userAgent);
-  const isStandalone = nav.standalone === true || window.matchMedia?.("(display-mode: standalone)")?.matches === true;
-  return isIos && isStandalone;
-}
-
-function getNativeConsoleShortcutHelp(): string {
-  const bridge = getMarinaraAndroidBridge();
-  if (typeof bridge?.openConsole === "function") {
-    return "Opens Termux from the Android APK so you can view Marinara server logs while Debug mode is enabled.";
-  }
-  if (isMarinaraAndroidShell()) {
-    return "This Android APK build cannot expose the Termux console shortcut yet. Update Marinara, or open Termux manually.";
-  }
-  if (isStandaloneIosInstall()) {
-    return "iPhone installations do not expose a native console shortcut yet. Use the host server logs or Safari Web Inspector.";
-  }
-  return "Available in packaged Android/iPhone installations only. Browser and desktop users should use the server terminal or browser developer tools.";
 }
 
 const SETTINGS_COMPONENTS: Record<(typeof TABS)[number]["id"], React.FC> = {
@@ -920,39 +886,31 @@ function ImageStyleProfilesEditor({
     <div className="rounded-lg bg-[var(--background)]/55 p-3 ring-1 ring-[var(--border)]">
       <div className="space-y-3">
         <div className="grid gap-2">
-          <label className="min-w-0">
+          <div className="min-w-0">
             <span className="mb-1 block text-[0.6875rem] font-medium text-[var(--muted-foreground)]">
               {localizeUi("ui.panels.imagestyleprofileseditor.defaultStyle")}
             </span>
-            <select
+            <Select
               value={settings.defaultProfileId}
-              onChange={(event) => setDefaultProfileId(event.target.value)}
+              options={settings.profiles.map((profile) => ({ value: profile.id, label: profile.name }))}
+              onChange={setDefaultProfileId}
+              label={localizeUi("ui.panels.imagestyleprofileseditor.defaultStyle")}
               className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--secondary)] px-2.5 text-xs"
-            >
-              {settings.profiles.map((profile) => (
-                <option key={profile.id} value={profile.id}>
-                  {profile.name}
-                </option>
-              ))}
-            </select>
-          </label>
+            />
+          </div>
 
-          <label className="min-w-0">
+          <div className="min-w-0">
             <span className="mb-1 block text-[0.6875rem] font-medium text-[var(--muted-foreground)]">
               {localizeUi("ui.panels.imagestyleprofileseditor.editing")}
             </span>
-            <select
+            <Select
               value={selected.id}
-              onChange={(event) => setSelectedId(event.target.value)}
+              options={settings.profiles.map((profile) => ({ value: profile.id, label: profile.name }))}
+              onChange={setSelectedId}
+              label={localizeUi("ui.panels.imagestyleprofileseditor.editing")}
               className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--secondary)] px-2.5 text-xs"
-            >
-              {settings.profiles.map((profile) => (
-                <option key={profile.id} value={profile.id}>
-                  {profile.name}
-                </option>
-              ))}
-            </select>
-          </label>
+            />
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-1.5">
@@ -987,22 +945,18 @@ function ImageStyleProfilesEditor({
             className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--secondary)] px-2.5 text-xs"
           />
         </label>
-        <label className="min-w-0">
+        <div className="min-w-0">
           <span className="mb-1 block text-[0.6875rem] font-medium text-[var(--muted-foreground)]">
             {localizeUi("ui.panels.imagestyleprofileseditor.promptGrammar")}
           </span>
-          <select
+          <Select
             value={selected.promptMode}
-            onChange={(event) => updateSelected({ promptMode: event.target.value as ImagePromptMode })}
+            options={IMAGE_PROMPT_MODE_OPTIONS}
+            onChange={(promptMode) => updateSelected({ promptMode })}
+            label={localizeUi("ui.panels.imagestyleprofileseditor.promptGrammar")}
             className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--secondary)] px-2.5 text-xs"
-          >
-            {IMAGE_PROMPT_MODE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
+          />
+        </div>
       </div>
 
       <label className="mt-3 block">
@@ -1065,22 +1019,18 @@ function ImageStyleProfilesEditor({
         </summary>
         <div className="mt-2 grid gap-2 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
           <div className="space-y-2">
-            <label className="block">
+            <div className="block">
               <span className="mb-1 block text-[0.625rem] font-medium text-[var(--muted-foreground)]">
                 {localizeUi("ui.panels.imagestyleprofileseditor.imageKind")}
               </span>
-              <select
+              <Select
                 value={previewKind}
-                onChange={(event) => setPreviewKind(event.target.value as ImagePromptKind)}
+                options={IMAGE_STYLE_SUBJECT_KINDS.map((kind) => ({ value: kind, label: kind }))}
+                onChange={setPreviewKind}
+                label={localizeUi("ui.panels.imagestyleprofileseditor.imageKind")}
                 className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-xs"
-              >
-                {IMAGE_STYLE_SUBJECT_KINDS.map((kind) => (
-                  <option key={kind} value={kind}>
-                    {kind}
-                  </option>
-                ))}
-              </select>
-            </label>
+              />
+            </div>
             <label className="block">
               <span className="mb-1 block text-[0.625rem] font-medium text-[var(--muted-foreground)]">
                 {localizeUi("ui.panels.imagestyleprofileseditor.sampleInput")}
@@ -1958,8 +1908,7 @@ function QuickRepliesSetting() {
       <div className="flex min-h-9 items-stretch">
         <div className="flex min-w-0 items-center gap-1.5 py-2 pl-1.5 pr-2">
           <label className="flex min-w-0 cursor-pointer items-center gap-2.5">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={showQuickRepliesMenu}
               onChange={(event) => handleEnabledChange(event.target.checked)}
               className="h-3.5 w-3.5 shrink-0 rounded border-[var(--border)] accent-[var(--primary)]"
@@ -2299,7 +2248,7 @@ function DocsLanguageSetting() {
         >
           {setDocsLanguage.isPending ? (
             <>
-              <Loader2 size="0.8125rem" className="animate-spin" />
+              <Spinner size="sm" />
               {installProgress && installProgress.filesTotal > 0
                 ? localizeUi("settings.application.docsLanguage.downloading", {
                     done: installProgress.filesDone,
@@ -2335,7 +2284,7 @@ function DocsLanguageSetting() {
           >
             {fixDocsLanguage.isPending ? (
               <>
-                <Loader2 size="0.8125rem" className="animate-spin" />
+                <Spinner size="sm" />
                 {localizeUi("settings.application.docsLanguage.fixing")}
               </>
             ) : (
@@ -2504,21 +2453,24 @@ function GeneralSettings() {
         icon={<Bell size="0.875rem" />}
         {...getSettingsSectionAnchorProps("notifications")}
       >
-        <label
+        {/* A div, not a label: a label would open the list on a tap on the help text. */}
+        <div
           id={getSettingsControlAnchorId("notification-position")}
           className="mb-3 flex scroll-mt-3 flex-col gap-1.5 text-xs"
         >
           <span>{localizeUi("settings.notifications.position.label")}</span>
-          <select
+          <Select
             value={notificationPosition}
-            onChange={(event) => setNotificationPosition(event.target.value === "bottom" ? "bottom" : "top")}
+            options={[
+              { value: "top", label: localizeUi("settings.notifications.position.top") },
+              { value: "bottom", label: localizeUi("settings.notifications.position.bottom") },
+            ]}
+            onChange={setNotificationPosition}
+            label={localizeUi("settings.notifications.position.label")}
             className="w-full rounded-lg bg-[var(--secondary)] px-3 py-2 ring-1 ring-[var(--border)]"
-          >
-            <option value="top">{localizeUi("settings.notifications.position.top")}</option>
-            <option value="bottom">{localizeUi("settings.notifications.position.bottom")}</option>
-          </select>
+          />
           <span className="text-[var(--muted-foreground)]">{localizeUi("settings.notifications.position.help")}</span>
-        </label>
+        </div>
         <ConversationSoundSetting />
       </SettingsSection>
 
@@ -3136,7 +3088,7 @@ function VideoGenerationSettings() {
     >
       {videoSettingsQuery.isLoading ? (
         <div className="flex items-center gap-2 rounded-lg bg-[var(--background)]/55 px-3 py-2 text-xs text-[var(--muted-foreground)] ring-1 ring-[var(--border)]">
-          <Loader2 size="0.8125rem" className="animate-spin" />
+          <Spinner size="sm" />
           {localizeUi("ui.panels.videogenerationsettings.loadingVideoSettings")}
         </div>
       ) : videoSettingsQuery.isError ? (
@@ -3452,22 +3404,18 @@ function GameAssetsSettings() {
         </div>
 
         <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <label className="flex min-w-0 flex-col gap-1">
+          <div className="flex min-w-0 flex-col gap-1">
             <span className="text-[0.625rem] font-medium text-[var(--muted-foreground)]">
               {localizeUi("ui.panels.gameassetssettings.type")}
             </span>
-            <select
+            <Select
               value={assetCategory}
-              onChange={(e) => handleAssetCategoryChange(e.target.value as GameAssetCategoryId)}
+              options={GAME_ASSET_CATEGORIES.map((category) => ({ value: category.id, label: category.label }))}
+              onChange={handleAssetCategoryChange}
+              label={localizeUi("ui.panels.gameassetssettings.type")}
               className="w-full rounded-lg bg-[var(--background)] px-3 py-2 text-xs text-[var(--foreground)] outline-none ring-1 ring-[var(--border)] focus:ring-[var(--primary)]"
-            >
-              {GAME_ASSET_CATEGORIES.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.label}
-                </option>
-              ))}
-            </select>
-          </label>
+            />
+          </div>
           <label className="flex min-w-0 flex-col gap-1">
             <span className="text-[0.625rem] font-medium text-[var(--muted-foreground)]">
               {localizeUi("ui.panels.gameassetssettings.folder")}
@@ -3500,7 +3448,7 @@ function GameAssetsSettings() {
             disabled={assetUploading || assetFiles.length === 0}
             className={SETTINGS_BUTTON_CLASS}
           >
-            {assetUploading ? <Loader2 size="0.75rem" className="animate-spin" /> : <Upload size="0.75rem" />}
+            {assetUploading ? <Spinner size="sm" /> : <Upload size="0.75rem" />}
             {localizeUi("ui.panels.gameassetssettings.uploadToServer")}
           </button>
           {assetFiles.length > 0 && (
@@ -3594,8 +3542,6 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
   const setSidebarWidth = useUIStore((state) => state.setSidebarWidth);
   const rightPanelWidth = useUIStore((state) => state.rightPanelWidth);
   const setRightPanelWidth = useUIStore((state) => state.setRightPanelWidth);
-  const appBackgroundColor = useUIStore((s) => s.appBackgroundColor);
-  const setAppBackgroundColor = useUIStore((s) => s.setAppBackgroundColor);
   const appAccentColor = useUIStore((s) => s.appAccentColor);
   const setAppAccentColor = useUIStore((s) => s.setAppAccentColor);
   const appAccentPulseMode = useUIStore((s) => s.appAccentPulseMode);
@@ -3606,9 +3552,6 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
   const setCustomCursorEnabled = useUIStore((s) => s.setCustomCursorEnabled);
   const reduceAmbientEffects = useUIStore((s) => s.reduceAmbientEffects);
   const setReduceAmbientEffects = useUIStore((s) => s.setReduceAmbientEffects);
-  const defaultAppBackgroundColor = getDefaultAppBackgroundColor(theme);
-  const displayedAppBackgroundColor =
-    appBackgroundColor.trim().toLowerCase() === defaultAppBackgroundColor.toLowerCase() ? "" : appBackgroundColor;
   const defaultAppAccentColor = getDefaultAppAccentColor();
   const displayedAppAccentColor =
     appAccentColor.trim().toLowerCase() === defaultAppAccentColor.toLowerCase() ? "" : appAccentColor;
@@ -3662,13 +3605,6 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
       );
     }
   };
-  const handleAppBackgroundColorChange = useCallback(
-    (color: string) => {
-      const normalized = color.trim();
-      setAppBackgroundColor(normalized.toLowerCase() === defaultAppBackgroundColor.toLowerCase() ? "" : normalized);
-    },
-    [defaultAppBackgroundColor, setAppBackgroundColor],
-  );
   const handleAppAccentColorChange = useCallback(
     (color: string) => {
       const normalized = color.trim();
@@ -3979,11 +3915,7 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                   className={SETTINGS_BUTTON_CLASS}
                   title={localizeUi("settings.actions.resetAppearance")}
                 >
-                  {setActiveSyncedTheme.isPending ? (
-                    <Loader2 size="0.75rem" className="animate-spin" />
-                  ) : (
-                    <RotateCcw size="0.75rem" />
-                  )}
+                  {setActiveSyncedTheme.isPending ? <Spinner size="sm" /> : <RotateCcw size="0.75rem" />}
                   {localizeUi("ui.panels.appearancesettings.resetAppearance")}
                 </button>
               </div>
@@ -4062,22 +3994,24 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                 </div>
               </div>
 
-              <label id={getSettingsControlAnchorId("theme-mode")} className="flex scroll-mt-3 flex-col gap-1">
+              <div id={getSettingsControlAnchorId("theme-mode")} className="flex scroll-mt-3 flex-col gap-1">
                 <span className="text-xs font-medium inline-flex items-center gap-1">
                   {localizeUi("ui.panels.appearancesettings.colorScheme")}{" "}
                   <HelpTooltip
                     text={localizeUi("ui.panels.appearancesettings.switchBetweenDarkAndLightModeDarkModeIs")}
                   />
                 </span>
-                <select
+                <Select
                   value={theme}
-                  onChange={(e) => setTheme(e.target.value as "dark" | "light")}
+                  options={[
+                    { value: "dark", label: localizeUi("ui.panels.appearancesettings.dark") },
+                    { value: "light", label: localizeUi("ui.panels.appearancesettings.light") },
+                  ]}
+                  onChange={setTheme}
+                  label={localizeUi("ui.panels.appearancesettings.colorScheme")}
                   className="rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs outline-none ring-1 ring-transparent transition-shadow focus:ring-[var(--primary)]"
-                >
-                  <option value="dark">{localizeUi("ui.panels.appearancesettings.dark")}</option>
-                  <option value="light">{localizeUi("ui.panels.appearancesettings.light")}</option>
-                </select>
-              </label>
+                />
+              </div>
 
               <ToggleSetting
                 anchorId={getSettingsControlAnchorId("custom-cursor")}
@@ -4095,24 +4029,13 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                 help={localizeUi("settings.controls.reduceAmbientEffects.help")}
               />
 
-              <SearchableSettingTarget controlId="app-background-color">
-                <ColorPicker
-                  value={displayedAppBackgroundColor}
-                  onChange={handleAppBackgroundColorChange}
-                  gradient
-                  compact
-                  label={localizeUi("settings.controls.backgroundColor.label")}
-                  helpText="Colors the main app shell background. Leave it on the scheme default to follow Dark and Light mode automatically. Gradients are supported for the shell paint."
-                  emptyText={localizeUi("ui.panels.trackerpanelappearancedrawer.defaultValue1", {
-                    value1: defaultAppBackgroundColor,
-                  })}
-                  emptyPreviewValue={defaultAppBackgroundColor}
-                  clearLabel="Reset to default"
-                />
+              <SearchableSettingTarget controlId="ui-element-styles">
+                <UiStyleSettings />
               </SearchableSettingTarget>
 
               <SearchableSettingTarget controlId="app-accent-color">
                 <ColorPicker
+                  opacity={false}
                   value={displayedAppAccentColor}
                   onChange={handleAppAccentColorChange}
                   gradient
@@ -4219,52 +4142,60 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                 </div>
 
                 <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <label
+                  <div
                     id={getSettingsControlAnchorId("chat-widget-font")}
                     className="flex min-w-0 scroll-mt-3 flex-col gap-1"
                   >
                     <span className="text-xs font-medium">{localizeUi("settings.controls.chatWidgetFont.label")}</span>
-                    <select
+                    <Select
                       id="chat-widget-font"
                       value={chatWidgetFont}
-                      onChange={(event) => setChatWidgetFont(event.target.value)}
+                      options={[
+                        { value: "", label: localizeUi("settings.controls.chatWidgetFont.preset") },
+                        { value: "@app", label: localizeUi("settings.controls.chatWidgetFont.app") },
+                        { value: "@sans", label: localizeUi("settings.controls.chatWidgetFont.sans") },
+                        { value: "@serif", label: localizeUi("settings.controls.chatWidgetFont.serif") },
+                        { value: "@mono", label: localizeUi("settings.controls.chatWidgetFont.mono") },
+                        ...customFontOptions.map((font) => ({
+                          value: `custom:${font.family}`,
+                          label: font.family,
+                        })),
+                        ...(unavailableWidgetFont
+                          ? [
+                              {
+                                value: chatWidgetFont,
+                                label: localizeUi("settings.controls.chatWidgetFont.unavailable", {
+                                  font: unavailableWidgetFont,
+                                }),
+                              },
+                            ]
+                          : []),
+                      ]}
+                      onChange={setChatWidgetFont}
+                      label={localizeUi("settings.controls.chatWidgetFont.label")}
                       className="min-w-0 rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs outline-none ring-1 ring-transparent transition-shadow focus:ring-[var(--primary)]"
-                    >
-                      <option value="">{localizeUi("settings.controls.chatWidgetFont.preset")}</option>
-                      <option value="@app">{localizeUi("settings.controls.chatWidgetFont.app")}</option>
-                      <option value="@sans">{localizeUi("settings.controls.chatWidgetFont.sans")}</option>
-                      <option value="@serif">{localizeUi("settings.controls.chatWidgetFont.serif")}</option>
-                      <option value="@mono">{localizeUi("settings.controls.chatWidgetFont.mono")}</option>
-                      {customFontOptions.map((font) => (
-                        <option key={font.family} value={`custom:${font.family}`}>
-                          {font.family}
-                        </option>
-                      ))}
-                      {unavailableWidgetFont && (
-                        <option value={chatWidgetFont}>
-                          {localizeUi("settings.controls.chatWidgetFont.unavailable", { font: unavailableWidgetFont })}
-                        </option>
-                      )}
-                    </select>
-                  </label>
-                  <label
+                    />
+                  </div>
+                  <div
                     id={getSettingsControlAnchorId("chat-widget-shape")}
                     className="flex min-w-0 scroll-mt-3 flex-col gap-1"
                   >
                     <span className="text-xs font-medium">{localizeUi("settings.controls.chatWidgetShape.label")}</span>
-                    <select
+                    <Select
                       id="chat-widget-shape"
                       value={chatWidgetShape}
-                      onChange={(event) => setChatWidgetShape(event.target.value as ChatWidgetShape)}
+                      options={[
+                        { value: "preset", label: localizeUi("settings.controls.chatWidgetShape.preset") },
+                        { value: "rounded", label: localizeUi("settings.controls.chatWidgetShape.rounded") },
+                        { value: "square", label: localizeUi("settings.controls.chatWidgetShape.square") },
+                        { value: "cut-corner", label: localizeUi("settings.controls.chatWidgetShape.cutCorner") },
+                        { value: "arched", label: localizeUi("settings.controls.chatWidgetShape.arched") },
+                      ]}
+                      onChange={setChatWidgetShape}
+                      label={localizeUi("settings.controls.chatWidgetShape.label")}
                       className="min-w-0 rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs outline-none ring-1 ring-transparent transition-shadow focus:ring-[var(--primary)]"
-                    >
-                      <option value="preset">{localizeUi("settings.controls.chatWidgetShape.preset")}</option>
-                      <option value="rounded">{localizeUi("settings.controls.chatWidgetShape.rounded")}</option>
-                      <option value="square">{localizeUi("settings.controls.chatWidgetShape.square")}</option>
-                      <option value="cut-corner">{localizeUi("settings.controls.chatWidgetShape.cutCorner")}</option>
-                      <option value="arched">{localizeUi("settings.controls.chatWidgetShape.arched")}</option>
-                    </select>
-                  </label>
+                    />
+                  </div>
                 </div>
                 <div id={getSettingsControlAnchorId("chat-widget-button-size")} className="mt-4 scroll-mt-3">
                   <label
@@ -4385,25 +4316,23 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
             {...getSettingsSectionAnchorProps("text-scale")}
           >
             <div className="flex flex-col gap-3">
-              <label id={getSettingsControlAnchorId("font-family")} className="flex scroll-mt-3 flex-col gap-1">
+              <div id={getSettingsControlAnchorId("font-family")} className="flex scroll-mt-3 flex-col gap-1">
                 <span className="text-xs font-medium inline-flex items-center gap-1">
                   {localizeUi("ui.panels.appearancesettings.font")}{" "}
                   <HelpTooltip
                     text={localizeUi("ui.panels.appearancesettings.chooseTheFontUsedAcrossTheAppDefaultInter")}
                   />
                 </span>
-                <select
+                <Select
                   value={fontFamily}
-                  onChange={(e) => setFontFamily(e.target.value)}
+                  options={[
+                    { value: "", label: localizeUi("ui.panels.appearancesettings.defaultInter") },
+                    ...customFontOptions.map((f) => ({ value: f.family, label: f.family })),
+                  ]}
+                  onChange={setFontFamily}
+                  label={localizeUi("ui.panels.appearancesettings.font")}
                   className="rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs outline-none ring-1 ring-transparent transition-shadow focus:ring-[var(--primary)]"
-                >
-                  <option value="">{localizeUi("ui.panels.appearancesettings.defaultInter")}</option>
-                  {customFontOptions.map((f) => (
-                    <option key={f.family} value={f.family}>
-                      {f.family}
-                    </option>
-                  ))}
-                </select>
+                />
                 {(!customFonts || customFonts.length === 0) && (
                   <p className="text-[0.625rem] text-[var(--muted-foreground)]">
                     {localizeUi("ui.panels.appearancesettings.dropFontFilesTtfOtfWoffWoff2IntoThe")}{" "}
@@ -4419,7 +4348,7 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                   <FolderOpen size="0.75rem" />
                   {localizeUi("ui.panels.appearancesettings.openFontsFolder")}
                 </button>
-              </label>
+              </div>
 
               <div className="flex flex-col gap-1.5">
                 <span className="text-xs font-medium inline-flex items-center gap-1">
@@ -4447,11 +4376,7 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                     disabled={!googleFontName.trim() || googleFontMutation.isPending}
                     className={SETTINGS_BUTTON_CLASS}
                   >
-                    {googleFontMutation.isPending ? (
-                      <Loader2 size="0.75rem" className="animate-spin" />
-                    ) : (
-                      <Download size="0.75rem" />
-                    )}
+                    {googleFontMutation.isPending ? <Spinner size="sm" /> : <Download size="0.75rem" />}
                     {googleFontMutation.isPending
                       ? localizeUi("ui.panels.appearancesettings.downloading")
                       : localizeUi("ui.panels.appearancesettings.add")}
@@ -4467,29 +4392,31 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                 </a>
               </div>
 
-              <label id={getSettingsControlAnchorId("display-size")} className="flex scroll-mt-3 flex-col gap-1">
+              <div id={getSettingsControlAnchorId("display-size")} className="flex scroll-mt-3 flex-col gap-1">
                 <span className="text-xs font-medium inline-flex items-center gap-1">
                   {localizeUi("ui.panels.appearancesettings.displaySize")}{" "}
                   <HelpTooltip
                     text={localizeUi("ui.panels.appearancesettings.adjustsTheBaseFontSizeAcrossTheWholeApp")}
                   />
                 </span>
-                <select
+                <Select
                   value={String(fontSize)}
-                  onChange={(e) => setFontSize(Number(e.target.value) as Parameters<typeof setFontSize>[0])}
+                  options={[
+                    { value: "12", label: localizeUi("ui.panels.appearancesettings.tiny") },
+                    { value: "14", label: localizeUi("ui.panels.appearancesettings.small") },
+                    { value: "16", label: localizeUi("ui.panels.appearancesettings.medium") },
+                    { value: "17", label: localizeUi("ui.noodle.noodlehome.default") },
+                    { value: "19", label: localizeUi("ui.panels.appearancesettings.large") },
+                    { value: "22", label: localizeUi("ui.panels.appearancesettings.huge") },
+                    { value: "26", label: localizeUi("settings.appearance.displaySize.extraLarge") },
+                    { value: "30", label: localizeUi("settings.appearance.displaySize.extraExtraLarge") },
+                    { value: "34", label: localizeUi("settings.appearance.displaySize.maximum") },
+                  ]}
+                  onChange={(value) => setFontSize(Number(value) as Parameters<typeof setFontSize>[0])}
+                  label={localizeUi("ui.panels.appearancesettings.displaySize")}
                   className="rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs outline-none ring-1 ring-transparent transition-shadow focus:ring-[var(--primary)]"
-                >
-                  <option value="12">{localizeUi("ui.panels.appearancesettings.tiny")}</option>
-                  <option value="14">{localizeUi("ui.panels.appearancesettings.small")}</option>
-                  <option value="16">{localizeUi("ui.panels.appearancesettings.medium")}</option>
-                  <option value="17">{localizeUi("ui.noodle.noodlehome.default")}</option>
-                  <option value="19">{localizeUi("ui.panels.appearancesettings.large")}</option>
-                  <option value="22">{localizeUi("ui.panels.appearancesettings.huge")}</option>
-                  <option value="26">{localizeUi("settings.appearance.displaySize.extraLarge")}</option>
-                  <option value="30">{localizeUi("settings.appearance.displaySize.extraExtraLarge")}</option>
-                  <option value="34">{localizeUi("settings.appearance.displaySize.maximum")}</option>
-                </select>
-              </label>
+                />
+              </div>
 
               <label id={getSettingsControlAnchorId("chat-font-size")} className="flex scroll-mt-3 flex-col gap-1">
                 <span className="text-xs font-medium inline-flex items-center gap-1">
@@ -4705,26 +4632,22 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                     </span>
                   </div>
                 </label>
-                <label className="flex items-center gap-2">
+                <div className="flex items-center gap-2">
                   <span className="inline-flex shrink-0 items-center gap-1 text-[0.6875rem] font-medium">
                     {localizeUi("ui.panels.appearancesettings.chatListBackgrounds")}
                     <HelpTooltip
                       text={localizeUi("ui.panels.appearancesettings.showsEachChatsOwnBackgroundAsAMutedBanner")}
                     />
                   </span>
-                  <select
+                  <Select
                     id={getSettingsControlAnchorId("chat-list-backgrounds")}
                     value={chatListBackgrounds}
-                    onChange={(e) => setChatListBackgrounds(e.target.value as ChatListBackgroundMode)}
+                    options={CHAT_LIST_BACKGROUND_OPTIONS.map((opt) => ({ value: opt.id, label: opt.label }))}
+                    onChange={setChatListBackgrounds}
+                    label={localizeUi("ui.panels.appearancesettings.chatListBackgrounds")}
                     className="h-7 min-w-0 flex-1 scroll-mt-3 rounded-md border border-[var(--border)] bg-[var(--secondary)] px-2 text-xs"
-                  >
-                    {CHAT_LIST_BACKGROUND_OPTIONS.map((opt) => (
-                      <option key={opt.id} value={opt.id}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                  />
+                </div>
                 <BackgroundPicker
                   selected={chatBackground}
                   onSelect={setChatBackground}
@@ -5552,7 +5475,7 @@ function GenerationsSettings() {
 
       {isLoading ? (
         <div className="flex items-center justify-center gap-2 rounded-xl border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--marinara-chat-chrome-highlight-bg)] px-4 py-8 text-xs text-[var(--marinara-chat-chrome-panel-muted)]">
-          <Loader2 size="1rem" className="animate-spin" />
+          <Spinner size="md" />
           {localizeUi("ui.panels.generationssettings.checkingInstalledAgents")}
         </div>
       ) : !illustratorInstalled ? (
@@ -5853,7 +5776,7 @@ function ThemesSettings({ showIntro = true }: { showIntro?: boolean } = {}) {
               disabled={isSavingTheme}
               className={SETTINGS_COMPACT_PRIMARY_BUTTON_CLASS}
             >
-              {isSavingTheme ? <Loader2 size="0.75rem" className="animate-spin" /> : <Save size="0.75rem" />}
+              {isSavingTheme ? <Spinner size="sm" /> : <Save size="0.75rem" />}
               {isSavingTheme
                 ? localizeUi("ui.noodle.stageprofileform.saving")
                 : localizeUi("ui.noodle.noodlehome.save")}
@@ -6310,6 +6233,10 @@ type ProfileImportPreviewResult = {
   imported?: ProfileImportStats;
   warnings?: ProfileImportWarning[];
   previewToken?: string;
+  /** False for profiles from much older versions, which only add items and save no safety copy. */
+  undoable?: boolean;
+  /** True when "Keep my current versions" applies; older profiles always add next to existing items. */
+  keepsExisting?: boolean;
   error?: string;
   message?: string;
 };
@@ -6411,13 +6338,12 @@ function formatProfileImportConfirmationMessage(preview: ProfileImportPreviewRes
     warnings.length > 0
       ? `${formatProfileImportWarningSummary(warnings, warningCopy)} ${formatProfileImportWarningDetails(warnings, warningCopy)}`
       : "";
-  return [
-    `Found: ${found}.`,
-    warningDetail,
-    "Importing writes profile data from this file and cannot be undone. Continue?",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const effect = preview.keepsExisting
+    ? localizeUi("ui.panels.importsettings.profileImportKeepWarning")
+    : preview.undoable === false
+      ? localizeUi("ui.panels.importsettings.profileImportAddOnlyWarning")
+      : localizeUi("ui.panels.importsettings.profileImportReplaceWarning");
+  return [`Found: ${found}.`, warningDetail, effect].filter(Boolean).join("\n");
 }
 
 function getDownloadFilename(res: Response, fallback: string) {
@@ -6495,6 +6421,8 @@ function ImportSettings() {
   const qc = useQueryClient();
   const setActiveChatId = useChatStore((s) => s.setActiveChatId);
   const [profileImportProgress, setProfileImportProgress] = useState<ProfileImportProgressState | null>(null);
+  const [profileUndoRunning, setProfileUndoRunning] = useState(false);
+  const [profileKeepExisting, setProfileKeepExisting] = useState(false);
   const profileImportBusy =
     profileImportProgress?.status === "reading" ||
     profileImportProgress?.status === "preview" ||
@@ -6521,6 +6449,8 @@ function ImportSettings() {
   const handleProfileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    // Read once, so the preview and the import use the same mode.
+    const keepQuery = profileKeepExisting ? "keepExisting=true" : "";
     let previewToken: string | undefined;
     const releaseProfilePreview = async () => {
       if (!previewToken) return;
@@ -6581,7 +6511,7 @@ function ImportSettings() {
             }
           : current,
       );
-      const previewRes = await api.raw("/backup/import-profile?preview=true", {
+      const previewRes = await api.raw(`/backup/import-profile?preview=true${keepQuery ? `&${keepQuery}` : ""}`, {
         method: "POST",
         headers: { Accept: "application/json" },
         body: makeImportBody(isZip, profileText),
@@ -6655,7 +6585,7 @@ function ImportSettings() {
             }
           : current,
       );
-      const res = await api.raw("/backup/import-profile", {
+      const res = await api.raw(`/backup/import-profile${keepQuery ? `?${keepQuery}` : ""}`, {
         method: "POST",
         headers: {
           Accept: "text/event-stream",
@@ -6667,79 +6597,7 @@ function ImportSettings() {
         const data = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
         throw new Error(data.message ?? data.error ?? res.statusText ?? "Unknown error");
       }
-      let importCompleted = false;
-      for await (const event of readProfileImportStream(res)) {
-        if (event.type === "started") {
-          setProfileImportProgress((current) => ({
-            status: "running",
-            label: event.data?.label ?? "Profile import started",
-            completedItems: 0,
-            totalItems: Math.max(1, event.data?.totalItems ?? current?.totalItems ?? 1),
-            startedAt,
-            elapsedSeconds: Math.floor((Date.now() - startedAt) / 1000),
-          }));
-          continue;
-        }
-        if (event.type === "progress" && event.data) {
-          setProfileImportProgress((current) => ({
-            status: "running",
-            label: event.data?.label ?? "Importing profile",
-            completedItems: event.data?.completedItems ?? current?.completedItems ?? 0,
-            totalItems: Math.max(1, event.data?.totalItems ?? current?.totalItems ?? 1),
-            startedAt,
-            elapsedSeconds: Math.floor((Date.now() - startedAt) / 1000),
-            imported: event.data?.imported,
-          }));
-          continue;
-        }
-        if (event.type === "error") {
-          throw new Error(getProfileImportErrorMessage(event.data));
-        }
-        if (event.type === "done") {
-          if (event.data?.success === false) throw new Error(event.data.error ?? event.data.message ?? "Unknown error");
-          importCompleted = true;
-          qc.invalidateQueries();
-          const imported = event.data?.imported;
-          const warnings = normalizeProfileImportWarnings(event.data?.warnings);
-          const summary = formatProfileImportStats(imported, localizeUi);
-          setProfileImportProgress((current) => {
-            const totalItems = Math.max(1, current?.totalItems ?? 1);
-            return {
-              status: "success",
-              label:
-                warnings.length > 0
-                  ? localizeUi("ui.panels.importsettings.profileImportCompleteWithWarnings")
-                  : "Profile import complete",
-              completedItems: totalItems,
-              totalItems,
-              startedAt,
-              elapsedSeconds: Math.floor((Date.now() - startedAt) / 1000),
-              imported,
-              warnings,
-            };
-          });
-          if (warnings.length > 0) {
-            const warningSummary = formatProfileImportWarningSummary(warnings, profileImportWarningCopy);
-            toast.warning(
-              summary
-                ? localizeUi("ui.panels.importsettings.importedValue1Value2", {
-                    value1: summary,
-                    value2: warningSummary,
-                  })
-                : warningSummary,
-            );
-          } else {
-            toast.success(
-              summary
-                ? localizeUi("ui.panels.importsettings.importedValue1", { value1: summary })
-                : localizeUi("ui.panels.importsettings.profileImported"),
-            );
-          }
-        }
-      }
-      if (!importCompleted) {
-        throw new Error("Profile import stream closed before completion.");
-      }
+      await followProfileImportStream(res, startedAt, false);
       previewToken = undefined;
     } catch (err) {
       await releaseProfilePreview();
@@ -6757,8 +6615,177 @@ function ImportSettings() {
         error: message.replace(/^Import failed:\s*/, ""),
       });
       toast.error(message);
+      // A failed import can still have replaced or cleared the safety copy.
+      void qc.invalidateQueries({ queryKey: ["backups", "import-profile-undo"] });
     }
     e.target.value = "";
+  };
+
+  /** Follows an import's progress stream until it finishes; throws when the server reports an error. */
+  const followProfileImportStream = async (res: Response, startedAt: number, undo: boolean) => {
+    let importCompleted = false;
+    for await (const event of readProfileImportStream(res)) {
+      if (event.type === "started") {
+        setProfileImportProgress((current) => ({
+          status: "running",
+          label: undo
+            ? localizeUi("ui.panels.importsettings.undoingLastImport")
+            : (event.data?.label ?? "Profile import started"),
+          completedItems: 0,
+          totalItems: Math.max(1, event.data?.totalItems ?? current?.totalItems ?? 1),
+          startedAt,
+          elapsedSeconds: Math.floor((Date.now() - startedAt) / 1000),
+        }));
+        continue;
+      }
+      if (event.type === "progress" && event.data) {
+        setProfileImportProgress((current) => ({
+          status: "running",
+          label: undo
+            ? localizeUi("ui.panels.importsettings.undoingLastImport")
+            : event.data?.phase === "safety-copy"
+              ? localizeUi("ui.panels.importsettings.savingSafetyCopy")
+              : (event.data?.label ?? "Importing profile"),
+          completedItems: event.data?.completedItems ?? current?.completedItems ?? 0,
+          totalItems: Math.max(1, event.data?.totalItems ?? current?.totalItems ?? 1),
+          startedAt,
+          elapsedSeconds: Math.floor((Date.now() - startedAt) / 1000),
+          imported: event.data?.imported,
+        }));
+        continue;
+      }
+      if (event.type === "error") {
+        throw new Error(getProfileImportErrorMessage(event.data));
+      }
+      if (event.type === "done") {
+        if (event.data?.success === false) throw new Error(event.data.error ?? event.data.message ?? "Unknown error");
+        importCompleted = true;
+        qc.invalidateQueries();
+        const imported = event.data?.imported;
+        const warnings = normalizeProfileImportWarnings(event.data?.warnings);
+        const summary = formatProfileImportStats(imported, localizeUi);
+        setProfileImportProgress((current) => {
+          const totalItems = Math.max(1, current?.totalItems ?? 1);
+          return {
+            status: "success",
+            label: undo
+              ? localizeUi("ui.panels.importsettings.undoLastImportComplete")
+              : warnings.length > 0
+                ? localizeUi("ui.panels.importsettings.profileImportCompleteWithWarnings")
+                : "Profile import complete",
+            completedItems: totalItems,
+            totalItems,
+            startedAt,
+            elapsedSeconds: Math.floor((Date.now() - startedAt) / 1000),
+            imported,
+            warnings,
+          };
+        });
+        // Undo's warnings repeat what its confirmation said stays switched off; they stay listed below.
+        if (warnings.length > 0 && !undo) {
+          const warningSummary = formatProfileImportWarningSummary(warnings, profileImportWarningCopy);
+          toast.warning(
+            summary
+              ? localizeUi("ui.panels.importsettings.importedValue1Value2", {
+                  value1: summary,
+                  value2: warningSummary,
+                })
+              : warningSummary,
+          );
+        } else {
+          toast.success(
+            undo
+              ? localizeUi("ui.panels.importsettings.undoLastImportComplete")
+              : summary
+                ? localizeUi("ui.panels.importsettings.importedValue1", { value1: summary })
+                : localizeUi("ui.panels.importsettings.profileImported"),
+          );
+        }
+      }
+    }
+    if (!importCompleted) {
+      throw new Error("Profile import stream closed before completion.");
+    }
+  };
+
+  const undoProfileImportQuery = useQuery<{ available: boolean; savedAt?: string }>({
+    queryKey: ["backups", "import-profile-undo"],
+    queryFn: () => api.get("/backup/import-profile/undo"),
+    retry: false,
+  });
+  // A copy can exist without the record Undo needs; it can still be deleted to free its space.
+  const safetyCopySavedAt = undoProfileImportQuery.data?.savedAt;
+  const undoSavedAt = undoProfileImportQuery.data?.available ? safetyCopySavedAt : undefined;
+  const handleUndoProfileImport = async () => {
+    if (!undoSavedAt) return;
+    const confirmed = await showConfirmDialog({
+      title: localizeUi("ui.panels.importsettings.undoLastImport"),
+      message: localizeUi("ui.panels.importsettings.undoLastImportConfirm", {
+        savedAt: new Date(undoSavedAt).toLocaleString(),
+      }),
+      confirmLabel: localizeUi("ui.panels.importsettings.undoLastImport"),
+      cancelLabel: localizeUi("ui.panels.importsettings.cancel"),
+      tone: "destructive",
+    });
+    if (!confirmed) return;
+    const startedAt = Date.now();
+    setProfileUndoRunning(true);
+    setProfileImportProgress({
+      status: "starting",
+      label: localizeUi("ui.panels.importsettings.undoingLastImport"),
+      completedItems: 0,
+      totalItems: 1,
+      startedAt,
+      elapsedSeconds: 0,
+    });
+    try {
+      const res = await api.raw("/backup/import-profile/undo", {
+        method: "POST",
+        headers: { Accept: "text/event-stream" },
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+        throw new Error(data.message ?? data.error ?? res.statusText ?? "Unknown error");
+      }
+      await followProfileImportStream(res, startedAt, true);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "network/server error";
+      setProfileImportProgress({
+        status: "error",
+        label: localizeUi("ui.panels.importsettings.undoLastImportFailed"),
+        completedItems: 0,
+        totalItems: 1,
+        startedAt,
+        elapsedSeconds: Math.floor((Date.now() - startedAt) / 1000),
+        error: message,
+      });
+      toast.error(localizeUi("ui.panels.importsettings.undoLastImportFailedValue", { value: message }));
+      void qc.invalidateQueries({ queryKey: ["backups", "import-profile-undo"] });
+    } finally {
+      setProfileUndoRunning(false);
+    }
+  };
+  const handleDeleteSafetyCopy = async () => {
+    if (!safetyCopySavedAt) return;
+    const confirmed = await showConfirmDialog({
+      title: localizeUi("ui.panels.importsettings.deleteSafetyCopy"),
+      message: localizeUi("ui.panels.importsettings.deleteSafetyCopyConfirm", {
+        savedAt: new Date(safetyCopySavedAt).toLocaleString(),
+      }),
+      confirmLabel: localizeUi("ui.panels.importsettings.deleteSafetyCopy"),
+      cancelLabel: localizeUi("ui.panels.importsettings.cancel"),
+      tone: "destructive",
+    });
+    if (!confirmed) return;
+    try {
+      await api.delete("/backup/import-profile/undo");
+      toast.success(localizeUi("ui.panels.importsettings.deleteSafetyCopyComplete"));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "network/server error";
+      toast.error(localizeUi("ui.panels.importsettings.deleteSafetyCopyFailedValue", { value: message }));
+    } finally {
+      void qc.invalidateQueries({ queryKey: ["backups", "import-profile-undo"] });
+    }
   };
 
   return (
@@ -6774,14 +6801,21 @@ function ImportSettings() {
         {...getSettingsSectionAnchorProps("profile-marinara")}
       >
         <div className="flex flex-col gap-2.5">
+          <ToggleSetting
+            label={localizeUi("ui.panels.importsettings.keepCurrentVersions")}
+            checked={profileKeepExisting}
+            onChange={setProfileKeepExisting}
+            help={localizeUi("ui.panels.importsettings.keepCurrentVersionsHelp")}
+            disabled={profileImportBusy}
+          />
           <button
             type="button"
             onClick={() => profileImportInputRef.current?.click()}
             disabled={profileImportBusy}
             className={SETTINGS_PRIMARY_FULL_BUTTON_CLASS}
           >
-            {profileImportBusy ? <Loader2 size="0.8125rem" className="animate-spin" /> : <Download size="0.8125rem" />}
-            {profileImportBusy
+            {profileImportBusy && !profileUndoRunning ? <Spinner size="sm" /> : <Download size="0.8125rem" />}
+            {profileImportBusy && !profileUndoRunning
               ? profileImportProgress?.status === "reading" || profileImportProgress?.status === "preview"
                 ? localizeUi("ui.panels.importsettings.scanningProfile")
                 : localizeUi("ui.panels.importsettings.importingProfile")
@@ -6797,6 +6831,37 @@ function ImportSettings() {
             tabIndex={-1}
             aria-hidden="true"
           />
+          {safetyCopySavedAt && (
+            <div className="flex flex-col gap-1">
+              {undoSavedAt && (
+                <button
+                  type="button"
+                  onClick={() => void handleUndoProfileImport()}
+                  disabled={profileImportBusy}
+                  className={cn(SETTINGS_BUTTON_CLASS, "w-full")}
+                >
+                  {profileUndoRunning ? <Spinner size="sm" /> : <RotateCcw size="0.8125rem" />}
+                  {profileUndoRunning
+                    ? localizeUi("ui.panels.importsettings.undoingLastImport")
+                    : localizeUi("ui.panels.importsettings.undoLastImport")}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => void handleDeleteSafetyCopy()}
+                disabled={profileImportBusy}
+                className={cn(SETTINGS_BUTTON_CLASS, "mari-chrome-control--danger w-full")}
+              >
+                <Trash2 size="0.8125rem" />
+                {localizeUi("ui.panels.importsettings.deleteSafetyCopy")}
+              </button>
+              <span className="text-[0.6875rem] text-[var(--muted-foreground)]">
+                {localizeUi("ui.panels.importsettings.undoLastImportSavedAt", {
+                  savedAt: new Date(safetyCopySavedAt).toLocaleString(),
+                })}
+              </span>
+            </div>
+          )}
 
           {profileImportProgress && (
             <div
@@ -6822,7 +6887,7 @@ function ImportSettings() {
                   ) : profileImportProgress.status === "error" ? (
                     <AlertTriangle size="0.875rem" className="shrink-0" />
                   ) : (
-                    <Loader2 size="0.875rem" className="shrink-0 animate-spin text-emerald-500" />
+                    <Spinner size="sm" className="shrink-0 text-emerald-500" />
                   )}
                   <span className="truncate font-medium">{profileImportProgress.label}</span>
                 </div>
@@ -6970,12 +7035,12 @@ function ImportButton({
         const previews = await inspectCharacterFilesForEmbeddedLorebooks([file]);
         const preview = previews[0];
         if (preview) {
-          importEmbeddedLorebook = window.confirm(
-            localizeUi("ui.panels.importbutton.embeddedLorebookImportPrompt", {
+          importEmbeddedLorebook = await showConfirmDialog({
+            message: localizeUi("ui.panels.importbutton.embeddedLorebookImportPrompt", {
               name: preview.name ?? file.name,
               count: preview.embeddedLorebookEntries,
             }),
-          );
+          });
         }
       }
 
@@ -7098,6 +7163,7 @@ function AdvancedSettings() {
   const includePrivateNotesInExports = useUIStore((s) => s.includePrivateNotesInExports);
   const setIncludePrivateNotesInExports = useUIStore((s) => s.setIncludePrivateNotesInExports);
   const debugMode = useUIStore((s) => s.debugMode);
+  const tapTimings = useTapTimingsEnabled();
   const setDebugMode = useUIStore((s) => s.setDebugMode);
   const clearAllData = useClearAllData();
   const expungeData = useExpungeData();
@@ -7107,13 +7173,8 @@ function AdvancedSettings() {
   const [exportProfileDialogOpen, setExportProfileDialogOpen] = useState(false);
   const [refreshingSpa, setRefreshingSpa] = useState(false);
   const [adminSecret, setAdminSecret] = useState(() => localStorage.getItem(ADMIN_SECRET_STORAGE_KEY) ?? "");
-  const restartServer = useMutation({
-    mutationFn: () => api.post<{ status: "restarting" }>("/admin/restart", { confirm: true }),
-    onSuccess: () => toast.success(localizeUi("settings.serverRestart.success")),
-    onError: (error) => {
-      toast.error(getPrivilegedActionErrorMessage(error, localizeUi("settings.serverRestart.error")));
-    },
-  });
+  const restartServer = useRestartServer();
+  const canRestartServer = useCanRestartServer();
   const { data: extensionPolicy, isLoading: extensionPolicyLoading } = usePersonalExtensionPolicy();
   const setExternalExtensionsEnabled = useSetExternalExtensionsEnabled();
   const { data: agentImportPolicy, isLoading: agentImportPolicyLoading } = useAgentImportPolicy();
@@ -7142,22 +7203,13 @@ function AdvancedSettings() {
       toast.error(getPrivilegedActionErrorMessage(error, localizeUi("settings.storageOptimization.error")));
     },
   });
-  const nativeConsoleBridge = getMarinaraAndroidBridge();
-  const canOpenNativeConsole = typeof nativeConsoleBridge?.openConsole === "function";
-  const nativeConsoleHelp = getNativeConsoleShortcutHelp();
+  const consoleHelp = localizeUi("serverConsole.settingsHelp");
 
-  const handleOpenNativeConsole = useCallback(() => {
-    const bridge = getMarinaraAndroidBridge();
-    if (typeof bridge?.openConsole !== "function") {
-      toast.info(getNativeConsoleShortcutHelp());
-      return;
-    }
-
-    const token = getAndroidBridgeToken();
-    if (token) bridge.openConsole(token);
-    else bridge.openConsole();
-    toast.info(localizeUi("ui.panels.advancedsettings.openingTermuxConsole"));
-  }, [localizeUi]);
+  const handleOpenConsole = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    // On a phone the Settings panel covers the console's sheet, so it steps aside first.
+    if (isPhoneWindowLayout()) useUIStore.getState().closeRightPanel();
+    useFloatingWindowStore.getState().openWindow(SERVER_CONSOLE_WINDOW_ID, event.currentTarget);
+  }, []);
 
   const handleExternalExtensionsToggle = useCallback(
     async (enabled: boolean) => {
@@ -7715,20 +7767,18 @@ function AdvancedSettings() {
             <button
               type="button"
               onClick={() => void handleRestartServer()}
-              disabled={restartServer.isPending}
+              disabled={restartServer.isPending || !canRestartServer}
               className={SETTINGS_PRIMARY_FULL_BUTTON_CLASS}
             >
-              {restartServer.isPending ? (
-                <Loader2 size="0.8125rem" className="animate-spin" />
-              ) : (
-                <Power size="0.8125rem" />
-              )}
+              {restartServer.isPending ? <Spinner size="sm" /> : <Power size="0.8125rem" />}
               {restartServer.isPending
                 ? localizeUi("settings.serverRestart.restarting")
                 : localizeUi("settings.serverRestart.action")}
             </button>
             <p className="text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
-              {localizeUi("settings.serverRestart.description")}
+              {localizeUi(
+                canRestartServer ? "settings.serverRestart.description" : "settings.serverRestart.unavailable",
+              )}
             </p>
           </SearchableSettingTarget>
         </div>
@@ -7751,28 +7801,20 @@ function AdvancedSettings() {
       >
         <div className="flex flex-col gap-2">
           <div className="flex flex-col gap-2">
-            <label
+            <div
               id={getSettingsControlAnchorId("release-channel")}
               className="flex scroll-mt-3 min-w-0 flex-col gap-1 text-[0.625rem] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]"
             >
               {localizeUi("ui.panels.advancedsettings.releaseChannel")}
-              <select
-                value={selectedUpdateChannelId ?? ""}
-                onChange={(event) => setUpdateChannel(event.target.value as UpdateChannelId)}
+              <Select
+                value={selectedUpdateChannelId ?? null}
+                options={updateChannelOptions.map((channel) => ({ value: channel.id, label: channel.label }))}
+                onChange={setUpdateChannel}
+                label={localizeUi("ui.panels.advancedsettings.releaseChannel")}
+                placeholder={localizeUi("settings.updates.channelPending")}
                 className="w-full rounded-lg bg-[var(--background)] px-3 py-2 text-xs font-medium normal-case tracking-normal text-[var(--foreground)] outline-none ring-1 ring-[var(--border)] focus:ring-[var(--primary)]"
-              >
-                {!selectedUpdateChannelId && (
-                  <option value="" disabled>
-                    {localizeUi("settings.updates.channelPending")}
-                  </option>
-                )}
-                {updateChannelOptions.map((channel) => (
-                  <option key={channel.id} value={channel.id}>
-                    {channel.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+              />
+            </div>
             <button
               type="button"
               onClick={() => updateCheck.refetch()}
@@ -7781,7 +7823,7 @@ function AdvancedSettings() {
             >
               {updateCheck.isFetching ? (
                 <>
-                  <Loader2 size="0.8125rem" className="animate-spin" />
+                  <Spinner size="sm" />
                   {localizeUi("settings.notifications.customSound.status.loading")}
                 </>
               ) : (
@@ -7880,7 +7922,7 @@ function AdvancedSettings() {
                 >
                   {applyUpdate.isPending ? (
                     <>
-                      <Loader2 size="0.8125rem" className="animate-spin" />
+                      <Spinner size="sm" />
                       {updateCheck.data.channelSwitch
                         ? localizeUi("ui.panels.advancedsettings.switching")
                         : localizeUi("ui.panels.advancedsettings.updating")}
@@ -7961,7 +8003,7 @@ function AdvancedSettings() {
             >
               {refreshingSpa ? (
                 <>
-                  <Loader2 size="0.8125rem" className="animate-spin" />
+                  <Spinner size="sm" />
                   {localizeUi("ui.panels.advancedsettings.refreshing")}
                 </>
               ) : (
@@ -8109,19 +8151,26 @@ function AdvancedSettings() {
             onChange={setDebugMode}
             help={localizeUi("settings.controls.debugMode.help")}
           />
+          <ToggleSetting
+            anchorId={getSettingsControlAnchorId("tap-timings")}
+            label={localizeUi("settings.controls.tapTimings.label")}
+            checked={tapTimings}
+            onChange={setTapTimingsEnabled}
+            help={localizeUi("settings.controls.tapTimings.help")}
+          />
           <div className="flex items-center gap-2">
-            <div className="min-w-0 flex-1" title={nativeConsoleHelp}>
+            <div className="min-w-0 flex-1" title={consoleHelp}>
               <button
                 type="button"
-                onClick={handleOpenNativeConsole}
-                disabled={!canOpenNativeConsole}
+                data-window-opener={SERVER_CONSOLE_WINDOW_ID}
+                onClick={handleOpenConsole}
                 className={SETTINGS_PRIMARY_FULL_BUTTON_CLASS}
               >
                 <Terminal size="0.8125rem" className="shrink-0" />
                 <span>{localizeUi("ui.panels.advancedsettings.openConsole")}</span>
               </button>
             </div>
-            <HelpTooltip side="bottom" text={nativeConsoleHelp} />
+            <HelpTooltip side="bottom" text={consoleHelp} />
           </div>
         </div>
       </SettingsSection>
@@ -8212,7 +8261,7 @@ function AdvancedSettings() {
           >
             {creatingBackup ? (
               <>
-                <Loader2 size="0.8125rem" className="animate-spin" />
+                <Spinner size="sm" />
                 {localizeUi("ui.panels.advancedsettings.creatingBackup")}
               </>
             ) : (
@@ -8230,7 +8279,7 @@ function AdvancedSettings() {
           >
             {exportingProfile ? (
               <>
-                <Loader2 size="0.8125rem" className="animate-spin" />
+                <Spinner size="sm" />
                 {localizeUi("ui.panels.advancedsettings.exporting")}
               </>
             ) : (
@@ -8288,11 +8337,7 @@ function AdvancedSettings() {
             disabled={scanAvatarStorage.isPending || cleanAvatarStorage.isPending}
             className={SETTINGS_PRIMARY_FULL_BUTTON_CLASS}
           >
-            {scanAvatarStorage.isPending ? (
-              <Loader2 size="0.8125rem" className="animate-spin" />
-            ) : (
-              <Search size="0.8125rem" />
-            )}
+            {scanAvatarStorage.isPending ? <Spinner size="sm" /> : <Search size="0.8125rem" />}
             {scanAvatarStorage.isPending
               ? localizeUi("settings.storageOptimization.scanning")
               : localizeUi("settings.storageOptimization.action.check")}
@@ -8315,11 +8360,7 @@ function AdvancedSettings() {
               disabled={cleanAvatarStorage.isPending || scanAvatarStorage.isPending}
               className={cn(SETTINGS_PRIMARY_FULL_BUTTON_CLASS, "mari-chrome-control--danger")}
             >
-              {cleanAvatarStorage.isPending ? (
-                <Loader2 size="0.8125rem" className="animate-spin" />
-              ) : (
-                <Trash2 size="0.8125rem" />
-              )}
+              {cleanAvatarStorage.isPending ? <Spinner size="sm" /> : <Trash2 size="0.8125rem" />}
               {cleanAvatarStorage.isPending
                 ? localizeUi("settings.storageOptimization.deleting")
                 : localizeUi("settings.storageOptimization.action.delete")}
@@ -8348,8 +8389,7 @@ function AdvancedSettings() {
                       : "bg-[var(--background)]/40 ring-[var(--border)] hover:bg-[var(--accent)]/70",
                   )}
                 >
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={checked}
                     disabled={isClearing}
                     onChange={() => toggleScope(scope.id)}
@@ -8425,7 +8465,7 @@ function AdvancedSettings() {
                   disabled={isClearing}
                   className={cn(SETTINGS_BUTTON_CLASS, "mari-chrome-control--danger w-full")}
                 >
-                  {isClearing ? <Loader2 size="0.75rem" className="animate-spin" /> : <Trash2 size="0.75rem" />}
+                  {isClearing ? <Spinner size="sm" /> : <Trash2 size="0.75rem" />}
                   {localizeUi("ui.panels.advancedsettings.confirmDelete")}
                 </button>
               </div>

@@ -9,7 +9,6 @@ import {
   Shield,
   X,
   Flag,
-  Loader2,
   AlertTriangle,
   Trophy,
   Skull,
@@ -30,6 +29,9 @@ import { cn } from "../../lib/utils";
 import type { CombatPartyMember, CombatEnemy, CombatAttack, NarrativeStyle, Lorebook } from "@marinara-engine/shared";
 import { Translation, useTranslation as useUiTranslation } from "react-i18next";
 import { useDialogFocusScope } from "../../hooks/use-dialog-focus-scope";
+import { LorebookPickerField } from "../ui/LibraryPickers";
+import { Select } from "../ui/Select";
+import { Spinner } from "../ui/Spinner";
 
 // ──────────────────────────────────────────────
 // Sub-components
@@ -311,31 +313,37 @@ function NarrativeSelect({
     <div className="space-y-2">
       <h4 className="text-xs font-bold text-[var(--muted-foreground)]">{label}</h4>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <select
+        <Select<NarrativeStyle["tense"]>
+          label={localizeUi("ui.chat.narrativeselect.tenseLabel")}
           value={value.tense}
-          onChange={(e) => onChange({ ...value, tense: e.target.value as any })}
+          options={[
+            { value: "present", label: localizeUi("ui.chat.narrativeselect.presentTense") },
+            { value: "past", label: localizeUi("ui.chat.narrativeselect.pastTense") },
+          ]}
+          onChange={(tense) => onChange({ ...value, tense })}
           className="rounded-lg border border-[var(--marinara-chat-chrome-input-border)] bg-[var(--muted)]/30 px-2 py-1.5 text-xs text-[var(--foreground)]"
-        >
-          <option value="present">{localizeUi("ui.chat.narrativeselect.presentTense")}</option>
-          <option value="past">{localizeUi("ui.chat.narrativeselect.pastTense")}</option>
-        </select>
-        <select
+        />
+        <Select<NarrativeStyle["person"]>
+          label={localizeUi("ui.chat.narrativeselect.personLabel")}
           value={value.person}
-          onChange={(e) => onChange({ ...value, person: e.target.value as any })}
+          options={[
+            { value: "first", label: localizeUi("ui.chat.narrativeselect.firstPerson") },
+            { value: "second", label: localizeUi("ui.chat.narrativeselect.secondPerson") },
+            { value: "third", label: localizeUi("ui.chat.narrativeselect.thirdPerson") },
+          ]}
+          onChange={(person) => onChange({ ...value, person })}
           className="rounded-lg border border-[var(--marinara-chat-chrome-input-border)] bg-[var(--muted)]/30 px-2 py-1.5 text-xs text-[var(--foreground)]"
-        >
-          <option value="first">{localizeUi("ui.chat.narrativeselect.firstPerson")}</option>
-          <option value="second">{localizeUi("ui.chat.narrativeselect.secondPerson")}</option>
-          <option value="third">{localizeUi("ui.chat.narrativeselect.thirdPerson")}</option>
-        </select>
-        <select
+        />
+        <Select<NarrativeStyle["narration"]>
+          label={localizeUi("ui.chat.narrativeselect.narrationLabel")}
           value={value.narration}
-          onChange={(e) => onChange({ ...value, narration: e.target.value as any })}
+          options={[
+            { value: "omniscient", label: localizeUi("ui.chat.narrativeselect.omniscient") },
+            { value: "limited", label: localizeUi("ui.chat.narrativeselect.limited") },
+          ]}
+          onChange={(narration) => onChange({ ...value, narration })}
           className="rounded-lg border border-[var(--marinara-chat-chrome-input-border)] bg-[var(--muted)]/30 px-2 py-1.5 text-xs text-[var(--foreground)]"
-        >
-          <option value="omniscient">{localizeUi("ui.chat.narrativeselect.omniscient")}</option>
-          <option value="limited">{localizeUi("ui.chat.narrativeselect.limited")}</option>
-        </select>
+        />
         <input
           value={value.pov}
           onChange={(e) => onChange({ ...value, pov: e.target.value })}
@@ -422,18 +430,13 @@ function EncounterConfig() {
             <p className="text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]/70">
               {localizeUi("ui.chat.encounterconfig.attachASpellbookSoTheAiKnowsWhichSpells")}
             </p>
-            <select
+            <LorebookPickerField
               value={spellbookId ?? ""}
-              onChange={(e) => setSpellbookId(e.target.value || null)}
-              className="w-full rounded-lg border border-[var(--marinara-chat-chrome-input-border)] bg-[var(--muted)]/30 px-2 py-1.5 text-xs text-[var(--foreground)]"
-            >
-              <option value="">{localizeUi("ui.game.gamesurfacecomponent.none")}</option>
-              {spellbooks.map((lb) => (
-                <option key={lb.id} value={lb.id}>
-                  {lb.name}
-                </option>
-              ))}
-            </select>
+              lorebooks={spellbooks}
+              ariaLabel={localizeUi("ui.chat.encounterconfig.spellbook")}
+              onChange={(id) => setSpellbookId(id || null)}
+              triggerClassName="w-full rounded-lg border border-[var(--marinara-chat-chrome-input-border)] bg-[var(--muted)]/30 px-2 py-1.5 text-xs text-[var(--foreground)]"
+            />
           </div>
         </div>
 
@@ -720,7 +723,7 @@ function CombatEndScreen() {
 
       {summaryStatus === "generating" && (
         <div className="mt-4 flex items-center gap-2 text-sm text-foreground/50">
-          <Loader2 size="1rem" className="animate-spin" />
+          <Spinner size="md" />
           {localizeUi("ui.chat.combatendscreen.generatingCombatSummary")}
         </div>
       )}
@@ -919,7 +922,7 @@ function EncounterModalInner() {
               {/* Loading state */}
               {isLoading && !initialized && (
                 <div className="flex flex-col items-center justify-center gap-3 py-20">
-                  <Loader2 size="2rem" className="animate-spin text-red-400" />
+                  <Spinner size="lg" className="text-red-400 h-[2rem] w-[2rem]" />
                   <p className="text-sm text-foreground/50">
                     {localizeUi("ui.chat.encountermodalinner.initializingCombatEncounter")}
                   </p>
@@ -995,7 +998,7 @@ function EncounterModalInner() {
                   {/* Processing indicator */}
                   {isProcessing && (
                     <div className="flex items-center justify-center gap-2 py-2 text-xs text-foreground/40">
-                      <Loader2 size="0.875rem" className="animate-spin" />
+                      <Spinner size="sm" />
                       {localizeUi("ui.chat.encountermodalinner.processingAction")}
                     </div>
                   )}

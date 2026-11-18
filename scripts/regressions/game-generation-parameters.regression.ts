@@ -87,6 +87,33 @@ const noReasoning = gameGenOptions("gpt-5.5", {}, { reasoningEffort: null, verbo
 assert.equal(noReasoning.reasoningEffort, "none");
 assert.equal(noReasoning.enableThinking, false);
 assert.equal(noReasoning.verbosity, undefined);
+// Gemini 4 Argon and Carbon think at medium with nothing saved, and Hydrogen at high: their helpers send it, think
+// with it and keep room for it, while another model's helper keeps its budget.
+for (const provider of ["google", "google_vertex"]) {
+  // Hydrogen is on the Gemini API only (Vertex does not list it).
+  for (const [model, level] of [
+    ["gemini-4-argon", "medium"],
+    ["gemini-4-carbon", "medium"],
+    ...(provider === "google" ? ([["gemini-4-hydrogen", "high"]] as const) : []),
+  ] as const) {
+    const unsaved = gameGenOptions(model, { maxTokens: 1200, enableThinking: false }, null, provider);
+    assert.equal(unsaved.reasoningEffort, level, `${provider} ${model} helper level`);
+    assert.equal(unsaved.enableThinking, true, `${provider} ${model} helper with nothing saved thinks`);
+    assert.ok(unsaved.maxTokens! > 1200, `${provider} ${model} helper with nothing saved keeps room for thinking`);
+    // With Reasoning Effort's Send switch off the level is left out, but the model still thinks at medium: the room stays.
+    const unsent = gameGenOptions(
+      model,
+      { maxTokens: 1200 },
+      { enabledParameters: { reasoningEffort: false } },
+      provider,
+    );
+    assert.equal(unsent.reasoningEffort, undefined, `${provider} ${model} sends no level with the switch off`);
+    assert.ok(unsent.maxTokens! > 1200, `${provider} ${model} keeps room for its default thinking with the switch off`);
+  }
+  const gemini3 = gameGenOptions("gemini-3-pro-preview", { maxTokens: 1200 }, { reasoningEffort: "high" }, provider);
+  assert.equal(gemini3.reasoningEffort, "high");
+  assert.equal(gemini3.maxTokens, 1200, `${provider} Gemini 3 helper keeps its budget`);
+}
 const claude = gameGenOptions("claude-opus-4-7", {}, { temperature: 0.3, topP: 0.6 }, "anthropic");
 assert.equal(claude.temperature, undefined, "provider sampling restrictions still apply");
 assert.equal(claude.topP, undefined);

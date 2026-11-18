@@ -1,9 +1,18 @@
 import { useEffect, useState } from "react";
 import { FileText, RotateCcw } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
-import { DEFAULT_GAME_SYSTEM_PROMPT, type AgentPromptTemplateOption } from "@marinara-engine/shared";
+import {
+  DEFAULT_GAME_SYSTEM_PROMPT,
+  defaultGameRatingGuidelines,
+  GAME_RATING_GUIDELINES_MAX_CHARS,
+  gentleGameInstructions,
+  storedGameRatingGuidelines,
+  type AgentPromptTemplateOption,
+} from "@marinara-engine/shared";
 import { MacroTextarea } from "../../../components/ui/MacroTextarea";
+import { Select } from "../../../components/ui/Select";
 import { ChatSettingsSection } from "../ChatSettingsSection";
+import { GameStoryBoundariesFields, type GameStorySettings } from "../../../components/game/GameStoryBoundariesFields";
 
 interface PromptPresetOption {
   id: string;
@@ -24,6 +33,14 @@ interface GameExtraPromptSectionProps {
   onSpecialInstructionsChange: (value: string) => void;
   onPromptPresetChange: (presetId: string | null) => void;
   onGmPromptTemplateChange: (templateId: string | null) => void;
+  /** The game's content rating, which picks the built-in rating guidelines. */
+  rating: "sfw" | "nsfw";
+  /** The game's own rating guidelines, or empty for the built-in text. */
+  ratingGuidelinesValue: string;
+  onRatingGuidelinesCommit: (value: string | null) => void;
+  /** Story style, violence level and content boundaries (game-story-style.ts). */
+  storySettings: GameStorySettings;
+  onStorySettingsCommit: (patch: Partial<GameStorySettings>) => void;
 }
 
 export function GameExtraPromptSection({
@@ -39,11 +56,18 @@ export function GameExtraPromptSection({
   onSpecialInstructionsChange,
   onPromptPresetChange,
   onGmPromptTemplateChange,
+  rating,
+  ratingGuidelinesValue,
+  onRatingGuidelinesCommit,
+  storySettings,
+  onStorySettingsCommit,
 }: GameExtraPromptSectionProps) {
   const { t: localizeUi } = useUiTranslation();
   const selectedGmPromptTemplate = gmPromptTemplates.find((template) => template.id === gmPromptTemplateId) ?? null;
-  const basePrompt =
+  const sourcePrompt =
     selectedGmPromptTemplate?.promptTemplate.trim() || selectedPresetPrompt.trim() || DEFAULT_GAME_SYSTEM_PROMPT;
+  // A gentle game shows (and sends) the gentle text in place of the built-in standard text.
+  const basePrompt = storySettings.storyStyle === "gentle" ? gentleGameInstructions(sourcePrompt) : sourcePrompt;
   // Local draft always shows the effective Game prompt (chat-local edit, else
   // the GM style / preset / built-in default). Editing saves a chat-local copy.
   const [draft, setDraft] = useState(storedValue || basePrompt);
@@ -54,6 +78,18 @@ export function GameExtraPromptSection({
   const commitDraft = () => {
     const isBasePrompt = draft.trim() === basePrompt.trim();
     onCommit(!draft.trim() || isBasePrompt ? null : draft);
+  };
+
+  const ratingOptions = { violence: storySettings.violence, storyStyle: storySettings.storyStyle };
+  const defaultRatingGuidelines = defaultGameRatingGuidelines(rating, ratingOptions);
+  const [ratingDraft, setRatingDraft] = useState(ratingGuidelinesValue || defaultRatingGuidelines);
+  useEffect(() => {
+    setRatingDraft(ratingGuidelinesValue || defaultRatingGuidelines);
+  }, [ratingGuidelinesValue, defaultRatingGuidelines]);
+  const commitRatingDraft = () => {
+    const next = storedGameRatingGuidelines(ratingDraft, rating, ratingOptions);
+    if ((next ?? "") === ratingGuidelinesValue.trim()) return;
+    onRatingGuidelinesCommit(next);
   };
 
   const resetPrompt = () => {
@@ -77,49 +113,46 @@ export function GameExtraPromptSection({
       help={localizeUi("ui.chatSettings.gameextrapromptsection.chooseAPresetSGamePromptThenOptionallyEdit")}
     >
       <div className="space-y-2">
-        <label className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-1.5">
           <span className="text-[0.6875rem] font-medium text-[var(--muted-foreground)]">
             {localizeUi("ui.chatSettings.conversationpromptsection.promptSource")}
           </span>
-          <select
+          <Select
+            label={localizeUi("ui.chatSettings.conversationpromptsection.promptSource")}
             value={promptPresetId ?? ""}
-            onChange={(event) => onPromptPresetChange(event.target.value || null)}
+            options={[
+              {
+                value: "",
+                label:
+                  promptPresets.length === 0
+                    ? localizeUi("ui.chatSettings.conversationpromptsection.noPresetsAvailable")
+                    : localizeUi("ui.chatSettings.gameextrapromptsection.defaultGamePrompt"),
+              },
+              ...promptPresets.map((preset) => ({ value: preset.id, label: preset.name })),
+            ]}
+            onChange={(value) => onPromptPresetChange(value || null)}
             disabled={promptPresets.length === 0}
-            className="mari-preset-native-select min-w-0 flex-1 truncate rounded-lg bg-[var(--secondary)] px-3 py-2 pr-8 text-xs text-[var(--foreground)] outline-none ring-1 ring-[var(--border)] transition-shadow focus:ring-[var(--primary)]/40 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <option value="">
-              {promptPresets.length === 0
-                ? localizeUi("ui.chatSettings.conversationpromptsection.noPresetsAvailable")
-                : localizeUi("ui.chatSettings.gameextrapromptsection.defaultGamePrompt")}
-            </option>
-            {promptPresets.length > 0 &&
-              promptPresets.map((preset) => (
-                <option key={preset.id} value={preset.id}>
-                  {preset.name}
-                </option>
-              ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1.5">
+            className="mari-preset-native-select min-w-0 flex-1 truncate rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs text-[var(--foreground)] outline-none ring-1 ring-[var(--border)] transition-shadow focus:ring-[var(--primary)]/40 disabled:cursor-not-allowed disabled:opacity-60"
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
           <span className="text-[0.6875rem] font-medium text-[var(--muted-foreground)]">
             {localizeUi("ui.chatSettings.gameextrapromptsection.gmPromptStyle")}
           </span>
-          <select
+          <Select
+            label={localizeUi("ui.chatSettings.gameextrapromptsection.gmPromptStyle")}
             value={gmPromptTemplateId ?? ""}
-            onChange={(event) => onGmPromptTemplateChange(event.target.value || null)}
-            className="mari-preset-native-select w-full truncate rounded-lg bg-[var(--secondary)] px-3 py-2 pr-8 text-xs text-[var(--foreground)] outline-none ring-1 ring-[var(--border)] transition-shadow focus:ring-[var(--primary)]/40"
-          >
-            <option value="">{localizeUi("ui.chatSettings.gameextrapromptsection.useSelectedPromptSource")}</option>
-            {gmPromptTemplates.map((template) => (
-              <option key={template.id} value={template.id}>
-                {template.name}
-              </option>
-            ))}
-          </select>
+            options={[
+              { value: "", label: localizeUi("ui.chatSettings.gameextrapromptsection.useSelectedPromptSource") },
+              ...gmPromptTemplates.map((template) => ({ value: template.id, label: template.name })),
+            ]}
+            onChange={(value) => onGmPromptTemplateChange(value || null)}
+            className="mari-preset-native-select w-full truncate rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs text-[var(--foreground)] outline-none ring-1 ring-[var(--border)] transition-shadow focus:ring-[var(--primary)]/40"
+          />
           <span className="text-[0.575rem] leading-relaxed text-[var(--muted-foreground)]">
             {localizeUi("ui.chatSettings.gameextrapromptsection.aSelectedGmStyleReplacesOnlyTheGamePrompt")}
           </span>
-        </label>
+        </div>
 
         <div className="flex items-center justify-between gap-2">
           <span className="text-[0.6875rem] font-medium text-[var(--foreground)]">
@@ -173,6 +206,44 @@ export function GameExtraPromptSection({
             maxLength={2000}
             className="mari-chrome-field min-h-[5rem] w-full !rounded-md px-3 py-2 pr-8 text-xs leading-relaxed"
           />
+        </div>
+
+        <GameStoryBoundariesFields value={storySettings} onChange={onStorySettingsCommit} />
+
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[0.6875rem] font-medium text-[var(--muted-foreground)]">
+              {localizeUi("ui.chatSettings.gameextrapromptsection.ratingGuidelines")}
+            </span>
+            {ratingGuidelinesValue && (
+              <button
+                type="button"
+                onClick={() => {
+                  onRatingGuidelinesCommit(null);
+                  setRatingDraft(defaultRatingGuidelines);
+                }}
+                className="flex items-center justify-center rounded-lg bg-[var(--secondary)] px-2 py-1 text-[0.625rem] text-[var(--muted-foreground)] ring-1 ring-[var(--border)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+                title={localizeUi("ui.game.gamesetupwizard.resetRatingGuidelines")}
+              >
+                <RotateCcw size="0.625rem" />
+              </button>
+            )}
+          </div>
+          <MacroTextarea
+            value={ratingDraft}
+            onChange={setRatingDraft}
+            onBlur={commitRatingDraft}
+            onExpandedClose={commitRatingDraft}
+            title={localizeUi("ui.chatSettings.gameextrapromptsection.ratingGuidelines")}
+            ariaLabel={localizeUi("ui.chatSettings.gameextrapromptsection.ratingGuidelines")}
+            rows={5}
+            maxLength={GAME_RATING_GUIDELINES_MAX_CHARS}
+            className="mari-editor-field min-h-[7rem] w-full p-3 font-mono text-xs"
+            spellCheck={false}
+          />
+          <span className="text-[0.575rem] leading-relaxed text-[var(--muted-foreground)]">
+            {localizeUi("ui.game.gamesetupwizard.ratingGuidelinesHelp")}
+          </span>
         </div>
       </div>
     </ChatSettingsSection>

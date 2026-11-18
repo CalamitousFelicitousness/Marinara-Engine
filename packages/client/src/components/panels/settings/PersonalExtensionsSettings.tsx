@@ -10,7 +10,6 @@ import {
   FileArchive,
   FolderOpen,
   History,
-  Loader2,
   Power,
   PowerOff,
   RotateCcw,
@@ -32,6 +31,8 @@ import {
 import { ApiError, getPrivilegedActionErrorMessage } from "../../../lib/api-client";
 import { showConfirmDialog } from "../../../lib/app-dialogs";
 import { cn } from "../../../lib/utils";
+import { useBackDismiss } from "../../../hooks/use-back-dismiss";
+import { useUIStore } from "../../../stores/ui.store";
 import {
   useApprovePersonalExtension,
   useCreatePersonalExtension,
@@ -74,6 +75,9 @@ import {
   SettingsIntro,
   SettingsSection,
 } from "./SettingControls";
+import { Spinner } from "../../ui/Spinner";
+import { Checkbox } from "../../ui/Checkbox";
+import { Select } from "../../ui/Select";
 
 type EditorDraft = PersonalExtensionImportDraft;
 
@@ -226,19 +230,18 @@ export function ExtensionRevisionHistorySettings() {
       <p className="text-xs text-[var(--muted-foreground)]">{t("settings.extensions.revisionHistory.description")}</p>
       <div className="flex items-center justify-between gap-3 text-xs">
         <label htmlFor={limitId}>{t("settings.extensions.revisionHistory.limit")}</label>
-        <select
+        <Select
           id={limitId}
-          value={data?.limit ?? PERSONAL_EXTENSION_DEFAULT_REVISIONS}
+          value={String(data?.limit ?? PERSONAL_EXTENSION_DEFAULT_REVISIONS)}
+          options={Array.from({ length: PERSONAL_EXTENSION_MAX_REVISIONS + 1 }, (_, limit) => ({
+            value: String(limit),
+            label: String(limit),
+          }))}
           disabled={!data || update.isPending}
-          onChange={(event) => void changeLimit(Number(event.target.value))}
+          onChange={(value) => void changeLimit(Number(value))}
+          label={t("settings.extensions.revisionHistory.limit")}
           className="rounded-lg bg-[var(--secondary)] px-3 py-2 ring-1 ring-[var(--border)] disabled:opacity-50"
-        >
-          {Array.from({ length: PERSONAL_EXTENSION_MAX_REVISIONS + 1 }, (_, limit) => (
-            <option key={limit} value={limit}>
-              {limit}
-            </option>
-          ))}
-        </select>
+        />
       </div>
       {error && (
         <p role="alert" className="text-xs text-[var(--destructive)]">
@@ -313,6 +316,10 @@ function ExtensionSettings({ showIntro, mode }: { showIntro: boolean; mode: Exte
     setEditorId(null);
     setDraft({ ...EMPTY_DRAFT });
   }, []);
+
+  // Phone Back steps from the editor to the list exactly like the button: same function, no extra discard.
+  const panelShowing = useUIStore((s) => s.rightPanelOpen && s.rightPanel === "settings");
+  useBackDismiss(panelShowing && !!editorId, closeEditor);
 
   const saveDraft = useCallback(async () => {
     if (!editingExtension) {
@@ -603,13 +610,16 @@ function ExtensionSettings({ showIntro, mode }: { showIntro: boolean; mode: Exte
     const currentTraffic = current ? getPersonalExtensionTraffic(current.id) : null;
     return (
       <div className="flex flex-col gap-3">
-        <div className="flex flex-col gap-2">
+        {/* Pinned while the editor scrolls: -top-3 cancels the scroller's p-3 so it sits flush, and the row must stay a direct child of this root. */}
+        <div className="sticky -top-3 z-10 -mb-2 -mt-1.5 bg-[var(--background)] pb-1 pt-1.5">
           <button type="button" onClick={closeEditor} className={cn(SETTINGS_BUTTON_CLASS, "self-start")}>
             <ChevronLeft size="0.75rem" />
             {isExternal
               ? t("settings.externalExtensions.title")
               : localizeUi("settings.sections.personalExtensions.title")}
           </button>
+        </div>
+        <div className="flex flex-col gap-2">
           <div
             className={cn(
               "grid w-full items-center gap-1.5",
@@ -671,7 +681,7 @@ function ExtensionSettings({ showIntro, mode }: { showIntro: boolean; mode: Exte
                 title={localizeUi("ui.panels.extensionsettings.saveDraft")}
                 className={SETTINGS_COMPACT_PRIMARY_BUTTON_CLASS}
               >
-                {busy ? <Loader2 size="0.75rem" className="animate-spin" /> : <Save size="0.75rem" />}
+                {busy ? <Spinner size="sm" /> : <Save size="0.75rem" />}
                 <span className="truncate">{localizeUi("ui.panels.extensionsettings.saveAction")}</span>
               </button>
             )}
@@ -748,24 +758,26 @@ function ExtensionSettings({ showIntro, mode }: { showIntro: boolean; mode: Exte
               className="min-h-10 rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-3 text-xs text-[var(--foreground)] outline-none focus:border-[var(--primary)]/60"
             />
           </label>
-          <label className="flex flex-col gap-1 text-[0.625rem] font-medium text-[var(--muted-foreground)]">
+          <div className="flex flex-col gap-1 text-[0.625rem] font-medium text-[var(--muted-foreground)]">
             {localizeUi("ui.panels.extensionsettings.runtime")}
-            <select
+            <Select
               value={draft.runtime}
+              options={[
+                { value: "client", label: localizeUi("settings.notifications.browser") },
+                { value: "server", label: localizeUi("ui.panels.extensionsettings.server") },
+              ]}
               disabled={!isExternal}
-              onChange={(event) =>
+              onChange={(runtime) =>
                 setDraft((value) => ({
                   ...value,
-                  runtime: event.target.value === "server" ? "server" : "client",
-                  ...(event.target.value === "server" ? { capabilities: [] } : {}),
+                  runtime: runtime === "server" ? "server" : "client",
+                  ...(runtime === "server" ? { capabilities: [] } : {}),
                 }))
               }
+              label={localizeUi("ui.panels.extensionsettings.runtime")}
               className="min-h-10 rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-3 text-xs text-[var(--foreground)] outline-none focus:border-[var(--primary)]/60"
-            >
-              <option value="client">{localizeUi("settings.notifications.browser")}</option>
-              <option value="server">{localizeUi("ui.panels.extensionsettings.server")}</option>
-            </select>
-          </label>
+            />
+          </div>
         </div>
 
         <label className="flex flex-col gap-1 text-[0.625rem] font-medium text-[var(--muted-foreground)]">
@@ -821,8 +833,7 @@ function ExtensionSettings({ showIntro, mode }: { showIntro: boolean; mode: Exte
                     isFullPageCapability ? "border-[var(--destructive)]/40" : "border-[var(--border)]",
                   )}
                 >
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={checked}
                     disabled={!isExternal}
                     onChange={(event) =>
@@ -974,7 +985,7 @@ function ExtensionSettings({ showIntro, mode }: { showIntro: boolean; mode: Exte
                 disabled={busy}
                 className={SETTINGS_PRIMARY_FULL_BUTTON_CLASS}
               >
-                {importing ? <Loader2 size="0.8125rem" className="animate-spin" /> : <FileArchive size="0.8125rem" />}
+                {importing ? <Spinner size="sm" /> : <FileArchive size="0.8125rem" />}
                 {t("settings.externalExtensions.import.file")}
               </button>
               <button

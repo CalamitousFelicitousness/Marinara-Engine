@@ -1,4 +1,5 @@
 import { CardProseSectionHeader as SectionHeader, CardProseTextarea as TextareaTab } from "../cards/CardProse";
+import { CardImagesTab, SelfieInstructionsField } from "../cards/CardImagesTab";
 import { useCardEditorDraft } from "../../hooks/use-card-editor-draft";
 import { useCardEditorSave } from "../../hooks/use-card-editor-save";
 import { CardEditor } from "../cards/CardEditor";
@@ -73,6 +74,7 @@ import {
   useDeleteCharacterVersion,
   useRenameCharacterVersion,
   useResetCharacterVersions,
+  characterKeys,
   spriteKeys,
   type CharacterCallVideoGenerationInput,
   type CharacterGalleryClip,
@@ -92,19 +94,23 @@ import { CharacterCombatIconSection } from "./GameModeIconSection";
 import { showConfirmDialog, showPromptDialog } from "../../lib/app-dialogs";
 import { formatCardVersionTimestamp, getCardVersionTitle } from "../../lib/card-version-history";
 import { dataImageUrlToFile } from "../../lib/data-image-file";
+import { galleryCreateSeeds, saveGalleryCreation } from "../../lib/gallery-create-save";
 import { rebaseForm } from "../../lib/form-rebase";
 import { formFieldValue, withFormFieldValue } from "../../lib/mari-editor-fields";
 import { MariFieldReview, MariFieldReviewProvider, useMariFieldReview } from "./MariFieldReview";
 import { mergeEmbeddedCharacterCardFields } from "../../lib/character-import";
 import { parsePngCharacterCard } from "../../lib/png-parser";
 import { SpriteGenerationModal } from "../ui/SpriteGenerationModal";
-import { AvatarGenerationModal } from "../ui/AvatarGenerationModal";
+import { AvatarGenerationModal, type GalleryCreateResult } from "../ui/AvatarGenerationModal";
 import { AvatarCropWidget, FullImageView } from "../ui/AvatarCropWidget";
 import { AvatarReplaceActions } from "../ui/AvatarReplaceActions";
 import { EditorAvatarTileActions } from "../ui/EditorAvatarTileActions";
 import { CallClipGenerationModal } from "../ui/CallClipGenerationModal";
 import { ImageUploadDropzone } from "../ui/ImageUploadDropzone";
 import { CustomEmojiTagButton } from "../ui/CustomEmojiTagButton";
+import { GalleryCleanUpButton } from "../ui/GalleryCleanUpButton";
+import { GalleryDescribeButton } from "../ui/GalleryDescribeButton";
+import { useSaveGalleryDescription } from "../../hooks/use-gallery-descriptions";
 import { CharacterRegexSection } from "./CharacterRegexSection";
 import { CharacterVoicePicker } from "./CharacterVoicePicker";
 import { NameAliasesSection } from "../ui/NameAliasesSection";
@@ -129,7 +135,6 @@ import {
   Palette,
   Film,
   Link2,
-  Loader2,
   Swords,
   Crop,
   ImageDown,
@@ -147,12 +152,21 @@ import {
   Check,
   Volume2,
   Sparkles,
+  ChevronUp,
 } from "lucide-react";
 import { PresetVariablesEditor } from "../presets/PresetVariablesEditor";
 import { requestProfessorMariOpen } from "../../lib/professor-mari-open";
 import { MariContextChip } from "../chat/MariContextChip";
 import { DescriptionSplitDialog } from "./DescriptionSplitDialog";
 import { requestMariDescriptionSplit } from "../../lib/description-split-mari";
+import {
+  GREETING_LIST_MIN,
+  parseGreeting,
+  parseGreetings,
+  setGreetingHeader,
+  splitGreetingHeader,
+} from "../../lib/character-greetings";
+import { GreetingHeaderFields, GreetingListFilter, GreetingRow } from "./CharacterGreetingList";
 import { cn, copyToClipboard, generateClientId, getAvatarCropStyle } from "../../lib/utils";
 import {
   applyBakedGreetingImages,
@@ -178,6 +192,7 @@ import { ImageDownloadButton } from "../ui/ImageDownloadButton";
 import { StatIconPicker } from "../ui/StatIconPicker";
 import { MacroTextarea } from "../ui/MacroTextarea";
 import { Modal } from "../ui/Modal";
+import { Select } from "../ui/Select";
 import {
   SHEET_BUTTON_DESTRUCTIVE,
   SHEET_BUTTON_PRIMARY,
@@ -186,7 +201,7 @@ import {
 } from "../ui/neutral-surface-styles";
 import { SpriteFrameEditor } from "../ui/SpriteFrameEditor";
 import { SpriteWandCleanupEditor } from "../ui/SpriteWandCleanupEditor";
-import { ContextMenu } from "../ui/ContextMenu";
+import { ContextMenu, type ContextMenuItem } from "../ui/ContextMenu";
 import { ExportFormatDialog, type ExportFormatChoice } from "../ui/ExportFormatDialog";
 import { useEditorSections } from "../../hooks/use-editor-sections";
 import { useMariCompanionEditor, useMariEditorFields } from "../../hooks/use-mari-editor-fields";
@@ -238,7 +253,9 @@ import {
 } from "../../lib/stat-icon-assignments";
 import { useQuoteFormatter } from "../../hooks/use-quote-formatter";
 import { LorebookAssignmentSection } from "../lorebooks/LorebookAssignmentSection";
+import { ClassicCardSection } from "../overhaul/ClassicCardSection";
 import { useTranslation, useTranslation as useUiTranslation } from "react-i18next";
+import { Spinner } from "../ui/Spinner";
 
 // ── Tabs ──
 const TABS = [
@@ -247,8 +264,7 @@ const TABS = [
   { id: "onboarding", label: "Onboarding", icon: UserPlus },
   { id: "convo", label: "Convo", icon: MessageCircle },
   { id: "lorebook", label: "Lorebook", icon: Library },
-  { id: "sprites", label: "Sprites", icon: Image },
-  { id: "gallery", label: "Gallery", icon: Camera },
+  { id: "images", label: "Images", icon: Image },
   { id: "colors", label: "Colors", icon: Palette },
   { id: "voice", label: "Voice", icon: Volume2 },
   { id: "stats", label: "Stats", icon: Swords },
@@ -264,6 +280,7 @@ const CHARACTER_CARD_SECTIONS = [
   { id: "character-card-backstory", label: "Backstory" },
   { id: "character-card-appearance", label: "Appearance" },
   { id: "character-card-scenario", label: "Scenario" },
+  { id: "character-card-public-face", label: "Public Face", labelKey: "chat.settings.inlineEditor.fields.publicFace" },
   { id: "character-card-dialogue", label: "Dialogue" },
 ] as const;
 
@@ -302,7 +319,7 @@ type CharacterSheetUpdate = {
 };
 
 function isCardVariableField(field: CardFieldKey): field is CardVariableField {
-  return field !== "summary" && field !== "mes_example";
+  return field !== "summary" && field !== "mes_example" && field !== "publicFace";
 }
 
 const ONBOARDING_ISSUE_KEYS: Record<Exclude<OnboardingIssue["code"], "plainIf" | "unknownName">, string> = {
@@ -406,7 +423,7 @@ const CHARACTER_QUOTE_FIELD_KEYS = new Set<string>([
   "creator_notes",
 ]);
 
-const CHARACTER_QUOTE_EXTENSION_KEYS = new Set(["appearance", "backstory"]);
+const CHARACTER_QUOTE_EXTENSION_KEYS = new Set(["appearance", "backstory", "publicFace"]);
 
 function readSavedCardData(row: unknown): CharacterData | undefined {
   const raw = (row as { data?: unknown } | null)?.data;
@@ -528,7 +545,11 @@ export function CharacterEditor() {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [avatarGeneratorOpen, setAvatarGeneratorOpen] = useState(false);
   const [characterSheetGeneratorOpen, setCharacterSheetGeneratorOpen] = useState(false);
-  const { data: characterSheetSprites } = useCharacterSprites(characterSheetGeneratorOpen ? characterId : null);
+  const [galleryCreateOpen, setGalleryCreateOpen] = useState(false);
+  const tagGalleryCreation = useTagCharacterGalleryImage(characterId ?? "");
+  const { data: characterSheetSprites } = useCharacterSprites(
+    characterSheetGeneratorOpen || galleryCreateOpen ? characterId : null,
+  );
   const [newTag, setNewTag] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -856,6 +877,18 @@ export function CharacterEditor() {
       toast.success(localizeUi("ui.characters.charactersheet.created"));
     },
     [formData?.name, localizeUi, updateCharacterSheet, uploadCharacterSheet],
+  );
+
+  const handleGalleryCreation = useCallback(
+    (result: GalleryCreateResult) =>
+      saveGalleryCreation(result, {
+        fileStem: formData?.name || "character",
+        upload: (files) => uploadCharacterSheet.mutateAsync(files),
+        tag: (args) => tagGalleryCreation.mutateAsync(args),
+        saveCharacterSheet: handleGeneratedCharacterSheet,
+        localizeUi,
+      }),
+    [formData?.name, handleGeneratedCharacterSheet, localizeUi, tagGalleryCreation, uploadCharacterSheet],
   );
 
   const beginAvatarUpload = useCallback(() => {
@@ -1272,7 +1305,6 @@ export function CharacterEditor() {
         ? { field: "first_mes", value: formData.first_mes ?? "" }
         : null;
 
-  const headerActionButtonClass = "mari-editor-action inline-flex";
   const saveDisabled =
     !dirty || unreadableOnboarding || saving || updateSheet.isPending || avatarUploading || lorebookEmbedding;
   const saveLabel = avatarUploading
@@ -1290,103 +1322,70 @@ export function CharacterEditor() {
   const favoriteLabel = formData.extensions.fav
     ? localizeUi("ui.characters.charactereditor.removeFromFavorites")
     : localizeUi("ui.characters.charactereditor.addToFavorites");
+  // The favourite star stays visible so its state shows at a glance; the rest sit behind "…".
   const headerActions = (
-    <>
-      <button
-        type="button"
-        onClick={() => {
-          if (!characterId) return;
-          requestProfessorMariOpen({
-            destination: "omnibar",
-            draft: localizeUi("professorMari.handoff.explainResourceDraft"),
-            context: {
-              source: "character-editor",
-              capability: "explain",
-              resource: { kind: "character", id: characterId, label: formData.name },
-            },
-          });
-        }}
-        className={headerActionButtonClass}
-        title={localizeUi("professorMari.handoff.ask")}
-        aria-label={localizeUi("professorMari.handoff.ask")}
-      >
-        <MessageCircleQuestion size="1rem" />
-      </button>
-
-      <button
-        type="button"
-        onClick={() => updateExtension("fav", !formData.extensions.fav)}
-        data-character-favorite-toggle
-        data-favorite={formData.extensions.fav ? "true" : "false"}
-        className="mari-editor-action mari-editor-action--favorite inline-flex"
-        title={favoriteLabel}
-        aria-label={favoriteLabel}
-      >
-        {formData.extensions.fav ? <Star size="1rem" fill="currentColor" /> : <StarOff size="1rem" />}
-      </button>
-
-      <button
-        type="button"
-        onClick={() => setExportDialogOpen(true)}
-        className={headerActionButtonClass}
-        title={localizeUi("ui.characters.charactereditor.exportCharacter")}
-        aria-label={localizeUi("ui.characters.charactereditor.exportCharacter")}
-      >
-        <svg width="1rem" height="1rem" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path
-            d="M10 13V3m0 0l-4 4m4-4l4 4"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <rect x="3" y="15" width="14" height="2" rx="1" fill="currentColor" />
-        </svg>
-      </button>
-
-      <button
-        type="button"
-        onClick={handleImportAsPersona}
-        disabled={createPersona.isPending || uploadPersonaAvatar.isPending}
-        className="mari-editor-action inline-flex disabled:cursor-not-allowed disabled:opacity-50"
-        title={localizeUi("ui.characters.charactereditor.importCharacterAsPersona")}
-        aria-label={localizeUi("ui.characters.charactereditor.importCharacterAsPersona")}
-      >
-        {createPersona.isPending || uploadPersonaAvatar.isPending ? (
-          <Loader2 size="1rem" className="animate-spin" />
-        ) : (
-          <UserPlus size="1rem" />
-        )}
-      </button>
-
-      <button
-        type="button"
-        onClick={() => {
-          if (!characterId) return;
-          duplicateCharacter.mutate(characterId, {
-            onSuccess: () => {
-              toast.success(localizeUi("ui.characters.charactereditor.characterDuplicated"));
-            },
-          });
-        }}
-        className="mari-editor-action inline-flex"
-        title={localizeUi("ui.characters.charactereditor.duplicateCharacter")}
-        aria-label={localizeUi("ui.characters.charactereditor.duplicateCharacter")}
-      >
-        <Copy size="1rem" />
-      </button>
-
-      <button
-        type="button"
-        onClick={handleDelete}
-        className="mari-editor-action inline-flex"
-        title={localizeUi("ui.characters.charactereditor.deleteCharacter")}
-        aria-label={localizeUi("ui.characters.charactereditor.deleteCharacter")}
-      >
-        <Trash2 size="1rem" />
-      </button>
-    </>
+    <button
+      type="button"
+      onClick={() => updateExtension("fav", !formData.extensions.fav)}
+      data-character-favorite-toggle
+      data-favorite={formData.extensions.fav ? "true" : "false"}
+      className="mari-editor-action mari-editor-action--favorite inline-flex"
+      title={favoriteLabel}
+      aria-label={favoriteLabel}
+    >
+      {formData.extensions.fav ? <Star size="1rem" fill="currentColor" /> : <StarOff size="1rem" />}
+    </button>
   );
+
+  const headerMenuItems: ContextMenuItem[] = [
+    {
+      label: localizeUi("professorMari.handoff.ask"),
+      icon: <MessageCircleQuestion size="0.75rem" />,
+      disabled: !characterId,
+      onSelect: () => {
+        if (!characterId) return;
+        requestProfessorMariOpen({
+          destination: "omnibar",
+          draft: localizeUi("professorMari.handoff.explainResourceDraft"),
+          context: {
+            source: "character-editor",
+            capability: "explain",
+            resource: { kind: "character", id: characterId, label: formData.name },
+          },
+        });
+      },
+    },
+    {
+      label: localizeUi("ui.characters.charactereditor.exportCharacter"),
+      icon: <Upload size="0.75rem" />,
+      onSelect: () => setExportDialogOpen(true),
+    },
+    {
+      label: localizeUi("ui.characters.charactereditor.importCharacterAsPersona"),
+      icon: <UserPlus size="0.75rem" />,
+      disabled: createPersona.isPending || uploadPersonaAvatar.isPending,
+      onSelect: () => void handleImportAsPersona(),
+    },
+    {
+      label: localizeUi("ui.characters.charactereditor.duplicateCharacter"),
+      icon: <Copy size="0.75rem" />,
+      disabled: !characterId || duplicateCharacter.isPending,
+      onSelect: () => {
+        if (!characterId) return;
+        duplicateCharacter.mutate(characterId, {
+          onSuccess: () => {
+            toast.success(localizeUi("ui.characters.charactereditor.characterDuplicated"));
+          },
+        });
+      },
+    },
+    {
+      label: localizeUi("ui.characters.charactereditor.deleteCharacter"),
+      icon: <Trash2 size="0.75rem" />,
+      destructive: true,
+      onSelect: () => void handleDelete(),
+    },
+  ];
 
   return (
     <MariFieldReviewProvider value={mariReview.value}>
@@ -1447,6 +1446,28 @@ export function CharacterEditor() {
           onClose={() => setCharacterSheetGeneratorOpen(false)}
           onUseAvatar={handleGeneratedCharacterSheet}
         />
+        <AvatarGenerationModal
+          open={galleryCreateOpen}
+          title={localizeUi("ui.characters.charactersheet.createWithAi")}
+          entityName={formData.name || localizeUi("ui.characters.charactersheet.characterFallback")}
+          galleryCreate={{
+            seeds: galleryCreateSeeds(
+              imageAppearanceGeneratorSeed(
+                formData.extensions,
+                (formData.extensions.appearance as string | undefined) || formData.description || formData.personality,
+              ),
+              formData.scenario || formData.description || formData.personality,
+              formData.name,
+            ),
+            onSave: handleGalleryCreation,
+          }}
+          defaultAvatarUrl={avatarPreview}
+          neutralFullBodyReferenceUrl={
+            characterSheetSprites?.find((sprite) => sprite.expression === "full_neutral")?.url
+          }
+          onClose={() => setGalleryCreateOpen(false)}
+          onUseAvatar={handleGeneratedCharacterSheet}
+        />
 
         <CardEditor
           variant="character"
@@ -1478,6 +1499,7 @@ export function CharacterEditor() {
           workingOffscreen={workingOffscreen}
           onRevealWorkingField={revealWorkingField}
           actionsSlot={headerActions}
+          menuItems={headerMenuItems}
         >
           {characterId && mariChipField && (
             <div className="mb-3 flex justify-end">
@@ -1546,37 +1568,54 @@ export function CharacterEditor() {
               onUnembed={handleLorebookUnembedded}
             />
           </LazyEditorSection>
-          <LazyEditorSection key={`sprites:${characterId}`} id="sprites">
+          <section data-editor-section="images">
             {characterId && (
-              <SpritesTab
-                characterId={characterId}
-                characterName={formData.name}
-                defaultAppearance={imageAppearanceGeneratorSeed(
-                  formData.extensions,
-                  (formData.extensions.appearance as string) ?? formData.description,
-                )}
-                defaultAvatarUrl={avatarPreview}
-                characterSheetImageId={
-                  typeof formData.extensions.characterSheetImageId === "string"
-                    ? formData.extensions.characterSheetImageId
-                    : null
+              <CardImagesTab
+                variant="character"
+                entityKey={characterId}
+                onJump={scrollToSection}
+                sheet={
+                  <CharacterSheetSection
+                    characterId={characterId}
+                    characterName={formData.name ?? ""}
+                    characterSheetImageId={
+                      typeof formData.extensions.characterSheetImageId === "string"
+                        ? formData.extensions.characterSheetImageId
+                        : null
+                    }
+                    useAsReference={formData.extensions.useCharacterSheetAsReference === true}
+                    onChange={updateCharacterSheet}
+                    saving={saving || updateSheet.isPending}
+                    onCreateCharacterSheet={() => setCharacterSheetGeneratorOpen(true)}
+                  />
                 }
-                useCharacterSheetAsReference={formData.extensions.useCharacterSheetAsReference === true}
-                onUpdateCharacterSheet={updateCharacterSheet}
-                characterSheetSaving={saving || updateSheet.isPending}
-                onCreateCharacterSheet={() => setCharacterSheetGeneratorOpen(true)}
+                instructions={
+                  <SelfieInstructionsField
+                    value={(formData.extensions.conversationImageInstructions as string) ?? ""}
+                    onChange={(value) => updateExtension("conversationImageInstructions", value)}
+                  />
+                }
+                sprites={
+                  <SpritesTab
+                    characterId={characterId}
+                    characterName={formData.name}
+                    defaultAppearance={imageAppearanceGeneratorSeed(
+                      formData.extensions,
+                      (formData.extensions.appearance as string) ?? formData.description,
+                    )}
+                    defaultAvatarUrl={avatarPreview}
+                  />
+                }
+                gallery={
+                  <CharacterGalleryTab
+                    characterId={characterId}
+                    characterName={formData.name}
+                    onCreateCharacterSheet={() => setGalleryCreateOpen(true)}
+                  />
+                }
               />
             )}
-          </LazyEditorSection>
-          <LazyEditorSection key={`gallery:${characterId}`} id="gallery">
-            {characterId && (
-              <CharacterGalleryTab
-                characterId={characterId}
-                characterName={formData.name}
-                onCreateCharacterSheet={() => setCharacterSheetGeneratorOpen(true)}
-              />
-            )}
-          </LazyEditorSection>
+          </section>
           <section data-editor-section="colors">
             <ColorsTab formData={formData} updateExtension={updateExtension} avatarUrl={avatarPreview} />
           </section>
@@ -1693,10 +1732,11 @@ function CharacterCardTab({
     backstory: String(formData.extensions.backstory ?? ""),
     appearance: String(formData.extensions.appearance ?? ""),
     scenario: formData.scenario,
+    publicFace: String(formData.extensions.publicFace ?? ""),
     mes_example: formData.mes_example,
   };
   const updateCardField = (key: CardFieldKey, value: string) => {
-    if (key === "backstory" || key === "appearance") updateExtension(key, value);
+    if (key === "backstory" || key === "appearance" || key === "publicFace") updateExtension(key, value);
     else updateField(key, value);
   };
   const alternatives = useMemo(
@@ -1825,6 +1865,16 @@ function CharacterCardTab({
       rows: 8,
     },
     {
+      key: "publicFace",
+      sectionId: "character-card-public-face",
+      mariField: "extensions.publicFace",
+      title: localizeUi("chat.settings.inlineEditor.fields.publicFace"),
+      subtitle: localizeUi("ui.cardFields.publicFace.subtitle"),
+      helpText: localizeUi("ui.cardFields.publicFace.help"),
+      placeholder: localizeUi("ui.cardFields.publicFace.placeholder"),
+      rows: 8,
+    },
+    {
       key: "mes_example",
       sectionId: "character-card-dialogue",
       // The dialogue section also owns the greetings and onboarding.
@@ -1868,7 +1918,13 @@ function CharacterCardTab({
         }}
         alternatives={alternatives}
         onAlternativesChange={(next) => updateExtension("cardFieldAlternatives", next)}
-        renderJumps={() => <EditorSectionJumps items={CHARACTER_CARD_SECTIONS} />}
+        renderJumps={() => (
+          <EditorSectionJumps
+            items={CHARACTER_CARD_SECTIONS.map((section) =>
+              "labelKey" in section ? { ...section, label: localizeUi(section.labelKey) } : section,
+            )}
+          />
+        )}
         renderFooter={chipsFor}
         onTextareaRef={(key, element) => {
           fieldRefs.current[key] = element;
@@ -2482,8 +2538,6 @@ function ConvoTab({
                 })()
             : undefined
         }
-        imageInstructions={(ext.conversationImageInstructions as string) ?? ""}
-        onImageInstructionsChange={(value) => updateExtension("conversationImageInstructions", value)}
         schedule={schedule}
         onEditSchedule={kind === "character" && characterId ? () => setScheduleOpen(true) : undefined}
       />
@@ -2665,6 +2719,18 @@ function MetadataTab({
             if (key === "comment") updateCharacterComment(value);
             else if (key !== "phoneticName") updateField(key, value);
           }}
+          otherNames={
+            <NameAliasesSection
+              kind="character"
+              aliases={
+                Array.isArray(formData.extensions.nameAliases)
+                  ? formData.extensions.nameAliases.filter((alias): alias is string => typeof alias === "string")
+                  : []
+              }
+              onChange={(next) => updateExtension("nameAliases", next)}
+              nameColor={(formData.extensions.nameColor as string | undefined) || undefined}
+            />
+          }
         />
         <div className="space-y-1.5" data-mari-field="character_version">
           <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
@@ -2900,7 +2966,7 @@ function MetadataTab({
   );
 }
 
-const VERSION_COMPARE_FIELDS: Array<{ key: string; label: string }> = [
+const VERSION_COMPARE_FIELDS: Array<{ key: string; label: string; labelKey?: string }> = [
   { key: "name", label: "Name" },
   { key: "summary", label: "Summary" },
   { key: "description", label: "Description" },
@@ -2910,6 +2976,7 @@ const VERSION_COMPARE_FIELDS: Array<{ key: string; label: string }> = [
   { key: "mes_example", label: "Example Dialogue" },
   { key: "extensions.backstory", label: "Backstory" },
   { key: "extensions.appearance", label: "Appearance" },
+  { key: "extensions.publicFace", label: "Public Face", labelKey: "chat.settings.inlineEditor.fields.publicFace" },
   { key: "extensions.imageAppearance", label: "Image Appearance Override" },
   { key: "extensions.imageAppearanceEnabled", label: "Use Image Appearance Override" },
   { key: "creator_notes", label: "Creator Notes" },
@@ -3088,11 +3155,7 @@ function CharacterVersionHistoryPanel({
                 : "ui.cardversionhistory.resetVersioning",
             )}
           >
-            {resetVersions.isPending ? (
-              <Loader2 size="0.75rem" className="animate-spin" />
-            ) : (
-              <RotateCcw size="0.75rem" />
-            )}
+            {resetVersions.isPending ? <Spinner size="sm" /> : <RotateCcw size="0.75rem" />}
             {localizeUi("ui.cardversionhistory.reset")}
           </button>
           <span className="mari-editor-chip mari-editor-chip--accent px-2 py-0.5 text-[0.625rem]">
@@ -3147,7 +3210,7 @@ function CharacterVersionHistoryPanel({
                     title={localizeUi("ui.cardversionhistory.renameThisSavedVersion")}
                   >
                     {renameVersion.isPending && renameVersion.variables?.versionId === version.id ? (
-                      <Loader2 size="0.75rem" className="animate-spin" />
+                      <Spinner size="sm" />
                     ) : (
                       <Pencil size="0.75rem" />
                     )}
@@ -3159,11 +3222,7 @@ function CharacterVersionHistoryPanel({
                     className="mari-editor-action mari-editor-action--compact inline-flex h-7 w-7 rounded-lg p-0"
                     title={localizeUi("ui.characters.characterversionhistorypanel.restoreThisVersion")}
                   >
-                    {restoreVersion.isPending ? (
-                      <Loader2 size="0.75rem" className="animate-spin" />
-                    ) : (
-                      <RotateCcw size="0.75rem" />
-                    )}
+                    {restoreVersion.isPending ? <Spinner size="sm" /> : <RotateCcw size="0.75rem" />}
                   </button>
                   <button
                     type="button"
@@ -3173,7 +3232,7 @@ function CharacterVersionHistoryPanel({
                     title={localizeUi("ui.characters.characterversionhistorypanel.deleteThisSavedVersion")}
                   >
                     {deleteVersion.isPending && deleteVersion.variables?.versionId === version.id ? (
-                      <Loader2 size="0.75rem" className="animate-spin" />
+                      <Spinner size="sm" />
                     ) : (
                       <Trash2 size="0.75rem" />
                     )}
@@ -3236,7 +3295,9 @@ function CharacterVersionHistoryPanel({
                 return (
                   <div key={field.key} className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-3">
                     <div className="mb-2 flex items-center justify-between gap-2">
-                      <span className="text-xs font-semibold text-[var(--foreground)]">{field.label}</span>
+                      <span className="text-xs font-semibold text-[var(--foreground)]">
+                        {field.labelKey ? localizeUi(field.labelKey) : field.label}
+                      </span>
                       {changed && (
                         <span className="rounded-full bg-[var(--primary)]/10 px-2 py-0.5 text-[0.625rem] font-medium text-[var(--primary)]">
                           {localizeUi("ui.characters.characterversionhistorypanel.changed")}
@@ -3271,11 +3332,7 @@ function CharacterVersionHistoryPanel({
                 disabled={restoreVersion.isPending}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-2 text-xs font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:opacity-50"
               >
-                {restoreVersion.isPending ? (
-                  <Loader2 size="0.75rem" className="animate-spin" />
-                ) : (
-                  <RotateCcw size="0.75rem" />
-                )}
+                {restoreVersion.isPending ? <Spinner size="sm" /> : <RotateCcw size="0.75rem" />}
                 {localizeUi("ui.characters.characterversionhistorypanel.restoreThisVersion")}
               </button>
             </div>
@@ -3348,8 +3405,12 @@ function DialogueTab({
   }
 
   const addGreeting = () => {
-    greetingKeysRef.current.push(generateClientId());
+    const key = generateClientId();
+    greetingKeysRef.current.push(key);
     updateField("alternate_greetings", [...formData.alternate_greetings, ""]);
+    setOpenGreeting(key);
+    // Lists open a new greeting with its Title field ready; the short layout has no such field.
+    requestAnimationFrame(() => document.getElementById(`greeting-title-${key}`)?.focus());
   };
 
   const updateGreeting = (i: number, value: string) => {
@@ -3393,16 +3454,54 @@ function DialogueTab({
   // The greeting that last had the caret, so its chips are the ones on screen:
   // `first`, or an alternate's stable key (moving a greeting keeps its key).
   const [activeGreeting, setActiveGreeting] = useState<string | null>(null);
+  const greetingList = formData.alternate_greetings.length + 1 >= GREETING_LIST_MIN;
+  const [openGreeting, setOpenGreeting] = useState<string | null>(null);
+  const [rawGreeting, setRawGreeting] = useState(false);
+  const [greetingQuery, setGreetingQuery] = useState("");
+  const [greetingFilter, setGreetingFilter] = useState<string[]>([]);
+  // Brackets are tags once two greetings open with them, as in the picker. A greeting the user tags here also
+  // reads its own brackets as tags; every other lone `[OOC]` opener stays text.
+  const [taggedGreetingKeys, setTaggedGreetingKeys] = useState<ReadonlySet<string>>(() => new Set());
+  const cardTagged = parseGreetings([formData.first_mes, ...formData.alternate_greetings]).some(
+    (entry) => entry.tags.length > 0,
+  );
+  const greetingHeaders = useMemo(
+    () =>
+      formData.alternate_greetings.map((greeting, index) =>
+        splitGreetingHeader(greeting, cardTagged || taggedGreetingKeys.has(greetingKeysRef.current[index] ?? "")),
+      ),
+    [formData.alternate_greetings, cardTagged, taggedGreetingKeys],
+  );
+  const greetingTagOptions = useMemo(
+    () =>
+      [...new Set(greetingHeaders.flatMap((header) => header.tags))].sort((a, b) =>
+        a.localeCompare(b, undefined, { numeric: true }),
+      ),
+    [greetingHeaders],
+  );
+  const greetingNeedle = greetingQuery.trim().toLowerCase();
+  const greetingShown = (i: number) =>
+    (!greetingNeedle || formData.alternate_greetings[i]!.toLowerCase().includes(greetingNeedle)) &&
+    greetingFilter.every((tag) => greetingHeaders[i]!.tags.includes(tag));
   const greetingFieldRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
 
   const insertGreetingVariable = (target: string, name: string) => {
     const token = "{{" + name + "}}";
     const textarea = greetingFieldRefs.current[target];
     const alternateIndex = greetingKeysRef.current.indexOf(target);
-    const current = target === "first" ? formData.first_mes : (formData.alternate_greetings[alternateIndex] ?? "");
-    const start = textarea?.selectionStart ?? current.length;
-    const end = textarea?.selectionEnd ?? current.length;
-    const next = current.slice(0, start) + token + current.slice(end);
+    const raw = target === "first" ? formData.first_mes : (formData.alternate_greetings[alternateIndex] ?? "");
+    // Text boxes report positions with plain line breaks: count in that form, then map back so CRLF stays.
+    const current = raw.replace(/\r\n/g, "\n");
+    const toRaw = (position: number) => {
+      let index = 0;
+      for (let seen = 0; seen < position && index < raw.length; seen++) index += raw.startsWith("\r\n", index) ? 2 : 1;
+      return index;
+    };
+    // The list's text box can hold only the text under the title and tags, which is the end of the greeting.
+    const offset = textarea ? current.length - textarea.value.length : 0;
+    const start = offset + (textarea?.selectionStart ?? current.length);
+    const end = offset + (textarea?.selectionEnd ?? current.length);
+    const next = raw.slice(0, toRaw(start)) + token + raw.slice(toRaw(end));
     // Without quote normalisation, as on the Card tab: inserting one tag must not
     // rewrite every quote already in the author's text.
     updateFormData((data) =>
@@ -3417,7 +3516,7 @@ function DialogueTab({
     );
     requestAnimationFrame(() => {
       textarea?.focus();
-      textarea?.setSelectionRange(start + token.length, start + token.length);
+      textarea?.setSelectionRange(start - offset + token.length, start - offset + token.length);
     });
   };
 
@@ -3439,11 +3538,7 @@ function DialogueTab({
                 disabled={bakeImages.isPending}
                 className="mari-editor-action mari-editor-action--compact inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {bakeImages.isPending ? (
-                  <Loader2 size="0.75rem" className="animate-spin" />
-                ) : (
-                  <ImageDown size="0.75rem" />
-                )}
+                {bakeImages.isPending ? <Spinner size="sm" /> : <ImageDown size="0.75rem" />}
                 {bakeImages.isPending
                   ? localizeUi("ui.characters.dialoguetab.savingGreetingImages")
                   : localizeUi("ui.characters.dialoguetab.saveGreetingImages")}
@@ -3511,92 +3606,171 @@ function DialogueTab({
                   text={localizeUi("ui.characters.dialoguetab.alternativeFirstMessagesForVarietyWhenStartingANew")}
                 />
               </div>
-              {formData.alternate_greetings.map((g, i) => (
-                <section
-                  key={greetingKeysRef.current[i] ?? i}
-                  aria-label={localizeUi("ui.characters.dialoguetab.alternateGreetingValue1", { value1: i + 1 })}
-                  className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--secondary)]/40 p-3"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <h4 className="text-xs font-semibold">
-                      {localizeUi("ui.characters.dialoguetab.greeting")}
-                      {/* First Message is greeting #1. */}
-                      {i + 2}
-                    </h4>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <CharacterGreetingWand
-                        entityId={selfCharacterId}
-                        card={card}
-                        value={g}
-                        onApply={(text) => updateGreeting(i, text)}
-                        label={localizeUi("ui.characters.dialoguetab.alternateGreetingValue1", { value1: i + 1 })}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => moveGreeting(i, -1)}
-                        disabled={i === 0}
-                        className={greetingActionButtonClassName}
-                        aria-label={localizeUi("ui.characters.dialoguetab.moveAlternateGreetingValue1Up", {
-                          value1: i + 1,
-                        })}
-                        title={localizeUi("ui.characters.dialoguetab.moveUp")}
-                      >
-                        <ArrowUp size="0.875rem" aria-hidden />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => moveGreeting(i, 1)}
-                        disabled={i === formData.alternate_greetings.length - 1}
-                        className={greetingActionButtonClassName}
-                        aria-label={localizeUi("ui.characters.dialoguetab.moveAlternateGreetingValue1Down", {
-                          value1: i + 1,
-                        })}
-                        title={localizeUi("ui.characters.dialoguetab.moveDown")}
-                      >
-                        <ArrowDown size="0.875rem" aria-hidden />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => removeGreeting(i)}
-                        className={greetingActionButtonClassName}
-                        aria-label={localizeUi("ui.characters.dialoguetab.removeAlternateGreetingValue1", {
-                          value1: i + 1,
-                        })}
-                        title={localizeUi("ui.characters.dialoguetab.removeGreeting")}
-                      >
-                        <Trash2 size="0.875rem" aria-hidden />
-                      </button>
-                    </div>
-                  </div>
-                  <MacroTextarea
-                    ariaLabel={localizeUi("ui.characters.dialoguetab.alternateGreetingValue1", { value1: i + 1 })}
-                    showTokenCount
-                    value={g}
-                    onChange={(value) => updateGreeting(i, value)}
-                    textareaRef={(element) => {
-                      const key = greetingKeysRef.current[i];
-                      if (key) greetingFieldRefs.current[key] = element;
-                    }}
-                    onFocus={() => setActiveGreeting(greetingKeysRef.current[i] ?? null)}
-                    rows={5}
-                    title={localizeUi("ui.characters.dialoguetab.alternateGreetingValue1", { value1: i + 1 })}
-                    showMarkdownPreview
-                    selfCharacterId={selfCharacterId}
-                    className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-3 text-sm leading-relaxed outline-none placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
-                    placeholder={
-                      localizeUi("ui.characters.dialoguetab.greetingValue1", { value1: i + 2 }) +
-                      " " +
-                      localizeUi("ui.cardFields.seedPlaceholder")
-                    }
-                  />
-                  {activeGreeting === greetingKeysRef.current[i] && (
-                    <GreetingVariableChips
-                      names={greetingChipNames}
-                      onInsert={(name) => insertGreetingVariable(greetingKeysRef.current[i] ?? "", name)}
+              {greetingList && (
+                <GreetingListFilter
+                  query={greetingQuery}
+                  onQuery={setGreetingQuery}
+                  tags={greetingTagOptions}
+                  picked={greetingFilter}
+                  onPicked={setGreetingFilter}
+                  shown={formData.alternate_greetings.filter((_, index) => greetingShown(index)).length}
+                  total={formData.alternate_greetings.length}
+                />
+              )}
+              {formData.alternate_greetings.map((g, i) => {
+                const greetingKey = greetingKeysRef.current[i] ?? String(i);
+                const tagsOn = cardTagged || taggedGreetingKeys.has(greetingKey);
+                if (greetingList && greetingKey !== openGreeting) {
+                  return greetingShown(i) ? (
+                    <GreetingRow
+                      key={greetingKey}
+                      number={i + 2}
+                      text={g}
+                      allowTags={tagsOn}
+                      onOpen={() => {
+                        setOpenGreeting(greetingKey);
+                        setRawGreeting(false);
+                      }}
                     />
-                  )}
-                </section>
-              ))}
+                  ) : null;
+                }
+                const header = greetingHeaders[i]!;
+                const fields = greetingList && !rawGreeting;
+                const greetingText = fields ? header.rest : g;
+                return (
+                  <section
+                    key={greetingKeysRef.current[i] ?? i}
+                    aria-label={localizeUi("ui.characters.dialoguetab.alternateGreetingValue1", { value1: i + 1 })}
+                    className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--secondary)]/40 p-3"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h4 className="text-xs font-semibold">
+                        {localizeUi("ui.characters.dialoguetab.greeting")}
+                        {/* First Message is greeting #1. */}
+                        {i + 2}
+                      </h4>
+                      <div className="flex shrink-0 items-center gap-1">
+                        {greetingList && (
+                          <button
+                            type="button"
+                            onClick={() => setRawGreeting(!rawGreeting)}
+                            aria-pressed={rawGreeting}
+                            className={greetingActionButtonClassName}
+                            aria-label={localizeUi("ui.characters.dialoguetab.greetingRawText")}
+                            title={localizeUi("ui.characters.dialoguetab.greetingRawText")}
+                          >
+                            <Code2 size="0.875rem" aria-hidden />
+                          </button>
+                        )}
+                        {greetingList && (
+                          <button
+                            type="button"
+                            onClick={() => setOpenGreeting(null)}
+                            className={greetingActionButtonClassName}
+                            aria-label={localizeUi("ui.characters.dialoguetab.closeGreeting")}
+                            title={localizeUi("ui.characters.dialoguetab.closeGreeting")}
+                          >
+                            <ChevronUp size="0.875rem" aria-hidden />
+                          </button>
+                        )}
+                        <CharacterGreetingWand
+                          entityId={selfCharacterId}
+                          card={card}
+                          value={g}
+                          onApply={(text) => updateGreeting(i, text)}
+                          label={localizeUi("ui.characters.dialoguetab.alternateGreetingValue1", { value1: i + 1 })}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => moveGreeting(i, -1)}
+                          disabled={i === 0}
+                          className={greetingActionButtonClassName}
+                          aria-label={localizeUi("ui.characters.dialoguetab.moveAlternateGreetingValue1Up", {
+                            value1: i + 1,
+                          })}
+                          title={localizeUi("ui.characters.dialoguetab.moveUp")}
+                        >
+                          <ArrowUp size="0.875rem" aria-hidden />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveGreeting(i, 1)}
+                          disabled={i === formData.alternate_greetings.length - 1}
+                          className={greetingActionButtonClassName}
+                          aria-label={localizeUi("ui.characters.dialoguetab.moveAlternateGreetingValue1Down", {
+                            value1: i + 1,
+                          })}
+                          title={localizeUi("ui.characters.dialoguetab.moveDown")}
+                        >
+                          <ArrowDown size="0.875rem" aria-hidden />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeGreeting(i)}
+                          className={greetingActionButtonClassName}
+                          aria-label={localizeUi("ui.characters.dialoguetab.removeAlternateGreetingValue1", {
+                            value1: i + 1,
+                          })}
+                          title={localizeUi("ui.characters.dialoguetab.removeGreeting")}
+                        >
+                          <Trash2 size="0.875rem" aria-hidden />
+                        </button>
+                      </div>
+                    </div>
+                    {fields && (
+                      <GreetingHeaderFields
+                        id={greetingKey}
+                        title={header.title}
+                        titlePlaceholder={parseGreeting(g).title}
+                        tags={header.tags}
+                        tagOptions={greetingTagOptions}
+                        onChange={(tags, title) => {
+                          if (tags.length) setTaggedGreetingKeys((keys) => new Set(keys).add(greetingKey));
+                          updateGreeting(i, setGreetingHeader(g, tags, title, tagsOn));
+                        }}
+                      />
+                    )}
+                    <MacroTextarea
+                      ariaLabel={localizeUi("ui.characters.dialoguetab.alternateGreetingValue1", { value1: i + 1 })}
+                      showTokenCount
+                      value={greetingText}
+                      onChange={(value) =>
+                        updateGreeting(
+                          i,
+                          fields
+                            ? // A title line needs its line break before any text can follow it.
+                              header.tagText +
+                                header.titleText +
+                                (value && header.titleText && !header.titleText.endsWith("\n") ? "\n" : "") +
+                                value
+                            : value,
+                        )
+                      }
+                      textareaRef={(element) => {
+                        const key = greetingKeysRef.current[i];
+                        if (key) greetingFieldRefs.current[key] = element;
+                      }}
+                      onFocus={() => setActiveGreeting(greetingKeysRef.current[i] ?? null)}
+                      rows={5}
+                      title={localizeUi("ui.characters.dialoguetab.alternateGreetingValue1", { value1: i + 1 })}
+                      showMarkdownPreview
+                      selfCharacterId={selfCharacterId}
+                      className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-3 text-sm leading-relaxed outline-none placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
+                      placeholder={
+                        localizeUi("ui.characters.dialoguetab.greetingValue1", { value1: i + 2 }) +
+                        " " +
+                        localizeUi("ui.cardFields.seedPlaceholder")
+                      }
+                    />
+                    {activeGreeting === greetingKeysRef.current[i] && (
+                      <GreetingVariableChips
+                        names={greetingChipNames}
+                        onInsert={(name) => insertGreetingVariable(greetingKeysRef.current[i] ?? "", name)}
+                      />
+                    )}
+                  </section>
+                );
+              })}
               <button
                 type="button"
                 onClick={addGreeting}
@@ -3733,18 +3907,20 @@ function AdvancedTab({
                   className="w-16 rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-2 py-1 text-center text-xs outline-none"
                 />
               </label>
-              <label className="flex items-center gap-2 text-xs">
+              <div className="flex items-center gap-2 text-xs">
                 <span className="text-[var(--muted-foreground)]">{localizeUi("ui.characters.advancedtab.role")}</span>
-                <select
+                <Select
+                  label={localizeUi("ui.characters.advancedtab.role")}
                   value={depthPrompt.role}
-                  onChange={(e) => updateExtension("depth_prompt", { ...depthPrompt, role: e.target.value })}
+                  onChange={(next) => updateExtension("depth_prompt", { ...depthPrompt, role: next })}
                   className="rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-2 py-1 text-xs outline-none"
-                >
-                  <option value="system">{localizeUi("ui.characters.advancedtab.system")}</option>
-                  <option value="user">{localizeUi("ui.characters.advancedtab.user")}</option>
-                  <option value="assistant">{localizeUi("ui.characters.advancedtab.assistant")}</option>
-                </select>
-              </label>
+                  options={[
+                    { value: "system", label: localizeUi("ui.characters.advancedtab.system") },
+                    { value: "user", label: localizeUi("ui.characters.advancedtab.user") },
+                    { value: "assistant", label: localizeUi("ui.characters.advancedtab.assistant") },
+                  ]}
+                />
+              </div>
             </div>
           }
         />
@@ -4067,6 +4243,10 @@ function CharacterGalleryTab({
   const remove = useDeleteCharacterGalleryImage(characterId);
   const setAvatar = useSetCharacterGalleryImageAsAvatar(characterId);
   const tag = useTagCharacterGalleryImage(characterId);
+  const saveDescription = useSaveGalleryDescription(
+    { scope: "character", ownerId: characterId },
+    characterKeys.gallery(characterId),
+  );
   const {
     lightbox,
     setLightbox,
@@ -4285,6 +4465,20 @@ function CharacterGalleryTab({
                   {localizeUi("ui.gallery.batch.selected", { count: selectedImages.length })}
                 </span>
               ) : null}
+              {selectingImages ? (
+                <>
+                  <GalleryDescribeButton
+                    images={selectedImages}
+                    target={{ scope: "character", ownerId: characterId }}
+                    queryKey={characterKeys.gallery(characterId)}
+                  />
+                  <GalleryCleanUpButton
+                    images={selectedImages}
+                    replacePath={(imageId) => `/characters/${characterId}/gallery/${imageId}/replace`}
+                    queryKey={characterKeys.gallery(characterId)}
+                  />
+                </>
+              ) : null}
             </div>
             <button
               type="button"
@@ -4329,7 +4523,12 @@ function CharacterGalleryTab({
                   )}
                 >
                   {!selectingImages ? (
-                    <CustomEmojiTagButton image={image} onApply={(patch) => tag.mutate({ imageId: image.id, patch })} />
+                    <CustomEmojiTagButton
+                      image={image}
+                      allowBackground
+                      onApply={(patch) => tag.mutate({ imageId: image.id, patch })}
+                      onDescribe={(description) => saveDescription.mutate({ imageId: image.id, description })}
+                    />
                   ) : (
                     <button
                       type="button"
@@ -4385,14 +4584,10 @@ function CharacterGalleryTab({
                             type="button"
                             onClick={() => void handleSetAvatar(image)}
                             disabled={setAvatar.isPending}
-                            className="rounded-lg bg-white/15 p-1.5 text-white transition-colors hover:bg-white/25 disabled:opacity-50"
+                            className="inline-flex items-center justify-center rounded-lg bg-white/15 p-1.5 text-white transition-colors hover:bg-white/25 disabled:opacity-50"
                             title={localizeUi("ui.characters.charactergallerytab.setAsAvatar")}
                           >
-                            {setAvatar.isPending ? (
-                              <Loader2 size="0.75rem" className="animate-spin" />
-                            ) : (
-                              <User size="0.75rem" />
-                            )}
+                            {setAvatar.isPending ? <Spinner size="sm" /> : <User size="0.75rem" />}
                           </button>
                         </>
                       ) : null}
@@ -4479,10 +4674,10 @@ function CharacterGalleryTab({
                 type="button"
                 onClick={() => void handleSetAvatar(lightbox)}
                 disabled={setAvatar.isPending}
-                className="rounded-lg bg-black/60 p-2 text-white transition-colors hover:bg-black/80 disabled:opacity-50"
+                className="inline-flex items-center justify-center rounded-lg bg-black/60 p-2 text-white transition-colors hover:bg-black/80 disabled:opacity-50"
                 title={localizeUi("ui.characters.charactergallerytab.setAsAvatar")}
               >
-                {setAvatar.isPending ? <Loader2 size="0.875rem" className="animate-spin" /> : <User size="0.875rem" />}
+                {setAvatar.isPending ? <Spinner size="sm" /> : <User size="0.875rem" />}
               </button>
               <ImageDownloadButton
                 url={lightbox.url}
@@ -4864,7 +5059,7 @@ function CharacterCallClipsGallery({ characterId, characterName }: { characterId
             className="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-3 py-2 text-xs font-semibold text-[var(--foreground)] transition-colors hover:border-[var(--primary)]/50 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {uploadClip.isPending && uploadingClipId === "custom-call:upload" ? (
-              <Loader2 size="0.85rem" className="animate-spin" />
+              <Spinner size="sm" />
             ) : (
               <Upload size="0.85rem" />
             )}
@@ -4876,7 +5071,7 @@ function CharacterCallClipsGallery({ characterId, characterName }: { characterId
             disabled={generationLockActive}
             className="inline-flex items-center gap-2 rounded-lg bg-[var(--primary)] px-3 py-2 text-xs font-semibold text-[var(--primary-foreground)] transition-all hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {batchGenerationPending ? <Loader2 size="0.85rem" className="animate-spin" /> : <Wand2 size="0.85rem" />}
+            {batchGenerationPending ? <Spinner size="sm" /> : <Wand2 size="0.85rem" />}
             {batchGenerationPending
               ? localizeUi("ui.characters.charactercallclipsgallery.generating")
               : localizeUi("ui.characters.charactercallclipsgallery.generateClips")}
@@ -5055,7 +5250,7 @@ function CharacterClipTrimModal({
       footer={
         <>
           <button type="button" onClick={handleSave} disabled={saving || !canSave} className={SHEET_BUTTON_PRIMARY}>
-            {saving ? <Loader2 size="0.85rem" className="animate-spin" /> : <Scissors size="0.85rem" />}
+            {saving ? <Spinner size="sm" /> : <Scissors size="0.85rem" />}
             {localizeUi("ui.characters.charactercliptrimmodal.saveTrim")}
           </button>
           <button type="button" onClick={handleReset} className={SHEET_BUTTON_SECONDARY}>
@@ -5184,7 +5379,7 @@ function CharacterClipCard({
           <div className="absolute inset-0">
             <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-xs text-[var(--muted-foreground)]">
               {clip.status === "generating" ? (
-                <Loader2 size="1.25rem" className="animate-spin text-[var(--primary)]" />
+                <Spinner size="lg" className="text-[var(--primary)]" />
               ) : clip.status === "error" ? (
                 <AlertTriangle size="1.25rem" className="text-[var(--destructive)]" />
               ) : (
@@ -5206,7 +5401,7 @@ function CharacterClipCard({
                       value1: clip.label || localizeUi("ui.characters.characterclipcard.callClip"),
                     })}
                   >
-                    {generating ? <Loader2 size="0.75rem" className="animate-spin" /> : <Wand2 size="0.75rem" />}
+                    {generating ? <Spinner size="sm" /> : <Wand2 size="0.75rem" />}
                     <span>{localizeUi("ui.characters.characterclipcard.generate")}</span>
                   </button>
                 ) : null}
@@ -5220,7 +5415,7 @@ function CharacterClipCard({
                       value1: clip.label || localizeUi("ui.characters.characterclipcard.callClip"),
                     })}
                   >
-                    {uploading ? <Loader2 size="0.75rem" className="animate-spin" /> : <Upload size="0.75rem" />}
+                    {uploading ? <Spinner size="sm" /> : <Upload size="0.75rem" />}
                     <span>{localizeUi("ui.characters.characterclipcard.upload")}</span>
                   </button>
                 ) : null}
@@ -5271,13 +5466,13 @@ function CharacterClipCard({
                 type="button"
                 onClick={() => onUpload(clip)}
                 disabled={uploading || uploadDisabled || generationDisabled}
-                className="rounded-lg border border-[var(--border)] bg-[var(--secondary)] p-1.5 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--secondary)] p-1.5 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-60"
                 title={localizeUi("ui.characters.characterclipcard.uploadReplacement")}
                 aria-label={localizeUi("ui.characters.characterclipcard.uploadReplacementForValue1", {
                   value1: clip.label || localizeUi("ui.panels.ttsconfigcard.clip"),
                 })}
               >
-                {uploading ? <Loader2 size="0.75rem" className="animate-spin" /> : <Upload size="0.75rem" />}
+                {uploading ? <Spinner size="sm" /> : <Upload size="0.75rem" />}
               </button>
             ) : null}
             {isReady && clip.url ? (
@@ -5295,13 +5490,13 @@ function CharacterClipCard({
                 type="button"
                 onClick={() => void onDelete(clip)}
                 disabled={deleting}
-                className="rounded-lg border border-[var(--border)] bg-[var(--secondary)] p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--secondary)] p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-60"
                 title={localizeUi("lorebook.editor.batch.delete")}
                 aria-label={localizeUi("ui.characters.characterclipcard.deleteValue1", {
                   value1: clip.label || localizeUi("ui.panels.ttsconfigcard.clip"),
                 })}
               >
-                {deleting ? <Loader2 size="0.75rem" className="animate-spin" /> : <Trash2 size="0.75rem" />}
+                {deleting ? <Spinner size="sm" /> : <Trash2 size="0.75rem" />}
               </button>
             ) : null}
           </div>
@@ -5351,21 +5546,11 @@ function SpritesTab({
   characterName,
   defaultAppearance,
   defaultAvatarUrl,
-  characterSheetImageId,
-  useCharacterSheetAsReference,
-  onUpdateCharacterSheet,
-  characterSheetSaving,
-  onCreateCharacterSheet,
 }: {
   characterId: string;
   characterName?: string;
   defaultAppearance?: string;
   defaultAvatarUrl?: string | null;
-  characterSheetImageId: string | null;
-  useCharacterSheetAsReference: boolean;
-  onUpdateCharacterSheet: (patch: CharacterSheetUpdate) => Promise<void>;
-  characterSheetSaving: boolean;
-  onCreateCharacterSheet: () => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
   type SpriteCategory = "expressions" | "full-body" | "clips";
@@ -5831,18 +6016,6 @@ function SpritesTab({
     [characterId, displayExpression, uploadSprite, wandCleanupSprite, localizeUi],
   );
 
-  const characterSheetSection = (
-    <CharacterSheetSection
-      characterId={characterId}
-      characterName={characterName ?? ""}
-      characterSheetImageId={characterSheetImageId}
-      useAsReference={useCharacterSheetAsReference}
-      onChange={onUpdateCharacterSheet}
-      saving={characterSheetSaving}
-      onCreateCharacterSheet={onCreateCharacterSheet}
-    />
-  );
-
   if (category === "clips") {
     return (
       <div className="space-y-6">
@@ -5851,8 +6024,6 @@ function SpritesTab({
           subtitle={localizeUi("ui.characters.spritestab.uploadVnStyleSpritesAndVideoCallClipsFor")}
           helpText={localizeUi("sprites.library.help")}
         />
-
-        {characterSheetSection}
 
         {categoryTabs}
 
@@ -5868,7 +6039,6 @@ function SpritesTab({
         subtitle={localizeUi("sprites.library.intro")}
         helpText={localizeUi("sprites.library.help")}
       />
-      {characterSheetSection}
       <SpriteLibraryShell
         library={library}
         busy={spriteBusy}
@@ -6009,7 +6179,7 @@ function SpritesTab({
 
         {folderProgress && (
           <p role="status" className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
-            <Loader2 size={14} className="animate-spin" />
+            <Spinner size="sm" />
             {localizeUi("ui.noodle.noodleprofilesurface.uploading_de27240")} {folderProgress.done}/
             {folderProgress.total}
           </p>
@@ -6070,7 +6240,7 @@ function SpritesTab({
         )}
         {cleaningSprites && (
           <p role="status" className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
-            <Loader2 size={14} className="animate-spin" />
+            <Spinner size="sm" />
             {localizeUi("ui.characters.spritestab.applyingAutomaticMatteCleanupToSavedSprites")}
           </p>
         )}
@@ -6299,7 +6469,7 @@ function SpritesTab({
                   disabled={!!deletingSprites}
                   className={SHEET_BUTTON_DESTRUCTIVE}
                 >
-                  {deletingSprites === "single" && <Loader2 size="0.875rem" className="animate-spin" />}
+                  {deletingSprites === "single" && <Spinner size="sm" />}
                   {localizeUi("ui.personas.personaspritestab.deleteSprite")}
                 </button>
                 <button
@@ -6380,6 +6550,12 @@ function StatsTab({
 
   return (
     <div className="space-y-6">
+      {/* MRPG: the card's starting tree and strong and weak stats for MRPG games. */}
+      <ClassicCardSection
+        value={formData.extensions.classic}
+        onChange={(classic) => updateExtension("classic", classic)}
+        description={[formData.description, formData.personality].filter(Boolean).join(" ")}
+      />
       <SectionHeader
         title={localizeUi("ui.characters.statstab.rpgStats")}
         subtitle={localizeUi("ui.characters.statstab.toggleStatTrackingForThisCharacterWhenEnabledThe")}
@@ -6541,7 +6717,6 @@ function ColorsTab({
 }) {
   const { t: localizeUi } = useUiTranslation();
   const nameColor = (formData.extensions.nameColor as string) ?? "";
-  const nameAliases = (formData.extensions.nameAliases as string[] | undefined) ?? [];
 
   return (
     <CardColors
@@ -6560,13 +6735,6 @@ function ColorsTab({
       dialogueColor={(formData.extensions.dialogueColor as string) ?? ""}
       boxColor={(formData.extensions.boxColor as string) ?? ""}
       onColorChange={(key, value) => updateExtension(key, value)}
-      aliases={
-        <NameAliasesSection
-          aliases={nameAliases}
-          onChange={(next) => updateExtension("nameAliases", next)}
-          nameColor={nameColor}
-        />
-      }
     />
   );
 }
@@ -6691,7 +6859,7 @@ function LorebookTab({
       }>(`/characters/${characterId}/embedded-lorebook/import`);
       qc.invalidateQueries({ queryKey: lorebookKeys.all });
       if (result.lorebookId) {
-        qc.invalidateQueries({ queryKey: ["characters", "detail", characterId] });
+        qc.invalidateQueries({ queryKey: characterKeys.detail(characterId) });
       }
       toast.success(
         result.reimported
@@ -6734,7 +6902,7 @@ function LorebookTab({
       // Reconcile the editor (patches formData when dirty) then refresh caches so
       // the tab, entries list, and Embedded badge update from server state.
       onUnembed?.();
-      qc.invalidateQueries({ queryKey: ["characters", "detail", characterId] });
+      qc.invalidateQueries({ queryKey: characterKeys.detail(characterId) });
       qc.invalidateQueries({ queryKey: lorebookKeys.all });
       toast.success(localizeUi("ui.characters.lorebooktab.removedTheEmbeddedLorebookFromTheCard"));
     } catch (error) {
@@ -6777,7 +6945,7 @@ function LorebookTab({
                 : "bg-[var(--primary)]/15 text-[var(--primary)] hover:bg-[var(--primary)]/25",
             )}
           >
-            {importing ? <Loader2 size="0.75rem" className="animate-spin" /> : <Library size="0.75rem" />}
+            {importing ? <Spinner size="sm" /> : <Library size="0.75rem" />}
             {linkedLorebookId
               ? localizeUi("ui.characters.lorebooktab.reimportEmbeddedLorebook")
               : localizeUi("ui.characters.lorebooktab.importEmbeddedLorebook")}
@@ -6827,7 +6995,7 @@ function LorebookTab({
                 : localizeUi("ui.characters.lorebooktab.removeTheEmbeddedLorebookDataCharacterBookFromThe")
             }
           >
-            {removing || embedding ? <Loader2 size="0.75rem" className="animate-spin" /> : <Trash2 size="0.75rem" />}
+            {removing || embedding ? <Spinner size="sm" /> : <Trash2 size="0.75rem" />}
             {localizeUi("ui.characters.lorebooktab.removeFromCard")}
           </button>
           <span className="text-[0.6875rem] text-[var(--muted-foreground)]">

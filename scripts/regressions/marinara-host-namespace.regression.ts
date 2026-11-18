@@ -78,7 +78,10 @@ const typesMatch: [
   Equal<keyof MarinaraHostV1["stores"], (typeof MARINARA_HOST_STORE_NAMES)[number]>,
   Equal<keyof MarinaraHostV1["modules"], MarinaraHostModuleSpecifier>,
   Equal<keyof MarinaraHostV1["services"], "tts" | "dialogs" | "audio" | "imageDownloads">,
-  Equal<keyof MarinaraHostV1["components"], "Modal">,
+  Equal<
+    keyof MarinaraHostV1["components"],
+    "Modal" | "Switch" | "Checkbox" | "Spinner" | "showConfirmDialog" | "Select"
+  >,
   Equal<keyof MarinaraHostV1["data"], "emojiCatalog">,
   Equal<keyof MarinaraHostStoreFields, (typeof MARINARA_HOST_STORE_NAMES)[number]>,
 ] = [true, true, true, true, true, true, true];
@@ -103,6 +106,9 @@ const pinnedFields: { [K in keyof MarinaraHostStoreFields]: Array<keyof Marinara
 for (const [store, fields] of Object.entries(pinnedFields)) {
   assert.equal(new Set(fields).size, fields.length, `${store} lists each field once`);
 }
+
+// Only the setter is pinned for the agent store: a package can signal Agent activity but reads none of its state.
+assert.deepEqual([...MARINARA_HOST_STORE_FIELDS.agent], ["setYoutubePlay", "setPackageActivity", "reset"]);
 
 // ── A host library major change needs a capability API major ──
 const MAJOR_CHANGE =

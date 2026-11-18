@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import type { AdvancedMemoryStatus } from "@marinara-engine/shared";
 import { seedUIState } from "./ui-state-fixture.js";
+import { chooseCharacter } from "./character-picker.js";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version as string;
 
@@ -163,11 +164,7 @@ test("Roleplay wizard reuses automatic memory settings without downloaded agents
     const next = wizard.getByRole("button", { name: "Next", exact: true });
     await next.click();
     await expect(wizard.getByRole("heading", { name: "Pick a Preset", exact: true })).toBeVisible();
-    await wizard.getByRole("combobox", { name: "Preset", exact: true }).click();
-    await wizard
-      .getByRole("listbox", { name: "Preset", exact: true })
-      .getByRole("option", { name: "None", exact: true })
-      .click();
+    await chooseCharacter(page, wizard.getByRole("button", { name: "Preset", exact: true }), "Preset", "None");
     await next.click();
     await expect(wizard.getByRole("heading", { name: "Persona & Characters", exact: true })).toBeVisible();
     await next.click();
@@ -178,7 +175,7 @@ test("Roleplay wizard reuses automatic memory settings without downloaded agents
     const agentsToggle = wizard.getByRole("switch", { name: /^Enable Agents/ });
     await expect(agentsToggle).toHaveAttribute("aria-checked", "false");
     const memory = wizard.locator('[data-component="AdvancedMemorySettings"]');
-    const toggle = memory.getByRole("checkbox", { name: /Automatic context and memory handling/ });
+    const toggle = memory.getByRole("switch", { name: /Automatic context and memory handling/ });
     await expect(toggle).not.toBeChecked();
     await expect(memory.getByText(/^Advanced Memory Recall lets you enjoy/)).toBeVisible();
     await expect(memory.getByLabel("Maximum allowed context before compression (tokens)")).toHaveCount(0);

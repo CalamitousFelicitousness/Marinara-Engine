@@ -37,6 +37,8 @@ import {
   replaceRoleplayCommandMarkers,
 } from "./RoleplayCommandResults";
 import { splitRoleplayParagraphs } from "../../lib/roleplay-vn-paragraphs";
+import { buildInlineNameColorMap, resolvePersonaInlineNames } from "../../lib/inline-name-colors";
+import { withCssPaintAlpha } from "../../lib/css-colors";
 import {
   notifyRoleplayTTSParagraph,
   withRoleplayTTSParagraphs,
@@ -82,7 +84,6 @@ import {
   Mic,
   MicOff,
   Eraser,
-  Loader2,
   Pause,
   Play,
   ChevronRight,
@@ -169,6 +170,9 @@ import { MESSAGE_ACTION_ICON_SIZE, MessageActionButton } from "./MessageActionBu
 import { MessageAttachButton } from "./MessageAttachButton";
 import { MessageMarkIndicators, MessageMarksAction, type MessageNoteSharing } from "./MessageMarks";
 import { RoleplayStoryboardMessageMedia } from "./RoleplayStoryboardMessageMedia";
+import { RoleplayRulesetCheckCard } from "./RoleplayRulesetCheckCard";
+import { extractRoleplayRulesetRecords } from "../../lib/roleplay-ruleset-records";
+import { Spinner } from "../ui/Spinner";
 
 const MESSAGE_DOUBLE_TAP_MS = 320;
 const MESSAGE_DOUBLE_TAP_DISTANCE_PX = 26;
@@ -1037,7 +1041,7 @@ interface ChatMessageProps {
   onRetryFailedReply?: () => void;
   /** R2: the reply checkup's quiet line, set only on the reply it describes. */
   replyCheckup?: ReactNode;
-  onSetActiveSwipe?: (messageId: string, index: number) => void;
+  onSetActiveSwipe?: (messageId: string, index: number) => void | Promise<boolean | undefined>;
   onToggleConversationStart?: ToggleConversationStart;
   memoryStartCharacterIds?: string[];
   onToggleHiddenFromAI?: ToggleHiddenFromAI;
@@ -1053,6 +1057,8 @@ interface ChatMessageProps {
   groupChatMode?: string;
   /** This chat's Card Theming switch; undefined falls back to the retired global setting. */
   colorInlineNames?: boolean;
+  /** Per-chat persona switch; unset follows colorInlineNames. */
+  colorPersonaInlineNames?: boolean;
   chatCharacterIds?: string[];
   /** The chat's live active characters: a streaming merged Narrator reply shows them; a saved one keeps its own. */
   mergedGroupCharacterIds?: string[];
@@ -2037,6 +2043,7 @@ export const ChatMessage = memo(function ChatMessage({
   personaInfo,
   groupChatMode,
   colorInlineNames: chatColorInlineNames,
+  colorPersonaInlineNames: chatColorPersonaInlineNames,
   chatCharacterIds,
   mergedGroupCharacterIds,
   noExpressionCharacterIds,
@@ -2119,6 +2126,7 @@ export const ChatMessage = memo(function ChatMessage({
     })),
   );
   const colorInlineNames = chatColorInlineNames ?? legacyColorInlineNames;
+  const colorPersonaInlineNames = resolvePersonaInlineNames(chatColorPersonaInlineNames, !!colorInlineNames);
   const remoteImages = useRemoteImagePolicy();
   // Build reusable text style objects (memoized to avoid unnecessary DOM updates)
   const textStrokeStyle = useMemo<React.CSSProperties>(
@@ -2797,7 +2805,7 @@ export const ChatMessage = memo(function ChatMessage({
       if (index === message.activeSwipeIndex) return;
       editSwipeIndexRef.current = null;
       setEditing(false);
-      onSetActiveSwipe?.(message.id, index);
+      return onSetActiveSwipe?.(message.id, index);
     },
     [message.activeSwipeIndex, message.id, onSetActiveSwipe],
   );
@@ -3028,33 +3036,28 @@ export const ChatMessage = memo(function ChatMessage({
   const ownDialogueColor = !isMergedGroup && !!msgColors?.dialogueColor;
   const boxBgColor = msgColors?.boxColor;
   const msgNameColor = msgColors?.nameColor;
+  // The Roleplay slider scales the authored alpha instead of replacing it, so `rgba(255, 255, 255, 0.25)`
+  // and `#FFFFFF40` both follow the control (#9063).
   const roleplayBubbleBg =
     chatFontOpacity <= 0
       ? "transparent"
       : boxBgColor
-        ? `rgb(from ${boxBgColor} r g b / ${chatFontOpacity / 100})`
+        ? withCssPaintAlpha(boxBgColor, String(chatFontOpacity / 100))
         : isUser
           ? userBubbleBg
           : assistantBubbleBg;
   const nameColorMap = useMemo(() => {
-    if (!colorInlineNames || !scopedCharacterMap) return null;
-    const map = new Map<string, string>();
-    const addName = (name: string | undefined | null, color: string) => {
-      const key = name?.trim().toLowerCase();
-      if (key) map.set(key, color);
-    };
-    scopedCharacterMap.forEach((char) => {
-      const color = char.nameColor;
-      if (!color) return;
+    if (!colorInlineNames && !colorPersonaInlineNames) return null;
+    return buildInlineNameColorMap({
+      characters: scopedCharacterMap?.values() ?? [],
+      persona: personaInfo,
+      colorCharacters: !!colorInlineNames,
+      colorPersona: !!colorPersonaInlineNames,
       // If gradients are disabled, extract the first solid color from gradient strings
-      const effectiveColor =
-        disableInlineNameGradients && isGradientNameColor(color) ? extractSolidColorFromGradient(color) : color;
-      addName(char.name, effectiveColor);
-      addName(char.convoDisplayName, effectiveColor);
-      for (const alias of char.nameAliases ?? []) addName(alias, effectiveColor);
+      toColor: (color) =>
+        disableInlineNameGradients && isGradientNameColor(color) ? extractSolidColorFromGradient(color) : color,
     });
-    return map.size > 0 ? map : null;
-  }, [colorInlineNames, scopedCharacterMap, disableInlineNameGradients]);
+  }, [colorInlineNames, colorPersonaInlineNames, scopedCharacterMap, personaInfo, disableInlineNameGradients]);
 
   // Build speaker → dialogueColor map for group chat speaker tag coloring
   const speakerColorMap = useMemo(() => {
@@ -3213,7 +3216,16 @@ export const ChatMessage = memo(function ChatMessage({
   );
 
   // Render content with dialogue highlighting (or HTML rendering)
-  const fullText = typeof displayContent === "string" ? displayContent : message.content;
+  // A Roleplay chat that plays by a ruleset saves the Engine's check records and sheet commands in the
+  // reply: the checks become dice cards where they happened, and the commands are not shown.
+  const rulesetRecords = useMemo(
+    () =>
+      isRoleplay && !isUser && typeof displayContent === "string" && displayContent.includes("[")
+        ? extractRoleplayRulesetRecords(displayContent)
+        : null,
+    [displayContent, isRoleplay, isUser],
+  );
+  const fullText = rulesetRecords?.text ?? (typeof displayContent === "string" ? displayContent : message.content);
   const vnParagraphs = useMemo(
     () => (visualNovel ? splitRoleplayParagraphs(fullText, isStreaming) : []),
     [fullText, isStreaming, visualNovel],
@@ -3260,6 +3272,12 @@ export const ChatMessage = memo(function ChatMessage({
     const commands = isRoleplay
       ? [
           ...(isUser ? [] : readRoleplayDiceRolls(fullText, extra).map((roll) => ({ ...roll, kind: "roll" as const }))),
+          ...(rulesetRecords?.checks ?? []).map((check, index) => ({
+            kind: "check" as const,
+            index,
+            offset: check.offset,
+            result: check.result,
+          })),
           ...getRoleplayWhispers(extra).map((whisper) => ({
             ...whisper,
             kind: "whisper" as const,
@@ -3315,6 +3333,7 @@ export const ChatMessage = memo(function ChatMessage({
     isUser,
     fullText,
     extra,
+    rulesetRecords,
     illustrationsByCommand,
     visualNovel,
     activeVnParagraphIndex,
@@ -3396,6 +3415,11 @@ export const ChatMessage = memo(function ChatMessage({
           html={command.html}
           scopeClass={`${htmlScopeClass}-artifact-${message.activeSwipeIndex}-${command.index}`}
         />
+      ) : command.kind === "check" ? (
+        <RoleplayRulesetCheckCard
+          key={`check-${message.id}-${message.activeSwipeIndex}-${command.index}`}
+          result={command.result}
+        />
       ) : command.kind === "whisper" ? (
         <RoleplayWhisper
           // The original command text identifies the whisper, so an open editor never saves over a replacement.
@@ -3456,11 +3480,11 @@ export const ChatMessage = memo(function ChatMessage({
     const slots = new Map<string, ReactNode>();
     let markedText = text;
     for (const command of inlineRoleplayCommands) {
-      const marker = `${markerPrefix}${command.index}\uE001`;
+      const marker = `${markerPrefix}${command.kind}-${command.index}\uE001`;
       slots.set(marker, renderInlineRoleplayCommand(command));
     }
     for (const roll of [...inlineRoleplayCommands].reverse()) {
-      const marker = `${markerPrefix}${roll.index}\uE001`;
+      const marker = `${markerPrefix}${roll.kind}-${roll.index}\uE001`;
       markedText = markedText.slice(0, roll.offset) + marker + markedText.slice(roll.offset);
     }
     const prose = replaceRoleplayCommandMarkers(renderPart(markedText), slots);
@@ -3595,6 +3619,12 @@ export const ChatMessage = memo(function ChatMessage({
 
   // ─── Swipe navigation ───
   const swipeCount = message.swipeCount ?? 0;
+  // Alternate greetings are swipes on the chat's first message.
+  const swipePicker = {
+    chatId: message.chatId,
+    content: message.content,
+    greeting: messageOrderIndex === 0 && !isUser,
+  };
   const hasSwipes = swipeCount > 1;
   // A reply still being written shows its stream on every swipe, and a held rewrite would then save
   // into the swipe picked meanwhile (#8636). Switch once it is done.
@@ -3891,6 +3921,31 @@ export const ChatMessage = memo(function ChatMessage({
       {ttsChunkProgress.index}/{ttsChunkProgress.total}
     </span>
   ) : null;
+  // One tap to hear the message, left of Regenerate; the voice menu keeps pause, restart, cache and volume.
+  const speakAction = ttsEnabled ? (
+    <ActionBtn
+      icon={
+        isLoadingThis ? (
+          <Spinner size="md" />
+        ) : isSpeakingThis ? (
+          <VolumeX size={MESSAGE_ACTION_ICON_SIZE} />
+        ) : (
+          <Volume2 size={MESSAGE_ACTION_ICON_SIZE} />
+        )
+      }
+      onClick={handleSpeak}
+      title={
+        !hasTTSContent
+          ? localizeUi("ui.chat.chatmessage.noDialogueToSpeak")
+          : isLoadingThis
+            ? localizeUi("ui.panels.ttsconfigcard.loading")
+            : isSpeakingThis
+              ? localizeUi("ui.chat.chatmessage.stopSpeaking")
+              : localizeUi("ui.chat.chatmessage.speak")
+      }
+      disabled={!hasTTSContent || clearingTTS || (ttsBusy && !isSpeakingThis)}
+    />
+  ) : null;
 
   const roleplayTtsControls = ttsEnabled && (
     <>
@@ -3917,7 +3972,7 @@ export const ChatMessage = memo(function ChatMessage({
         <ActionBtn
           icon={
             isLoadingThis ? (
-              <Loader2 size={MESSAGE_ACTION_ICON_SIZE} className="animate-spin" />
+              <Spinner size="md" />
             ) : isSpeakingThis ? (
               <MicOff size={MESSAGE_ACTION_ICON_SIZE} />
             ) : (
@@ -3937,13 +3992,7 @@ export const ChatMessage = memo(function ChatMessage({
           disabled={!hasTTSContent || clearingTTS || (ttsBusy && !isSpeakingThis)}
         />
         <ActionBtn
-          icon={
-            clearingTTS ? (
-              <Loader2 size={MESSAGE_ACTION_ICON_SIZE} className="animate-spin" />
-            ) : (
-              <Eraser size={MESSAGE_ACTION_ICON_SIZE} />
-            )
-          }
+          icon={clearingTTS ? <Spinner size="md" /> : <Eraser size={MESSAGE_ACTION_ICON_SIZE} />}
           onClick={handleClearCachedVoice}
           title={localizeUi("ui.chat.chatmessage.clearCachedVoice")}
           disabled={!hasTTSContent || clearingTTS || (ttsBusy && !isSpeakingThis)}
@@ -4095,6 +4144,7 @@ export const ChatMessage = memo(function ChatMessage({
               multiSelectMode && isSelected && cn("rounded-lg", MESSAGE_SELECTION_SURFACE_CLASS),
             )}
             data-message-id={message.id}
+            aria-busy={isStreaming || undefined}
             data-card-css={message.characterId ?? undefined}
             onClick={handleMobileTap}
             onDoubleClick={handleRoleplayDoubleClick}
@@ -4192,6 +4242,18 @@ export const ChatMessage = memo(function ChatMessage({
     const roleplayMessageControls = (
       <>
         {/* Swipes */}
+        {/* Reserve the pager row while streaming so the saved reply does not push the view. */}
+        {isStreaming && (hasSwipes || canCreateNextSwipe) && (
+          <SwipeJumpControl
+            alwaysShow={alwaysDisplaySwipeMenu && !isUser}
+            messageId={message.id}
+            activeSwipeIndex={message.activeSwipeIndex}
+            swipeCount={swipeCount}
+            onSetActiveSwipe={handleSetActiveSwipe}
+            onCreateNextSwipe={canCreateNextSwipe ? () => {} : undefined}
+            className="invisible"
+          />
+        )}
         {showSwipeControls && (
           <SwipeJumpControl
             alwaysShow={alwaysDisplaySwipeMenu && !isUser}
@@ -4200,6 +4262,7 @@ export const ChatMessage = memo(function ChatMessage({
             swipeCount={swipeCount}
             onSetActiveSwipe={handleSetActiveSwipe}
             onCreateNextSwipe={canCreateNextSwipe ? () => onRegenerate?.(message.id) : undefined}
+            picker={swipePicker}
             nextButtonTriggerProps={multiSwipeMenu.triggerProps}
           />
         )}
@@ -4218,7 +4281,7 @@ export const ChatMessage = memo(function ChatMessage({
             (showActions || editing) && "opacity-100",
             isSpeakingThis && "opacity-100",
             showStreamingThinkingAction &&
-              "opacity-100 [&>button:not([data-message-thinking-action])]:hidden [&>div]:hidden",
+              "opacity-100 [&>button:not([data-message-thinking-action])]:invisible [&>div]:invisible",
           )}
         >
           <ActionBtn
@@ -4243,13 +4306,7 @@ export const ChatMessage = memo(function ChatMessage({
           {canAttachFiles && <MessageAttachButton chatId={message.chatId} messageId={message.id} />}
           {hasRewriteVersions && (
             <ActionBtn
-              icon={
-                switchingRewriteVersion ? (
-                  <Loader2 size={MESSAGE_ACTION_ICON_SIZE} className="animate-spin" />
-                ) : (
-                  <Shield size={MESSAGE_ACTION_ICON_SIZE} />
-                )
-              }
+              icon={switchingRewriteVersion ? <Spinner size="md" /> : <Shield size={MESSAGE_ACTION_ICON_SIZE} />}
               onClick={handleToggleProseGuardianVersion}
               title={
                 showingProseGuardianOriginal
@@ -4260,6 +4317,7 @@ export const ChatMessage = memo(function ChatMessage({
               disabled={switchingRewriteVersion}
             />
           )}
+          {speakAction}
           <GuidedRegenerateActionBtn
             onClick={multiSwipeMenu.handlePlainClick}
             triggerProps={multiSwipeMenu.triggerProps}
@@ -4347,6 +4405,7 @@ export const ChatMessage = memo(function ChatMessage({
             multiSelectMode && isSelected && cn("rounded-lg", MESSAGE_SELECTION_SURFACE_CLASS),
           )}
           data-message-id={message.id}
+          aria-busy={isStreaming || undefined}
           data-message-role={message.role}
           data-card-css={message.characterId ?? undefined}
           onClick={handleMobileTap}
@@ -4744,6 +4803,18 @@ export const ChatMessage = memo(function ChatMessage({
   const messageControls = (
     <>
       {/* Swipes */}
+      {/* Reserve the pager row while streaming so the saved reply does not push the view. */}
+      {isStreaming && (hasSwipes || canCreateNextSwipe) && (
+        <SwipeJumpControl
+          alwaysShow={alwaysDisplaySwipeMenu && !isUser}
+          messageId={message.id}
+          activeSwipeIndex={message.activeSwipeIndex}
+          swipeCount={swipeCount}
+          onSetActiveSwipe={handleSetActiveSwipe}
+          onCreateNextSwipe={canCreateNextSwipe ? () => {} : undefined}
+          className="invisible"
+        />
+      )}
       {showSwipeControls && (
         <SwipeJumpControl
           alwaysShow={alwaysDisplaySwipeMenu && !isUser}
@@ -4752,6 +4823,7 @@ export const ChatMessage = memo(function ChatMessage({
           swipeCount={swipeCount}
           onSetActiveSwipe={handleSetActiveSwipe}
           onCreateNextSwipe={canCreateNextSwipe ? () => onRegenerate?.(message.id) : undefined}
+          picker={swipePicker}
         />
       )}
 
@@ -4766,7 +4838,7 @@ export const ChatMessage = memo(function ChatMessage({
           (showActions || editing) && "opacity-100",
           isSpeakingThis && "opacity-100",
           showStreamingThinkingAction &&
-            "opacity-100 [&>button:not([data-message-thinking-action])]:hidden [&>div]:hidden",
+            "opacity-100 [&>button:not([data-message-thinking-action])]:invisible [&>div]:invisible",
         )}
       >
         <ActionBtn
@@ -4792,13 +4864,7 @@ export const ChatMessage = memo(function ChatMessage({
         {canAttachFiles && <MessageAttachButton chatId={message.chatId} messageId={message.id} />}
         {hasRewriteVersions && (
           <ActionBtn
-            icon={
-              switchingRewriteVersion ? (
-                <Loader2 size={MESSAGE_ACTION_ICON_SIZE} className="animate-spin" />
-              ) : (
-                <Shield size={MESSAGE_ACTION_ICON_SIZE} />
-              )
-            }
+            icon={switchingRewriteVersion ? <Spinner size="md" /> : <Shield size={MESSAGE_ACTION_ICON_SIZE} />}
             onClick={handleToggleProseGuardianVersion}
             title={
               showingProseGuardianOriginal
@@ -4809,6 +4875,7 @@ export const ChatMessage = memo(function ChatMessage({
             disabled={switchingRewriteVersion}
           />
         )}
+        {speakAction}
         <GuidedRegenerateActionBtn
           onClick={multiSwipeMenu.handlePlainClick}
           triggerProps={multiSwipeMenu.triggerProps}
@@ -4910,7 +4977,7 @@ export const ChatMessage = memo(function ChatMessage({
               <ActionBtn
                 icon={
                   isLoadingThis ? (
-                    <Loader2 size={MESSAGE_ACTION_ICON_SIZE} className="animate-spin" />
+                    <Spinner size="md" />
                   ) : isSpeakingThis ? (
                     <VolumeX size={MESSAGE_ACTION_ICON_SIZE} />
                   ) : (
@@ -4930,13 +4997,7 @@ export const ChatMessage = memo(function ChatMessage({
                 disabled={!hasTTSContent || clearingTTS || (ttsBusy && !isSpeakingThis)}
               />
               <ActionBtn
-                icon={
-                  clearingTTS ? (
-                    <Loader2 size={MESSAGE_ACTION_ICON_SIZE} className="animate-spin" />
-                  ) : (
-                    <Eraser size={MESSAGE_ACTION_ICON_SIZE} />
-                  )
-                }
+                icon={clearingTTS ? <Spinner size="md" /> : <Eraser size={MESSAGE_ACTION_ICON_SIZE} />}
                 onClick={handleClearCachedVoice}
                 title={localizeUi("ui.chat.chatmessage.clearCachedVoice")}
                 disabled={!hasTTSContent || clearingTTS || (ttsBusy && !isSpeakingThis)}
@@ -4959,6 +5020,7 @@ export const ChatMessage = memo(function ChatMessage({
         multiSelectMode && isSelected && MESSAGE_SELECTION_SURFACE_CLASS,
       )}
       data-message-id={message.id}
+      aria-busy={isStreaming || undefined}
       data-message-role={message.role}
       onClick={handleMobileTap}
     >

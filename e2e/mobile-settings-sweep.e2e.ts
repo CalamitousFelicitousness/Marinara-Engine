@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { isolateSyncedUISettings, seedUIState } from "./ui-state-fixture.js";
 import { openChatSettings } from "./chat-settings-tools.js";
+import { chooseOption } from "./select-field.js";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
@@ -72,7 +73,7 @@ for (const theme of ["dark", "light"] as const) {
       const settings = await openChatSettings(page);
       const characters = settings.locator('[data-chat-settings-section="roleplay-characters"]');
       await expect(settings.locator('[data-chat-settings-section="roleplay-card-theming"]')).toHaveCount(0);
-      const coloring = characters.getByRole("checkbox", { name: "Color Character Names in Text" });
+      const coloring = characters.getByRole("switch", { name: "Color Character Names in Text" });
       await expect(coloring).not.toBeChecked();
       // #8796: folders add from inside the character picker, so the toggle sits below "Add Character".
       const add = characters.getByRole("button", { name: "Add Character", exact: true });
@@ -82,7 +83,7 @@ for (const theme of ["dark", "light"] as const) {
           const addButton = Array.from(section.querySelectorAll("button")).find((button) =>
             button.textContent?.includes("Add Character"),
           );
-          const toggle = section.querySelector('input[type="checkbox"]');
+          const toggle = section.querySelector('[role="switch"]');
           return Boolean(
             addButton && toggle && addButton.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING,
           );
@@ -158,24 +159,30 @@ for (const theme of ["dark", "light"] as const) {
       await prepare(page, theme, { rightPanelOpen: true, rightPanel: "settings", settingsTab: "addons" });
       await page.goto("/");
       const limit = page.getByLabel("Previous revisions to keep", { exact: true });
-      await expect(limit).toHaveValue("10");
-      await expect(limit.locator("option")).toHaveCount(11);
-      await limit.selectOption("2");
+      await expect(limit).toHaveAttribute("data-value", "10");
+      await limit.click();
+      const limitRows = page
+        .getByRole("dialog", { name: "Previous revisions to keep", exact: true })
+        .locator("[data-pick-row]");
+      await expect(limitRows).toHaveCount(11);
+      await page.keyboard.press("Escape");
+      await expect(limitRows).toHaveCount(0);
+      await chooseOption(page, limit, "2");
       await expect(page.getByText("Remove older extension revisions?", { exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Cancel", exact: true }).click();
-      await expect(limit).toHaveValue("10");
+      await expect(limit).toHaveAttribute("data-value", "10");
       expect((await (await request.get("/api/personal-extensions/revision-history")).json()).limit).toBe(10);
-      await limit.selectOption("0");
+      await chooseOption(page, limit, "0");
       await page.getByRole("button", { name: "Remove older revisions", exact: true }).click();
-      await expect(limit).toHaveValue("0");
+      await expect(limit).toHaveAttribute("data-value", "0");
       await page.reload();
-      await expect(limit).toHaveValue("0");
+      await expect(limit).toHaveAttribute("data-value", "0");
       await testInfo.attach(`retention-${theme}`, {
         body: await limit.locator("xpath=ancestor::section[1]").screenshot(),
         contentType: "image/png",
       });
-      await limit.selectOption("5");
-      await expect(limit).toHaveValue("5");
+      await chooseOption(page, limit, "5");
+      await expect(limit).toHaveAttribute("data-value", "5");
       await expect(page.getByText("Remove older extension revisions?", { exact: true })).toHaveCount(0);
     } finally {
       await request.patch("/api/personal-extensions/revision-history", { data: { limit: 10 } });
@@ -202,8 +209,8 @@ for (const theme of ["dark", "light"] as const) {
     await prepare(page, theme, { rightPanelOpen: true, rightPanel: "settings", settingsTab: "addons" });
     await page.goto("/");
     const limit = page.getByLabel("Previous revisions to keep", { exact: true });
-    await expect(limit).toHaveValue("3");
-    await limit.selectOption("5");
+    await expect(limit).toHaveAttribute("data-value", "3");
+    await chooseOption(page, limit, "5");
     await expect(page.getByText("Remove older extension revisions?", { exact: true })).toBeVisible();
     await expect(page.locator('.mari-modal[role="dialog"]')).toHaveCSS("opacity", "1");
     await expect(page.locator(".mari-modal-panel")).toHaveCSS("opacity", "1");
@@ -220,12 +227,12 @@ for (const theme of ["dark", "light"] as const) {
       contentType: "image/png",
     });
     await page.getByRole("button", { name: "Cancel", exact: true }).click();
-    await expect(limit).toHaveValue("3");
+    await expect(limit).toHaveAttribute("data-value", "3");
     expect(changes).toEqual([{ limit: 5 }]);
     await expect(page.getByText("Could not update extension revision history.", { exact: true })).toHaveCount(0);
-    await limit.selectOption("5");
+    await chooseOption(page, limit, "5");
     await page.getByRole("button", { name: "Remove older revisions", exact: true }).click();
-    await expect(limit).toHaveValue("5");
+    await expect(limit).toHaveAttribute("data-value", "5");
     expect(changes).toEqual([{ limit: 5 }, { limit: 5 }, { limit: 5, confirmPrune: true }]);
   });
 
@@ -247,13 +254,25 @@ for (const theme of ["dark", "light"] as const) {
         const module = await import("/src/stores/ui.store.ts" as string);
         module.useUIStore.getState().openConnectionDetail(id);
       }, connection.id);
-      const name = page.getByPlaceholder("e.g. Claude Sonnet — RP", { exact: true });
+      // The connection editor is the model window since the Connections redesign; its name field is "Model name".
+      const name = page
+        .getByRole("dialog", { name: "Keyboard fixture", exact: true })
+        .getByRole("textbox", { name: "Model name", exact: true });
       await expect(name).toHaveValue("Keyboard fixture");
       await name.focus();
       await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
       const hidden = await name.evaluate((field) => {
-        const scroll = field.closest<HTMLElement>(".mari-editor-content")!;
-        scroll.scrollTop = 110;
+        // The window's scrolling body is the field's nearest ancestor that scrolls; mark it for the check below.
+        let scroll = field.parentElement;
+        while (
+          scroll &&
+          !(scroll.scrollHeight > scroll.clientHeight && /auto|scroll/u.test(getComputedStyle(scroll).overflowY))
+        )
+          scroll = scroll.parentElement;
+        if (!scroll) throw new Error("The model name field has no scrolling body");
+        scroll.dataset.e2eScroller = "";
+        // Scroll just past the field, as the keyboard's pan leaves it above the visible body.
+        scroll.scrollTop += field.getBoundingClientRect().top - scroll.getBoundingClientRect().top + 10;
         const clipped = field.getBoundingClientRect().top < scroll.getBoundingClientRect().top;
         (window as typeof window & { __keyboardViewport: (height: number, top: number) => void }).__keyboardViewport(
           390,
@@ -266,14 +285,18 @@ for (const theme of ["dark", "light"] as const) {
         .poll(() =>
           name.evaluate((field) => {
             const rect = field.getBoundingClientRect();
-            const scroll = field.closest<HTMLElement>(".mari-editor-content")!.getBoundingClientRect();
+            const scroll = field.closest<HTMLElement>("[data-e2e-scroller]")!.getBoundingClientRect();
             return rect.top >= scroll.top && rect.bottom <= Math.min(scroll.bottom, 490);
           }),
         )
         .toBe(true);
       await name.fill("Visible while typing");
-      await expect(name).toBeFocused();
-      await expect(name).toHaveValue("Visible while typing");
+      // The window is titled by the name being typed, so it is found by its new name now.
+      const renamed = page
+        .getByRole("dialog", { name: "Visible while typing", exact: true })
+        .getByRole("textbox", { name: "Model name", exact: true });
+      await expect(renamed).toBeFocused();
+      await expect(renamed).toHaveValue("Visible while typing");
       await testInfo.attach(`connection-keyboard-${theme}`, {
         body: await page.screenshot(),
         contentType: "image/png",

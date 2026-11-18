@@ -1,5 +1,4 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ActivityOverview } from "@marinara-engine/shared";
 import { Modal } from "../ui/Modal";
@@ -14,6 +13,8 @@ import {
   type HeatmapCell,
 } from "../../lib/chat-insights-display";
 import { SectionTitle, StatTile } from "./ChatStatsModal";
+import { Select } from "../ui/Select";
+import { Spinner } from "../ui/Spinner";
 
 const LEVEL_CLASSES: Record<HeatmapCell["level"], string> = {
   0: "bg-[var(--foreground)]/8",
@@ -56,19 +57,16 @@ function ActivityHeatmap({ overview }: { overview: ActivityOverview }) {
         <SectionTitle>
           {t("chatInsights.activity.heatmap", { count: grid.total, value: grid.total.toLocaleString() })}
         </SectionTitle>
-        <select
+        <Select
           value={String(selection)}
-          onChange={(event) => setSelection(event.target.value === "recent" ? "recent" : Number(event.target.value))}
-          aria-label={t("chatInsights.activity.range")}
+          onChange={(next) => setSelection(next === "recent" ? "recent" : Number(next))}
+          label={t("chatInsights.activity.range")}
           className="mb-2 ml-auto h-8 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 text-xs text-[var(--foreground)] outline-none focus:border-[var(--primary)]"
-        >
-          <option value="recent">{t("chatInsights.activity.lastYear")}</option>
-          {years.map((year) => (
-            <option key={year} value={year}>
-              {year}
-            </option>
-          ))}
-        </select>
+          options={[
+            { value: "recent", label: t("chatInsights.activity.lastYear") },
+            ...years.map((year) => ({ value: String(year), label: String(year) })),
+          ]}
+        />
       </div>
       <div
         ref={scrollRef}
@@ -224,7 +222,7 @@ export function ActivityOverviewModal({ open, onClose }: { open: boolean; onClos
     <Modal open={open} onClose={onClose} title={t("chatInsights.activity.title")} width="max-w-2xl" mobileFullscreen>
       {activity.isLoading ? (
         <div className="flex items-center justify-center gap-2 py-10 text-sm text-[var(--muted-foreground)]">
-          <Loader2 size="0.875rem" className="animate-spin" />
+          <Spinner size="sm" />
           {t("chatInsights.activity.loading")}
         </div>
       ) : activity.isError || !activity.data ? (

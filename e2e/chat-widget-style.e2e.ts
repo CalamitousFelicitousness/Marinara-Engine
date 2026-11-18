@@ -2,6 +2,7 @@ import { expect, test, type APIRequestContext, type BrowserContext, type Locator
 import { readFileSync } from "node:fs";
 import { closeChatSettings, openChatSettings, openChatTool } from "./chat-settings-tools.js";
 import { clickTopbarPanel } from "./topbar-navigation.js";
+import { chooseOption } from "./select-field.js";
 import { seedUIState } from "./ui-state-fixture.js";
 
 const APP_VERSION = (
@@ -164,7 +165,7 @@ async function openAppearance(page: Page) {
 
 async function setChatStyleApplication(controls: Locator, role: keyof typeof APPLY_NONE, enabled: boolean) {
   const label = `Apply preset ${role}`;
-  const checkbox = controls.getByRole("checkbox", { name: label, exact: true });
+  const checkbox = controls.getByRole("switch", { name: label, exact: true });
   if ((await checkbox.isChecked()) !== enabled) await controls.getByText(label, { exact: true }).click();
   await expect(checkbox).toBeChecked({ checked: enabled });
   if (enabled) await expect(controls.page().locator("html")).toHaveAttribute(`data-chat-widget-apply-${role}`, "true");
@@ -246,6 +247,8 @@ async function setGradientColors(controls: Locator) {
     const trigger = picker.locator(":scope > div > button");
     await trigger.click();
     await picker.getByRole("button", { name: "Gradient", exact: true }).click();
+    // The ready-made gradients sit in the picker's Colors tab, beside Custom.
+    await picker.getByRole("button", { name: "Colors", exact: true }).click();
     await picker.getByTitle(GRADIENT_COLORS[role], { exact: true }).click();
     await trigger.click();
   }
@@ -705,7 +708,7 @@ test("widget font, shape and color choices survive reload and a fresh browser, a
     const preset = await measureWidgets(page);
     let controls = await openAppearance(page);
     for (const role of ["font", "shape", "colors"] as const) {
-      await expect(controls.getByRole("checkbox", { name: `Apply preset ${role}`, exact: true })).not.toBeChecked();
+      await expect(controls.getByRole("switch", { name: `Apply preset ${role}`, exact: true })).not.toBeChecked();
     }
     await setChatStyleApplication(controls, "font", true);
     await expect.poll(async () => (await readPreferences(page)).apply).toEqual({ ...APPLY_NONE, font: true });
@@ -717,8 +720,8 @@ test("widget font, shape and color choices survive reload and a fresh browser, a
     await expect.poll(async () => (await readPreferences(page)).apply).toEqual(apply);
     await controls.locator('[data-chat-widget-preset-option="dottore"]').click();
     await expect.poll(async () => (await readPreferences(page)).apply).toEqual(apply);
-    await controls.locator("#chat-widget-font").selectOption("@serif");
-    await controls.locator("#chat-widget-shape").selectOption("square");
+    await chooseOption(page, controls.locator("#chat-widget-font"), "Storybook serif");
+    await chooseOption(page, controls.locator("#chat-widget-shape"), "Square");
     await setGradientColors(controls);
     await clickTopbarPanel(page, "settings");
     const square = await measureWidgets(page);
@@ -770,7 +773,11 @@ test("widget font, shape and color choices survive reload and a fresh browser, a
     const shapes = new Map<string, string>();
     for (const shape of ["rounded", "cut-corner", "arched"] as const) {
       controls = await openAppearance(page);
-      await controls.locator("#chat-widget-shape").selectOption(shape);
+      await chooseOption(
+        page,
+        controls.locator("#chat-widget-shape"),
+        { rounded: "Rounded", "cut-corner": "Cut corners", arched: "Arched" }[shape],
+      );
       await clickTopbarPanel(page, "settings");
       const rendered = await measureWidgets(page);
       expect(rendered.title.font).toBe(square.title.font);
@@ -1156,8 +1163,8 @@ for (const [preset, theme] of [
         await info.attach(`${preset} ${chat.view} chat style`, { path, contentType: "image/png" });
       }
       controls = await openAppearance(page);
-      await controls.locator("#chat-widget-font").selectOption("@serif");
-      await controls.locator("#chat-widget-shape").selectOption("cut-corner");
+      await chooseOption(page, controls.locator("#chat-widget-font"), "Storybook serif");
+      await chooseOption(page, controls.locator("#chat-widget-shape"), "Cut corners");
       await setGradientColors(controls);
       // Cut corners keeps the preset's inner button ring under custom colors too (#7244).
       await expectButtonRing(

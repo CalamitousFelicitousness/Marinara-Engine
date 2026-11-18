@@ -4,7 +4,7 @@
 // These fields only affect Conversation mode; they are never read in RP/VN/Game.
 // ──────────────────────────────────────────────
 import { useEffect, useRef, useState } from "react";
-import { CalendarClock, Loader2, RotateCcw, Smile, Wand2 } from "lucide-react";
+import { CalendarClock, RotateCcw, Smile, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   type ConvoBehaviorConfig,
@@ -15,6 +15,9 @@ import { MacroTextarea } from "../ui/MacroTextarea";
 import { EmojiPicker } from "../ui/EmojiPicker";
 import { HelpTooltip } from "../ui/HelpTooltip";
 import { useTranslation as useUiTranslation } from "react-i18next";
+import { Spinner } from "../ui/Spinner";
+import { Checkbox } from "../ui/Checkbox";
+import { Select } from "../ui/Select";
 
 const STRATEGY_OPTIONS: Array<{ value: ConvoBehaviorInsertionStrategy; label: string }> = [
   { value: "constant_after", label: "Constant — after the card" },
@@ -49,8 +52,6 @@ interface ConvoProfileFieldsProps {
   onAboutMeChange: (value: string) => void;
   behavior: ConvoBehaviorConfig | null | undefined;
   onBehaviorChange: (value: ConvoBehaviorConfig) => void;
-  imageInstructions?: string;
-  onImageInstructionsChange?: (value: string) => void;
   /** The character's weekly convo schedule, if one has been generated. */
   schedule?: WeekSchedule;
   /** Opens the schedule editor. Omit to hide the schedule panel entirely. */
@@ -70,8 +71,6 @@ export function ConvoProfileFields({
   onAboutMeChange,
   behavior,
   onBehaviorChange,
-  imageInstructions,
-  onImageInstructionsChange,
   schedule,
   onEditSchedule,
   generateConvoProfile,
@@ -174,8 +173,7 @@ export function ConvoProfileFields({
         />
         {kind === "character" && onDisplayNameInCardChange && (
           <label className="flex items-start gap-2 text-xs text-[var(--muted-foreground)]">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={!!displayNameInCard}
               onChange={(e) => onDisplayNameInCardChange(e.target.checked)}
               className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[var(--primary)]"
@@ -207,7 +205,7 @@ export function ConvoProfileFields({
               title={localizeUi("ui.characters.convoprofilefields.generateAboutMe")}
               className="inline-flex items-center rounded p-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {generating === "aboutMe" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
+              {generating === "aboutMe" ? <Spinner size="sm" /> : <Wand2 className="h-3 w-3" />}
             </button>
           )}
         </div>
@@ -273,11 +271,7 @@ export function ConvoProfileFields({
                 title={localizeUi("ui.characters.convoprofilefields.generateConvoBehavior")}
                 className="inline-flex items-center rounded p-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {generating === "behavior" ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Wand2 className="h-3 w-3" />
-                )}
+                {generating === "behavior" ? <Spinner size="sm" /> : <Wand2 className="h-3 w-3" />}
               </button>
             )}
           </div>
@@ -289,27 +283,23 @@ export function ConvoProfileFields({
             title={localizeUi("ui.characters.convoprofilefields.convoBehavior")}
             className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-3 text-sm outline-none transition-colors placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
           />
-          <label className="flex flex-wrap items-center gap-2 text-xs">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
             <span className="text-[var(--muted-foreground)]">
               {localizeUi("ui.characters.convoprofilefields.insertion")}
             </span>
-            <select
+            <Select
+              label={localizeUi("ui.characters.convoprofilefields.insertion")}
               value={behaviorStrategy}
-              onChange={(e) =>
+              onChange={(next) =>
                 onBehaviorChange({
                   instruction: behaviorInstruction,
-                  insertionStrategy: e.target.value as ConvoBehaviorInsertionStrategy,
+                  insertionStrategy: next as ConvoBehaviorInsertionStrategy,
                 })
               }
               className="max-w-full rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-2 py-1 text-xs outline-none"
-            >
-              {STRATEGY_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </label>
+              options={STRATEGY_OPTIONS}
+            />
+          </div>
         </div>
       )}
 
@@ -333,22 +323,6 @@ export function ConvoProfileFields({
               ? localizeUi("ui.characters.convoprofilefields.editSchedule")
               : localizeUi("ui.chat.chatsettingsdrawer.createSchedule")}
           </button>
-        </div>
-      )}
-
-      {kind === "character" && onImageInstructionsChange && (
-        <div className="mari-editor-panel space-y-3 p-3">
-          <span className="inline-flex items-center gap-1 text-xs font-semibold">
-            {localizeUi("ui.characters.convoprofilefields.imageGenerationInstructions")}
-            <HelpTooltip wide text={localizeUi("ui.characters.convoprofilefields.imageGenerationInstructionsHelp")} />
-          </span>
-          <textarea
-            value={imageInstructions ?? ""}
-            onChange={(event) => onImageInstructionsChange(event.target.value)}
-            placeholder={localizeUi("ui.characters.convoprofilefields.imageGenerationInstructionsPlaceholder")}
-            rows={5}
-            className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-3 text-sm leading-relaxed outline-none transition-colors placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
-          />
         </div>
       )}
     </div>

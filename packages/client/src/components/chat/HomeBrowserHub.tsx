@@ -52,6 +52,7 @@ import {
   homeAgentWidgetsSchema,
 } from "@marinara-engine/shared";
 import { useTranslation } from "react-i18next";
+import { useCoveredSurfaceFlag } from "../../hooks/use-covered-surface-flag";
 import { useAgentConfigs } from "../../hooks/use-agents";
 import { useMatchMedia } from "../../hooks/use-match-media";
 import { useMariAppearancePack } from "../../hooks/use-mari-appearance-pack";
@@ -81,12 +82,14 @@ import { formatShortcutKey } from "../../lib/keyboard-shortcuts";
 import { executeStateNavigation } from "../../lib/state-navigation";
 import { requestProfessorMariOpen } from "../../lib/professor-mari-open";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
+import { MarinaraWordmark } from "../ui/MarinaraWordmark";
 import { MOBILE_SHELL_MEDIA_QUERY, useUIStore } from "../../stores/ui.store";
 import { startSceneWithPromptPreferences } from "../../lib/scene-generation";
 import { useChatStore } from "../../stores/chat.store";
 import { CapabilityElement } from "../capabilities/CapabilityElement";
 import { Modal } from "../ui/Modal";
 import { SHEET_BUTTON_PRIMARY } from "../ui/neutral-surface-styles";
+import { Select } from "../ui/Select";
 import { ToggleSetting } from "../panels/settings/SettingControls";
 import { HomeAchievements } from "./HomeAchievements";
 import { ChatModeIcon } from "./ChatModeIcon";
@@ -96,6 +99,7 @@ import { HomeNewChatLauncher } from "./HomeNewChatLauncher";
 import { RecentChats } from "./RecentChats";
 import { HomeCharacterLibrary } from "./HomeCharacterLibrary";
 import { capabilityPackageAssetUrl } from "../../lib/capability-package-assets";
+import { avatarPreviewSrc } from "../../lib/avatar-preview";
 
 const HOME_BROWSER_PANEL_ID = "marinara-home-browser-panel";
 // Outside homeBrowserTabId's `marinara-home-tab-` namespace, so no package id can produce them.
@@ -383,21 +387,6 @@ type HomeBrowserHubProps = {
   pageActive: boolean;
   onOpenCredits: () => void;
 };
-
-function MarinaraWordmark({ className }: { className?: string }) {
-  const { t } = useTranslation();
-  const brandName = t("app.documentTitle");
-  return (
-    <span
-      className={cn(
-        "mari-logo-gradient-text mari-logo-gradient-text--active inline-flex items-baseline font-black tracking-[-0.035em]",
-        className,
-      )}
-    >
-      {brandName}
-    </span>
-  );
-}
 
 function readHomeWidgetOrder(): HomeWidgetId[] {
   if (typeof window === "undefined") return [...DEFAULT_HOME_WIDGET_ORDER];
@@ -1087,7 +1076,9 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
     () => browserPackages.find((item) => item.id === "noodle") ?? null,
     [browserPackages],
   );
-  const [activeTab, setActiveTab] = useState("home");
+  // Kept in the store: the desktop shell unmounts Home under every editor, and Back must find the tab left behind.
+  const activeTab = useUIStore((state) => state.homeTab);
+  const setActiveTab = useUIStore((state) => state.setHomeTab);
   const [fullscreenPackageId, setFullscreenPackageId] = useState<string | null>(null);
   const activeBrowserPackageId = pageActive && browserPackages.some((item) => item.id === activeTab) ? activeTab : null;
   const activeBrowserPackageIdRef = useRef(activeBrowserPackageId);
@@ -1103,13 +1094,65 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
   useLayoutEffect(() => {
     setFullscreenPackageId((current) => (current === activeBrowserPackageId ? current : null));
   }, [activeBrowserPackageId]);
+  // A package's fullscreen takes the whole screen (the maintainer's, 2026-11-16): the top bar hides
+  // (homeBrowserFullscreen) and the page goes into the browser's own fullscreen where it has one. iPhone Safari offers
+  // that only for video, so there the top bar alone hides. Leaving the browser's fullscreen (Escape, Back) leaves the
+  // package's too; the browser's is left only when this entered it.
+  const setHomeBrowserFullscreen = useUIStore((state) => state.setHomeBrowserFullscreen);
+  const enteredDocumentFullscreen = useRef(false);
   const setBrowserFullscreen = useCallback(
     (active: boolean) => {
       // A retained callback cannot change the presentation of a different active package.
       if (typeof active !== "boolean" || activeBrowserPackageIdRef.current !== activeTab) return;
       setFullscreenPackageId(active ? activeTab : null);
+      // Asked for here, inside the package's own click: a browser allows fullscreen only from a user gesture.
+      const root = document.documentElement;
+      if (active && !document.fullscreenElement && typeof root.requestFullscreen === "function") {
+        enteredDocumentFullscreen.current = true;
+        root
+          .requestFullscreen({ navigationUI: "hide" })
+          // The package may have left its fullscreen while the browser was still granting this one.
+          .then(() => {
+            if (!enteredDocumentFullscreen.current && document.fullscreenElement) void document.exitFullscreen();
+          })
+          .catch(() => {
+            enteredDocumentFullscreen.current = false;
+          });
+      }
     },
     [activeTab],
+  );
+  useLayoutEffect(() => {
+    setHomeBrowserFullscreen(browserFullscreen);
+    return () => setHomeBrowserFullscreen(false);
+  }, [browserFullscreen, setHomeBrowserFullscreen]);
+  useEffect(() => {
+    // However the package's fullscreen ends (its button, another tab, a host error), the browser's ends with it.
+    const leaveDocumentFullscreen = () => {
+      if (!enteredDocumentFullscreen.current) return;
+      enteredDocumentFullscreen.current = false;
+      if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+    };
+    if (!browserFullscreen) {
+      leaveDocumentFullscreen();
+      return;
+    }
+    const onFullscreenChange = () => {
+      if (document.fullscreenElement || !enteredDocumentFullscreen.current) return;
+      enteredDocumentFullscreen.current = false;
+      setFullscreenPackageId(null);
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, [browserFullscreen]);
+  // Home unmounting (the desktop shell does so under every editor) ends the browser's fullscreen too.
+  useEffect(
+    () => () => {
+      if (!enteredDocumentFullscreen.current) return;
+      enteredDocumentFullscreen.current = false;
+      if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+    },
+    [],
   );
   const [seenNoodleRefreshMarker, setSeenNoodleRefreshMarker] = useState(readSeenNoodleRefreshMarker);
   const [faqOpen, setFaqOpen] = useState(false);
@@ -1127,6 +1170,9 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
   const [gridRowHeight, setGridRowHeight] = useState(HOME_WIDGET_MIN_ROW_HEIGHT);
   const contentRef = useRef<HTMLElement | null>(null);
   const heroRef = useRef<HTMLElement | null>(null);
+  const homePageRef = useRef<HTMLDivElement | null>(null);
+  // Freeze Home's ambient animations while Professor Mari, an editor or a panel covers it (phone battery).
+  useCoveredSurfaceFlag(homePageRef, "marinaraHomeCovered");
   const feedShellRef = useRef<HTMLDivElement | null>(null);
   const mobileBookmarksRef = useRef<HTMLDivElement | null>(null);
   const mobileBookmarksTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -1328,15 +1374,17 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
 
   useEffect(() => {
     if (activeTab === "home" || activeTab === "professor") return;
+    // A remount before the installed list arrives must not mistake the remembered package for an uninstalled one.
+    if (installed.isPending) return;
     if (!browserPackages.some((item) => item.id === activeTab)) setActiveTab("home");
-  }, [activeTab, browserPackages]);
+  }, [activeTab, browserPackages, installed.isPending, setActiveTab]);
 
   // A scene that ended, or its Back button, asks for the package thread it started in.
   useEffect(() => {
     if (sceneOriginFocus && browserPackages.some((item) => item.id === sceneOriginFocus.packageId)) {
       setActiveTab(sceneOriginFocus.packageId);
     }
-  }, [browserPackages, sceneOriginFocus]);
+  }, [browserPackages, sceneOriginFocus, setActiveTab]);
 
   useEffect(() => {
     if (activeTab !== "noodle" || !latestNoodleRefreshMarker) return;
@@ -1418,7 +1466,7 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
       }
       setActiveTab(tab);
     },
-    [sceneOriginFocus, setSceneOriginFocus],
+    [sceneOriginFocus, setActiveTab, setSceneOriginFocus],
   );
   const openProfessor = () => requestProfessorMariOpen();
   // The picked entry leaves with the menu, so focus moves on to the tab it opened (Professor opens a panel,
@@ -1741,7 +1789,7 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
     >
       <div
         className={cn(
-          "flex h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--marinara-home-page-wash)]",
+          "mari-home-page flex h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--marinara-home-page-wash)]",
           !browserFullscreen && "border border-[var(--border)]/75 shadow-2xl shadow-black/25 sm:rounded-xl",
         )}
         data-browser-fullscreen={browserFullscreen ? "" : undefined}
@@ -2316,14 +2364,13 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                     initialTab: typeof options?.tab === "string" ? options.tab : undefined,
                   });
                 },
-                // Capability API 1.386: open a connection in the editor, and come back to this tab once it
-                // closes. The desktop shell unmounts Home while an editor is open, so the store remembers the
-                // tab and queues it for the remounted Home only when the editor itself closes.
+                // Capability API 1.386: open a connection in the editor. Back returns to this tab, which the
+                // store remembers while the desktop shell unmounts Home.
                 openConnection: (connectionId: string) => {
                   if (typeof connectionId !== "string" || !connectionId) return;
                   // A retained callback cannot act for a package that is no longer the active tab.
                   if (activeBrowserPackageIdRef.current !== activeTab) return;
-                  useUIStore.getState().openConnectionDetail(connectionId, { returnToHomeTab: activeTab });
+                  useUIStore.getState().openConnectionDetail(connectionId);
                 },
               }}
             />
@@ -2333,6 +2380,7 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
             </div>
           ) : (
             <div
+              ref={homePageRef}
               className="relative min-h-full overflow-hidden bg-[radial-gradient(circle_at_12%_8%,oklch(0.79_0.16_205/0.14),transparent_27%),radial-gradient(circle_at_87%_12%,oklch(0.73_0.21_345/0.14),transparent_29%),radial-gradient(circle_at_72%_76%,oklch(0.76_0.19_52/0.08),transparent_28%),var(--background)]"
               data-component="HomeBrowserHub.HomePage"
             >
@@ -2687,7 +2735,7 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                               <span className="absolute inset-[15%] flex items-center justify-center overflow-hidden rounded-full bg-[color-mix(in_srgb,var(--home-module-accent)_12%,var(--secondary))] text-2xl font-black text-[var(--home-module-accent)]">
                                 {characterOfDay.avatarPath ? (
                                   <img
-                                    src={characterOfDay.avatarPath}
+                                    src={avatarPreviewSrc(characterOfDay.avatarPath)}
                                     alt=""
                                     className="h-full w-full rounded-full object-cover"
                                     style={getAvatarCropStyle(characterOfDay.avatarCrop)}
@@ -3086,44 +3134,32 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                 className="min-h-24 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 max-sm:text-base"
               />
             </label>
-            <label className="grid gap-1 text-sm">
+            <div className="grid gap-1 text-sm">
               {t("home.widgets.editAccent")}
-              <select
+              <Select<HomeCustomWidget["accent"]>
+                label={t("home.widgets.editAccent")}
                 value={editingCustomWidget.accent}
-                onChange={(event) =>
-                  setEditingCustomWidget({
-                    ...editingCustomWidget,
-                    accent: event.target.value as HomeCustomWidget["accent"],
-                  })
-                }
+                options={(["cyan", "orange", "pink", "violet"] as const).map((accent) => ({
+                  value: accent,
+                  label: t(`home.widgets.accent.${accent}`),
+                }))}
+                onChange={(accent) => setEditingCustomWidget({ ...editingCustomWidget, accent })}
                 className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 max-sm:text-base"
-              >
-                {["cyan", "orange", "pink", "violet"].map((accent) => (
-                  <option key={accent} value={accent}>
-                    {t(`home.widgets.accent.${accent}`)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="grid gap-1 text-sm">
+              />
+            </div>
+            <div className="grid gap-1 text-sm">
               {t("home.widgets.editIcon")}
-              <select
+              <Select<HomeCustomWidget["icon"]>
+                label={t("home.widgets.editIcon")}
                 value={editingCustomWidget.icon}
-                onChange={(event) =>
-                  setEditingCustomWidget({
-                    ...editingCustomWidget,
-                    icon: event.target.value as HomeCustomWidget["icon"],
-                  })
-                }
+                options={(["sparkles", "note", "heart", "star", "book", "compass"] as const).map((icon) => ({
+                  value: icon,
+                  label: t(`home.widgets.icon.${icon}`),
+                }))}
+                onChange={(icon) => setEditingCustomWidget({ ...editingCustomWidget, icon })}
                 className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 max-sm:text-base"
-              >
-                {["sparkles", "note", "heart", "star", "book", "compass"].map((icon) => (
-                  <option key={icon} value={icon}>
-                    {t(`home.widgets.icon.${icon}`)}
-                  </option>
-                ))}
-              </select>
-            </label>
+              />
+            </div>
             {updateCustomWidgetMutation.isError && (
               <p role="alert" className="text-xs text-[var(--destructive)]">
                 {t("home.widgets.editFailed")}

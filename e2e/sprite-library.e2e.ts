@@ -1,6 +1,7 @@
 import { expect, test, request as createRequest, type CDPSession, type Page, type Locator } from "@playwright/test";
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { isSpriteImageFile } from "../packages/client/src/lib/sprite-folder-import.js";
+import { chooseOption } from "./select-field.js";
 import { isolateSyncedUISettings, seedUIState } from "./ui-state-fixture.js";
 
 async function dispatchTouch(
@@ -93,13 +94,19 @@ test("sprite metadata stays optional and folder moves work without dragging", as
       const openSprites = async () => {
         await page.goto("/");
         const sections = page.getByRole("button", { name: "Editor sections", exact: true });
-        await expect(sections.or(page.getByRole("button", { name: "Sprites", exact: true })).first()).toBeVisible({
+        await expect(sections.or(page.getByRole("button", { name: "Images", exact: true })).first()).toBeVisible({
           timeout: 45000,
         });
         if (await sections.isVisible()) {
           await sections.click();
-          await page.getByRole("menuitemradio", { name: "Sprites", exact: true }).click();
-        } else await page.getByRole("button", { name: "Sprites", exact: true }).click();
+          await page.getByRole("menuitemradio", { name: "Images", exact: true }).click();
+        } else await page.getByRole("button", { name: "Images", exact: true }).click();
+        // Sprites sit inside the Images tab since #9191; jump to them so the lazy section loads.
+        await page
+          .locator('[data-editor-section="images"]')
+          .getByRole("navigation")
+          .getByRole("button", { name: "Sprites", exact: true })
+          .click();
       };
       const library = page.locator("[data-sprite-library]");
       for (const unavailable of ["failed", "orphan"] as const) {
@@ -121,7 +128,7 @@ test("sprite metadata stays optional and folder moves work without dragging", as
       const dialog = page.getByRole("dialog").last();
       const folder = dialog.getByRole("combobox", { name: "Folder", exact: true });
       await expect(folder).toBeEnabled();
-      await folder.selectOption({ label: "Front" }, { timeout: 10000 });
+      await chooseOption(page, folder, "Front");
       await expect
         .poll(
           async () =>
@@ -130,7 +137,7 @@ test("sprite metadata stays optional and folder moves work without dragging", as
             ).folderId,
         )
         .toBe(folderId);
-      await folder.selectOption("unfiled");
+      await chooseOption(page, folder, "No folder");
       await expect
         .poll(
           async () =>
@@ -282,16 +289,22 @@ test("sprite details, folders and bulk tools keep their intended scope", async (
     await page.goto("/");
     const sections = page.getByRole("button", { name: "Editor sections", exact: true });
     async function openSprites() {
-      await expect(page.getByRole("button", { name: "Sprites", exact: true }).or(sections).first()).toBeVisible({
+      await expect(page.getByRole("button", { name: "Images", exact: true }).or(sections).first()).toBeVisible({
         timeout: 45000,
       });
       if (await sections.isVisible()) {
         await sections.click();
-        await page.getByRole("menuitemradio", { name: "Sprites", exact: true }).click();
-      } else await page.getByRole("button", { name: "Sprites", exact: true }).click();
+        await page.getByRole("menuitemradio", { name: "Images", exact: true }).click();
+      } else await page.getByRole("button", { name: "Images", exact: true }).click();
+      // Sprites sit inside the Images tab since #9191; jump to them so the lazy section loads.
+      await page
+        .locator('[data-editor-section="images"]')
+        .getByRole("navigation")
+        .getByRole("button", { name: "Sprites", exact: true })
+        .click();
     }
     await openSprites();
-    const section = page.locator('[data-editor-section="sprites"]');
+    const section = page.locator('[data-editor-subsection="sprites"]');
     const library = section.locator("[data-sprite-library]");
     const frontSection = library.locator(`[data-sprite-folder="${front}"]`);
     await section.getByRole("button", { name: "Full-body", exact: true }).click();
@@ -438,17 +451,20 @@ test("sprite details, folders and bulk tools keep their intended scope", async (
     await expect.poll(folderOrder).toEqual([front, alternate]);
     await frontSection.getByRole("button", { name: "Front", exact: true }).click();
     await expect(library.locator("[data-sprite-card]")).toHaveCount(3);
-    await expect(section.getByRole("button", { name: "Manage", exact: true })).toHaveAttribute(
+    // The sheet's Manage toggle sits in its own sub-section above Sprites since #9191.
+    const sheetSection = page.locator('[data-editor-subsection="character-sheet"]');
+    await sheetSection.scrollIntoViewIfNeeded();
+    await expect(sheetSection.getByRole("button", { name: "Manage", exact: true })).toHaveAttribute(
       "aria-expanded",
       "false",
     );
     await expect(library.getByRole("slider")).toHaveCount(0);
 
-    await section.getByRole("button", { name: "Manage", exact: true }).click();
-    await expect(section.getByRole("heading", { name: "Character Sheet", exact: true })).toBeVisible();
-    await expect(section.getByText("No character sheet selected", { exact: true })).toBeVisible();
-    await expect(section.getByRole("checkbox", { name: /Use character sheet/ })).toBeDisabled();
-    await section.getByRole("button", { name: "Close", exact: true }).click();
+    await sheetSection.getByRole("button", { name: "Manage", exact: true }).click();
+    await expect(sheetSection.getByRole("heading", { name: "Character Sheet", exact: true })).toBeVisible();
+    await expect(sheetSection.getByText("No character sheet selected", { exact: true })).toBeVisible();
+    await expect(sheetSection.getByRole("switch", { name: /Use character sheet/ })).toBeDisabled();
+    await sheetSection.getByRole("button", { name: "Close", exact: true }).click();
     await library.getByRole("button", { name: "Add sprites", exact: true }).click();
     const addPanel = library.getByRole("region", { name: "Add sprites", exact: true });
     const upload = (await addPanel.getByRole("button", { name: "Upload images", exact: true }).boundingBox())!;
@@ -723,9 +739,18 @@ test("sprite details, folders and bulk tools keep their intended scope", async (
           { intervals: [300], timeout: 15000 },
         )
         .toBe(true);
-      await frontSection
-        .getByRole("button", { name: "Preview idle", exact: true })
-        .dragTo(library.locator("[data-sprite-loose]"));
+      // The loose area sits below the fold. dragTo would press, then scroll to it mid-gesture, and Chromium never
+      // starts the drag; bring it into view first and drag in steps like the checks above.
+      const looseDrop = library.locator("[data-sprite-loose]");
+      await looseDrop.scrollIntoViewIfNeeded();
+      const idleSource = frontSection.getByRole("button", { name: "Preview idle", exact: true });
+      await expect(idleSource).toBeInViewport({ ratio: 0.5 });
+      const idleFrom = (await idleSource.boundingBox())!;
+      const looseTo = (await looseDrop.boundingBox())!;
+      await page.mouse.move(idleFrom.x + idleFrom.width / 2, idleFrom.y + idleFrom.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(looseTo.x + looseTo.width / 2, looseTo.y + looseTo.height / 2, { steps: 10 });
+      await page.mouse.up();
       await expectFolder("full_idle", null);
       await expect(
         library
@@ -850,7 +875,7 @@ test("sprite details, folders and bulk tools keep their intended scope", async (
     releaseFrameSave();
     await expect(details.getByRole("button", { name: "Rename", exact: true })).toBeVisible();
     await page.unroute(`**${path}`);
-    await details.getByRole("combobox", { name: "Folder", exact: true }).selectOption(alternate);
+    await chooseOption(page, details.getByRole("combobox", { name: "Folder", exact: true }), "Alternate");
     await expectFolder("full_idle", alternate);
     await details.getByRole("button", { name: "Delete Sprite", exact: true }).click();
     const singleDelete = page.getByRole("dialog").last();

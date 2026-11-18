@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { seedUIState } from "./ui-state-fixture.js";
 import { closeChatSettings } from "./chat-settings-tools.js";
-import { clickTopbarPanel } from "./topbar-navigation.js";
+import { clickTopbarChats, clickTopbarPanel } from "./topbar-navigation.js";
 
 const APP_VERSION = (
   JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }
@@ -89,7 +89,7 @@ test("Home cancel and Skip discard only the untouched new chat in every mode", a
       await wizard.getByRole("button", { name: "Choose a character", exact: true }).click();
       const picker = page.getByRole("dialog", { name: "Characters", exact: true });
       await picker.getByRole("searchbox").fill("Just browsing, no selection");
-      await picker.getByRole("button", { name: "Done", exact: true }).click();
+      await page.keyboard.press("Escape");
       await expect(picker).toHaveCount(0);
       await wizard.getByRole("button", { name: "Skip", exact: true }).click();
       await expect.poll(async () => (await page.request.get(`/api/chats/${chat.id}`)).status()).toBe(404);
@@ -102,15 +102,12 @@ test("Home cancel and Skip discard only the untouched new chat in every mode", a
       await expect(page.locator('[data-component="HomeBrowserHub.HomePage"]')).toBeVisible();
     }
     const firstDraft = await launch(page, "roleplay");
-    const chats = page.locator('[data-component="TopBar"]').getByRole("button", { name: "Chats", exact: true });
-    if ((await chats.getAttribute("aria-pressed")) !== "true") await chats.click();
+    const sidebar = page.getByRole("complementary", { name: "Chat list", exact: true });
+    if (!(await sidebar.isVisible())) await clickTopbarChats(page);
     const secondCreated = page.waitForResponse(
       (response) => response.request().method() === "POST" && /\/api\/chats\/?$/.test(new URL(response.url()).pathname),
     );
-    await page
-      .getByRole("complementary", { name: "Chat list", exact: true })
-      .getByRole("button", { name: "New Roleplay", exact: true })
-      .click();
+    await sidebar.getByRole("button", { name: "New Roleplay", exact: true }).click();
     const secondDraft = (await (await secondCreated).json()) as { id: string };
     await expect.poll(async () => (await page.request.get(`/api/chats/${firstDraft.chat.id}`)).status()).toBe(404);
     expect((await page.request.get(`/api/chats/${secondDraft.id}`)).ok()).toBeTruthy();
@@ -126,9 +123,7 @@ test("Home cancel and Skip discard only the untouched new chat in every mode", a
     await existingWizard.getByRole("button", { name: "Close setup", exact: true }).click();
     await expect(existingWizard).toHaveCount(0);
     expect((await page.request.get(`/api/chats/${existingGame.id}`)).ok()).toBeTruthy();
-    const chatsToggle = page.locator('[data-component="TopBar"]').getByRole("button", { name: "Chats", exact: true });
-    if ((await chatsToggle.getAttribute("aria-pressed")) !== "true") await chatsToggle.click();
-    const sidebar = page.getByRole("complementary", { name: "Chat list", exact: true });
+    if (!(await sidebar.isVisible())) await clickTopbarChats(page);
     const created = page.waitForResponse(
       (response) => response.request().method() === "POST" && /\/api\/chats\/?$/.test(new URL(response.url()).pathname),
     );
@@ -659,7 +654,7 @@ for (const themeMode of ["dark", "light"] as const) {
         rightPanelOpen: false,
         appAccentPulseMode: false,
         theme: themeMode,
-        appBackgroundColor: "#34392e",
+        uiStyleOverrides: { app: { background: "#34392e" } },
       },
       "merge",
     );

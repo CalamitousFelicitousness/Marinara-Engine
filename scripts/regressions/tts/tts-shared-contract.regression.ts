@@ -1,3 +1,4 @@
+// regression-layout: source-path no copy of the shared TTS tables may reappear in server or client source, so their text is checked.
 // The TTS source list and the synthesis tuning fields have one definition each,
 // and everything else derives from them.
 //

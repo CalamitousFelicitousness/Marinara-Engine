@@ -2,6 +2,7 @@
 // Storage: Persona Gallery Images
 // ──────────────────────────────────────────────
 import { and, desc, eq, gte, isNull, lte } from "../../db/file-query.js";
+import type { GalleryTagKind } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
 import { personaImages } from "../../db/schema/index.js";
 import { newId, now } from "../../utils/id-generator.js";
@@ -15,6 +16,9 @@ export interface CreatePersonaImageInput {
   model?: string;
   width?: number;
   height?: number;
+  customKind?: GalleryTagKind | null;
+  customName?: string | null;
+  description?: string | null;
 }
 
 export interface LegacyPersonaImageCandidateInput {
@@ -81,6 +85,9 @@ export function createPersonaGalleryStorage(db: DB) {
         model: input.model ?? "",
         width: input.width ?? null,
         height: input.height ?? null,
+        customKind: input.customKind ?? null,
+        customName: input.customKind ? (input.customName ?? null) : null,
+        description: input.description ?? null,
         createdAt: now(),
       });
       return this.getById(id);
@@ -90,9 +97,18 @@ export function createPersonaGalleryStorage(db: DB) {
       await db.delete(personaImages).where(eq(personaImages.id, id));
     },
 
+    /** Point an image at a new file (a cleaned-up copy), keeping its id, tag, prompt and place in the gallery. */
+    async replaceFile(id: string, patch: { filePath: string; width: number | null; height: number | null }) {
+      await db
+        .update(personaImages)
+        .set({ filePath: patch.filePath, width: patch.width, height: patch.height })
+        .where(eq(personaImages.id, id));
+      return this.getById(id);
+    },
+
     async setTag(
       id: string,
-      patch: { customKind: "emoji" | "sticker" | null; customName: string | null; width?: number; height?: number },
+      patch: { customKind: GalleryTagKind | null; customName: string | null; width?: number; height?: number },
     ) {
       await db
         .update(personaImages)

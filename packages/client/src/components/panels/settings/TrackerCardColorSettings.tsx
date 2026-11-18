@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, Loader2, Palette, RotateCcw, Save, TriangleAlert } from "lucide-react";
+import { CheckCircle2, Palette, RotateCcw, Save, TriangleAlert } from "lucide-react";
 import type { Persona, PresentCharacter, TrackerCardColorConfig } from "@marinara-engine/shared";
 import {
   useCharacters,
@@ -29,6 +29,8 @@ import {
 import { TrackerCardColorControls, type TrackerCardColorEntityLabel } from "../../ui/TrackerCardColorControls";
 import { SETTINGS_BUTTON_CLASS, SETTINGS_COMPACT_PRIMARY_BUTTON_CLASS } from "./SettingControls";
 import { useTranslation as useUiTranslation } from "react-i18next";
+import { Select } from "../../ui/Select";
+import { Spinner } from "../../ui/Spinner";
 
 type TrackerCardColorSaveState = "idle" | "saving" | "saved" | "error";
 
@@ -156,7 +158,9 @@ export function TrackerCardColorSettings() {
   const targets = useMemo<TrackerCardColorTarget[]>(() => {
     const personas = Array.isArray(personasData) ? (personasData as Persona[]) : [];
     const characterRows = Array.isArray(charactersData)
-      ? (charactersData as CharacterRow[]).filter((character) => typeof character.id === "string" && character.id)
+      ? (charactersData as unknown as CharacterRow[]).filter(
+          (character) => typeof character.id === "string" && character.id,
+        )
       : [];
     const charactersById = new Map(characterRows.map((character) => [character.id, character]));
     const activeChatCharacterIds = normalizeMaybeJsonStringArray(
@@ -402,7 +406,7 @@ export function TrackerCardColorSettings() {
             )}
           >
             {saveState === "saving" ? (
-              <Loader2 size="0.625rem" className="animate-spin" />
+              <Spinner size="sm" />
             ) : saveState === "error" ? (
               <TriangleAlert size="0.625rem" />
             ) : hasUnsavedChanges ? (
@@ -436,28 +440,26 @@ export function TrackerCardColorSettings() {
         </p>
       ) : (
         <>
-          <label className="grid gap-1">
+          <div
+            className="grid gap-1"
+            title={
+              hasUnsavedChanges
+                ? localizeUi("ui.panels.trackercardcolorsettings.saveOrRevertBeforeChoosingAnotherCard")
+                : undefined
+            }
+          >
             <span className="px-0.5 text-[0.625rem] text-[var(--muted-foreground)]">
               {localizeUi("ui.panels.imagestyleprofileseditor.editing")}
             </span>
-            <select
+            <Select
               value={selectedTargetKey}
-              onChange={(event) => setSelectedTargetKey(event.target.value)}
+              options={targets.map((target) => ({ value: target.key, label: target.optionLabel }))}
+              onChange={setSelectedTargetKey}
               disabled={saveState === "saving" || hasUnsavedChanges}
-              title={
-                hasUnsavedChanges
-                  ? localizeUi("ui.panels.trackercardcolorsettings.saveOrRevertBeforeChoosingAnotherCard")
-                  : undefined
-              }
+              label={localizeUi("ui.panels.imagestyleprofileseditor.editing")}
               className="min-w-0 rounded-md border border-[var(--border)] bg-[var(--secondary)] px-2 py-1.5 text-[0.6875rem] text-[var(--foreground)] outline-none transition-shadow focus:ring-1 focus:ring-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-65"
-            >
-              {targets.map((target) => (
-                <option key={target.key} value={target.key}>
-                  {target.optionLabel}
-                </option>
-              ))}
-            </select>
-          </label>
+            />
+          </div>
 
           {selectedTarget && (
             <div className="flex min-w-0 items-center justify-end gap-1 px-0.5">
@@ -477,7 +479,7 @@ export function TrackerCardColorSettings() {
                 disabled={!hasUnsavedChanges || saveState === "saving"}
                 className={SETTINGS_COMPACT_PRIMARY_BUTTON_CLASS}
               >
-                {saveState === "saving" ? <Loader2 size="0.75rem" className="animate-spin" /> : <Save size="0.75rem" />}
+                {saveState === "saving" ? <Spinner size="sm" /> : <Save size="0.75rem" />}
                 <span>{localizeUi("ui.noodle.noodlehome.save")}</span>
               </button>
             </div>

@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { devNull, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setFlagsFromString } from "node:v8";
@@ -324,7 +324,10 @@ const { parseCustomAgentRepositoryContents } =
 
 const scratch = mkdtempSync(join(tmpdir(), "marinara-zip-reader-"));
 try {
-  const isolatedGit = { ...process.env, GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_NOSYSTEM: "1" };
+  // An empty global config file of its own: Git for Windows cannot open os.devNull (\\.\nul) as one.
+  const emptyGitConfig = join(scratch, "empty.gitconfig");
+  writeFileSync(emptyGitConfig, "");
+  const isolatedGit = { ...process.env, GIT_CONFIG_GLOBAL: emptyGitConfig, GIT_CONFIG_NOSYSTEM: "1" };
   const repositoryDirectory = join(scratch, "repository");
   const git = (...args: string[]) =>
     execFileSync("git", ["-C", repositoryDirectory, ...args], { env: isolatedGit, maxBuffer: 64 * 1024 * 1024 });
@@ -965,6 +968,19 @@ sys.stdout.write(json.dumps(out))
       ),
       [413, ".marinara package entry is too large"],
       "the existing per-entry limit still applies",
+    );
+    const fivePart = buildZip([
+      { name: "data.json", data: Buffer.from(JSON.stringify(envelope)) },
+      ...[1, 2, 3, 4].map((index) => ({ name: `part-${index}.bin`, data: icon })),
+    ]);
+    assert.deepEqual(
+      await packageResponse(
+        edited(fivePart.bytes, (copy) => {
+          for (const offset of fivePart.centralOffsets) copy.writeUInt32LE(256 * 1024 * 1024, offset + 24);
+        }),
+      ),
+      [413, ".marinara package contents are too large"],
+      "entries each within the limit are refused unread when together they declare over 1 GiB",
     );
     assert.deepEqual(
       await packageResponse(crowded.bytes),

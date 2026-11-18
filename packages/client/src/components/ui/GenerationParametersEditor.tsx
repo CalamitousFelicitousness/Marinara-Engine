@@ -27,6 +27,7 @@ import { ParameterSourceControl, type ParameterSource } from "./ParameterSourceC
 import { SettingsSwitch } from "../panels/settings/SettingControls";
 import { MacroTextarea, type MacroTextareaProps } from "./MacroTextarea";
 import { HelpTooltip } from "./HelpTooltip";
+import { Select } from "./Select";
 import { parseGenerationParameterDraft } from "../../lib/generation-parameter-draft";
 import { parseCustomParametersDraft } from "../../lib/generation-custom-parameters";
 import { generationLevelLabel } from "../../lib/generation-level-label";
@@ -475,22 +476,23 @@ export function GenerationParametersFields({
             {localizeUi("settings.generation.postProcessing.label")}
             <HelpTooltip text={localizeUi("settings.generation.postProcessing.help")} size="0.625rem" />
           </span>
-          <select
-            aria-label={localizeUi("settings.generation.postProcessing.label")}
+          <Select
+            label={localizeUi("settings.generation.postProcessing.label")}
             className="mari-chrome-field mt-1 w-full rounded-md px-3 py-2 text-xs"
             value={value.singleUserMessage ? "single" : value.strictRoleFormatting ? "apply" : "none"}
-            onChange={(event) =>
+            onChange={(next) =>
               onChange({
                 ...value,
-                strictRoleFormatting: event.target.value === "apply",
-                singleUserMessage: event.target.value === "single",
+                strictRoleFormatting: next === "apply",
+                singleUserMessage: next === "single",
               })
             }
-          >
-            <option value="apply">{localizeUi("settings.generation.postProcessing.apply")}</option>
-            <option value="none">{localizeUi("settings.generation.postProcessing.none")}</option>
-            <option value="single">{localizeUi("settings.generation.postProcessing.single")}</option>
-          </select>
+            options={[
+              { value: "apply", label: localizeUi("settings.generation.postProcessing.apply") },
+              { value: "none", label: localizeUi("settings.generation.postProcessing.none") },
+              { value: "single", label: localizeUi("settings.generation.postProcessing.single") },
+            ]}
+          />
           {effectiveLine(
             effectiveParameters?.singleUserMessage?.value ? "singleUserMessage" : "strictRoleFormatting",
             localizeUi(
@@ -1139,41 +1141,42 @@ export function ChatGenerationParametersFields({
             }
           />
           {postProcessingOverride ? (
-            <select
-              aria-label={postProcessingLabel}
+            <Select
+              label={postProcessingLabel}
               className="mari-chrome-field mt-1 w-full rounded-md px-3 py-2 text-xs"
               value={postProcessingOption(postProcessingOverride.value)}
-              onChange={(event) =>
+              onChange={(next) =>
                 setOverride("postProcessing", {
                   mode: "override",
-                  value: {
-                    strictRoleFormatting: event.target.value === "apply",
-                    singleUserMessage: event.target.value === "single",
-                  },
+                  value: { strictRoleFormatting: next === "apply", singleUserMessage: next === "single" },
                 })
               }
-            >
-              <option value="apply">{localizeUi("settings.generation.postProcessing.apply")}</option>
-              <option value="none">{localizeUi("settings.generation.postProcessing.none")}</option>
-              <option value="single">{localizeUi("settings.generation.postProcessing.single")}</option>
-            </select>
+              options={[
+                { value: "apply", label: localizeUi("settings.generation.postProcessing.apply") },
+                { value: "none", label: localizeUi("settings.generation.postProcessing.none") },
+                { value: "single", label: localizeUi("settings.generation.postProcessing.single") },
+              ]}
+            />
           ) : (
-            <select
-              aria-label={postProcessingLabel}
+            <Select
+              label={postProcessingLabel}
               disabled
               className="mari-chrome-field mt-1 w-full rounded-md px-3 py-2 text-xs"
               value="locked"
-            >
-              <option value="locked">
-                {postProcessingBelow
-                  ? localizeUi(BASELINE_SOURCE_KEYS[postProcessingBelow.source], {
-                      value: localizeUi(
-                        `settings.generation.postProcessing.${postProcessingOption(postProcessingBelow.value)}`,
-                      ),
-                    })
-                  : unavailableNote()}
-              </option>
-            </select>
+              onChange={() => {}}
+              options={[
+                {
+                  value: "locked",
+                  label: postProcessingBelow
+                    ? localizeUi(BASELINE_SOURCE_KEYS[postProcessingBelow.source], {
+                        value: localizeUi(
+                          `settings.generation.postProcessing.${postProcessingOption(postProcessingBelow.value)}`,
+                        ),
+                      })
+                    : unavailableNote(),
+                },
+              ]}
+            />
           )}
         </div>
         {show("assistantPrefill") &&

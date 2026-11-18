@@ -20,6 +20,8 @@ import {
   isQuickPickerShortcut,
   isShortcutsHelpKey,
   isTypingTarget,
+  takesLetterKeys,
+  shortcutKeyTypesText,
 } from "../../packages/client/src/lib/keyboard-shortcuts.js";
 import {
   createOmnibarContext,
@@ -263,11 +265,11 @@ assert.deepEqual(systemCommands.find((command) => command.id === "spotify-settin
   setupTarget: true,
 });
 assert.equal(systemCommands.find((command) => command.id === "spotify-settings")?.action.kind, "navigate");
-// Text to speech opens its set-up screen in the Add window (a modal), which works before TTS is set up too.
+// Text to speech opens the Voice job in its settings window.
 assert.deepEqual(systemCommands.find((command) => command.id === "tts-settings")?.action, {
   kind: "modal",
-  modal: "create-connection",
-  props: { service: "tts" },
+  modal: "job-settings",
+  props: { job: "voice" },
 });
 
 const presentationResults: CommandCenterPresentableResult[] = [
@@ -1275,6 +1277,12 @@ assert.ok(!("mariDetailId" in mariSession));
   assert.equal(isAskMariShortcut(j({ ctrlKey: true, key: "о" }), false), true, "physical J on a non-Latin layout");
   assert.equal(isAskMariShortcut(key({ ctrlKey: true }), false), false, "Ctrl+K is not Ask Mari");
   assert.equal(isOmnibarShortcut(j({ ctrlKey: true }), false), false, "Ctrl+J is not the omnibar");
+  // #9129: beside a field being typed in, Ctrl+J belongs to the IME (SKK's on switch), not to Mari.
+  const field = { tagName: "TEXTAREA" };
+  const page = { tagName: "BODY", closest: () => null };
+  assert.equal(shortcutKeyTypesText({ composedPath: () => [field, page] }), true);
+  assert.equal(shortcutKeyTypesText({ composedPath: () => [page] }), false);
+  assert.equal(shortcutKeyTypesText({}), false);
 }
 
 {
@@ -1297,6 +1305,15 @@ assert.ok(!("mariDetailId" in mariSession));
   assert.equal(isTypingTarget({ tagName: "TEXTAREA" }), true);
   assert.equal(isTypingTarget({ tagName: "DIV", closest: () => ({}) }), true);
   assert.equal(isTypingTarget({ tagName: "BUTTON", closest: () => null }), false);
+  // A Select trigger (role="combobox") takes letters for its typeahead, so "?" must reach it too, yet it raises no
+  // software keyboard, so layout code keeps asking isTypingTarget.
+  const matchesCombobox = (selector: string) => (selector.includes('[role="combobox"]') ? {} : null);
+  const trigger = { tagName: "BUTTON", closest: matchesCombobox };
+  assert.equal(takesLetterKeys(trigger), true);
+  assert.equal(isTypingTarget(trigger), false);
+  assert.equal(takesLetterKeys({ tagName: "BUTTON", closest: () => null }), false);
+  assert.equal(takesLetterKeys({ tagName: "TEXTAREA" }), true);
+  assert.equal(shortcutKeyTypesText({ composedPath: () => [trigger] }), true);
   assert.equal(formatShortcutKey("Mod", true), "⌘");
   assert.equal(formatShortcutKey("Mod", false), "Ctrl");
   assert.equal(formatShortcutKey("Alt", true), "⌥");
@@ -3091,6 +3108,16 @@ assert.ok(!("mariDetailId" in mariSession));
       .map((value) => `${file}: ${value}`);
   });
   assert.deepEqual(offenders, [], "a numeric z-index at or above the omnibar layer would cover the omnibar");
+  // The one window meant to sit over the omnibar is the server console (FloatingWindow layer="top"): a tool the
+  // user opens to watch the app, Professor Mari included. Anything else that wants it is a new decision.
+  const topLayerUsers = files
+    .filter((file) => /\.tsx$/u.test(file) && /^\s+layer="top"$/mu.test(clientSource(file)))
+    .map((file) => file.replaceAll("\\", "/"));
+  assert.deepEqual(
+    topLayerUsers,
+    ["components/layout/ServerConsoleWindow.tsx"],
+    "only the server console sits above the omnibar",
+  );
 
   // Slice 15's "no pull under a modal" guard was dropped on purpose (L8): the pull and ⌘K now open
   // ON TOP of a dialog. The guard must not come back.

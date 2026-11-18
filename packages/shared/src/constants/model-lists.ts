@@ -112,9 +112,14 @@ export function isClaudeSonnet55Model(model: string): boolean {
  * non-default sampling. Sonnet 5.5 can still skip up-front thinking, but only with the native
  * `between_tools` setting, which OpenAI-compatible gateways cannot send.
  * https://platform.claude.com/docs/en/models/sonnet-5-5/whats-new-sonnet-5-5
+ * https://platform.claude.com/docs/en/models/fable-5-2/migration-guide
  */
 export function isClaudeStrictRequestModel(model: string): boolean {
-  return isClaudeOpus55Model(model) || isClaudeSonnet55Model(model);
+  return (
+    isClaudeOpus55Model(model) ||
+    isClaudeSonnet55Model(model) ||
+    /(?:^|\/)claude-(?:fable|mythos)-5[.-]2(?:$|[-:])/u.test(capabilityModelId(model))
+  );
 }
 
 export function isClaudeAdaptiveOnlyNoSamplingModel(model: string): boolean {
@@ -168,6 +173,14 @@ export function isMistralGlm53Model(model: string): boolean {
   return /^zai-glm-5-3(?:$|-)/u.test(capabilityModelId(model));
 }
 
+/**
+ * NanoGPT lists low, medium, high, xhigh and max for MiniMax M3.1 Flash.
+ * https://nano-gpt.com/models/text/minimax/minimax-m3.1-flash
+ */
+export function isNanoGptMiniMaxM31FlashModel(model: string): boolean {
+  return /^minimax\/minimax-m3\.1-flash(?::|$)/u.test(capabilityModelId(model));
+}
+
 export function isOpenAIGpt56Model(model: string): boolean {
   return capabilityModelId(model).startsWith("gpt-5.6");
 }
@@ -177,15 +190,22 @@ export function isOpenAIGpt6AstraModel(model: string): boolean {
 }
 
 export function isOpenAIGpt6Model(model: string): boolean {
-  return /^(?:openai\/)?gpt-6(?:-(?:astra|sol|luna)|\.1-sol)(?:$|[-:])/u.test(capabilityModelId(model));
+  return /^(?:openai\/)?gpt-6(?:-(?:astra|sol|luna)|\.1-sol|\.2-(?:sol|astra))(?:$|[-:])/u.test(
+    capabilityModelId(model),
+  );
 }
 
 /**
  * GPT-6 models that cannot turn reasoning off. GPT-6 only takes sampling with effort "none",
  * so these never take it at all. https://developers.openai.com/api/docs/models/gpt-6.1-sol
+ * GPT-6.2 Sol and Astra: "The API rejects requests that set reasoning effort to `none`."
+ * https://developers.openai.com/api/docs/models/gpt-6.2-sol and /gpt-6.2-astra
  */
 export function isOpenAIGpt6AlwaysReasoningModel(model: string): boolean {
-  return isOpenAIGpt6AstraModel(model) || /^(?:openai\/)?gpt-6\.1-sol(?:$|[-:])/u.test(capabilityModelId(model));
+  return (
+    isOpenAIGpt6AstraModel(model) ||
+    /^(?:openai\/)?gpt-6\.(?:1-sol|2-(?:sol|astra))(?:$|[-:])/u.test(capabilityModelId(model))
+  );
 }
 
 export function isOpenAIGpt56SolProAlias(model: string): boolean {
@@ -205,11 +225,25 @@ export function resolveProviderReasoningEffort(args: {
   reasoningEffort: StoredReasoningEffort | undefined;
 }): ProviderReasoningEffort {
   const providerLower = args.provider.toLowerCase();
-  // Argon cannot turn thinking off; without a level it thinks at Google's default, medium, so name that level.
+  if (providerLower === "nanogpt" && isNanoGptMiniMaxM31FlashModel(args.model)) {
+    if (args.reasoningEffort === undefined) return null;
+    // MiniMax M3.1 Flash always reasons, so use Low for a saved Off.
+    if (args.reasoningEffort === null || args.reasoningEffort === "none") return "low";
+    return args.reasoningEffort === "maximum" ? "max" : args.reasoningEffort;
+  }
+  // Hydrogen cannot turn thinking off either. Its default is high, so no level names high; its top level is xhigh. It is
+  // on the Gemini API only: on Vertex it is an unknown model and sends no parameters.
+  if (providerLower === "google" && isGeminiHydrogenModel(args.model)) {
+    const effort = args.reasoningEffort;
+    if (!effort || effort === "none") return "high";
+    if (effort === "xhigh" || effort === "max" || effort === "maximum") return "xhigh";
+    return effort;
+  }
+  // Argon and Carbon cannot turn thinking off; without a level they think at Google's default, medium, so name that level.
   if (
     (!args.reasoningEffort || args.reasoningEffort === "none") &&
     (providerLower === "google" || providerLower === "google_vertex") &&
-    isGeminiArgonModel(args.model)
+    isGeminiArgonOrCarbonModel(args.model)
   ) {
     return "medium";
   }
@@ -261,13 +295,26 @@ export function isGeminiThinkingLevelModel(model: string): boolean {
 }
 
 /**
- * Gemini 4 Argon takes thinking levels low to high only and cannot turn thinking off. Its sampler, penalty and prefill
- * rules are shared with the newer Flash models (isGeminiStrictRequestModel).
+ * Gemini 4 Argon and Carbon take thinking levels low to high only and cannot turn thinking off. Their sampler, penalty
+ * and prefill rules are shared with the newer Flash models (isGeminiStrictRequestModel). Google's migration guide says
+ * moving from Argon to Carbon needs no request change, only the model id.
  * https://ai.google.dev/gemini-api/docs/models/gemini-4-argon
  * https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/guides/gemini-4-argon
+ * https://aistudio.google.com/docs/whats-new-gemini-4-carbon
+ * https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/guides/gemini-4-carbon
  */
-export function isGeminiArgonModel(model: string): boolean {
-  return /(?:^|\/)gemini-4-argon(?:$|-)/u.test(capabilityModelId(model));
+export function isGeminiArgonOrCarbonModel(model: string): boolean {
+  return /(?:^|\/)gemini-4-(?:argon|carbon)(?:$|-)/u.test(capabilityModelId(model));
+}
+
+/**
+ * Gemini 4 Hydrogen takes thinking levels low, medium, high and xhigh, defaults to high, and rejects minimal. It shares
+ * Argon and Carbon's request schema: temperature, top_p and top_k are removed. It is on the Gemini API (free and paid
+ * tiers); Google lists no Vertex location for it. Unlike Argon and Carbon it returns up to 65,536 tokens per request.
+ * https://aistudio.google.com/docs/whats-new-gemini-4-hydrogen
+ */
+export function isGeminiHydrogenModel(model: string): boolean {
+  return /(?:^|\/)gemini-4-hydrogen(?:$|-)/u.test(capabilityModelId(model));
 }
 
 /** Any Gemini model id, bare or with a router prefix such as OpenRouter's `google/`. */
@@ -277,14 +324,16 @@ export function isGeminiModel(model: string): boolean {
 
 /**
  * Gemini models that ignore temperature, top-p and top-k and reject frequency and presence penalties and a request
- * ending on a model turn (a prefill): Argon, 3.5 Flash-Lite and 3.6 to 3.8 Flash. OpenRouter variants such as
+ * ending on a model turn (a prefill): Argon, Carbon, 3.5 Flash-Lite and 3.6 to 3.8 Flash. OpenRouter variants such as
  * `:online` count too.
  * https://ai.google.dev/gemini-api/docs/whats-new-gemini-3.6
  * https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/3-5-flash-lite
  * https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/guides/gemini-3-6-flash (also 3-7, 3-8)
  */
 export function isGeminiStrictRequestModel(model: string): boolean {
-  return /(?:^|\/)gemini-(?:4-argon|3\.5-flash-lite|3\.[6-8]-flash)(?:$|[-:])/u.test(capabilityModelId(model));
+  return /(?:^|\/)gemini-(?:4-(?:argon|carbon|hydrogen)|3\.5-flash-lite|3\.[6-8]-flash)(?:$|[-:])/u.test(
+    capabilityModelId(model),
+  );
 }
 
 export function isXaiConfigurableReasoningModel(model: string): boolean {
@@ -307,6 +356,8 @@ export const OPENAI_MODELS: KnownModel[] = [
   { id: "gpt-5.6-terra", name: "gpt-5.6-terra", context: 1050000, maxOutput: 128000 },
   { id: "gpt-5.6-luna", name: "gpt-5.6-luna", context: 1050000, maxOutput: 128000 },
   // GPT-6
+  { id: "gpt-6.2-sol", name: "gpt-6.2-sol", context: 1050000, maxOutput: 128000 },
+  { id: "gpt-6.2-astra", name: "gpt-6.2-astra", context: 1050000, maxOutput: 128000 },
   { id: "gpt-6.1-sol", name: "gpt-6.1-sol", context: 1050000, maxOutput: 128000 },
   { id: "gpt-6-astra", name: "gpt-6-astra", context: 1050000, maxOutput: 128000 },
   { id: "gpt-6-sol", name: "gpt-6-sol", context: 1050000, maxOutput: 128000 },
@@ -415,8 +466,10 @@ export const ANTHROPIC_MODELS: KnownModel[] = [
   { id: "claude-opus-5", name: "claude-opus-5", context: 1000000, maxOutput: 128000 },
   { id: "claude-sonnet-5-5", name: "claude-sonnet-5-5", context: 1000000, maxOutput: 128000 },
   { id: "claude-sonnet-5", name: "claude-sonnet-5", context: 1000000, maxOutput: 128000 },
+  { id: "claude-fable-5-2", name: "claude-fable-5-2", context: 1000000, maxOutput: 128000 },
   { id: "claude-fable-5-1", name: "claude-fable-5-1", context: 1000000, maxOutput: 128000 },
   { id: "claude-fable-5", name: "claude-fable-5", context: 1000000, maxOutput: 128000 },
+  { id: "claude-mythos-5-2", name: "claude-mythos-5-2 (limited access)", context: 1000000, maxOutput: 128000 },
   { id: "claude-mythos-5-1", name: "claude-mythos-5-1 (limited access)", context: 1000000, maxOutput: 128000 },
   { id: "claude-mythos-5", name: "claude-mythos-5 (limited access)", context: 1000000, maxOutput: 128000 },
   { id: "claude-opus-4-8", name: "claude-opus-4-8", context: 1000000, maxOutput: 128000 },
@@ -459,6 +512,7 @@ export const CLAUDE_SUBSCRIPTION_MODELS: KnownModel[] = [
   { id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5", context: 1000000, maxOutput: 128000 },
   { id: "claude-sonnet-5", name: "Claude Sonnet 5", context: 1000000, maxOutput: 128000 },
   { id: "claude-haiku-5-5", name: "Claude Haiku 5.5", context: 1000000, maxOutput: 128000 },
+  { id: "claude-fable-5-2", name: "Claude Fable 5.2", context: 1000000, maxOutput: 128000 },
   { id: "claude-fable-5-1", name: "Claude Fable 5.1", context: 1000000, maxOutput: 128000 },
   { id: "claude-fable-5", name: "Claude Fable 5", context: 1000000, maxOutput: 128000 },
   { id: "claude-opus-4-8", name: "Claude Opus 4.8", context: 1000000, maxOutput: 128000 },
@@ -474,10 +528,12 @@ export const CLAUDE_SUBSCRIPTION_MODELS: KnownModel[] = [
 // The ChatGPT-backed Codex endpoint can return an account-specific model
 // catalog when authenticated. This curated fallback keeps the selector useful
 // before the user has run `codex login`. GPT-6 and GPT-5.6 contexts are Codex's
-// default window from its model catalog (October 2026). GPT-5.5 stays first so
+// default window from its model catalog (October 2026; GPT-6.2 from November 2026). GPT-5.5 stays first so
 // new connections keep it as their default model.
 export const OPENAI_CHATGPT_MODELS: KnownModel[] = [
   { id: "gpt-5.5", name: "GPT-5.5", context: 1050000, maxOutput: 128000 },
+  { id: "gpt-6.2-sol", name: "GPT-6.2-Sol", context: 500000, maxOutput: 128000 },
+  { id: "gpt-6.2-astra", name: "GPT-6.2-Astra", context: 272000, maxOutput: 128000 },
   { id: "gpt-6.1-sol", name: "GPT-6.1-Sol", context: 272000, maxOutput: 128000 },
   { id: "gpt-6-astra", name: "GPT-6-Astra", context: 272000, maxOutput: 128000 },
   { id: "gpt-6-sol", name: "GPT-6-Sol", context: 272000, maxOutput: 128000 },
@@ -504,8 +560,11 @@ export const OPENAI_CHATGPT_MODELS: KnownModel[] = [
 export const GOOGLE_MODELS: KnownModel[] = [
   // Gemini 3.8. New Google and Vertex connections start on the first entry, so keep a widely available Flash here.
   { id: "gemini-3.8-flash", name: "gemini-3.8-flash", context: 1000000, maxOutput: 65536 },
-  // Gemini 4. Argon needs a paid tier and, on Vertex, the global, us or eu location.
+  // Gemini 4. Argon and Carbon need a paid tier and, on Vertex, the global, us or eu location.
   { id: "gemini-4-argon", name: "gemini-4-argon", context: 1000000, maxOutput: 65536 },
+  { id: "gemini-4-carbon", name: "gemini-4-carbon", context: 1000000, maxOutput: 65536 },
+  // Hydrogen is on the Gemini API only, free and paid tiers (left out of the Vertex list below).
+  { id: "gemini-4-hydrogen", name: "gemini-4-hydrogen", context: 1048576, maxOutput: 65536 },
   // Gemini 3.7
   { id: "gemini-3.7-flash", name: "gemini-3.7-flash", context: 1000000, maxOutput: 65536 },
   // Gemini 3.6
@@ -1404,7 +1463,8 @@ export const MODEL_LISTS: Record<APIProvider, KnownModel[]> = {
   claude_subscription: CLAUDE_SUBSCRIPTION_MODELS,
   grok_subscription: GROK_SUBSCRIPTION_MODELS,
   google: GOOGLE_MODELS,
-  google_vertex: GOOGLE_MODELS,
+  // Google lists no Vertex location for Gemini 4 Hydrogen.
+  google_vertex: GOOGLE_MODELS.filter((model) => model.id !== "gemini-4-hydrogen"),
   mistral: MISTRAL_MODELS,
   cohere: COHERE_MODELS,
   openrouter: OPENROUTER_MODELS,

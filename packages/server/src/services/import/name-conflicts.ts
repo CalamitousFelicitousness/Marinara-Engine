@@ -47,7 +47,10 @@ async function existingRows(db: DB, kind: ImportConflictKind): Promise<ExistingR
     }
     case "persona": {
       const rows = await db.select().from(personas);
-      return rows.map((row) => ({ id: row.id, name: row.name }));
+      return rows.flatMap((row) => {
+        const name = readCharacterName(row.data);
+        return name ? [{ id: row.id, name }] : [];
+      });
     }
     case "lorebook": {
       const rows = await db.select().from(lorebooks);

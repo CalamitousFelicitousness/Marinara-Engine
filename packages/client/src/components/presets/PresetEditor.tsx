@@ -1,4 +1,9 @@
-import { DEFAULT_GENERATION_PARAMS, withoutPresetTokenLimits } from "@marinara-engine/shared";
+import {
+  DEFAULT_GENERATION_PARAMS,
+  parseGamePresetStorySettings,
+  withoutPresetTokenLimits,
+  type GamePresetStorySettings,
+} from "@marinara-engine/shared";
 import { GenerationParametersFields, getEditableGenerationParameters } from "../ui/GenerationParametersEditor";
 // ──────────────────────────────────────────────
 // Full-Page Preset Editor
@@ -67,7 +72,6 @@ import {
   AlertTriangle,
   Copy,
   Camera,
-  Loader2,
   MessageCircleQuestion,
   Regex,
   Pencil,
@@ -76,6 +80,7 @@ import { cn } from "../../lib/utils";
 import { HelpTooltip } from "../ui/HelpTooltip";
 import { DraftNumberInput } from "../ui/DraftNumberInput";
 import { MacroTextarea } from "../ui/MacroTextarea";
+import { Select } from "../ui/Select";
 import { applyTextareaQuoteFormat } from "../../lib/textarea-quotes";
 import { api } from "../../lib/api-client";
 import { requestProfessorMariOpen } from "../../lib/professor-mari-open";
@@ -105,6 +110,10 @@ import { useRegexScripts } from "../../hooks/use-regex-scripts";
 import { PresetVariablesEditor, reorderIdsByOffset, reorderIdsToGap } from "./PresetVariablesEditor";
 import { useMariCompanionEditor, useMariEditorFields } from "../../hooks/use-mari-editor-fields";
 import { MariFieldReview, MariFieldReviewProvider, useMariFieldReview } from "../characters/MariFieldReview";
+import { SurfaceBackButton } from "../ui/SurfaceBackButton";
+import { SurfaceCloseButton } from "../ui/SurfaceCloseButton";
+import { GameStoryBoundariesFields } from "../game/GameStoryBoundariesFields";
+import { Spinner } from "../ui/Spinner";
 
 // ── Tab definitions ──
 const TABS = [
@@ -174,6 +183,7 @@ type PresetFormFields = {
   author: string;
   conversationPrompt: string;
   gamePrompt: string;
+  gameStorySettings: GamePresetStorySettings | null;
   parameters: Record<string, unknown>;
   scopedRegexMode: ScopedRegexMode;
 };
@@ -193,6 +203,7 @@ function presetFormFields(p: any): PresetFormFields {
     author: p.author ?? "",
     conversationPrompt: p.conversationPrompt ?? "",
     gamePrompt: p.gamePrompt ?? "",
+    gameStorySettings: parseGamePresetStorySettings(p.gameStorySettings),
     parameters,
     scopedRegexMode: resolveScopedRegexMode(p.scopedRegexMode),
   };
@@ -267,6 +278,7 @@ export function PresetEditor() {
   const [localAuthor, setLocalAuthor] = useState("");
   const [localConversationPrompt, setLocalConversationPrompt] = useState("");
   const [localGamePrompt, setLocalGamePrompt] = useState("");
+  const [localGameStorySettings, setLocalGameStorySettings] = useState<GamePresetStorySettings | null>(null);
   const [localParameters, setLocalParameters] = useState<Record<string, unknown>>({});
   const [localScopedRegexMode, setLocalScopedRegexMode] = useState<ScopedRegexMode>("disabled");
   const hydratedPresetIdRef = useRef<string | null>(null);
@@ -287,6 +299,7 @@ export function PresetEditor() {
     setLocalAuthor(form.author);
     setLocalConversationPrompt(form.conversationPrompt);
     setLocalGamePrompt(form.gamePrompt);
+    setLocalGameStorySettings(form.gameStorySettings);
     setLocalParameters(form.parameters);
     setLocalScopedRegexMode(form.scopedRegexMode);
     loadedFormRef.current = form;
@@ -339,6 +352,7 @@ export function PresetEditor() {
       author: localAuthor,
       conversationPrompt: localConversationPrompt,
       gamePrompt: localGamePrompt,
+      gameStorySettings: localGameStorySettings,
       parameters: localParameters,
       scopedRegexMode: localScopedRegexMode,
     };
@@ -357,6 +371,7 @@ export function PresetEditor() {
     localAuthor,
     localConversationPrompt,
     localGamePrompt,
+    localGameStorySettings,
     localParameters,
     localScopedRegexMode,
     updatePreset,
@@ -586,7 +601,7 @@ export function PresetEditor() {
               disabled={stockCopyPending}
               className="mari-editor-action mari-editor-action--primary inline-flex px-3 py-2 disabled:opacity-50"
             >
-              {stockCopyPending ? <Loader2 size="0.875rem" className="animate-spin" /> : <Copy size="0.875rem" />}
+              {stockCopyPending ? <Spinner size="sm" /> : <Copy size="0.875rem" />}
               {localizeUi(
                 stockCopyPending
                   ? "ui.presets.preseteditor.creatingEditableCopy"
@@ -606,9 +621,7 @@ export function PresetEditor() {
       {/* ── Header ── */}
       <div className="mari-editor-header mari-editor-header--with-nav">
         <div className="mari-editor-header-main">
-          <button onClick={handleClose} className="mari-editor-action inline-flex">
-            <ArrowLeft size="1.125rem" />
-          </button>
+          <SurfaceBackButton onClick={handleClose} />
           <div className="mari-editor-icon-tile mari-panel-gradient-surface mari-panel-gradient--presets overflow-hidden">
             {presetArtwork ? (
               <img src={presetArtwork} alt="" className="h-full w-full object-cover" draggable={false} />
@@ -691,6 +704,7 @@ export function PresetEditor() {
             <Trash2 size="0.9375rem" />
           </button>
         </div>
+        <SurfaceCloseButton dividerClassName="" />
       </div>
 
       {/* Saved toast */}
@@ -785,6 +799,11 @@ export function PresetEditor() {
                     setLocalGamePrompt(v);
                     markDirty();
                   }}
+                  gameStorySettings={localGameStorySettings}
+                  onGameStorySettingsChange={(v) => {
+                    setLocalGameStorySettings(v);
+                    markDirty();
+                  }}
                 />
               </MariFieldReviewProvider>
             </section>
@@ -859,18 +878,20 @@ function PresetRegexTab({
   return (
     <div className="space-y-6" data-preset-regex>
       <div className="mari-editor-panel space-y-3 p-4">
-        <label className="flex flex-wrap items-center justify-between gap-3 text-sm font-medium">
+        <div className="flex flex-wrap items-center justify-between gap-3 text-sm font-medium">
           {t("presets.regex.defaultMode")}
-          <select
+          <Select
+            label={t("presets.regex.defaultMode")}
             className="mari-editor-input px-3 py-2 text-sm"
             value={mode}
-            onChange={(event) => onModeChange(event.target.value as ScopedRegexMode)}
-          >
-            <option value="disabled">{t("ui.agents.agenteditor.disabled")}</option>
-            <option value="exclusive">{t("ui.chat.chatsettingsdrawer.exclusive")}</option>
-            <option value="chat">{t("ui.chat.chatsettingsdrawer.chat")}</option>
-          </select>
-        </label>
+            onChange={(next) => onModeChange(next as ScopedRegexMode)}
+            options={[
+              { value: "disabled", label: t("ui.agents.agenteditor.disabled") },
+              { value: "exclusive", label: t("ui.chat.chatsettingsdrawer.exclusive") },
+              { value: "chat", label: t("ui.chat.chatsettingsdrawer.chat") },
+            ]}
+          />
+        </div>
         <p className="text-xs text-[var(--marinara-editor-muted)]">{t("presets.regex.defaultHelp")}</p>
       </div>
       <div className="mari-editor-panel space-y-3 p-4">
@@ -880,25 +901,19 @@ function PresetRegexTab({
           <Plus size="1rem" />
           {t("ui.characters.characterregexsection.createRegex")}
         </button>
-        <label className="flex flex-wrap items-center gap-3 text-sm">
+        <div className="flex flex-wrap items-center gap-3 text-sm">
           {t("presets.regex.addExisting")}
-          <select
-            value=""
+          <Select
+            label={t("presets.regex.addExisting")}
+            value={null}
+            placeholder={t("presets.regex.chooseScript")}
             className="mari-editor-input min-w-0 max-w-full px-3 py-2 text-sm"
-            onChange={(event) => {
-              if (event.target.value) void openScript(event.target.value);
-            }}
-          >
-            <option value="">{t("presets.regex.chooseScript")}</option>
-            {(scripts ?? [])
+            onChange={(next) => void openScript(next)}
+            options={(scripts ?? [])
               .filter((script) => !linkedScripts.includes(script))
-              .map((script) => (
-                <option key={script.id} value={script.id}>
-                  {script.name}
-                </option>
-              ))}
-          </select>
-        </label>
+              .map((script) => ({ value: script.id, label: script.name }))}
+          />
+        </div>
         {linkedScripts.length === 0 && (
           <p className="text-xs text-[var(--marinara-editor-muted)]">{t("presets.regex.noScripts")}</p>
         )}
@@ -1033,7 +1048,7 @@ export function QuickPresetSectionsEditor({
           disabled={quickCopyPending}
           className="mari-editor-action mari-editor-action--primary inline-flex px-3 py-2 disabled:opacity-50"
         >
-          {quickCopyPending ? <Loader2 size="0.875rem" className="animate-spin" /> : <Copy size="0.875rem" />}
+          {quickCopyPending ? <Spinner size="sm" /> : <Copy size="0.875rem" />}
           {t(
             quickCopyPending
               ? "ui.presets.preseteditor.creatingEditableCopy"
@@ -1274,11 +1289,15 @@ function PromptsTab({
   onConversationPromptChange,
   gamePrompt,
   onGamePromptChange,
+  gameStorySettings,
+  onGameStorySettingsChange,
 }: {
   conversationPrompt: string;
   onConversationPromptChange: (v: string) => void;
   gamePrompt: string;
   onGamePromptChange: (v: string) => void;
+  gameStorySettings: GamePresetStorySettings | null;
+  onGameStorySettingsChange: (v: GamePresetStorySettings | null) => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const quoteFormat = useUIStore((s) => s.quoteFormat);
@@ -1339,6 +1358,30 @@ function PromptsTab({
             spellCheck={false}
           />
         </MariFieldReview>
+      </FieldGroup>
+
+      <FieldGroup
+        label={localizeUi("ui.presets.promptstab.gameStorySettings")}
+        help={localizeUi("ui.presets.promptstab.gameStorySettingsHelp")}
+      >
+        <SettingsSwitch
+          label={localizeUi("ui.presets.promptstab.carryGameStorySettings")}
+          checked={gameStorySettings !== null}
+          onChange={(checked) =>
+            onGameStorySettingsChange(
+              checked ? { storyStyle: "standard", violence: null, contentBoundaries: "" } : null,
+            )
+          }
+          labelClassName="text-xs"
+          className="p-0 hover:bg-transparent"
+        />
+        {gameStorySettings && (
+          <GameStoryBoundariesFields
+            followRatingOption
+            value={gameStorySettings}
+            onChange={(patch) => onGameStorySettingsChange({ ...gameStorySettings, ...patch })}
+          />
+        )}
       </FieldGroup>
     </>
   );
@@ -1893,25 +1936,27 @@ function SectionsTab({
                 <label className={cn("text-[var(--muted-foreground)]", compact && "max-sm:text-[0.625rem]")}>
                   {localizeUi("ui.presets.sectionstab.position")}
                 </label>
-                <select
+                <Select
+                  id={`preset-section-position-${section.id}`}
+                  label={localizeUi("ui.presets.sectionstab.positionField")}
                   value={section.injectionPosition ?? "ordered"}
-                  onChange={(e) =>
+                  onChange={(next) =>
                     onUpdateSection.mutate({
                       presetId,
                       sectionId: section.id,
-                      injectionPosition: e.target.value,
+                      injectionPosition: next,
                     })
                   }
-                  data-preset-section-position
                   className={cn(
                     "mari-editor-field px-2 py-1 text-xs",
                     compact &&
                       "max-sm:h-7 max-sm:min-w-0 max-sm:max-w-[12rem] max-sm:px-1.5 max-sm:py-1 max-sm:text-[0.6875rem]",
                   )}
-                >
-                  <option value="ordered">{localizeUi("ui.presets.sectionstab.orderedInSequence")}</option>
-                  <option value="depth">{localizeUi("ui.presets.sectionstab.depthFromEndOfChat")}</option>
-                </select>
+                  options={[
+                    { value: "ordered", label: localizeUi("ui.presets.sectionstab.orderedInSequence") },
+                    { value: "depth", label: localizeUi("ui.presets.sectionstab.depthFromEndOfChat") },
+                  ]}
+                />
                 {section.injectionPosition === "depth" && (
                   <>
                     <label className={cn("text-[var(--muted-foreground)]", compact && "max-sm:text-[0.625rem]")}>
@@ -2075,7 +2120,8 @@ function SectionsTab({
 
                     {/* Rough cost of this section's own text. Markers are assembled per chat, so they say so
                         instead of showing a misleading zero; a disabled section keeps its count, struck through
-                        to show it is left out of the header total. */}
+                        to show it is left out of the header total. On a phone the count alone is shown, so the
+                        section's name keeps room (#8993); screen readers still hear "tokens". */}
                     <span
                       data-preset-section-tokens
                       className={cn(
@@ -2087,12 +2133,21 @@ function SectionsTab({
                       title={
                         sectionTokens === null
                           ? localizeUi("ui.presets.sectionstab.dynamicSectionDescription")
-                          : undefined
+                          : formatEstimatedTokens(sectionTokens, localizeUi)
                       }
                     >
-                      {sectionTokens === null
-                        ? localizeUi("ui.presets.sectionstab.dynamic")
-                        : formatEstimatedTokens(sectionTokens, localizeUi)}
+                      {sectionTokens === null ? (
+                        localizeUi("ui.presets.sectionstab.dynamic")
+                      ) : (
+                        <>
+                          <span aria-hidden="true" className="sm:hidden">
+                            {localizeUi("ui.presets.sectionstab.tokenEstimateShort", {
+                              tokens: sectionTokens.toLocaleString(),
+                            })}
+                          </span>
+                          <span className="max-sm:sr-only">{formatEstimatedTokens(sectionTokens, localizeUi)}</span>
+                        </>
+                      )}
                     </span>
 
                     <div className="flex shrink-0 items-center gap-0.5">
@@ -2171,26 +2226,28 @@ function SectionsTab({
                             })
                           }
                         />
-                        <select
+                        <Select
+                          id={`preset-section-role-${section.id}`}
+                          label={localizeUi("ui.presets.sectionstab.roleField")}
                           value={role}
-                          onChange={(e) =>
+                          onChange={(next) =>
                             onUpdateSection.mutate({
                               presetId,
                               sectionId: section.id,
-                              role: e.target.value,
+                              role: next,
                             })
                           }
-                          data-preset-section-role
                           className={cn(
                             "mari-editor-field px-2 py-1.5 text-xs",
                             compact &&
                               "max-sm:h-7 max-sm:w-fit max-sm:max-w-full max-sm:self-start max-sm:px-1.5 max-sm:py-1 max-sm:text-[0.6875rem]",
                           )}
-                        >
-                          <option value="system">{localizeUi("ui.presets.sectionstab.system")}</option>
-                          <option value="user">{localizeUi("ui.presets.sectionstab.user")}</option>
-                          <option value="assistant">{localizeUi("ui.presets.sectionstab.assistant")}</option>
-                        </select>
+                          options={[
+                            { value: "system", label: localizeUi("ui.presets.sectionstab.system") },
+                            { value: "user", label: localizeUi("ui.presets.sectionstab.user") },
+                            { value: "assistant", label: localizeUi("ui.presets.sectionstab.assistant") },
+                          ]}
+                        />
                       </div>
 
                       {/* Content (not for markers) */}
@@ -2291,29 +2348,30 @@ function SectionsTab({
                         <label className={cn("text-[var(--muted-foreground)]", compact && "max-sm:text-[0.625rem]")}>
                           {localizeUi("ui.presets.sectionstab.group")}
                         </label>
-                        <select
+                        <Select
+                          id={`preset-section-group-${section.id}`}
+                          label={localizeUi("ui.presets.sectionstab.groupField")}
                           value={section.groupId ?? ""}
-                          onChange={(e) =>
+                          onChange={(next) =>
                             onUpdateSection.mutate({
                               presetId,
                               sectionId: section.id,
-                              groupId: e.target.value || null,
+                              groupId: next || null,
                             })
                           }
-                          data-preset-section-group
                           className={cn(
                             "mari-editor-field px-2 py-1 text-xs",
                             compact &&
                               "max-sm:h-7 max-sm:min-w-0 max-sm:max-w-[12rem] max-sm:px-1.5 max-sm:py-1 max-sm:text-[0.6875rem]",
                           )}
-                        >
-                          <option value="">{localizeUi("ui.presets.sectionstab.noGroup")}</option>
-                          {[...groupMap.values()].map((g: any) => (
-                            <option key={g.id} value={g.id}>
-                              {g.name}
-                            </option>
-                          ))}
-                        </select>
+                          options={[
+                            { value: "", label: localizeUi("ui.presets.sectionstab.noGroup") },
+                            ...[...groupMap.values()].map((g: any) => ({
+                              value: g.id as string,
+                              label: g.name as string,
+                            })),
+                          ]}
+                        />
                         {groupMap.size === 0 && (
                           <span
                             className={cn(

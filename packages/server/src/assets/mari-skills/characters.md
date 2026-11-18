@@ -11,6 +11,8 @@ Purpose: create or change a character card or a persona — a field, the About M
 
 Reads: `character.list|get|search|folder.list|onboarding.get`, `persona.list|get|search`. Writes: `character.create|update|moveToFolder`, `persona.create|update`, values in `data` on a create and `patch` on an update.
 
+**Listing everything.** `character.list` and `persona.list` return one page as `{items, total, offset, nextOffset}` (newest first; limit 50, max 100, and a page also stops early to stay under the output limit). While `nextOffset` is not null, call again with `offset` set to it; `total` says how many exist. To find one card, `character.search` by name beats paging. Always send the `nextOffset` the last page returned, never `offset + limit`: a page that stopped early would skip rows. The next page: `{"action":"character.list","offset":<nextOffset>}`.
+
 - **A new character is one `character.create` with the full card in `data`** — every field the user gave or you wrote, split as below. Only a non-empty `name` is enforced, so a name-only placeholder saves and verifies; never make one to fill with updates, each of which is another change card. If the request is bare — a role or a vibe, no name, situation or voice — ask what the card cannot invent about them (who they are, what the scene is), then build with your best defaults; never interrogate.
 - When the output limit is small (your workspace rules say so, or a reply was cut at it), the full card may not fit one reply: create with `name`, `description` and `personality`, then add the other fields with one `character.update` per reply. The extra change cards are the price of a card that saves.
 - `character.create` and `persona.create` write by default; `character.update`, `character.moveToFolder` and `persona.update` need `apply:true` (sent without `apply` they are refused; `apply:false` previews). `apply` is read from the top level only — `data.apply` and `patch.apply` are ignored.
@@ -29,14 +31,14 @@ Reads: `character.list|get|search|folder.list|onboarding.get`, `persona.list|get
 
 A character card is JSON in `characters.data`, snake_case. Keep the meanings apart: `description` identity and role, `personality` traits, temperament, voice and mannerisms, `backstory` history, `appearance` physical features and clothing. Nothing validates the split, so history in `description` saves and never reaches the Backstory box.
 
-- `data.extensions.backstory`, `data.extensions.appearance`, `data.extensions.aboutMe` (aliases `about_me`, `about-me`): every create and update moves those three there.
+- `data.extensions.backstory`, `data.extensions.appearance`, `data.extensions.aboutMe` (aliases `about_me`, `about-me`), `data.extensions.publicFace` (alias `public_face`): every create and update moves those four there.
 - `data.first_mes` from `firstMes`, `firstMessage`, `first_mes` or `greeting` — input aliases, deleted after mapping; the response shows `first_mes`.
 - Every other card scalar (`description`, `personality`, `scenario`, `creator`, `tags`, `summary`, …) at `data.<snake_case>`; clears `""` and `[]`; `tags` must be an array.
 - `comment` is the row column `characters.comment`, accepted at top level and stripped from `data`. It cannot be cleared through `app_data` (`""` is dropped); `mari characters update <id> --comment "" --apply` clears it.
 - `avatarPath`, `spriteFolderPath`, `folderId`, ids, timestamps are row columns — a patch value sits in `data` unread.
 - Extensions such as `nameColor` and `convoBehavior` are reachable only as `patch.extensions.<key>`. A `nameColor` inside `patch` lands at `data.nameColor`, which the client never reads; at the envelope's top level it is ignored outright. `onboarding` is the exception: write it with `character.onboarding.update`, because a raw `patch.extensions.onboarding` bypasses `buildOnboardingUpdate` and its validation.
 
-**Personas are columns, not extensions:** `description`, `personality`, `scenario`, `backstory`, `appearance`, `imageAppearance`, `imageAppearanceEnabled` (a boolean), `aboutMe`, `summary`, `mes_example`, `phoneticName`, `convoDisplayName`, `creator`, `creatorNotes`, `convoBehavior`, `tags`, `comment` (aliases like `creator_notes`, `phonetic_name`). A plain-string `convoBehavior` becomes `{instruction, insertionStrategy: "constant_after"}`; `avatarPath` is not settable here.
+**Personas are columns, not extensions:** `description`, `personality`, `scenario`, `backstory`, `appearance`, `imageAppearance`, `imageAppearanceEnabled` (a boolean), `aboutMe`, `publicFace`, `summary`, `mes_example`, `phoneticName`, `convoDisplayName`, `creator`, `creatorNotes`, `convoBehavior`, `tags`, `comment` (aliases like `creator_notes`, `phonetic_name`). A plain-string `convoBehavior` becomes `{instruction, insertionStrategy: "constant_after"}`; `avatarPath` is not settable here.
 
 ## About Me
 
@@ -50,9 +52,19 @@ Read the entity first, then write it in its own first-person voice into `aboutMe
 
 `builtin-onboarding` fills the five template fields and sets no About Me — write it on the finished persona.
 
+## Public Face
+
+`publicFace` is the card minus its private parts: what the rest of the cast could see or know about this character or persona — looks, manner, voice, role, reputation, relationships that are no secret. Prompts never send it as part of the entity's own card; other characters' prompts read it through `{{publicFace}}` and `{{personaPublicFace}}`. Empty changes nothing.
+
+Write it when the user asks. Read the entity first, then write it in third person from what the card states: keep every detail others could know, and leave out secrets, inner thoughts and feelings kept hidden, private history, and instructions on how to write or play them, even when the card holds them. Invent nothing and do not pad: its length follows the card. Anything the user calls private stays out.
+
+- Character: `character.update`, `apply:true`, `patch.publicFace` → `data.extensions.publicFace`; read it with `character.get`.
+- Persona: `persona.update` → the `publicFace` field; read with `persona.get`.
+- Clear with `""` on characters and personas alike, alone or beside other fields; `null` is dropped.
+
 ## Avatars and folders
 
-**An avatar is not a card field**: creates and updates ignore it, and a patch `avatarPath` sits in the card JSON unread. `mari images generate --prompt <text>` makes an unassigned preview asset; `mari images assign --asset <id> --target character-avatar --character <id> --apply` copies it into `DATA_DIR/avatars/` and writes `/api/avatars/file/<file>` onto the row (`--target persona-avatar --persona <id>` for a persona). Without `--apply` nothing is saved. Clear with `mari images delete --target character-avatar --character <id> [--delete-file] --apply`; without `--delete-file` the file stays.
+**An avatar is not a card field**: creates and updates ignore it, and a patch `avatarPath` sits in the card JSON unread. `mari images generate --prompt <text>` makes an unassigned preview asset (show it with the result's `show` line; prompts, `--kind` and `--style` are in the images handbook); `mari images assign --asset <id> --target character-avatar --character <id> --apply` copies it into `DATA_DIR/avatars/` and writes `/api/avatars/file/<file>` onto the row (`--target persona-avatar --persona <id>` for a persona). Without `--apply` nothing is saved. Clear with `mari images delete --target character-avatar --character <id> [--delete-file] --apply`; without `--delete-file` the file stays.
 
 **Folders have no create action.** `character.folder.list` returns `{id, name, description, characterIds}`; creation is UI-only, and an unknown name is an error. `character.moveToFolder` takes `characterId` plus `folderId` or `folderName`, removes the character from every other folder and adds it once.
 
@@ -60,7 +72,7 @@ Read the entity first, then write it in its own first-person voice into `aboutMe
 
 | Message                                                                                                                                                                    | Cause                                                                                                                                  |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `character.update needs a patch field such as name, summary, description, personality, scenario, firstMes, creatorNotes, backstory, appearance, aboutMe, tags, or comment` | the patch came out empty: no fields, only dropped ones (`aboutMe: null` on a character; `aboutMe: ""` on a persona), or `comment: ""`. |
+| `character.update needs a patch field such as name, summary, description, personality, scenario, firstMes, creatorNotes, backstory, appearance, aboutMe, publicFace, tags, or comment` | the patch came out empty: no fields, only dropped ones (`aboutMe: null` on a character; `aboutMe: ""` on a persona), or `comment: ""`. |
 | `No character has the id "<id>". …`                                                                                                                                        | a name or slug sent as the id, or the card is gone; take the `id` from `character.search` (or `character.list`).                       |
 | `Unknown character action "<name>".`                                                                                                                                       | no such sub-action; `character.delete` is CLI-only.                                                                                    |
 

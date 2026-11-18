@@ -36,17 +36,7 @@ import {
   type SpritePlacement,
   type SpriteSide,
 } from "@marinara-engine/shared";
-import {
-  BookOpen,
-  FileText,
-  Loader2,
-  ChevronUp,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  User,
-  Puzzle,
-} from "lucide-react";
+import { BookOpen, FileText, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, User, Puzzle } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useRenderTimer } from "../../lib/perf-diagnostics";
 import { getConnectedChatDisplayName } from "../../lib/chat-display";
@@ -60,7 +50,7 @@ import {
   resolveTranscriptRenderWindowSize,
   TRANSCRIPT_RENDER_WINDOW_STEP,
 } from "../../lib/transcript-render-window";
-import { selectSidebarShown, useUIStore } from "../../stores/ui.store";
+import { useUIStore } from "../../stores/ui.store";
 import { useChatStore } from "../../stores/chat.store";
 import { useGameStateStore } from "../../stores/game-state.store";
 import { useChatComposerFocused, useChatKeyboardOpen } from "../../hooks/use-visual-viewport-chat-bottom";
@@ -101,6 +91,7 @@ import {
   useGameChatStoryboards,
   useGenerateGameTurnStoryboard,
 } from "../../hooks/use-game-storyboards";
+import { Spinner } from "../ui/Spinner";
 
 type ChatData = ComponentProps<typeof ChatCommonOverlays>["chat"];
 
@@ -381,6 +372,7 @@ function StreamingIndicator({
   chatMode,
   groupChatMode,
   colorInlineNames,
+  colorPersonaInlineNames,
   expressionAvatarResolver,
   visualNovel = false,
   visualNovelParagraphIndex,
@@ -395,6 +387,7 @@ function StreamingIndicator({
   chatMode: string;
   groupChatMode?: string;
   colorInlineNames?: boolean;
+  colorPersonaInlineNames?: boolean;
   expressionAvatarResolver?: ExpressionAvatarResolver;
   visualNovel?: boolean;
   visualNovelParagraphIndex?: number;
@@ -448,6 +441,7 @@ function StreamingIndicator({
         chatMode={chatMode}
         groupChatMode={groupChatMode}
         colorInlineNames={colorInlineNames}
+        colorPersonaInlineNames={colorPersonaInlineNames}
         chatCharacterIds={chatCharIds}
         mergedGroupCharacterIds={mergedGroupCharacterIds}
         expressionAvatarResolver={expressionAvatarResolver}
@@ -671,7 +665,7 @@ function ActiveContextLinksPanel({
             <Suspense
               fallback={
                 <div className="flex items-center gap-2 py-4 text-xs text-[var(--muted-foreground)]">
-                  <Loader2 size="0.75rem" className="animate-spin" />
+                  <Spinner size="sm" />
                   {t("chat.toolbar.loadingActiveContext")}
                 </div>
               }
@@ -710,7 +704,7 @@ function RoleplaySummaryPanel({
 function RoleplayDrawerLoading({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-2 py-3 text-xs text-[var(--muted-foreground)]">
-      <Loader2 size="0.75rem" className="animate-spin" />
+      <Spinner size="sm" />
       {label}
     </div>
   );
@@ -759,7 +753,6 @@ type RoleplaySurfaceProps = {
   generationVisualsPaused: boolean;
   agentProcessing: boolean;
   regenerateMessageId: string | null;
-  shouldAnimateMessages: boolean;
   summaryContextSize: number;
   totalMessageCount: number;
   lastAssistantMessageId: string | null;
@@ -790,7 +783,7 @@ type RoleplaySurfaceProps = {
   /** R2: the reply that gets the checkup's quiet line, and the line itself. */
   replyCheckupMessageId?: string | null;
   replyCheckup?: ReactNode;
-  onSetActiveSwipe: (messageId: string, index: number) => void;
+  onSetActiveSwipe: (messageId: string, index: number) => void | Promise<boolean | undefined>;
   onToggleConversationStart: (
     messageId: string,
     sharedStart: boolean,
@@ -811,7 +804,7 @@ type RoleplaySurfaceProps = {
   isForkingScene?: boolean;
   onOpenScheduleEditor?: ComponentProps<typeof ChatCommonOverlays>["onOpenScheduleEditor"];
   onCloseSettings: (options?: { force?: boolean }) => void;
-  onIllustrate?: (prompt?: string, messageRange?: [string, string]) => void;
+  onIllustrate?: (prompt?: string, messageRange?: [string, string], promptTemplateId?: string) => void;
   onHtml?: (prompt?: string) => void | Promise<void>;
   onRoleplayVideo?: (description?: string) => void | Promise<void>;
   onIllustrateWithAgent?: (agentType: string) => void | Promise<void>;
@@ -890,7 +883,6 @@ export function ChatRoleplaySurface({
   generationVisualsPaused,
   agentProcessing,
   regenerateMessageId,
-  shouldAnimateMessages,
   summaryContextSize,
   totalMessageCount,
   lastAssistantMessageId,
@@ -973,6 +965,19 @@ export function ChatRoleplaySurface({
   const continuationMessageId = useChatStore((s) => s.continuationStreams.get(activeChatId)?.messageId);
   const inlineStreamingMessageId = regenerateMessageId ?? continuationMessageId ?? null;
   const { t: localizeUi } = useUiTranslation();
+  // One Peek handler per message that keeps its identity, so the memoized rows skip re-rendering when
+  // this surface re-renders (an inline arrow re-rendered every message, e.g. on opening Chat settings).
+  const peekPromptFor = useMemo(() => {
+    const handlers = new Map<string, () => void>();
+    return (messageId: string) => {
+      let handler = handlers.get(messageId);
+      if (!handler) {
+        handler = () => onPeekPrompt(messageId);
+        handlers.set(messageId, handler);
+      }
+      return handler;
+    };
+  }, [onPeekPrompt]);
   const { t } = useTranslation();
   const { data: installedCapabilities = [] } = useInstalledCapabilityPackages();
   const memoryContextStarts = useMemo(() => {
@@ -1028,8 +1033,6 @@ export function ChatRoleplaySurface({
   const linkedChatName = chat?.connectedChatId
     ? getConnectedChatDisplayName(allChats?.find((c) => c.id === chat.connectedChatId))
     : undefined;
-  const sidebarOpen = useUIStore(selectSidebarShown);
-  const rightPanelOpen = useUIStore((s) => s.rightPanelOpen);
   const chatBackgroundBlur = useUIStore((s) => s.chatBackgroundBlur);
   const roleplayReducedPaintEffects = useUIStore((s) => s.roleplayReducedPaintEffects);
   const defaultDisplayStyle = useUIStore((s) => s.roleplayDisplayStyle);
@@ -1039,6 +1042,9 @@ export function ChatRoleplaySurface({
   const visualNovel = isRoleplay && (chatMeta.roleplayDisplayStyle ?? defaultDisplayStyle) === "visual-novel";
   // Undefined until the chat sets it; ChatMessage then falls back to the retired global switch.
   const colorInlineNames = typeof chatMeta.colorInlineNames === "boolean" ? chatMeta.colorInlineNames : undefined;
+  // Undefined until the chat sets it; ChatMessage then follows the character switch above.
+  const colorPersonaInlineNames =
+    typeof chatMeta.colorPersonaInlineNames === "boolean" ? chatMeta.colorPersonaInlineNames : undefined;
   const chatPosition = useUIStore((s) => s.roleplayChatPosition);
   const roleplayAvatarStyle = useUIStore((s) => s.roleplayAvatarStyle);
   const roleplayAvatarScale = useUIStore((s) => s.roleplayAvatarScale);
@@ -1263,7 +1269,7 @@ export function ChatRoleplaySurface({
   const ambientVisualsPaused =
     generationVisualsPaused || (isMobileToolbarViewport && (keyboardOpen || composerFocused || hasMobileDraftInput));
   const weatherEffectsPaused = isMobileToolbarViewport && (keyboardOpen || composerFocused || hasMobileDraftInput);
-  const hideEchoChamberOnMobile = sidebarOpen || rightPanelOpen || settingsOpen || wizardOpen;
+  const hideEchoChamberOnMobile = settingsOpen || wizardOpen;
   const showSpriteOverlay = expressionAgentEnabled && spriteCharacterIds.length > 0 && spriteDisplayModes.length > 0;
   // Avatars show independently of the Expression Engine; the user hides the full-body sprite by hand.
   const avatarAgentIds = useChatAvatarAgentIds(chatMeta);
@@ -2001,11 +2007,7 @@ export function ChatRoleplaySurface({
                       disabled={isFetchingNextPage}
                       className={HISTORY_PAGER_BUTTON_CLASS}
                     >
-                      {isFetchingNextPage ? (
-                        <Loader2 size="0.75rem" className="animate-spin" />
-                      ) : (
-                        <ChevronUp size="0.75rem" />
-                      )}
+                      {isFetchingNextPage ? <Spinner size="sm" /> : <ChevronUp size="0.75rem" />}
                       {localizeUi("ui.chat.chatroleplaysurface.loadMore")}
                     </button>
                   </div>
@@ -2020,7 +2022,7 @@ export function ChatRoleplaySurface({
 
                 {isLoading && (
                   <div className="flex flex-col items-center gap-3 py-12">
-                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-foreground/20 border-t-white/60" />
+                    <Spinner size="lg" className="h-8 w-8 text-white/60" />
                   </div>
                 )}
 
@@ -2049,15 +2051,7 @@ export function ChatRoleplaySurface({
                       roleplayStoryboardAutoMode === "illustration" ||
                       roleplayStoryboardAutoMode === "animation");
                   return (
-                    <div
-                      key={msg.id}
-                      className={shouldAnimateMessages ? "animate-message-in" : undefined}
-                      style={
-                        shouldAnimateMessages
-                          ? { animationDelay: `${Math.min(i * 30, 200)}ms`, animationFillMode: "backwards" }
-                          : undefined
-                      }
-                    >
+                    <div key={msg.id}>
                       {isRegenerating ? (
                         <RegeneratingMessageContent
                           msg={msg}
@@ -2068,7 +2062,7 @@ export function ChatRoleplaySurface({
                           onSetActiveSwipe={onSetActiveSwipe}
                           onToggleConversationStart={onToggleConversationStart}
                           onToggleHiddenFromAI={onToggleHiddenFromAI}
-                          onPeekPrompt={() => onPeekPrompt(msg.id)}
+                          onPeekPrompt={peekPromptFor(msg.id)}
                           onBranch={onBranch}
                           onCloneSceneFromHere={onCloneSceneFromHere}
                           isCloneSceneFromHereDisabled={isCloneSceneFromHereDisabled}
@@ -2082,6 +2076,7 @@ export function ChatRoleplaySurface({
                           isGrouped={isGrouped(sourceIndex)}
                           groupChatMode={groupChatMode}
                           colorInlineNames={colorInlineNames}
+                          colorPersonaInlineNames={colorPersonaInlineNames}
                           chatCharacterIds={chatCharIds}
                           mergedGroupCharacterIds={activeChatCharacterIds}
                           expressionAvatarResolver={expressionAvatarResolver}
@@ -2108,7 +2103,7 @@ export function ChatRoleplaySurface({
                           onSetActiveSwipe={onSetActiveSwipe}
                           onToggleConversationStart={onToggleConversationStart}
                           onToggleHiddenFromAI={onToggleHiddenFromAI}
-                          onPeekPrompt={() => onPeekPrompt(msg.id)}
+                          onPeekPrompt={peekPromptFor(msg.id)}
                           onBranch={onBranch}
                           onCloneSceneFromHere={onCloneSceneFromHere}
                           isCloneSceneFromHereDisabled={isCloneSceneFromHereDisabled}
@@ -2122,6 +2117,7 @@ export function ChatRoleplaySurface({
                           isGrouped={isGrouped(sourceIndex)}
                           groupChatMode={groupChatMode}
                           colorInlineNames={colorInlineNames}
+                          colorPersonaInlineNames={colorPersonaInlineNames}
                           chatCharacterIds={chatCharIds}
                           mergedGroupCharacterIds={activeChatCharacterIds}
                           noExpressionCharacterIds={noExpressionCharacterIds}
@@ -2159,6 +2155,7 @@ export function ChatRoleplaySurface({
                     chatMode={chatMode}
                     groupChatMode={groupChatMode}
                     colorInlineNames={colorInlineNames}
+                    colorPersonaInlineNames={colorPersonaInlineNames}
                     expressionAvatarResolver={expressionAvatarResolver}
                   />
                 )}
@@ -2220,6 +2217,7 @@ export function ChatRoleplaySurface({
                               personaInfo={personaInfo}
                               groupChatMode={groupChatMode}
                               colorInlineNames={colorInlineNames}
+                              colorPersonaInlineNames={colorPersonaInlineNames}
                               chatCharacterIds={chatCharIds}
                               mergedGroupCharacterIds={activeChatCharacterIds}
                               expressionAvatarResolver={expressionAvatarResolver}
@@ -2238,6 +2236,7 @@ export function ChatRoleplaySurface({
                               chatMode="roleplay"
                               groupChatMode={groupChatMode}
                               colorInlineNames={colorInlineNames}
+                              colorPersonaInlineNames={colorPersonaInlineNames}
                               expressionAvatarResolver={expressionAvatarResolver}
                             />
                           )
@@ -2261,6 +2260,7 @@ export function ChatRoleplaySurface({
                             personaInfo={personaInfo}
                             groupChatMode={groupChatMode}
                             colorInlineNames={colorInlineNames}
+                            colorPersonaInlineNames={colorPersonaInlineNames}
                             chatCharacterIds={chatCharIds}
                             mergedGroupCharacterIds={activeChatCharacterIds}
                             noExpressionCharacterIds={noExpressionCharacterIds}

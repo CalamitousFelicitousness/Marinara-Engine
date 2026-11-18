@@ -23,17 +23,19 @@ Pick the character when you start a chat. See [Roleplay Mode: Getting Started](.
 
 ## The Character Editor at a glance
 
-The Character Editor replaces the chat area with a full-page workspace. On a wide screen the tabs run down the left side. On a narrow screen they become a scrollable strip across the top. The tabs, in order, are **Metadata**, **Card**, **Onboarding**, **Convo**, **Lorebook**, **Sprites**, **Gallery**, **Colors**, **Voice**, **Stats** and **Advanced**. Each tab jumps to its section of one long form, so you can also scroll.
+The Character Editor replaces the chat area with a full-page workspace. On a wide screen the tabs are a row of buttons across the header. At some middle widths the buttons show only their icons; point at one to see its name. On a narrow screen they fold into a menu under the name. The tabs, in order, are **Metadata**, **Card**, **Onboarding**, **Convo**, **Lorebook**, **Images**, **Colors**, **Voice**, **Stats** and **Advanced**. Each tab jumps to its section of one long form, so you can also scroll.
 
 The header holds the parts you use most:
 
 - The **Back** arrow, the avatar tile, a name field, and a title or comment field for a short label such as `Modern AU version`. A line below shows the creator and version.
 - **Save**. It is off until you change something. While it works, it reads **Uploading…** (an avatar is uploading), **Embedding…** (a lorebook is being added to the card) or **Saving…**.
 - The **Favorite** star.
-- **Export character**. See [Importing and Exporting Character Cards](import-export.md).
-- **Import character as persona**, which copies this card into a new persona. See [Personas](personas.md).
-- **Duplicate character**.
-- **Delete character**.
+- The **…** (**More actions**) menu, which holds:
+  - **Ask Professor Mari**, which asks Professor Mari about this card.
+  - **Export character**. See [Importing and Exporting Character Cards](import-export.md).
+  - **Import character as persona**, which copies this card into a new persona. See [Personas](personas.md).
+  - **Duplicate character**.
+  - **Delete character**.
 
 Leaving the editor saves your changes first. If saving fails, the editor stays open with your draft so you can try again.
 
@@ -44,11 +46,22 @@ Tabs that have their own guide:
 | **Onboarding** | [Interactive Onboarding](interactive-onboarding.md) |
 | **Convo** | [Conversation Mode Profiles](../conversation/profiles.md) |
 | **Lorebook** | [Linking Lorebooks to Characters](../lorebooks/linking-to-characters.md) |
-| **Sprites** | [Character Sprites](sprites.md) |
-| **Gallery** | [Character and Persona Galleries](galleries.md) |
-| **Colors** and **Stats** | [Character Colors and RPG Stats](colors-and-stats.md) |
+| **Images** | [Character Sprites](sprites.md) and [Character and Persona Galleries](galleries.md). See [Images tab](#images-tab) below. |
+| **Colors** and **Stats** | [Character Colors and Roleplay Stats](colors-and-stats.md) |
 
-The sections below cover **Metadata**, **Card**, **Voice** and **Advanced**, plus avatars and version history.
+The sections below cover **Metadata**, **Card**, **Images**, **Voice** and **Advanced**, plus avatars and version history.
+
+
+## Images tab
+
+The **Images** tab gathers how a character looks in pictures. Its buttons at the top jump to each part:
+
+- **Character Sheet**: a reference image of the character. Click **Manage** to create, upload or pick one, and turn on **Use as reference image** to prefer it over the avatar when generating images. See [Character Sheet](sprites.md#character-sheet).
+- **Selfie instructions**: optional directions for this character's Conversation selfies, such as camera style or expressions. Noodle and Slurp can use them too when you turn that on in their settings. See [Selfies](../conversation/selfies.md).
+- **Sprites**: expressions, full-body sprites and call clips. See [Character Sprites](sprites.md).
+- **Gallery**: images and videos kept with the character. See [Character and Persona Galleries](galleries.md).
+
+A persona's **Images** tab has the same parts except **Selfie instructions**.
 
 ## Metadata tab
 
@@ -56,6 +69,7 @@ The **Metadata** tab holds identity and organization details. They help you sort
 
 - **Character ID**. Read-only. It appears after the card is saved. Click **Copy** to copy it.
 - **Name**. The display name. It is `{{char}}` in prompts, a placeholder that Marinara replaces with the character's name.
+- **Other names**. Nicknames, full names or titles the character also goes by, such as `Clark Kent, Kal-El, Mr. Kent`. Type several separated by commas and press <kbd>Enter</kbd> or click **Add**. Roleplay chats can paint them in the name color. See [Character Colors](colors-and-stats.md#the-three-colors).
 - **Creator**. Who made the card, for credit when you share it.
 - **Version**. A version number you set, such as `1.0`. The **Automatic versioning** switch next to it keeps earlier versions and raises this number when the card changes. Version history only saves snapshots while this switch is on.
 - **Talkativeness**. A slider from 0 to 100 percent. It sets how often this character speaks in group chats. The default is 50 percent.
@@ -78,6 +92,9 @@ The **Card** tab is the main writing workspace. Jump links at the top skip to an
 | **Backstory** | History, origin, important relationships. | Yes |
 | **Appearance** | Looks, clothing, visual details. Also seeds an AI avatar prompt. | Yes |
 | **Scenario** | The default setting for new chats with this character. | Yes |
+| **Public Face** | The card minus its private parts. | Only where a macro or setting asks for it |
+
+**Public Face** is what the rest of the cast could see or know about the character: looks, manner, role, reputation, and relationships that are no secret. Leave out secrets, inner thoughts, private history and instructions on how to play the character. It is never sent as part of this character's card. A prompt reads it only where you place the `{{publicFace}}` macro, or `{{personaPublicFace}}` for your persona. See [Prompt Macros](../prompts/macros.md#identity-character-and-persona-macros). In an Individual Roleplay group chat, **Others' Public Faces** sends it to the other characters' turns. See [More Individual settings](../chats/group-chats.md#more-individual-settings). An agent whose **Characters** or **Persona** source is set to **Public Face** reads it instead of the card. See [Other settings](../agents/custom-agents.md#other-settings). With **Send Public Faces** on, Impersonate in Roleplay reads it instead of the card. See [The Impersonate settings](../chats/guided-and-impersonate.md#the-impersonate-settings).
 
 **Image Appearance Override** sits under **Appearance** and is off by default. Turn it on to show a second box for short image tags, such as a LoRA trigger word (a keyword that switches on a custom image style). While it is on and filled, image prompts use those tags exactly as written, with **Appearance** kept as background. An AI avatar prompt is seeded from it too. The narrator always sees the full **Appearance** text.
 
@@ -97,13 +114,13 @@ Greetings and example messages can show images from the character's Gallery. See
 
 ### Write a card field with the wand
 
-**Summary**, **Description**, **Personality**, **Backstory**, **Appearance**, **Scenario**, **Example Dialogue**, **First Message** and each **Alternate Greeting** have an icon-only wand button above the field. Its tooltip names the field it writes.
+**Summary**, **Description**, **Personality**, **Backstory**, **Appearance**, **Scenario**, **Public Face**, **Example Dialogue**, **First Message** and each **Alternate Greeting** have an icon-only wand button above the field. Its tooltip names the field it writes.
 
 Before you start: set up a working text connection. See [Connecting to an AI Provider](../connections/connecting-to-a-provider.md).
 
 1. Write any ideas you want to keep in the field, such as `smart, scientist, handsome`, or leave it empty.
 2. Fill in any other card fields you want the AI to use as reference. You do not need to save first.
-3. Click the field's wand. Marinara asks for 100–300 words for that field, using your text as the starting details. Example Dialogue asks for sample exchanges. **First Message** and each **Alternate Greeting** ask for one opening message that leaves your reply open.
+3. Click the field's wand. Marinara asks for 100–300 words for that field, using your text as the starting details. Example Dialogue asks for sample exchanges. **First Message** and each **Alternate Greeting** ask for one opening message that leaves your reply open. **Public Face** has no word range: its wand rewrites the rest of the card without the private parts, so the length follows your card.
 4. Edit the result, then click **Save**.
 
 The wand uses your default agent text connection, or your default text connection if there is none. A configured agent fallback connection still applies.
@@ -142,7 +159,7 @@ The **Voice** tab sets how the character sounds when Text to Speech reads it alo
 - **Preview**. Plays a short line in that voice. The line says the character's name, or the **Phonetic name** when one is set.
 - **Phonetic name**. An optional spelling used only to fix pronunciation. It is part of the card, so click **Save** to keep it.
 
-If Text to Speech is off, or every character shares one voice, a short note replaces the **Voice** field. With one shared voice, the note offers **Use a voice per character**. **Open Text to Speech settings** opens Connections. See [Text to Speech (TTS) Setup](../media/tts-setup.md).
+If Text to Speech is off, or every character shares one voice, a short note replaces the **Voice** field. With one shared voice, the note offers **Use a voice per character**. **Open Text to Speech settings** opens the **Voice** job settings in **Connections**. See [Text to Speech (TTS) Setup](../media/tts-setup.md).
 
 ## Advanced tab
 
@@ -156,16 +173,19 @@ The **Regex Scripts** section holds find-and-replace scripts for this one charac
 
 ## Use an alternative field in selected chats
 
-An alternative field gives the same character a different description, appearance, backstory or other detail in chosen chats, while everyone else keeps the original. Each of the seven card fields has **Add Alternative Field** below it.
+An alternative field gives the same character a different description, appearance, backstory or other detail in chosen chats, while everyone else keeps the original. Each of the eight card fields has **Add Alternative Field** below it.
 
 1. Click **Add Alternative Field** under the field you want to vary. Marinara copies the field's text into a new alternative.
-2. Edit the alternative. It has its own wand, which uses the alternative's text as the starting details and does not change the original field.
-3. Open **Active in 0 chats** and tick the chats that should use it. Only chats that include this character are listed.
-4. Click **Save**.
+2. Optional: click its title, such as **Backstory alternative 1**, and type a name such as `Young`. Names are up to 60 characters. Leave the name empty to keep the numbered title.
+3. Edit the alternative. It has its own wand, which uses the alternative's text as the starting details and does not change the original field.
+4. Open **Active in 0 chats** and tick the chats that should use it. Only chats that include this character are listed.
+5. Click **Save**.
+
+You can also choose from inside a chat. Open **Chat Settings** and expand **Card Field Alternatives**. It lists the chat's persona and each character in the chat that has alternatives, with one menu per field. Pick **Original** or an alternative by name. The card is saved right away, and the choice applies from the next reply. The section is hidden when nothing in the chat has alternatives.
 
 Rules:
 
-- A chat can use only one alternative per field. Ticking a chat in another alternative moves it there.
+- A chat can use only one alternative per field. Ticking a chat in another alternative, or picking another one in Chat Settings, moves it there.
 - With no chats ticked, the alternative stays inactive for later.
 - An empty alternative clears that field in its chats.
 - Chat-specific scenario and image appearance overrides still win.

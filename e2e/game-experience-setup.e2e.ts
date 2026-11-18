@@ -11,6 +11,7 @@ import {
   worldSpatialDraft,
   type MultiplayerPlayer,
 } from "@marinara-engine/shared";
+import { chooseOption } from "./select-field.js";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
@@ -332,7 +333,7 @@ for (const theme of ["dark", "light"] as const) {
     const custom = wizard.getByRole("button", { name: customLabel, exact: true });
     await expect(custom).toBeVisible();
     await expect(custom).toHaveAttribute("aria-pressed", "true");
-    await expect(wizard.getByRole("button", { name: /^Classic/ })).toHaveCount(0);
+    await expect(wizard.getByRole("button", { name: /^Turn-Based/ })).toHaveCount(0);
     await expect(wizard.getByRole("button", { name: "duel", exact: true })).toHaveCount(0);
     await wizard
       .getByRole("button", { name: /^Tactical Grid battles/ })
@@ -357,7 +358,7 @@ for (const theme of ["dark", "light"] as const) {
     );
     await wizard.getByRole("button", { name: /^Unregistered battles/ }).click();
     await expect(wizard.getByRole("button", { name: "missing-board", exact: true })).toHaveCount(0);
-    await expect(wizard.getByRole("button", { name: /^Classic/ })).toHaveAttribute("aria-pressed", "true");
+    await expect(wizard.getByRole("button", { name: /^Turn-Based/ })).toHaveAttribute("aria-pressed", "true");
     await wizard.getByRole("button", { name: /^Registered battles/ }).click();
     await expect(custom).toHaveAttribute("aria-pressed", "true");
     for (let step = 1; step < 6; step++) await next();
@@ -434,8 +435,16 @@ for (const isNewGame of [true, false]) {
     );
     await page.route("**/api/connections", (route) => route.fulfill({ json: wizardConnections }));
     // The Party step's CharacterSelect (#8763) names the party from the library, not the `characters` prop.
-    await page.route("**/api/characters", (route) =>
-      route.fulfill({ json: [{ id: "party-fixture", data: { name: "Companion fixture" } }] }),
+    // The character list answers in pages (#9114).
+    await page.route("**/api/characters?*", (route) =>
+      route.fulfill({
+        json: {
+          items: [{ id: "party-fixture", data: { name: "Companion fixture" } }],
+          limit: 100,
+          offset: 0,
+          hasMore: false,
+        },
+      }),
     );
     await page.route("**/api/lorebooks", (route) => route.fulfill({ json: books }));
     await page.route("**/api/lorebooks/keeper-book/entries", (route) => route.fulfill({ json: [] }));
@@ -814,7 +823,7 @@ test("Tactical setup leaves the board size to the Game Master and retires battle
     await expect(wizard.getByLabel(field, { exact: true })).toHaveCount(0);
   }
   await expect(wizard.getByText(/Fire Emblem|current style/)).toHaveCount(0);
-  await wizard.getByRole("button", { name: /^Classic/ }).click();
+  await wizard.getByRole("button", { name: /^Turn-Based/ }).click();
   await expect(wizard.getByText("Cinematic menu battles", { exact: true })).toBeVisible();
   await wizard.getByRole("button", { name: /^Tactical/ }).click();
   await expect(wizard.getByLabel("Battlefield size", { exact: true })).toHaveCount(0);
@@ -940,14 +949,14 @@ test("A setting kit is off by default, can be picked, written for the setting, e
   await wizard.getByLabel("Scene", { exact: true }).first().fill("Harbor road");
   await wizard.getByLabel("Open tiles", { exact: true }).fill("Quay");
   // Its art and music (worldgen W6f): the modern day's own family, changed to the jazz age's.
-  await expect(wizard.getByLabel("Art and music", { exact: true })).toHaveValue("modern");
-  await wizard.getByLabel("Art and music", { exact: true }).selectOption({ label: "Jazz age" });
+  await expect(wizard.getByLabel("Art and music", { exact: true })).toHaveAttribute("data-value", "modern");
+  await chooseOption(page, wizard.getByLabel("Art and music", { exact: true }), "Jazz age");
   // Retyping the places keeps the settlements on the layer of that name.
   const settlements = wizard.getByLabel("Which of them holds the settlements", { exact: true });
-  await expect(settlements.locator("option:checked")).toHaveText("city");
+  await expect(settlements).toContainText("city");
   await wizard.getByLabel("Places, outermost first", { exact: true }).fill("country, city, quarter");
-  await expect(settlements.locator("option:checked")).toHaveText("city");
-  await settlements.selectOption({ label: "quarter" });
+  await expect(settlements).toContainText("city");
+  await chooseOption(page, settlements, "quarter");
 
   await page.screenshot({ path: testInfo.outputPath("setting-kit-editor.png"), fullPage: true });
 
@@ -1036,7 +1045,7 @@ test("The wizard suggests settings from across settings, and a picked kit brings
   await chooseConnection(page, wizard.locator("[data-connection-value]").first(), "wizard-connection");
   // A Classic game has no kit, so its ideas come from across the settings.
   const styles = wizard.getByTestId("game-style-chooser");
-  await styles.getByRole("radio", { name: /Classic/ }).click();
+  await styles.getByRole("radio", { name: /^VN/ }).click();
   const { next, back } = stepNavigation(wizard);
   await next();
 
@@ -1047,7 +1056,7 @@ test("The wizard suggests settings from across settings, and a picked kit brings
   await expect(wizard.getByRole("button", { name: "Surprise me!", exact: true }).first()).toBeVisible();
   await expect(wizard.getByRole("button", { name: "Fantasy", exact: true })).toHaveAttribute("aria-pressed", "true");
   await back();
-  await styles.getByRole("radio", { name: /Overworld RPG/ }).click();
+  await styles.getByRole("radio", { name: /^Overworld/ }).click();
   await next();
 
   // A picked cyberpunk kit brings its own two ideas first, and its genre while none was chosen.

@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { Loader2, Search, SlidersHorizontal } from "lucide-react";
+import { Search, SlidersHorizontal } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { GlobalChatSearchResult } from "@marinara-engine/shared";
 import { Modal } from "../ui/Modal";
@@ -10,6 +10,8 @@ import { useGlobalChatSearch, type GlobalChatSearchFilters } from "../../hooks/u
 import { useDebouncedValue } from "../../hooks/use-debounced-value";
 import { openChatAtMessage } from "../../lib/chat-insights";
 import { localDateInputToIso, splitSnippet } from "../../lib/chat-insights-display";
+import { Select } from "../ui/Select";
+import { Spinner } from "../ui/Spinner";
 
 const FIELD_CLASS =
   "h-9 w-full min-w-0 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 text-xs text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/25";
@@ -196,39 +198,49 @@ export function GlobalSearchModal({
 
         {filtersOpen && (
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            <label className="flex min-w-0 flex-col gap-1 text-[0.6875rem] text-[var(--muted-foreground)]">
+            <div className="flex min-w-0 flex-col gap-1 text-[0.6875rem] text-[var(--muted-foreground)]">
               {t("chatInsights.search.filterMode")}
-              <select value={mode} onChange={(event) => setMode(event.target.value)} className={FIELD_CLASS}>
-                <option value="">{t("chatInsights.search.anyMode")}</option>
-                <option value="conversation">{t("chatInsights.mode.conversation")}</option>
-                <option value="roleplay">{t("chatInsights.mode.roleplay")}</option>
-                <option value="game">{t("chatInsights.mode.game")}</option>
-              </select>
-            </label>
-            <label className="flex min-w-0 flex-col gap-1 text-[0.6875rem] text-[var(--muted-foreground)]">
-              {t("chatInsights.search.filterRole")}
-              <select value={role} onChange={(event) => setRole(event.target.value)} className={FIELD_CLASS}>
-                <option value="">{t("chatInsights.search.anyRole")}</option>
-                <option value="user">{t("chatInsights.search.speaker.user")}</option>
-                <option value="assistant">{t("chatInsights.search.roleCharacters")}</option>
-                <option value="narrator">{t("chatInsights.search.speaker.narrator")}</option>
-              </select>
-            </label>
-            <label className="col-span-2 flex min-w-0 flex-col gap-1 text-[0.6875rem] text-[var(--muted-foreground)] sm:col-span-1">
-              {t("chatInsights.search.filterCharacter")}
-              <select
-                value={characterId}
-                onChange={(event) => setCharacterId(event.target.value)}
+              <Select
+                value={mode}
+                onChange={(next) => setMode(next)}
+                label={t("chatInsights.search.filterMode")}
                 className={FIELD_CLASS}
-              >
-                <option value="">{t("chatInsights.search.anyCharacter")}</option>
-                {characterOptions.map((character) => (
-                  <option key={character.id} value={character.id}>
-                    {character.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+                options={[
+                  { value: "", label: t("chatInsights.search.anyMode") },
+                  { value: "conversation", label: t("chatInsights.mode.conversation") },
+                  { value: "roleplay", label: t("chatInsights.mode.roleplay") },
+                  { value: "game", label: t("chatInsights.mode.game") },
+                ]}
+              />
+            </div>
+            <div className="flex min-w-0 flex-col gap-1 text-[0.6875rem] text-[var(--muted-foreground)]">
+              {t("chatInsights.search.filterRole")}
+              <Select
+                value={role}
+                onChange={(next) => setRole(next)}
+                label={t("chatInsights.search.filterRole")}
+                className={FIELD_CLASS}
+                options={[
+                  { value: "", label: t("chatInsights.search.anyRole") },
+                  { value: "user", label: t("chatInsights.search.speaker.user") },
+                  { value: "assistant", label: t("chatInsights.search.roleCharacters") },
+                  { value: "narrator", label: t("chatInsights.search.speaker.narrator") },
+                ]}
+              />
+            </div>
+            <div className="col-span-2 flex min-w-0 flex-col gap-1 text-[0.6875rem] text-[var(--muted-foreground)] sm:col-span-1">
+              {t("chatInsights.search.filterCharacter")}
+              <Select
+                value={characterId}
+                onChange={(next) => setCharacterId(next)}
+                label={t("chatInsights.search.filterCharacter")}
+                className={FIELD_CLASS}
+                options={[
+                  { value: "", label: t("chatInsights.search.anyCharacter") },
+                  ...characterOptions.map((character) => ({ value: character.id, label: character.name })),
+                ]}
+              />
+            </div>
             <label className="flex min-w-0 flex-col gap-1 text-[0.6875rem] text-[var(--muted-foreground)]">
               {t("chatInsights.search.filterFrom")}
               <input
@@ -274,7 +286,7 @@ export function GlobalSearchModal({
           role="status"
           aria-live="polite"
         >
-          {waiting && query.trim() ? <Loader2 size="0.75rem" className="animate-spin" /> : null}
+          {waiting && query.trim() ? <Spinner size="sm" /> : null}
           {status}
           {lastPage?.partial && !waiting ? <span>{t("chatInsights.search.partial")}</span> : null}
         </p>
@@ -303,7 +315,7 @@ export function GlobalSearchModal({
             disabled={search.isFetchingNextPage}
             className="mari-chrome-control mari-chrome-control--small mx-auto px-4 text-xs disabled:opacity-50"
           >
-            {search.isFetchingNextPage ? <Loader2 size="0.75rem" className="animate-spin" /> : null}
+            {search.isFetchingNextPage ? <Spinner size="sm" /> : null}
             {t("chatInsights.search.loadMore")}
           </button>
         )}

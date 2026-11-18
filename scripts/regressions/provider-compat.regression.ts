@@ -4,7 +4,9 @@ import { debugJson, logger } from "../../packages/server/src/lib/logger.js";
 import {
   findKnownModel,
   isClaudeAdaptiveOnlyNoSamplingModel,
+  isGeminiHydrogenModel,
   isGeminiModel,
+  isGeminiStrictRequestModel,
   isGeminiThinkingLevelModel,
   resolveProviderReasoningEffort,
   shouldSuppressUnknownModelParameters,
@@ -950,6 +952,37 @@ assert.equal(
   undefined,
   "Argon cannot turn thinking off, so Off sends nothing and Google's default level applies",
 );
+// Hydrogen adds xhigh; the rest of the family stops at high.
+// https://aistudio.google.com/docs/whats-new-gemini-4-hydrogen
+for (const [model, effort, level] of [
+  ["gemini-4-hydrogen", "xhigh", "xhigh"],
+  ["gemini-4-hydrogen", "max", "xhigh"],
+  ["gemini-4-hydrogen", "high", "high"],
+  ["gemini-4-hydrogen", "low", "low"],
+  ["gemini-4-argon", "xhigh", "high"],
+  ["gemini-4-carbon", "max", "high"],
+] as const) {
+  assert.deepEqual(
+    resolveGeminiThinkingConfig(model, { reasoningEffort: effort }, 4096),
+    { thinkingLevel: level, includeThoughts: true },
+    `${model} ${effort}`,
+  );
+}
+assert.deepEqual(findKnownModel("google", "gemini-4-hydrogen"), {
+  id: "gemini-4-hydrogen",
+  name: "gemini-4-hydrogen",
+  context: 1_048_576,
+  maxOutput: 65_536,
+});
+assert.equal(findKnownModel("google_vertex", "gemini-4-hydrogen"), undefined, "Google lists no Vertex location");
+assert.equal(
+  findKnownModel("google_vertex", "gemini-4-argon")?.id,
+  "gemini-4-argon",
+  "the rest of Vertex's list stays",
+);
+assert.equal(isGeminiHydrogenModel("google/gemini-4-hydrogen"), true);
+assert.equal(isGeminiHydrogenModel("gemini-4-hydrogenous"), false);
+assert.equal(isGeminiStrictRequestModel("gemini-4-hydrogen"), true);
 assert.deepEqual(
   [
     "gemini-2.0-flash",
@@ -4996,6 +5029,27 @@ try {
     assert.deepEqual(await sent("gpt-4o"), [undefined, undefined]);
   } finally {
     await new Promise<void>((resolve) => replayServer.close(() => resolve()));
+  }
+}
+
+// #9097: a base URL saved with a trailing slash must not reach the server as "//chat/completions" (llama.cpp 404s it).
+{
+  const paths: string[] = [];
+  const slashServer = createServer(async (request, response) => {
+    for await (const _chunk of request);
+    paths.push(request.url ?? "");
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ choices: [{ message: { content: "ok" }, finish_reason: "stop" }] }));
+  });
+  await new Promise<void>((resolve) => slashServer.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = slashServer.address();
+    assert.ok(address && typeof address === "object");
+    const provider = createLLMProvider("custom", `http://127.0.0.1:${address.port}/v1/`, "");
+    await provider.chatComplete([{ role: "user", content: "hi" }], { model: "local", stream: false });
+    assert.deepEqual(paths, ["/v1/chat/completions"]);
+  } finally {
+    await new Promise<void>((resolve) => slashServer.close(() => resolve()));
   }
 }
 

@@ -1,5 +1,7 @@
 import {
+  effectiveChatParameterOverrides,
   relevantGenerationParameters,
+  resolveProviderReasoningEffort,
   type CapabilityLanguageModelCompletionOptions,
   type ChatOptions,
   type GenerationParameterSendMap,
@@ -29,7 +31,10 @@ export type AgentGenerationParameters = {
   serviceTier?: "flex" | "priority";
   /** The model rejects sampling parameters, so the agent's own temperature is not sent either. */
   omitTemperature?: true;
-  /** Present only when the connection chose a reasoning level or Off; it replaces the agent's own default. */
+  /**
+   * Present only when the connection chose a reasoning level or Off, or saved none on a model that thinks without one
+   * (Gemini 4 Argon and Carbon); it replaces the agent's own default.
+   */
   reasoning?: { reasoningEffort?: ChatOptions["reasoningEffort"]; enableThinking: boolean };
   /** The provider counts thinking inside max tokens, so a call that thinks needs room left for the answer. */
   thinkingHeadroom?: true;
@@ -41,6 +46,9 @@ export type AgentConnectionParameters = {
   enabledParameters?: GenerationParameterSendMap;
   generation: AgentGenerationParameters;
 };
+
+/** A chat's stored `chatParameters` and its Connection / Override / Off states. */
+export type ChatParameterLayers = { chatParameters?: unknown; chatParameterOverrides?: unknown };
 
 type ConnectionParameterSource = {
   provider: string;
@@ -88,9 +96,12 @@ function connectionOnlyBaseline(): GenerationParameterRuntimeArgs["initial"] {
 
 /**
  * Resolve one connection's saved parameters through the main chat's rules (send switches, reasoning normalisation,
- * Codex Default, Claude sampling limits, managed custom parameters) without a preset, a chat layer or scene forcing.
+ * Codex Default, Claude sampling limits, managed custom parameters). Illustrator can also supply chat reasoning.
  */
-export function resolveConnectionGenerationParameters(source: ConnectionParameterSource): GenerationParameterRuntime {
+export function resolveConnectionGenerationParameters(
+  source: ConnectionParameterSource,
+  chat?: ChatParameterLayers,
+): GenerationParameterRuntime {
   return resolveGenerationParameterRuntime({
     connection: {
       provider: source.provider,
@@ -100,7 +111,8 @@ export function resolveConnectionGenerationParameters(source: ConnectionParamete
     },
     chatMode: "agent",
     isSceneChat: false,
-    chatParameters: null,
+    chatParameters: chat?.chatParameters ?? null,
+    chatParameterOverrides: chat?.chatParameterOverrides,
     managedParameterDefinitions: source.managedParameterDefinitions ?? [],
     modelAccessPolicy: resolveModelAccessPolicy({
       provider: source.provider,
@@ -116,20 +128,41 @@ function connectionSends(resolved: GenerationParameterRuntime, key: keyof Genera
   return resolved.enabledParameters?.[key] !== false;
 }
 
+/** Gemini 4 Argon and Carbon on Google and Vertex think at medium even when asked for no level or Off. */
+function thinksWithoutLevel(provider: string, model: string): boolean {
+  return resolveProviderReasoningEffort({ provider, model, reasoningEffort: undefined }) !== null;
+}
+
 /**
- * A level counts as chosen only when the connection saved one, sends it, and shows Reasoning Effort for this model.
- * Codex keeps its own level while the saved value is Default (null).
+ * A level counts as chosen only when it was saved, is sent, and the model shows Reasoning Effort.
+ * Codex keeps its own level while the saved value is Default (null). With `unsetCountsAsOff`, no saved level counts as
+ * a saved Off when Off still names a level: Gemini 4 Argon and Carbon think at medium either way, so the call sends
+ * that level and gets room for it.
  */
-function connectionChoseReasoning(source: ConnectionParameterSource, resolved: GenerationParameterRuntime): boolean {
-  if (resolved.parameterSources.reasoningEffort !== "connection" || !connectionSends(resolved, "reasoningEffort")) {
-    return false;
-  }
+function choseReasoning(
+  source: ConnectionParameterSource,
+  resolved: GenerationParameterRuntime,
+  unsetCountsAsOff = false,
+): boolean {
+  const chosen =
+    resolved.parameterSources.reasoningEffort === "connection" ||
+    resolved.parameterSources.reasoningEffort === "chat" ||
+    (unsetCountsAsOff && thinksWithoutLevel(source.provider, source.model));
+  if (!chosen || !connectionSends(resolved, "reasoningEffort")) return false;
   if (source.provider.toLowerCase() === "openai_chatgpt" && resolved.reasoningEffort == null) return false;
   return relevantGenerationParameters({ provider: source.provider, model: source.model }).has("reasoningEffort");
 }
 
 function definedOnly<T extends Record<string, unknown>>(value: T): T {
   return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined)) as T;
+}
+
+function resolveAgentReasoning(
+  source: ConnectionParameterSource,
+  resolved: GenerationParameterRuntime,
+): AgentGenerationParameters["reasoning"] {
+  if (!choseReasoning(source, resolved, true)) return undefined;
+  return definedOnly({ reasoningEffort: resolved.providerReasoningEffort, enableThinking: resolved.enableThinking });
 }
 
 /**
@@ -140,9 +173,6 @@ export function resolveAgentConnectionParameters(source: ConnectionParameterSour
   const resolved = resolveConnectionGenerationParameters(source);
   const sent = <T>(key: keyof GenerationParameterSendMap, value: T) =>
     connectionSends(resolved, key) ? value : undefined;
-  const reasoning = connectionChoseReasoning(source, resolved)
-    ? { reasoningEffort: resolved.providerReasoningEffort, enableThinking: resolved.enableThinking }
-    : undefined;
   return {
     customParameters: resolved.customParameters,
     temperature: resolved.temperature,
@@ -156,9 +186,38 @@ export function resolveAgentConnectionParameters(source: ConnectionParameterSour
       verbosity: sent("verbosity", resolved.verbosity ?? undefined),
       serviceTier: resolved.serviceTier ?? undefined,
       omitTemperature: resolved.isClaudeNoSampling ? true : undefined,
-      reasoning: reasoning ? definedOnly(reasoning) : undefined,
+      reasoning: resolveAgentReasoning(source, resolved),
       thinkingHeadroom: PROVIDERS_WITHOUT_THINKING_HEADROOM.has(source.provider.toLowerCase()) ? undefined : true,
     }),
+  };
+}
+
+export type AgentReasoningOptions = {
+  generation?: AgentGenerationParameters;
+  enabledParameters?: GenerationParameterSendMap;
+  reasoningSource?: ConnectionParameterSource;
+};
+
+/** Apply chat reasoning after selecting the connection, since other agents can share the cached connection. */
+export function resolveIllustratorChatReasoning(
+  agentType: string,
+  { generation, enabledParameters, reasoningSource }: AgentReasoningOptions,
+  chat: ChatParameterLayers,
+): Pick<AgentReasoningOptions, "generation" | "enabledParameters"> {
+  if (agentType !== "illustrator" || !reasoningSource) return { generation, enabledParameters };
+  // Only a chat's Override or Off for Reasoning Effort replaces the connection's level.
+  if (!effectiveChatParameterOverrides(chat.chatParameters, chat.chatParameterOverrides).reasoningEffort) {
+    return { generation, enabledParameters };
+  }
+
+  const resolved = resolveConnectionGenerationParameters(reasoningSource, chat);
+  const reasoningEffort = resolved.enabledParameters?.reasoningEffort;
+  return {
+    generation: {
+      ...generation,
+      reasoning: resolveAgentReasoning(reasoningSource, resolved),
+    },
+    enabledParameters: reasoningEffort === undefined ? enabledParameters : { ...enabledParameters, reasoningEffort },
   };
 }
 
@@ -200,6 +259,21 @@ export function withConnectionThinkingHeadroom(args: {
   );
 }
 
+/**
+ * The answer budget for a helper call that sends resolveStoredChatOptions' level. On a model that thinks without a
+ * level (Gemini 4 Argon and Carbon) that level is there even with nothing saved, so the call gets the room an agent
+ * gets; every other model keeps the budget its helper calls always had.
+ */
+export function withAlwaysOnThinkingHeadroom(args: Parameters<typeof withConnectionThinkingHeadroom>[0]): number {
+  if (!thinksWithoutLevel(args.provider, args.model)) return args.maxTokens;
+  // They think at their default even when no level is sent (Reasoning Effort's Send switch off, or none), so the room
+  // is sized from that level; the request itself still leaves the level out.
+  const sent = args.reasoningEffort && args.reasoningEffort !== "none" ? args.reasoningEffort : null;
+  const effort =
+    sent ?? resolveProviderReasoningEffort({ provider: args.provider, model: args.model, reasoningEffort: undefined });
+  return withConnectionThinkingHeadroom({ ...args, reasoningEffort: effort });
+}
+
 type CapabilityChatOptions = Pick<
   ChatOptions,
   | "temperature"
@@ -221,8 +295,8 @@ type CapabilityChatOptions = Pick<
  * Merge a package's language-model request with the connection's saved parameters (#7131). A value the connection
  * saved and sends wins; anything it leaves unset keeps the package's own request, as before. A switched-off Reasoning
  * Effort or Max Tokens is not sent at all, as on chat and agent calls; Temperature and Verbosity start switched off,
- * so there the package's own value stays. Max tokens stays the package's, plus thinking room when the connection
- * raised the reasoning level.
+ * so there the package's own value stays. Max tokens is the package's, plus thinking room when the connection raised
+ * the reasoning level, or the connection's own switched-on Max Tokens when that is larger (see below).
  */
 export function resolveCapabilityChatOptions(
   source: ConnectionParameterSource,
@@ -257,7 +331,7 @@ export function resolveCapabilityChatOptions(
   if (switchedOff.length > 0) merged.enabledParameters = Object.fromEntries(switchedOff.map((key) => [key, false]));
 
   const effort = resolved.providerReasoningEffort;
-  if (connectionChoseReasoning(source, resolved) && effort) {
+  if (choseReasoning(source, resolved) && effort) {
     merged.reasoningEffort = effort;
     merged.enableThinking = resolved.enableThinking;
     if (
@@ -277,6 +351,20 @@ export function resolveCapabilityChatOptions(
         }),
       );
     }
+  }
+  // The maintainer's (2026-11-16): a package call gets the connection's switched-on Max Tokens whenever that is larger
+  // than what the package asked for, capped as any call is at the model's output limit. A story package's chapters,
+  // arcs and summaries hit their own smaller limit while the connection allowed 65536. It only raises a limit the
+  // package named: a new connection saves 4096 with the switch on, which would cut a package's longer request short,
+  // and a call that names none keeps the provider's own (Dottore, #9328).
+  if (saved("maxTokens") && sends("maxTokens") && resolved.maxTokens > 0) {
+    const connectionMax = clampGenerationMaxOutputTokens({
+      provider: source.provider,
+      model: source.model,
+      maxTokens: resolved.maxTokens,
+      maxTokensOverride: source.maxTokensOverride,
+    });
+    if (typeof merged.maxTokens === "number" && connectionMax > merged.maxTokens) merged.maxTokens = connectionMax;
   }
   return definedOnly(merged);
 }

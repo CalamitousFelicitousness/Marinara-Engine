@@ -10,6 +10,7 @@ import {
   applyTrackerFieldLocksToGameStatePatch,
   getCustomAgentResultCapability,
   customAgentHasCapability,
+  parseLorebookWriterOrder,
   isAgentAvailableInChatMode,
   isAgentConfigDeleted,
   isExternallyImportedAgent,
@@ -35,7 +36,6 @@ import {
   type ChatMode,
   type GameMap,
   type WrapFormat,
-  type GenerationParameterSendMap,
   type ManagedGenerationParameterDefinition,
   CUSTOM_GENERATION_PARAMETERS_SETTINGS_KEY,
   buildChatImageGenerationRecord,
@@ -44,7 +44,8 @@ import {
 } from "@marinara-engine/shared";
 import {
   resolveAgentConnectionParameters,
-  type AgentGenerationParameters,
+  resolveIllustratorChatReasoning,
+  type AgentReasoningOptions,
 } from "../../services/generation/agent-generation-parameters.js";
 import { and, eq } from "../../db/file-query.js";
 import { listCharacterSprites } from "../../services/game/sprite.service.js";
@@ -346,7 +347,14 @@ type PersonaContext = {
   identitySource: "persona" | "character" | null;
   personaName: string;
   personaDescription: string;
-  personaFields: { example?: string; personality?: string; scenario?: string; backstory?: string; appearance?: string };
+  personaFields: {
+    example?: string;
+    personality?: string;
+    scenario?: string;
+    backstory?: string;
+    appearance?: string;
+    publicFace?: string;
+  };
   /** Image-prompt appearance override (#7053); empty when the user has none. */
   imageAppearanceOverride: string;
   personaAvatarPath?: string | null;
@@ -489,6 +497,10 @@ function markRetryLorebookResultForApproval(args: {
         writableLorebookIds,
         allowTargetRouting: !isBuiltInLorebookAgent || agentContext.memory._lorebookKeeperTargetIsExplicit !== true,
         writableLorebooks,
+        writerOrder:
+          resultAgent?.isCustomAgent === true
+            ? parseLorebookWriterOrder(resultAgent.settings.newLorebookEntryOrder)
+            : undefined,
         lorebookNamingScheme: getLorebookNamingScheme(resultAgent?.settings),
         worldName: agentContext.characters[0]?.world ?? chatName,
         existingEntries,
@@ -654,6 +666,8 @@ async function executeManualIllustratorPromptRequest(args: {
   illustratorEntry: ResolvedRetryAgent;
   agentContext: AgentContext;
   debugMode: boolean;
+  /** Scene guidance typed after /illustrate template=…, depicted by the selected Prompt Mode's writer. */
+  request?: string;
 }): Promise<AgentResult> {
   const startedAt = Date.now();
   try {
@@ -696,6 +710,7 @@ async function executeManualIllustratorPromptRequest(args: {
       styleInstruction,
       characterPromptInstruction: manualCharacterPromptInstruction,
       imagePromptInstructions: normalizeImagePromptInstructions(imageConnection?.imagePromptInstructions) ?? undefined,
+      request: args.request,
       // Pictures and clips / Clips only: the planner may ask for a clip, as the Illustrator agent can.
       videoOffer:
         args.agentContext.memory._generatedVideos && typeof args.agentContext.memory._generatedVideos === "object"
@@ -842,6 +857,7 @@ async function resolvePersonaContext(
     scenario: cardPromptText(persona.scenario),
     backstory: cardPromptText(persona.backstory),
     appearance: cardPromptText(persona.appearance),
+    publicFace: cardPromptText(persona.publicFace),
   };
 
   if (persona.personaStats) {
@@ -1065,6 +1081,7 @@ async function buildRetryAgentContext(args: {
       systemPrompt: cardPromptText(charData.system_prompt) || undefined,
       backstory: cardPromptText(extensions.backstory ?? charData.backstory) || undefined,
       appearance: cardPromptText(extensions.appearance ?? charData.appearance) || undefined,
+      publicFace: cardPromptText(extensions.publicFace) || undefined,
       mesExample: cardPromptText(charData.mes_example) || undefined,
       firstMes: cardPromptText(charData.first_mes) || undefined,
       postHistoryInstructions: cardPromptText(charData.post_history_instructions) || undefined,
@@ -1914,21 +1931,21 @@ export async function resolveRetryAgents(args: {
       onFallback,
     });
   type RetryAgentConnectionResolution = {
-    entry: {
-      connectionId: string | null;
-      provider: any;
-      model: string;
-      customParameters: Record<string, unknown>;
-      temperature?: number;
-      enabledParameters?: GenerationParameterSendMap;
-      suppressModelParameters: boolean;
-      maxOutputTokens: number | null;
-      maxParallelJobs: number;
-      enableCaching: boolean;
-      anthropicExtendedCacheTtl: boolean;
-      cachingAtDepth: number;
-      generation?: AgentGenerationParameters;
-    } | null;
+    entry:
+      | (AgentReasoningOptions & {
+          connectionId: string | null;
+          provider: any;
+          model: string;
+          customParameters: Record<string, unknown>;
+          temperature?: number;
+          suppressModelParameters: boolean;
+          maxOutputTokens: number | null;
+          maxParallelJobs: number;
+          enableCaching: boolean;
+          anthropicExtendedCacheTtl: boolean;
+          cachingAtDepth: number;
+        })
+      | null;
     unavailableReason?: string;
     connectionName?: string;
   };
@@ -1952,16 +1969,16 @@ export async function resolveRetryAgents(args: {
     }
 
     const knownModel = findKnownModel(storedConn.provider as APIProvider, model);
-    // The connection's saved values and Send switches, resolved like a first run's (#7131). A retry has no chat reply
-    // to resolve, so an agent on the chat's connection does not take the chat's temperature or Send switches here.
-    const connectionParameters = resolveAgentConnectionParameters({
+    // Start with the connection defaults (#7131). Illustrator applies the chat's reasoning after selecting a connection.
+    const reasoningSource = {
       provider: storedConn.provider,
       model,
       maxContext: storedConn.maxContext,
       maxTokensOverride: storedConn.maxTokensOverride,
       defaultParameters: storedConn.defaultParameters,
       managedParameterDefinitions: args.managedParameterDefinitions,
-    });
+    };
+    const connectionParameters = resolveAgentConnectionParameters(reasoningSource);
     connForPromptDefaults ??= storedConn;
     const primaryProvider = createLLMProvider(
       storedConn.provider,
@@ -1983,6 +2000,7 @@ export async function resolveRetryAgents(args: {
         temperature: connectionParameters.temperature,
         enabledParameters: connectionParameters.enabledParameters,
         generation: connectionParameters.generation,
+        reasoningSource,
         suppressModelParameters: shouldSuppressUnknownModelParameters(storedConn.provider, model),
         maxOutputTokens: knownModel?.maxOutput && knownModel.maxOutput > 0 ? Math.floor(knownModel.maxOutput) : null,
         maxParallelJobs: Number(storedConn.maxParallelJobs) || 1,
@@ -2221,13 +2239,12 @@ export async function resolveRetryAgents(args: {
         settings,
         customParameters: agentConnection.entry.customParameters,
         temperature: agentConnection.entry.temperature,
-        enabledParameters: agentConnection.entry.enabledParameters,
+        ...resolveIllustratorChatReasoning(cfg.type, agentConnection.entry, chatMeta),
         suppressModelParameters: agentConnection.entry.suppressModelParameters,
         maxOutputTokens: agentConnection.entry.maxOutputTokens,
         enableCaching: agentConnection.entry.enableCaching,
         anthropicExtendedCacheTtl: agentConnection.entry.anthropicExtendedCacheTtl,
         cachingAtDepth: agentConnection.entry.cachingAtDepth,
-        generation: agentConnection.entry.generation,
         provider: agentConnection.entry.provider,
         model: agentConnection.entry.model,
         maxParallelJobs: agentConnection.entry.maxParallelJobs,
@@ -2313,13 +2330,12 @@ export async function resolveRetryAgents(args: {
         settings,
         customParameters: builtInConnection.entry.customParameters,
         temperature: builtInConnection.entry.temperature,
-        enabledParameters: builtInConnection.entry.enabledParameters,
+        ...resolveIllustratorChatReasoning(builtIn.id, builtInConnection.entry, chatMeta),
         suppressModelParameters: builtInConnection.entry.suppressModelParameters,
         maxOutputTokens: builtInConnection.entry.maxOutputTokens,
         enableCaching: builtInConnection.entry.enableCaching,
         anthropicExtendedCacheTtl: builtInConnection.entry.anthropicExtendedCacheTtl,
         cachingAtDepth: builtInConnection.entry.cachingAtDepth,
-        generation: builtInConnection.entry.generation,
         provider: builtInConnection.entry.provider,
         model: builtInConnection.entry.model,
         maxParallelJobs: builtInConnection.entry.maxParallelJobs,
@@ -2337,7 +2353,8 @@ export async function resolveRetryAgents(args: {
     warnings.push(buildLocalSidecarUnavailableWarning(skippedLocalSidecarAgents));
   }
 
-  if (defaultAgentConn && defaultAgentConnectionAgents.length > 0) {
+  // A saved row is a paid-by-default risk; the built-in model bills nothing, so it is never worth a warning.
+  if (defaultAgentConn && !isLocalSidecarConnectionId(defaultAgentConn.id) && defaultAgentConnectionAgents.length > 0) {
     warnings.push(
       buildDefaultAgentConnectionWarning({
         agentNames: defaultAgentConnectionAgents,
@@ -3658,6 +3675,10 @@ async function applyRetryResultEffects(args: {
             writableLorebooks: Array.isArray(agentContext.memory._writableLorebooks)
               ? (agentContext.memory._writableLorebooks as Array<{ id: string; name: string }>)
               : undefined,
+            writerOrder:
+              resultAgent?.isCustomAgent === true
+                ? parseLorebookWriterOrder(resultAgent.settings.newLorebookEntryOrder)
+                : undefined,
             lorebookNamingScheme: getLorebookNamingScheme(resultAgent?.settings),
             worldName: agentContext.characters[0]?.world ?? (chat as any).name,
             // Anchor retried lore to the regenerated turn so message deletion
@@ -4083,8 +4104,17 @@ async function applyRetryResultEffects(args: {
                 });
             assertRetryActive();
             let referenceImages: string[] | undefined;
+            const chatScope =
+              chat.mode === "roleplay"
+                ? {
+                    chatId,
+                    characterIds: parseJsonField<string[]>(chat.characterIds, []),
+                    getById: chars.getById,
+                  }
+                : undefined;
             const referenceResolution = await resolveIllustratorCharacterReferences({
               charactersStore: chars,
+              chatScope,
               characterGallery: createCharacterGalleryStorage(app.db),
               personaGallery: createPersonaGalleryStorage(app.db),
               // The same cast its clips use: the chat's characters, a character used as the user, and the persona.
@@ -4841,6 +4871,8 @@ export async function registerRetryAgentsRoute(
       illustratorStillOnly?: boolean;
       /** Inclusive stored-message IDs selected by /illustrate range=N-M. */
       illustratorMessageRange?: unknown;
+      /** Scene guidance from /illustrate template=…: the manual prompt writer depicts it. */
+      illustratorRequest?: unknown;
       /** Force image generation for retried custom image agents' results (snapshot button, #4682). */
       forceImageGeneration?: boolean;
       lorebookKeeperBackfill?: boolean;
@@ -4875,6 +4907,7 @@ export async function registerRetryAgentsRoute(
       illustratorRetryTargets: rawIllustratorRetryTargets,
       illustratorStillOnly = false,
       illustratorMessageRange,
+      illustratorRequest: rawIllustratorRequest,
       forceImageGeneration = false,
       lorebookKeeperBackfill = false,
       customLorebookBackfill = false,
@@ -4932,6 +4965,15 @@ export async function registerRetryAgentsRoute(
     ) {
       return reply.status(400).send({ error: "Invalid Illustrator message range" });
     }
+    if (
+      rawIllustratorRequest !== undefined &&
+      (typeof rawIllustratorRequest !== "string" || !isManualIllustratorImageRequest)
+    ) {
+      return reply.status(400).send({ error: "Invalid Illustrator request" });
+    }
+    // Trimmed and bounded like beholderDirective.
+    const illustratorRequest =
+      typeof rawIllustratorRequest === "string" ? rawIllustratorRequest.trim().slice(0, 2000) || undefined : undefined;
 
     startSseReply(reply, { "X-Accel-Buffering": "no" });
 
@@ -5775,6 +5817,7 @@ export async function registerRetryAgentsRoute(
                   illustratorEntry: nonLorebookAgents[0]!,
                   agentContext,
                   debugMode,
+                  request: illustratorRequest,
                 }),
               ]
             : nonLorebookAgents.length > 0

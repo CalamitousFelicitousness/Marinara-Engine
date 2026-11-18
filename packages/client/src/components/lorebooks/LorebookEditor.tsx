@@ -8,6 +8,7 @@
 // flow has been replaced so users can edit row-level params without leaving
 // the list. Inspired by SillyTavern's World Info layout.
 // ──────────────────────────────────────────────
+import { estimateTextTokens } from "@marinara-engine/shared";
 import {
   useState,
   useEffect,
@@ -26,6 +27,7 @@ import {
   useLorebook,
   useLorebooks,
   useUpdateLorebook,
+  useUploadLorebookImage,
   useLorebookEntries,
   useEntriesAcrossLorebooks,
   useCreateLorebookEntry,
@@ -52,7 +54,6 @@ import { useUIStore } from "../../stores/ui.store";
 import { useChatStore } from "../../stores/chat.store";
 import { useSidecarStore } from "../../stores/sidecar.store";
 import {
-  ArrowLeft,
   Save,
   BookOpen,
   FileText,
@@ -69,7 +70,6 @@ import {
   ArrowUpDown,
   Hash,
   Sparkles,
-  Loader2,
   Check,
   CheckSquare2,
   Copy,
@@ -86,7 +86,7 @@ import {
   ArrowUp,
   ArrowDown,
 } from "lucide-react";
-import { cn, copyToClipboard } from "../../lib/utils";
+import { cn, copyToClipboard, getAvatarCropStyle } from "../../lib/utils";
 import { HelpTooltip } from "../ui/HelpTooltip";
 import { CharacterSelect } from "../characters/CharacterSelect";
 import { SettingsSwitch } from "../panels/settings/SettingControls";
@@ -100,6 +100,8 @@ import {
   buildFolderForest,
   canReparentFolder,
   selectLorebookEntryRange,
+  normalizeAvatarCrop,
+  type AvatarCrop,
   type Lorebook,
   type LorebookEntry,
   type LorebookFolder,
@@ -111,7 +113,7 @@ import { LorebookFolderRow } from "./LorebookFolderRow";
 import { LorebookLintPanel } from "./LorebookLintPanel";
 import { LorebookBulkEditPanel } from "./LorebookBulkEditPanel";
 import { LorebookScanTest, type LorebookScanPreviewMatch } from "./LorebookScanTest";
-import { ExpandableTextarea, estimateTokens } from "./LorebookFormFields";
+import { ExpandableTextarea } from "./LorebookFormFields";
 import { ExportFormatDialog, type ExportFormatChoice } from "../ui/ExportFormatDialog";
 import { LorebookTextImportDialog } from "./LorebookTextImportDialog";
 import { EditorTabNavigation } from "../ui/EditorTabNavigation";
@@ -121,7 +123,15 @@ import { leaveWithoutSaving } from "../../lib/editor-leave";
 import { useMariCompanionEditor, useMariEditorFields } from "../../hooks/use-mari-editor-fields";
 import { MariFieldReview, MariFieldReviewProvider, useMariFieldReview } from "../characters/MariFieldReview";
 import { Modal } from "../ui/Modal";
+import { AvatarCropWidget } from "../ui/AvatarCropWidget";
+import { AvatarReplaceActions } from "../ui/AvatarReplaceActions";
+import { AvatarGenerationModal } from "../ui/AvatarGenerationModal";
 import { SHEET_BUTTON_QUIET, SHEET_BUTTON_PRIMARY } from "../ui/neutral-surface-styles";
+import { SurfaceBackButton } from "../ui/SurfaceBackButton";
+import { SurfaceCloseButton } from "../ui/SurfaceCloseButton";
+import { Select } from "../ui/Select";
+import { ConnectionSelect } from "../connections/ConnectionSelect";
+import { Spinner } from "../ui/Spinner";
 
 // ──────────────────────────────────────────────
 // Folder collapse state lives in localStorage — purely a UI preference, not
@@ -327,6 +337,7 @@ function lorebookFormFields(lorebook: Lorebook) {
     characterIds: Array.from(new Set(characterSource)),
     personaIds: Array.from(new Set(personaSource)),
     tags: lorebook.tags ?? [],
+    imageCrop: normalizeAvatarCrop(lorebook.imageCrop),
   };
 }
 type LorebookFormFields = ReturnType<typeof lorebookFormFields>;
@@ -367,6 +378,8 @@ export function LorebookEditor() {
   const { data: rawCharacters } = useCharacters();
   const { data: rawPersonas } = usePersonas();
   const updateLorebook = useUpdateLorebook();
+  const uploadLorebookImage = useUploadLorebookImage();
+  const { data: rawImageConnections } = useConnections();
   const deleteLorebook = useDeleteLorebook();
   const createEntry = useCreateLorebookEntry();
   const bulkDeleteEntries = useBulkDeleteLorebookEntries();
@@ -605,7 +618,14 @@ export function LorebookEditor() {
   const [formCharacterIds, setFormCharacterIds] = useState<string[]>([]);
   const [formPersonaIds, setFormPersonaIds] = useState<string[]>([]);
   const [formTags, setFormTags] = useState<string[]>([]);
+  const [formImageCrop, setFormImageCrop] = useState<AvatarCrop | null>(null);
   const [newTag, setNewTag] = useState("");
+  const imageFileRef = useRef<HTMLInputElement>(null);
+  const [imageGeneratorOpen, setImageGeneratorOpen] = useState(false);
+  const [imageRemoving, setImageRemoving] = useState(false);
+  const imageGenerationAvailable = (rawImageConnections as Array<{ provider?: string }> | undefined)?.some(
+    (connection) => connection.provider === "image_generation",
+  );
 
   const characterNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -677,6 +697,7 @@ export function LorebookEditor() {
     setFormCharacterIds(form.characterIds);
     setFormPersonaIds(form.personaIds);
     setFormTags(form.tags);
+    setFormImageCrop(form.imageCrop);
     loadedFormRef.current = form;
     setLorebookDirty(false);
     loadedLorebookIdRef.current = lorebook.id;
@@ -709,7 +730,7 @@ export function LorebookEditor() {
       case "name-desc":
         return [...result].sort((a, b) => b.name.localeCompare(a.name));
       case "tokens":
-        return [...result].sort((a, b) => estimateTokens(b.content) - estimateTokens(a.content));
+        return [...result].sort((a, b) => estimateTextTokens(b.content) - estimateTextTokens(a.content));
       case "keys":
         return [...result].sort((a, b) => b.keys.length - a.keys.length);
       case "fired":
@@ -1644,6 +1665,7 @@ export function LorebookEditor() {
           characterIds: formCharacterIds,
           personaIds: formPersonaIds,
           tags: formTags,
+          imageCrop: formImageCrop,
         };
         await updateLorebook.mutateAsync({ id: lorebookId, ...lorebookSavePatch(form, loadedFormRef.current) });
         loadedFormRef.current = form;
@@ -1683,9 +1705,89 @@ export function LorebookEditor() {
     formCharacterIds,
     formPersonaIds,
     formTags,
+    formImageCrop,
     updateLorebook,
     localizeUi,
   ]);
+
+  // The picture applies at once (like the persona editor's avatar); only its crop waits for Save.
+  const saveLorebookImage = useCallback(
+    async (image: string) => {
+      if (!lorebookId) return;
+      await uploadLorebookImage.mutateAsync({ id: lorebookId, image });
+      if (useUIStore.getState().lorebookDetailId !== lorebookId) return;
+      // The server starts a new picture uncropped. The editor skips reloading while dirty, so reset the
+      // crop here too, or an old unsaved crop would be saved onto the new picture.
+      setFormImageCrop(null);
+      if (loadedFormRef.current) loadedFormRef.current = { ...loadedFormRef.current, imageCrop: null };
+    },
+    [lorebookId, uploadLorebookImage],
+  );
+
+  const handleImageFileSelected = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      event.target.value = "";
+      if (!file) return;
+      if (!file.type.startsWith("image/")) {
+        toast.error(localizeUi("ui.panels.lorebookspanel.chooseAnImageFileForTheLorebookPicture"));
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const image = typeof reader.result === "string" ? reader.result : "";
+        if (!image) {
+          toast.error(localizeUi("ui.panels.agentspanel.couldNotReadThatImage"));
+          return;
+        }
+        saveLorebookImage(image).then(
+          () => toast.success(localizeUi("ui.panels.lorebookspanel.lorebookPictureUpdated")),
+          (error: unknown) =>
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : localizeUi("ui.panels.lorebookspanel.failedToUploadLorebookPicture"),
+            ),
+        );
+      };
+      reader.onerror = () => toast.error(localizeUi("ui.panels.agentspanel.couldNotReadThatImage"));
+      reader.readAsDataURL(file);
+    },
+    [saveLorebookImage, localizeUi],
+  );
+
+  const handleGeneratedImage = useCallback(
+    async (image: string) => {
+      await saveLorebookImage(image);
+      toast.success(localizeUi("lorebook.editor.image.generated"));
+    },
+    [saveLorebookImage, localizeUi],
+  );
+
+  const handleImageRemove = useCallback(async () => {
+    if (!lorebookId || imageRemoving) return;
+    const confirmed = await showConfirmDialog({
+      title: localizeUi("lorebook.editor.image.removeTitle"),
+      message: localizeUi("lorebook.editor.image.removeConfirm"),
+      confirmLabel: localizeUi("settings.notifications.customSound.actions.remove"),
+      tone: "destructive",
+    });
+    if (!confirmed) return;
+    setImageRemoving(true);
+    try {
+      // The server drops the crop with the picture.
+      await updateLorebook.mutateAsync({ id: lorebookId, imagePath: null });
+      if (useUIStore.getState().lorebookDetailId === lorebookId) {
+        setFormImageCrop(null);
+        if (loadedFormRef.current) loadedFormRef.current = { ...loadedFormRef.current, imageCrop: null };
+      }
+      toast.success(localizeUi("lorebook.editor.image.removed"));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : localizeUi("lorebook.editor.image.removeFailed"));
+    } finally {
+      setImageRemoving(false);
+    }
+  }, [lorebookId, imageRemoving, updateLorebook, localizeUi]);
 
   useEditorLeaveSave(`lorebookDetailId:${lorebookId}`, lorebookDirty, handleSaveLorebook, saving);
 
@@ -2116,7 +2218,7 @@ export function LorebookEditor() {
                   disabled={!entryTransferTargetId || transferEntries.isPending}
                   className={SHEET_BUTTON_PRIMARY}
                 >
-                  {transferEntries.isPending ? <Loader2 size="0.8125rem" className="animate-spin" /> : null}
+                  {transferEntries.isPending ? <Spinner size="sm" /> : null}
                   {t(
                     entryTransferOperation === "copy"
                       ? "lorebook.editor.batch.transfer.copyConfirm"
@@ -2155,39 +2257,52 @@ export function LorebookEditor() {
                   { count: selectedEntryIds.size },
                 )}
               </p>
-              <label className="block space-y-1.5">
+              <div className="block space-y-1.5">
                 <span className="text-xs font-medium text-[var(--foreground)]">
                   {t("lorebook.editor.batch.transfer.destination")}
                 </span>
-                <select
+                <Select
                   value={entryTransferTargetId}
-                  onChange={(event) => setEntryTransferTargetId(event.target.value)}
-                  aria-label={t("lorebook.editor.batch.transfer.destination")}
+                  onChange={(next) => setEntryTransferTargetId(next)}
+                  label={t("lorebook.editor.batch.transfer.destination")}
                   className="mari-editor-field w-full px-3 py-2 text-sm max-sm:text-base"
-                >
-                  {transferTargetLorebooks.map((book) => (
-                    <option key={book.id} value={book.id}>
-                      {book.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  options={transferTargetLorebooks.map((book) => ({ value: book.id, label: book.name }))}
+                />
+              </div>
             </div>
           </Modal>
+
+          <AvatarGenerationModal
+            open={imageGeneratorOpen}
+            mode="cover"
+            title={localizeUi("lorebook.editor.image.generateTitle")}
+            entityName={formName}
+            // No prefill: a lorebook's description is prose about its world, not a picture prompt.
+            defaultAvatarUrl={lorebook.imagePath}
+            onClose={() => setImageGeneratorOpen(false)}
+            onUseAvatar={handleGeneratedImage}
+          />
 
           {/* Header */}
           <div className="mari-editor-header mari-editor-header--with-nav">
             <div className="mari-editor-header-main">
-              <button
+              <SurfaceBackButton
                 onClick={handleClose}
                 disabled={saving}
-                aria-label={t("navigation.common.back")}
+                iconSize="1rem"
                 className="mari-editor-action inline-flex disabled:opacity-50"
-              >
-                <ArrowLeft size="1rem" />
-              </button>
-              <div className="mari-editor-icon-tile">
-                <BookOpen size="1.125rem" />
+              />
+              <div className="mari-editor-icon-tile relative">
+                {lorebook.imagePath ? (
+                  <img
+                    src={lorebook.imagePath}
+                    alt=""
+                    className="pointer-events-none h-full w-full object-cover"
+                    style={getAvatarCropStyle(formImageCrop)}
+                  />
+                ) : (
+                  <BookOpen size="1.125rem" />
+                )}
               </div>
               <div className="min-w-0 flex-1">
                 <h2 className="mari-editor-title truncate">{lorebook.name}</h2>
@@ -2259,6 +2374,7 @@ export function LorebookEditor() {
                 <Trash2 size="0.875rem" />
               </button>
             </div>
+            <SurfaceCloseButton disabled={saving} dividerClassName="" />
           </div>
 
           {/* Body */}
@@ -2284,6 +2400,51 @@ export function LorebookEditor() {
               <div className="mari-editor-content-inner mari-editor-content-inner--wide">
                 <section data-editor-section="overview">
                   <div className="space-y-4">
+                    {/* Image */}
+                    <div className="mari-editor-panel space-y-1.5 p-3">
+                      <span className="inline-flex items-center gap-1 text-xs font-medium">
+                        {t("lorebook.editor.image.label")}
+                        <HelpTooltip text={t("lorebook.editor.image.help")} />
+                      </span>
+                      {lorebook.imagePath && (
+                        <fieldset
+                          disabled={imageRemoving || uploadLorebookImage.isPending}
+                          className="min-w-0 border-0 p-0 disabled:pointer-events-none disabled:opacity-60"
+                        >
+                          <AvatarCropWidget
+                            kind="image"
+                            src={lorebook.imagePath}
+                            alt={formName}
+                            crop={formImageCrop}
+                            onRemove={() => void handleImageRemove()}
+                            removing={imageRemoving}
+                            onChange={(next) => {
+                              setFormImageCrop(next);
+                              markLorebookDirty();
+                            }}
+                          />
+                        </fieldset>
+                      )}
+                      <fieldset disabled={imageRemoving} className="min-w-0 border-0 p-0 disabled:opacity-60">
+                        <AvatarReplaceActions
+                          kind="cover"
+                          hasAvatar={Boolean(lorebook.imagePath)}
+                          uploading={uploadLorebookImage.isPending}
+                          generationAvailable={Boolean(imageGenerationAvailable)}
+                          onUpload={() => imageFileRef.current?.click()}
+                          onGenerate={() => setImageGeneratorOpen(true)}
+                        />
+                      </fieldset>
+                      <input
+                        ref={imageFileRef}
+                        type="file"
+                        accept="image/*"
+                        className="sr-only"
+                        tabIndex={-1}
+                        onChange={handleImageFileSelected}
+                      />
+                    </div>
+
                     {/* Name */}
                     <div className="mari-editor-panel p-3" data-mari-field="name">
                       <label className="mb-1.5 block text-xs font-medium">
@@ -2388,28 +2549,20 @@ export function LorebookEditor() {
 
                     {/* Category */}
                     <div className="mari-editor-panel p-3">
-                      <label htmlFor="lorebook-editor-category" className="mb-1.5 block text-xs font-medium">
+                      <div className="mb-1.5 block text-xs font-medium">
                         {localizeUi("ui.lorebooks.lorebookeditor.category")}
-                      </label>
+                      </div>
                       <div className="relative md:hidden">
-                        <select
+                        <Select
                           id="lorebook-editor-category"
                           value={formCategory}
-                          onChange={(event) => {
-                            setFormCategory(event.target.value as LorebookCategory);
+                          onChange={(next) => {
+                            setFormCategory(next as LorebookCategory);
                             markLorebookDirty();
                           }}
-                          className="mari-editor-field h-10 w-full min-w-0 appearance-none truncate px-3 py-0 pr-9 text-xs"
-                        >
-                          {CATEGORY_OPTIONS.map((opt) => (
-                            <option key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown
-                          size="0.75rem"
-                          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--marinara-editor-muted)]"
+                          label={localizeUi("ui.lorebooks.lorebookeditor.category")}
+                          className="mari-editor-field h-10 w-full min-w-0 px-3 py-0 text-xs"
+                          options={CATEGORY_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
                         />
                       </div>
                       <div className="hidden gap-2 md:flex">
@@ -2950,17 +3103,14 @@ export function LorebookEditor() {
                           size="0.8125rem"
                           className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)]"
                         />
-                        <select
+                        <Select
                           value={entrySort}
-                          onChange={(e) => setEntrySort(e.target.value as EntrySortKey)}
-                          className="mari-editor-field h-full appearance-none py-2.5 pl-8 pr-6 text-xs"
-                        >
-                          {SORT_OPTIONS.map((opt) => (
-                            <option key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </option>
-                          ))}
-                        </select>
+                          onChange={(next) => setEntrySort(next as EntrySortKey)}
+                          label={localizeUi("ui.lorebooks.lorebookeditor.sortEntries")}
+                          className="mari-editor-field h-full py-2.5 pl-8 pr-6 text-xs [&>svg]:hidden"
+                          options={SORT_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
+                          searchable={false}
+                        />
                       </div>
                       <button
                         onClick={() => {
@@ -3045,11 +3195,7 @@ export function LorebookEditor() {
                           }
                           className="mari-editor-action mari-editor-action--primary mari-editor-action--compact inline-flex items-center gap-1 px-2.5 py-1.5 text-[0.625rem] disabled:opacity-40"
                         >
-                          {transferEntries.isPending ? (
-                            <Loader2 size="0.6875rem" className="animate-spin" />
-                          ) : (
-                            <Copy size="0.6875rem" />
-                          )}
+                          {transferEntries.isPending ? <Spinner size="sm" /> : <Copy size="0.6875rem" />}
                           {t("lorebook.editor.batch.copy")}
                         </button>
                         <button
@@ -3063,11 +3209,7 @@ export function LorebookEditor() {
                           }
                           className="mari-editor-action mari-editor-action--compact inline-flex items-center gap-1 px-2.5 py-1.5 text-[0.625rem] disabled:opacity-40"
                         >
-                          {transferEntries.isPending ? (
-                            <Loader2 size="0.6875rem" className="animate-spin" />
-                          ) : (
-                            <MoveRight size="0.6875rem" />
-                          )}
+                          {transferEntries.isPending ? <Spinner size="sm" /> : <MoveRight size="0.6875rem" />}
                           {t("lorebook.editor.batch.move")}
                         </button>
                         <button
@@ -3080,11 +3222,7 @@ export function LorebookEditor() {
                           }
                           className="mari-editor-action mari-editor-action--compact inline-flex items-center gap-1 px-2.5 py-1.5 text-[0.625rem] disabled:opacity-40"
                         >
-                          {bulkDeleteEntries.isPending ? (
-                            <Loader2 size="0.6875rem" className="animate-spin" />
-                          ) : (
-                            <Trash2 size="0.6875rem" />
-                          )}
+                          {bulkDeleteEntries.isPending ? <Spinner size="sm" /> : <Trash2 size="0.6875rem" />}
                           {t("lorebook.editor.batch.delete")}
                         </button>
                         <button
@@ -3129,7 +3267,7 @@ export function LorebookEditor() {
                         <span>•</span>
                         <span className="flex items-center gap-1">
                           <Hash size="0.625rem" />
-                          {entries.reduce((sum, e) => sum + estimateTokens(e.content), 0).toLocaleString()}{" "}
+                          {entries.reduce((sum, e) => sum + estimateTextTokens(e.content), 0).toLocaleString()}{" "}
                           {localizeUi("ui.lorebooks.lorebookeditor.tokensEst")}
                         </span>
                         {activationStats && (
@@ -3717,26 +3855,24 @@ function VectorizeSection({
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={selectedConnectionId}
-              onChange={(e) => handleConnectionChange(e.target.value)}
-              className="mari-editor-field min-w-44 flex-1 px-2.5 py-1.5 text-xs"
-            >
-              <option value="">{localizeUi("ui.lorebooks.vectorizesection.noSemanticSearch")}</option>
-              {embeddingConnections.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                  {c.embeddingModel?.trim() ? <> ({c.embeddingModel})</> : null}
-                </option>
-              ))}
-            </select>
+            <div className="min-w-44 flex-1">
+              <ConnectionSelect
+                kind="chat"
+                aria-label={localizeUi("ui.lorebooks.vectorizesection.embeddingConnection")}
+                value={selectedConnectionId || null}
+                onChange={(next) => handleConnectionChange(next ?? "")}
+                defaultLabel={localizeUi("ui.lorebooks.vectorizesection.noSemanticSearch")}
+                includeLocalSidecar={sidecarEmbeddingConnections.length > 0}
+                rowFilter={(row) => embeddingConnections.some((connection) => connection.id === row.id)}
+              />
+            </div>
             <button
               onClick={() => handleVectorize(primaryVectorizeMode)}
               disabled={vectorizing || vectorizableEntryCount === 0 || !selectedConnectionId}
               className="mari-chrome-accent-surface mari-accent-animated flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium transition-all active:scale-[0.98] disabled:opacity-50"
             >
               {vectorizingMode === primaryVectorizeMode ? (
-                <Loader2 size="0.75rem" className="animate-spin" />
+                <Spinner size="sm" />
               ) : primaryVectorizeMode === "all" ? (
                 <RefreshCw size="0.75rem" />
               ) : (
@@ -3761,11 +3897,7 @@ function VectorizeSection({
                 className="flex items-center gap-1.5 rounded-xl bg-[var(--secondary)]/70 px-3 py-1.5 text-xs font-medium text-[var(--foreground)] ring-1 ring-[var(--border)] transition-all hover:bg-[var(--secondary)] active:scale-[0.98] disabled:opacity-50"
                 title={localizeUi("ui.lorebooks.vectorizesection.overwriteEveryStoredVectorInThisLorebookWithThe")}
               >
-                {vectorizingMode === "all" ? (
-                  <Loader2 size="0.75rem" className="animate-spin" />
-                ) : (
-                  <RefreshCw size="0.75rem" />
-                )}
+                {vectorizingMode === "all" ? <Spinner size="sm" /> : <RefreshCw size="0.75rem" />}
                 {vectorizingMode === "all"
                   ? localizeUi("ui.lorebooks.vectorizesection.reVectorizing")
                   : localizeUi("ui.lorebooks.vectorizesection.reVectorizeAll")}
@@ -3777,7 +3909,7 @@ function VectorizeSection({
               className="flex items-center gap-1.5 rounded-xl bg-[var(--secondary)] px-3 py-1.5 text-xs font-medium text-[var(--muted-foreground)] ring-1 ring-[var(--border)] transition-all hover:bg-[var(--accent)] hover:text-[var(--foreground)] active:scale-[0.98] disabled:opacity-50"
               title={localizeUi("ui.lorebooks.vectorizesection.deleteAllStoredVectorsForThisLorebook")}
             >
-              {clearingVectors ? <Loader2 size="0.75rem" className="animate-spin" /> : <Trash2 size="0.75rem" />}
+              {clearingVectors ? <Spinner size="sm" /> : <Trash2 size="0.75rem" />}
               {localizeUi("ui.lorebooks.vectorizesection.deleteVectors")}
             </button>
           </div>

@@ -6,6 +6,22 @@ import type { CardFieldGenerationDraft, CardFieldGenerationKey, CardFieldKey } f
 import { api } from "../lib/api-client";
 import { useUIStore } from "../stores/ui.store";
 
+/** Display names for card fields, shared by the editors and the Chat Settings alternative picker. */
+export function useCardFieldLabels(): Record<CardFieldGenerationKey, string> {
+  const { t } = useTranslation();
+  return {
+    summary: t("ui.characters.summary.label"),
+    description: t("chat.settings.inlineEditor.fields.description"),
+    personality: t("chat.settings.inlineEditor.fields.personality"),
+    backstory: t("chat.settings.inlineEditor.fields.backstory"),
+    appearance: t("chat.settings.inlineEditor.fields.appearance"),
+    scenario: t("chat.settings.inlineEditor.fields.scenario"),
+    publicFace: t("chat.settings.inlineEditor.fields.publicFace"),
+    mes_example: t("chat.settings.inlineEditor.fields.exampleDialogue"),
+    first_mes: t("ui.characters.dialoguetab.firstMessage"),
+  };
+}
+
 /** Generates into a draft only; a late response must never replace newer authoring. */
 export function useCardFieldGeneration<Field extends CardFieldGenerationKey = CardFieldKey>(
   kind: "character" | "persona",
@@ -14,16 +30,7 @@ export function useCardFieldGeneration<Field extends CardFieldGenerationKey = Ca
   onApply: (field: Field, text: string) => void,
 ) {
   const { t } = useTranslation();
-  const labels = {
-    summary: t("ui.characters.summary.label"),
-    description: t("chat.settings.inlineEditor.fields.description"),
-    personality: t("chat.settings.inlineEditor.fields.personality"),
-    backstory: t("chat.settings.inlineEditor.fields.backstory"),
-    appearance: t("chat.settings.inlineEditor.fields.appearance"),
-    scenario: t("chat.settings.inlineEditor.fields.scenario"),
-    mes_example: t("chat.settings.inlineEditor.fields.exampleDialogue"),
-    first_mes: t("ui.characters.dialoguetab.firstMessage"),
-  };
+  const labels = useCardFieldLabels();
   const identity = `${kind}:${id}`;
   const latest = useRef({ identity, card, onApply });
   useLayoutEffect(() => {

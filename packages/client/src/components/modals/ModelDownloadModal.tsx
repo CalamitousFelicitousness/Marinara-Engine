@@ -17,7 +17,6 @@ import {
   Cpu,
   Download,
   Info,
-  Loader2,
   MessageSquare,
   RotateCw,
   Search,
@@ -30,6 +29,7 @@ import {
   type SidecarRuntimePreference,
 } from "@marinara-engine/shared";
 import { Modal } from "../ui/Modal.js";
+import { useBackDismiss } from "../../hooks/use-back-dismiss";
 import { GEMMA_RESTART_MESSAGE, useSidecarStore, type SidecarTestMessageResult } from "../../stores/sidecar.store.js";
 import { cn } from "../../lib/utils";
 import { SettingsSwitch } from "../panels/settings/SettingControls";
@@ -37,6 +37,8 @@ import { PRIMARY_CLASS as PRIMARY, SECONDARY_CLASS } from "./create-connection/s
 import type { TFunction } from "i18next";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { api } from "../../lib/api-client.js";
+import { Select } from "../ui/Select";
+import { Spinner } from "../ui/Spinner";
 
 interface Props {
   open: boolean;
@@ -768,6 +770,10 @@ export function ModelDownloadModal({ open, onClose, embedded }: Props) {
     />
   );
   const isGroup = view === "speed" || view === "memory" || view === "replies" || view === "expert";
+  // The arrow and hardware Back are one function, on the same screens the arrow is shown on. The layer registers
+  // after the Modal's own, so a reopen straight into a sub-screen still steps back before it closes the window.
+  const stepBack = () => setScreen(isGroup && (!hasModel || changing) ? "settings" : "main");
+  useBackDismiss(open && (view === "settings" || isGroup), stepBack);
 
   let body: ReactNode;
   let footerLeft: ReactNode = null;
@@ -801,7 +807,7 @@ export function ModelDownloadModal({ open, onClose, embedded }: Props) {
                 aria-hidden
               >
                 {step.state === "ok" && <Check size="0.6875rem" />}
-                {step.state === "run" && <Loader2 size="1.125rem" className="animate-spin" />}
+                {step.state === "run" && <Spinner size="lg" />}
               </span>
               <span className={step.state === "wait" ? "text-[var(--muted-foreground)]" : "text-[var(--foreground)]"}>
                 {step.label}
@@ -979,7 +985,7 @@ export function ModelDownloadModal({ open, onClose, embedded }: Props) {
                       className={SECONDARY}
                     >
                       {customModelsLoading ? (
-                        <Loader2 size="0.875rem" className="animate-spin" aria-hidden />
+                        <Spinner size="sm" aria-hidden="true" />
                       ) : (
                         <Search size="0.875rem" aria-hidden />
                       )}
@@ -1062,11 +1068,7 @@ export function ModelDownloadModal({ open, onClose, embedded }: Props) {
     ) : null;
     footerRight = (
       <button type="button" onClick={() => void startSetup()} disabled={primaryDisabled} className={PRIMARY}>
-        {selectingLocalModel ? (
-          <Loader2 size="0.875rem" className="animate-spin" aria-hidden />
-        ) : (
-          <Download size="0.875rem" aria-hidden />
-        )}
+        {selectingLocalModel ? <Spinner size="sm" aria-hidden="true" /> : <Download size="0.875rem" aria-hidden />}
         {primaryLabel}
       </button>
     );
@@ -1103,7 +1105,7 @@ export function ModelDownloadModal({ open, onClose, embedded }: Props) {
               className={SECONDARY}
             >
               {testMessagePending ? (
-                <Loader2 size="0.875rem" className="animate-spin" aria-hidden />
+                <Spinner size="sm" aria-hidden="true" />
               ) : (
                 <MessageSquare size="0.875rem" aria-hidden />
               )}
@@ -1234,18 +1236,16 @@ export function ModelDownloadModal({ open, onClose, embedded }: Props) {
                 </p>
               ) : (
                 <>
-                  <select
+                  <Select
                     value={config.runtimePreference}
-                    aria-label={localizeUi("ui.modals.modeldownloadmodal.runtimeTarget")}
-                    onChange={(event) => handleRuntimePreferenceChange(event.target.value as SidecarRuntimePreference)}
+                    label={localizeUi("ui.modals.modeldownloadmodal.runtimeTarget")}
+                    onChange={(next) => handleRuntimePreferenceChange(next as SidecarRuntimePreference)}
                     className="mari-editor-field w-full px-3 py-2 text-sm"
-                  >
-                    {runtimePreferenceOptions.map((option) => (
-                      <option key={option} value={option}>
-                        {formatRuntimePreferenceLabel(option, localizeUi, platform)}
-                      </option>
-                    ))}
-                  </select>
+                    options={runtimePreferenceOptions.map((option) => ({
+                      value: option,
+                      label: formatRuntimePreferenceLabel(option, localizeUi, platform),
+                    }))}
+                  />
                   <p className={HINT}>
                     {localizeUi("ui.modals.modeldownloadmodal.pickTheGpuFamilyYouActuallyWantMarinaraTo")}
                   </p>
@@ -1320,21 +1320,14 @@ export function ModelDownloadModal({ open, onClose, embedded }: Props) {
             </Field>
             {activeBackend !== "mlx" && (
               <Field label={localizeUi("ui.modals.modeldownloadmodal.kvCacheType")}>
-                <select
+                <Select
                   value={config.kvCacheType ?? "f16"}
-                  aria-label={localizeUi("ui.modals.modeldownloadmodal.kvCacheType")}
-                  onChange={(event) =>
-                    void updateConfig({ kvCacheType: event.target.value as "f16" | "q8_0" | "q4_0" })
-                  }
+                  label={localizeUi("ui.modals.modeldownloadmodal.kvCacheType")}
+                  onChange={(next) => void updateConfig({ kvCacheType: next as "f16" | "q8_0" | "q4_0" })}
                   disabled={isBlockingSetup}
                   className="mari-editor-field w-full px-3 py-2 text-sm"
-                >
-                  {(["f16", "q8_0", "q4_0"] as const).map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </select>
+                  options={(["f16", "q8_0", "q4_0"] as const).map((type) => ({ value: type, label: type }))}
+                />
                 <p className={HINT}>{localizeUi("ui.modals.modeldownloadmodal.kvCacheTypeHint")}</p>
               </Field>
             )}
@@ -1444,18 +1437,16 @@ export function ModelDownloadModal({ open, onClose, embedded }: Props) {
             </Field>
             {activeBackend !== "mlx" && (
               <Field label={localizeUi("ui.modals.modeldownloadmodal.embeddingEndpoint")}>
-                <select
+                <Select
                   value={config.embeddingPooling}
-                  onChange={(event) => handleEmbeddingPoolingChange(event.target.value as SidecarEmbeddingPooling)}
-                  aria-label={localizeUi("ui.modals.modeldownloadmodal.poolingType")}
+                  onChange={(next) => handleEmbeddingPoolingChange(next as SidecarEmbeddingPooling)}
+                  label={localizeUi("ui.modals.modeldownloadmodal.poolingType")}
                   className="mari-editor-field w-full px-3 py-2 text-sm"
-                >
-                  {SIDECAR_EMBEDDING_POOLING_TYPES.map((pooling) => (
-                    <option key={pooling} value={pooling}>
-                      {formatEmbeddingPoolingLabel(pooling, localizeUi)}
-                    </option>
-                  ))}
-                </select>
+                  options={SIDECAR_EMBEDDING_POOLING_TYPES.map((pooling) => ({
+                    value: pooling,
+                    label: formatEmbeddingPoolingLabel(pooling, localizeUi),
+                  }))}
+                />
                 <p className={HINT}>
                   {localizeUi("ui.modals.modeldownloadmodal.useMeanPoolingForOpenaiCompatibleLorebookEmbeddingsRaise")}
                 </p>
@@ -1554,16 +1545,27 @@ export function ModelDownloadModal({ open, onClose, embedded }: Props) {
       <div className="mari-connection-scope flex min-h-full flex-1 flex-col" data-builtin-model={view}>
         <div className="flex flex-1 flex-col gap-4 px-4 py-4 sm:px-5">
           {subTitle && (
-            <div className="-ms-1.5 flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setScreen(isGroup && (!hasModel || changing) ? "settings" : "main")}
-                aria-label={localizeUi("connections.add.back")}
-                className="mari-chrome-control mari-chrome-control--icon mari-chrome-control--quiet"
-              >
-                <ChevronLeft size="1.125rem" aria-hidden />
-              </button>
-              <h3 className="text-base font-semibold text-[var(--foreground)]">{subTitle}</h3>
+            // Pinned while the screen scrolls: the negative margins cancel the padding the row now owns, so the
+            // resting layout is unchanged. Same backing as the footer below, and the row stays a direct child here.
+            // Modal's scroller keeps its own py-4 (it outranks the p-0 above), so there the row pins at -top-4 to sit
+            // flush; the embedded shell has no scroller padding.
+            <div
+              className={cn(
+                "sticky z-10 -mx-4 -mb-2 -mt-4 bg-[var(--mari-modal-opaque-bg)] px-4 pb-2 pt-4 [background-image:linear-gradient(var(--marinara-chat-chrome-panel-bg),var(--marinara-chat-chrome-panel-bg))] sm:-mx-5 sm:px-5",
+                embedded ? "top-0" : "-top-4",
+              )}
+            >
+              <div className="-ms-1.5 flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={stepBack}
+                  aria-label={localizeUi("connections.add.back")}
+                  className="mari-chrome-control mari-chrome-control--icon mari-chrome-control--quiet"
+                >
+                  <ChevronLeft size="1.125rem" aria-hidden />
+                </button>
+                <h3 className="text-base font-semibold text-[var(--foreground)]">{subTitle}</h3>
+              </div>
             </div>
           )}
           {body}

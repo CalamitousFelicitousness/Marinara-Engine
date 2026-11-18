@@ -21,9 +21,11 @@ import { decisionConnectionTestMessage } from "../../lib/decision-test-message";
 import { openAddConnection } from "../../lib/add-connection";
 import { useUIStore } from "../../stores/ui.store";
 import { ConnectionSelect } from "./ConnectionSelect";
+import { Checkbox } from "../ui/Checkbox";
+import { Select } from "../ui/Select";
 
 /** Why an entry cannot serve, in the user's language, with the detail the server gave. */
-function decisionUnavailableReason(t: TFunction, entry: DecisionModelOption) {
+export function decisionUnavailableReason(t: TFunction, entry: DecisionModelOption) {
   return entry.unavailable
     ? t(`connections.decision.unavailable.${entry.unavailable}`, {
         defaultValue: t("connections.decision.unavailableSuffix"),
@@ -33,23 +35,15 @@ function decisionUnavailableReason(t: TFunction, entry: DecisionModelOption) {
 }
 
 /**
- * One row of a Decision model dropdown, also used by Advanced Memory's own choice.
- *
- * A native <option> cannot be styled, so an unavailable entry carries its reason in
- * the label text. Composed here rather than in JSX so the separator is not a stray
- * untranslated string in the markup.
+ * One row of a Decision model Select, also used by Advanced Memory's own choice: an unavailable
+ * entry is greyed out with its reason as the second line.
  */
 export function decisionModelOption(t: TFunction, entry: DecisionModelOption) {
-  return (
-    <option key={entry.id} value={entry.id} disabled={!!entry.unavailable}>
-      {entry.unavailable
-        ? t("connections.decision.unavailableOption", {
-            label: entry.label,
-            reason: decisionUnavailableReason(t, entry),
-          })
-        : entry.label}
-    </option>
-  );
+  return {
+    value: entry.id,
+    label: entry.label,
+    disabledReason: entry.unavailable ? decisionUnavailableReason(t, entry) : undefined,
+  };
 }
 
 /**
@@ -161,6 +155,7 @@ export function DecisionDefaultControl({
   if (!settings) {
     return (
       <ConnectionSelect
+        jobKey="decision"
         variant="controlled"
         open={open}
         onOpenChange={onOpenChange}
@@ -210,8 +205,7 @@ export function DecisionDefaultControl({
           model already picks who speaks. */}
       {selected && (
         <label className="flex items-start gap-2 text-xs">
-          <input
-            type="checkbox"
+          <Checkbox
             checked={smartOrderOn}
             disabled={smartOrder.isPending}
             onChange={(event) => {
@@ -243,7 +237,7 @@ export function DecisionDefaultControl({
             onKeyDown={(event) => {
               if (event.key === "Enter") commitQuestionLimit();
             }}
-            className="w-24 rounded-lg bg-[var(--secondary)] px-3 py-1.5 text-sm ring-1 ring-[var(--border)]"
+            className="w-24 rounded-lg bg-[var(--sidebar)] px-3 py-1.5 text-sm ring-1 ring-[var(--border)]"
           />
         </div>
       )}
@@ -315,22 +309,21 @@ function LocalSlotControls({
   // pre-generation gating is actually being skipped.
   const thinks = entry.thinking === "allowed" || (entry.thinking === "auto" && entry.answerStyle === "thinks");
   return (
-    <div className="space-y-2 rounded-lg bg-[var(--secondary)]/40 p-2.5">
+    <div className="space-y-2 rounded-lg bg-[var(--sidebar)] p-2.5">
       <label htmlFor={`decision-thinking-${slot}`} className="block text-[0.6875rem] font-medium">
         {t("connections.decision.thinkingLabel")}
       </label>
-      <select
+      <Select
         id={`decision-thinking-${slot}`}
+        label={t("connections.decision.thinkingLabel")}
         value={entry.thinking ?? "auto"}
-        onChange={(event) => onThinking(event.target.value as DecisionThinkingMode)}
-        className="w-full rounded-lg bg-[var(--secondary)] px-3 py-2 text-sm ring-1 ring-[var(--border)]"
-      >
-        {DECISION_THINKING_MODES.map((mode) => (
-          <option key={mode} value={mode}>
-            {t(`connections.decision.thinking.${mode}`)}
-          </option>
-        ))}
-      </select>
+        onChange={(next) => onThinking(next as DecisionThinkingMode)}
+        className="w-full rounded-lg bg-foreground/[0.06] px-3 py-2 text-sm ring-1 ring-[var(--border)]"
+        options={DECISION_THINKING_MODES.map((mode) => ({
+          value: mode,
+          label: t(`connections.decision.thinking.${mode}`),
+        }))}
+      />
 
       {entry.answerStyle !== "unknown" && (
         <p className="text-[0.625rem] text-[var(--muted-foreground)]">
@@ -346,8 +339,7 @@ function LocalSlotControls({
           so this is opt-in and says what it costs. */}
       {thinks && (
         <label className="flex items-start gap-2 text-[0.625rem] text-[var(--muted-foreground)]">
-          <input
-            type="checkbox"
+          <Checkbox
             checked={preGeneration}
             onChange={(event) => onPreGeneration(event.target.checked)}
             className="mt-0.5 accent-[var(--primary)]"

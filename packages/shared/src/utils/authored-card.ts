@@ -4,6 +4,7 @@ import { characterExtensionsSchema } from "../schemas/character.schema.js";
 import { unassignCardFieldAlternatives } from "./card-field-alternatives.js";
 import { normalizeAvatarCrop } from "./avatar-crop.js";
 import {
+  normalizeNameAliases,
   normalizePersonaStats,
   normalizePersonaStringArray,
   normalizeTrackerCardColorConfig,
@@ -39,6 +40,7 @@ function commonExtensions(source: AuthoredPersona | CharacterExtensions) {
   return {
     backstory: source.backstory,
     appearance: source.appearance,
+    publicFace: source.publicFace,
     versioningEnabled: source.versioningEnabled !== false,
     cardFieldAlternatives: source.cardFieldAlternatives,
     imageAppearance: source.imageAppearance,
@@ -48,6 +50,8 @@ function commonExtensions(source: AuthoredPersona | CharacterExtensions) {
     convoDisplayName: source.convoDisplayName,
     aboutMe: source.aboutMe,
     convoBehavior: source.convoBehavior,
+    // A card from a character or an older persona reads as no aliases.
+    nameAliases: normalizeNameAliases(source.nameAliases),
   };
 }
 

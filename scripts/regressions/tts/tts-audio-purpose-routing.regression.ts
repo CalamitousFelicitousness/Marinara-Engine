@@ -1,3 +1,4 @@
+// regression-layout: source-path game setup must copy each purpose pin into chat metadata, checked in game.routes.ts.
 // Speech, sound effects, and music each resolve to their own engine.
 //
 // Speech resolves audio connections; sound effects and music resolve Music &

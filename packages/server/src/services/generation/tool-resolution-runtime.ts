@@ -3,6 +3,8 @@ import {
   BUILT_IN_TOOLS,
   DEFAULT_AGENT_TOOLS,
   customAgentHasCapability,
+  parseLorebookWriterOrder,
+  type LorebookWriterOrder,
   homeAgentWidgetsSchema,
 } from "@marinara-engine/shared";
 import type { AgentContext, SourceMessageRef } from "@marinara-engine/shared";
@@ -73,7 +75,7 @@ type LorebooksStore = {
   listActiveEntries(args: Record<string, unknown>): Promise<any[]>;
   getById(id: string): Promise<any | null>;
   listEntries(lorebookId: string): Promise<any[]>;
-  createEntry(entry: Record<string, unknown>): Promise<any>;
+  createEntry(entry: Record<string, unknown>, writerOrder?: LorebookWriterOrder): Promise<any>;
   updateEntry(
     id: string,
     entry: Record<string, unknown>,
@@ -168,7 +170,11 @@ const CONVERSATION_ONLY_TOOL_NAMES = new Set(["update_about_me"]);
 
 // Tools that are off unless the user explicitly enables them via activeToolIds
 // (excluded from the "no filter set = all tools on" default).
-const DEFAULT_OFF_TOOL_NAMES = new Set(["update_about_me", ...(DEFAULT_AGENT_TOOLS.spotify ?? [])]);
+// web_fetch belongs here because it is the only tool that lets the model pick where the Engine sends a
+// request. Left on by default, a card, lorebook entry or fetched page could tell the model to fetch an
+// attacker's URL with the persona and recent messages in the query string. web_search cannot be used
+// that way: it only ever talks to DuckDuckGo.
+const DEFAULT_OFF_TOOL_NAMES = new Set(["update_about_me", "web_fetch", ...(DEFAULT_AGENT_TOOLS.spotify ?? [])]);
 
 export function isChatToolEnabledByDefault(toolName: string): boolean {
   return !AGENT_ONLY_TOOL_NAMES.has(toolName) && !DEFAULT_OFF_TOOL_NAMES.has(toolName);
@@ -689,6 +695,7 @@ function createLorebookEntryWriter(
     // When agent write-approval is required, never write inline — surface a proposal
     // envelope (mirroring the structured lorebook_update gate) so the user approves
     // the write before it touches the lorebook DB.
+    const writerOrder = parseLorebookWriterOrder(agentSettings.newLorebookEntryOrder);
     if (options.requireApproval) {
       const existingEntries = await lorebooksStore.listEntries(writableLorebookId).catch(() => []);
       return {
@@ -709,6 +716,7 @@ function createLorebookEntryWriter(
             },
           ],
           preferredTargetLorebookId: writableLorebookId,
+          writerOrder,
           writableLorebookIds: [writableLorebookId],
           existingEntries,
           sourceAgentId: agent.id,
@@ -743,22 +751,25 @@ function createLorebookEntryWriter(
     }
 
     if (!existing) {
-      const created = await lorebooksStore.createEntry({
-        lorebookId: writableLorebookId,
-        name: entry.name,
-        content: entry.content,
-        description: entry.description ?? "",
-        keys,
-        tag: entry.tag ?? "",
-        enabled: true,
-        constant: false,
-        selective: false,
-        position: 0,
-        depth: 4,
-        role: "system",
-        sourceAgentId: agent.id,
-        sourceMessageRefs: options.sourceMessageRefs(),
-      });
+      const created = await lorebooksStore.createEntry(
+        {
+          lorebookId: writableLorebookId,
+          name: entry.name,
+          content: entry.content,
+          description: entry.description ?? "",
+          keys,
+          tag: entry.tag ?? "",
+          enabled: true,
+          constant: false,
+          selective: false,
+          position: 0,
+          depth: 4,
+          role: "system",
+          sourceAgentId: agent.id,
+          sourceMessageRefs: options.sourceMessageRefs(),
+        },
+        writerOrder,
+      );
       options.onWrite(created);
       if (created?.id) writtenEntryIds.add(created.id);
       return {

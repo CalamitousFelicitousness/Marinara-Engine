@@ -13,9 +13,7 @@ import {
   mergeBuiltInAgentSettings,
   normalizeAgentPhaseValue,
   resolveAgentPromptTemplate,
-  findKnownModel,
   shouldSuppressUnknownModelParameters,
-  type APIProvider,
   type GenerationParameterSendMap,
   type ManagedGenerationParameterDefinition,
 } from "@marinara-engine/shared";
@@ -32,16 +30,22 @@ import {
   buildAgentConnectionUnavailableWarning,
   buildDefaultAgentConnectionWarning,
   buildLocalSidecarUnavailableWarning,
+  isLocalSidecarConnectionId,
   resolveAgentConnectionId,
   type AgentConnectionWarning,
 } from "../../routes/generate/agent-connection-guards.js";
-import { resolveAgentConnectionParameters, type AgentGenerationParameters } from "./agent-generation-parameters.js";
+import {
+  resolveAgentConnectionParameters,
+  resolveIllustratorChatReasoning,
+  type AgentReasoningOptions,
+} from "./agent-generation-parameters.js";
 import { applyTextRewriteAgentChatSettings, normalizeProseGuardianPromptTemplate } from "./prose-guardian-settings.js";
 import { applyKnowledgeAgentChatSettings } from "./knowledge-agent-settings.js";
 import { applyAgentLorebookChatSettings } from "./agent-lorebook-triggers.js";
 import { applyCustomAgentImageChatSettings } from "./custom-agent-image-settings.js";
 import { withConnectionFallbackProvider, type FallbackConnection } from "../llm/connection-fallback-provider.js";
 import type { GenerationFallbackNotifier } from "./fallback-notification.js";
+import { resolveKnownMaxOutputTokens } from "./output-token-limits.js";
 
 type ConnectionsStore = {
   getWithKey(id: string): Promise<any | null>;
@@ -86,19 +90,17 @@ type ResolveAgentPipelineAgentsArgs = {
 
 type ChatConnectionMainFallback = { connection: FallbackConnection | null; connectionName: string };
 
-type AgentProviderCacheEntry = {
+type AgentProviderCacheEntry = AgentReasoningOptions & {
   provider: BaseLLMProvider;
   model: string;
   customParameters: Record<string, unknown>;
   temperature?: number;
-  enabledParameters?: GenerationParameterSendMap;
   suppressModelParameters: boolean;
   maxOutputTokens: number | null;
   maxParallelJobs: number;
   enableCaching: boolean;
   anthropicExtendedCacheTtl: boolean;
   cachingAtDepth: number;
-  generation?: AgentGenerationParameters;
 };
 
 type AgentConnectionResolution = {
@@ -248,11 +250,6 @@ export function getAgentFallbackPrompt(agentType: string, settings: Record<strin
   return getDefaultAgentPrompt(agentType);
 }
 
-function resolveConnectionMaxOutputTokens(connection: { provider: string; model: string }): number | null {
-  const knownModel = findKnownModel(connection.provider as APIProvider, connection.model.trim());
-  return knownModel?.maxOutput && knownModel.maxOutput > 0 ? Math.floor(knownModel.maxOutput) : null;
-}
-
 async function resolveAgentConnectionProvider(args: {
   connections: ConnectionsStore;
   agentProviderCache: Map<string | null, AgentProviderCacheEntry>;
@@ -294,14 +291,15 @@ async function resolveAgentConnectionProvider(args: {
     });
     // Agents on the chat's connection read that connection's saved parameters like any agent connection; the
     // temperature and send switches the caller passes keep their existing precedence.
-    const chatConnectionParameters = args.fallbackConnectionProvider
-      ? resolveAgentConnectionParameters({
+    const reasoningSource = args.fallbackConnectionProvider
+      ? {
           provider: args.fallbackConnectionProvider,
           model: args.fallbackModel,
           defaultParameters: args.fallbackDefaultParameters,
           managedParameterDefinitions: args.managedParameterDefinitions,
-        })
-      : null;
+        }
+      : undefined;
+    const chatConnectionParameters = reasoningSource && resolveAgentConnectionParameters(reasoningSource);
     const resolved = {
       provider,
       model: args.fallbackModel,
@@ -315,6 +313,7 @@ async function resolveAgentConnectionProvider(args: {
       anthropicExtendedCacheTtl: args.fallbackAnthropicExtendedCacheTtl,
       cachingAtDepth: args.fallbackCachingAtDepth,
       generation: chatConnectionParameters?.generation,
+      reasoningSource,
     };
     args.agentProviderCache.set(args.connectionId, resolved);
     return { entry: resolved };
@@ -354,14 +353,15 @@ async function resolveAgentConnectionProvider(args: {
     agentConn.treatAsLocalEndpoint === "true",
     agentConn.defaultParameters,
   );
-  const connectionParameters = resolveAgentConnectionParameters({
+  const reasoningSource = {
     provider: agentConn.provider,
     model,
     maxContext: agentConn.maxContext,
     maxTokensOverride: agentConn.maxTokensOverride,
     defaultParameters: agentConn.defaultParameters,
     managedParameterDefinitions: args.managedParameterDefinitions,
-  });
+  };
+  const connectionParameters = resolveAgentConnectionParameters(reasoningSource);
   const resolved = {
     provider: withConnectionFallbackProvider({
       primary: primaryProvider,
@@ -376,8 +376,9 @@ async function resolveAgentConnectionProvider(args: {
     temperature: connectionParameters.temperature,
     enabledParameters: connectionParameters.enabledParameters,
     generation: connectionParameters.generation,
+    reasoningSource,
     suppressModelParameters: shouldSuppressUnknownModelParameters(agentConn.provider, model),
-    maxOutputTokens: resolveConnectionMaxOutputTokens({ provider: agentConn.provider, model }),
+    maxOutputTokens: resolveKnownMaxOutputTokens(agentConn.provider, model),
     maxParallelJobs: Number(agentConn.maxParallelJobs) || 1,
     enableCaching: agentConn.enableCaching === "true",
     anthropicExtendedCacheTtl: agentConn.anthropicExtendedCacheTtl === "true",
@@ -593,14 +594,13 @@ export async function resolveAgentPipelineAgents({
       model: resolvedProvider.entry.model,
       customParameters: resolvedProvider.entry.customParameters,
       temperature: resolvedProvider.entry.temperature,
-      enabledParameters: resolvedProvider.entry.enabledParameters,
+      ...resolveIllustratorChatReasoning(cfg.type, resolvedProvider.entry, chatMetadata ?? {}),
       suppressModelParameters: resolvedProvider.entry.suppressModelParameters,
       maxOutputTokens: resolvedProvider.entry.maxOutputTokens,
       maxParallelJobs: resolvedProvider.entry.maxParallelJobs,
       enableCaching: resolvedProvider.entry.enableCaching,
       anthropicExtendedCacheTtl: resolvedProvider.entry.anthropicExtendedCacheTtl,
       cachingAtDepth: resolvedProvider.entry.cachingAtDepth,
-      generation: resolvedProvider.entry.generation,
     });
   }
 
@@ -709,14 +709,13 @@ export async function resolveAgentPipelineAgents({
       model: builtInConnection.entry.model,
       customParameters: builtInConnection.entry.customParameters,
       temperature: builtInConnection.entry.temperature,
-      enabledParameters: builtInConnection.entry.enabledParameters,
+      ...resolveIllustratorChatReasoning(builtIn.id, builtInConnection.entry, chatMetadata ?? {}),
       suppressModelParameters: builtInConnection.entry.suppressModelParameters,
       maxOutputTokens: builtInConnection.entry.maxOutputTokens,
       maxParallelJobs: builtInConnection.entry.maxParallelJobs,
       enableCaching: builtInConnection.entry.enableCaching,
       anthropicExtendedCacheTtl: builtInConnection.entry.anthropicExtendedCacheTtl,
       cachingAtDepth: builtInConnection.entry.cachingAtDepth,
-      generation: builtInConnection.entry.generation,
     });
   }
 
@@ -731,7 +730,8 @@ export async function resolveAgentPipelineAgents({
     agentConnectionWarnings.push(buildAgentConnectionUnavailableWarning(warning));
   }
 
-  if (defaultAgentConn && defaultAgentConnectionAgents.length > 0) {
+  // A saved row is a paid-by-default risk; the built-in model bills nothing, so it is never worth a warning.
+  if (defaultAgentConn && !isLocalSidecarConnectionId(defaultAgentConn.id) && defaultAgentConnectionAgents.length > 0) {
     agentConnectionWarnings.push(
       buildDefaultAgentConnectionWarning({
         agentNames: defaultAgentConnectionAgents,

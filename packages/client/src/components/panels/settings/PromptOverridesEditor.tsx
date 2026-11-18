@@ -2,7 +2,7 @@
 // Settings: registered prompt overrides editor
 // ──────────────────────────────────────────────
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Check, ChevronDown, Code2, FileText, Loader2, RotateCcw, Save, Sparkles } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, Code2, FileText, RotateCcw, Save, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { estimateTextTokens } from "@marinara-engine/shared";
 import { formatEstimatedTokens } from "../../../lib/character-token-count";
@@ -18,8 +18,10 @@ import { ApiError } from "../../../lib/api-client";
 import { showConfirmDialog } from "../../../lib/app-dialogs";
 import { cn } from "../../../lib/utils";
 import { HelpTooltip } from "../../ui/HelpTooltip";
+import { Select } from "../../ui/Select";
 import { SETTINGS_BUTTON_CLASS, SETTINGS_COMPACT_PRIMARY_BUTTON_CLASS, SettingsSwitch } from "./SettingControls";
 import { useTranslation as useUiTranslation } from "react-i18next";
+import { Spinner } from "../../ui/Spinner";
 
 const PREFERRED_PROMPT_KEY = "conversation.selfie";
 const ROLEPLAY_GALLERY_VIDEO_DIRECTOR_PROMPT_KEY = "roleplay.galleryVideoDirector";
@@ -315,7 +317,7 @@ function PromptOverridesEditorBody({ keys, preferredKey }: { keys?: readonly str
 
   return (
     <div className="flex flex-col gap-2.5">
-      <label className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1">
         <span className="flex items-center justify-between gap-2">
           <span className="text-[0.625rem] font-medium text-[var(--muted-foreground)]">
             {localizeUi("ui.panels.promptoverrideseditorbody.registeredPrompt")}
@@ -324,25 +326,22 @@ function PromptOverridesEditorBody({ keys, preferredKey }: { keys?: readonly str
             {loadingEntries ? localizeUi("ui.panels.promptoverrideseditorbody.loading") : status.label}
           </span>
         </span>
-        <select
-          value={selectedKey ?? ""}
+        <Select
+          value={selectedKey}
+          options={filteredEntries.map((entry) => ({ value: entry.key, label: localizedEntryLabel(entry) }))}
           disabled={loadingEntries || filteredEntries.length === 0}
-          onChange={(event) => setSelectedKey(event.target.value)}
+          onChange={setSelectedKey}
+          label={localizeUi("ui.panels.promptoverrideseditorbody.registeredPrompt")}
+          placeholder={
+            loadingEntries
+              ? localizeUi("ui.panels.promptoverrideseditorbody.loadingPrompts")
+              : filteredEntries.length === 0
+                ? localizeUi("ui.panels.promptoverrideseditorbody.noRegisteredPrompts")
+                : undefined
+          }
           className="w-full rounded-lg bg-[var(--background)] px-3 py-2 text-xs text-[var(--foreground)] outline-none ring-1 ring-[var(--border)] focus:ring-[var(--primary)] disabled:opacity-60"
-        >
-          {loadingEntries && (
-            <option value="">{localizeUi("ui.panels.promptoverrideseditorbody.loadingPrompts")}</option>
-          )}
-          {!loadingEntries && filteredEntries.length === 0 && (
-            <option value="">{localizeUi("ui.panels.promptoverrideseditorbody.noRegisteredPrompts")}</option>
-          )}
-          {filteredEntries.map((entry) => (
-            <option key={entry.key} value={entry.key}>
-              {localizedEntryLabel(entry)}
-            </option>
-          ))}
-        </select>
-      </label>
+        />
+      </div>
 
       {selectedEntry && (
         <p className="rounded-lg bg-[var(--background)]/50 px-2.5 py-2 text-[0.625rem] leading-relaxed text-[var(--muted-foreground)] ring-1 ring-[var(--border)]/70">
@@ -454,7 +453,7 @@ function PromptOverridesEditorBody({ keys, preferredKey }: { keys?: readonly str
           disabled={!canSave}
           className={cn(SETTINGS_COMPACT_PRIMARY_BUTTON_CLASS, "flex-auto")}
         >
-          {saveOverride.isPending ? <Loader2 size="0.75rem" className="animate-spin" /> : <Save size="0.75rem" />}
+          {saveOverride.isPending ? <Spinner size="sm" /> : <Save size="0.75rem" />}
           {localizeUi("ui.noodle.noodlehome.save")}
         </button>
         <button
@@ -464,7 +463,7 @@ function PromptOverridesEditorBody({ keys, preferredKey }: { keys?: readonly str
           className={cn(SETTINGS_BUTTON_CLASS, "flex-auto")}
         >
           {resetOverride.isPending ? (
-            <Loader2 size="0.75rem" className="animate-spin" />
+            <Spinner size="sm" />
           ) : detail?.override ? (
             <RotateCcw size="0.75rem" />
           ) : (

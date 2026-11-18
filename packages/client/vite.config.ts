@@ -8,6 +8,7 @@ import { parseEnv } from "node:util";
 import path from "path";
 import { delegateDirectAndroidBuild } from "./scripts/build-heap.mjs";
 import { cssLangSelectorGuard } from "./scripts/css-lang-selectors.mjs";
+import { precompressAssets } from "./scripts/precompress.mjs";
 
 // Mirror the server's PORT resolution (config/runtime-config.ts reads the
 // repo-root .env) so a standalone `pnpm dev:client` proxies /api to the port the
@@ -313,6 +314,7 @@ export default defineConfig({
           },
         })
       : pwaStub(),
+    precompressAssets(),
   ],
   resolve: {
     alias: [

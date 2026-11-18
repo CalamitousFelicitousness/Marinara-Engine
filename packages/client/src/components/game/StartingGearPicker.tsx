@@ -33,6 +33,8 @@ import { Modal } from "../ui/Modal";
 import { rulesetItemStatsLine } from "./RulesetItemPicker";
 import { GAME_DIALOG_CLASS } from "../../lib/chat-widget-colors";
 import type { InventoryBag } from "./GameInventory";
+import { Checkbox } from "../ui/Checkbox";
+import { Select } from "../ui/Select";
 
 const inputClass =
   "w-full min-w-0 rounded-lg border border-[var(--border)] bg-[var(--input)] px-2 py-1 text-xs text-[var(--foreground)]";
@@ -80,7 +82,6 @@ export function StartingGearPicker({
   ) => Promise<boolean>;
 }) {
   const { t } = useUiTranslation();
-  const firstRef = useRef<HTMLSelectElement>(null);
   const [freeEdit, setFreeEdit] = useState(false);
   const step = definition.sheet.builder?.steps.find(
     (each): each is Extract<RulesetBuilderStep, { kind: "startingGear" }> =>
@@ -220,27 +221,25 @@ export function StartingGearPicker({
     const stats = picked ? rulesetItemStatsLine(picked.facts) : "";
     return (
       <li key={key} className="space-y-1">
-        <label className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1">
           <span className={labelClass}>
             {line.count > 1
               ? t("game.ruleset.startingGear.pickCount", { count: line.count })
               : t("game.ruleset.startingGear.pickOne")}
           </span>
-          <select
-            value={picks[key] ?? ""}
-            onChange={(event) => setPicks((current) => ({ ...current, [key]: event.target.value }))}
+          <Select
+            label={
+              line.count > 1
+                ? t("game.ruleset.startingGear.pickCount", { count: line.count })
+                : t("game.ruleset.startingGear.pickOne")
+            }
+            value={picks[key] || null}
+            placeholder={t("game.ruleset.startingGear.pickPlaceholder")}
+            onChange={(next) => setPicks((current) => ({ ...current, [key]: next }))}
             className={inputClass}
-          >
-            <option value="" disabled>
-              {t("game.ruleset.startingGear.pickPlaceholder")}
-            </option>
-            {options.map((entry) => (
-              <option key={entry.item} value={entry.item}>
-                {entry.name}
-              </option>
-            ))}
-          </select>
-        </label>
+            options={options.map((entry) => ({ value: String(entry.item), label: entry.name }))}
+          />
+        </div>
         {stats && <span className="block text-[0.6875rem] text-[var(--muted-foreground)]">{stats}</span>}
       </li>
     );
@@ -284,6 +283,8 @@ export function StartingGearPicker({
     </fieldset>
   );
 
+  // The bag picker takes the first focus when there is a choice of bag, as the native select did.
+  const firstRef = useRef<HTMLButtonElement>(null);
   return (
     <Modal
       open={open}
@@ -292,14 +293,14 @@ export function StartingGearPicker({
       width="max-w-2xl"
       mobileFullscreen
       panelClassName={GAME_DIALOG_CLASS}
-      {...(bags.length > 1 ? { initialFocusRef: firstRef } : {})}
       contentClassName="flex flex-col"
+      {...(bags.length > 1 ? { initialFocusRef: firstRef } : {})}
     >
       <div className="flex min-h-0 flex-1 flex-col gap-3">
         <p className="text-[0.6875rem] text-[var(--muted-foreground)]">{t("game.ruleset.startingGear.intro")}</p>
         {step && (
           <label className="flex items-center gap-2 text-xs text-[var(--foreground)]">
-            <input type="checkbox" checked={freeEdit} onChange={(event) => setFreeEdit(event.target.checked)} />
+            <Checkbox checked={freeEdit} onChange={(event) => setFreeEdit(event.target.checked)} />
             {t("ui.rulesets.builder.freeEditGear")}
           </label>
         )}
@@ -312,25 +313,21 @@ export function StartingGearPicker({
           <p className="text-xs text-[var(--muted-foreground)]">{t("ui.rulesets.builder.noOptions")}</p>
         )}
         {bags.length > 1 && (
-          <label className="flex max-w-xs flex-col gap-1">
+          <div className="flex max-w-xs flex-col gap-1">
             <span className={labelClass}>{t("game.ruleset.startingGear.for")}</span>
-            <select
-              ref={firstRef}
+            <Select
+              label={t("game.ruleset.startingGear.for")}
+              buttonRef={firstRef}
               value={bagKey}
-              onChange={(event) => {
-                const next = bags.find((bag) => gameInventoryBagKey(bag.holder) === event.target.value);
+              onChange={(value) => {
+                const next = bags.find((bag) => gameInventoryBagKey(bag.holder) === value);
                 setHolder(next?.holder);
                 setAgain(false);
               }}
               className={inputClass}
-            >
-              {bags.map((bag) => (
-                <option key={gameInventoryBagKey(bag.holder)} value={gameInventoryBagKey(bag.holder)}>
-                  {bag.name}
-                </option>
-              ))}
-            </select>
-          </label>
+              options={bags.map((bag) => ({ value: gameInventoryBagKey(bag.holder), label: bag.name }))}
+            />
+          </div>
         )}
 
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
@@ -441,8 +438,7 @@ export function StartingGearPicker({
               )}
               {replacedLabel && (
                 <label className="flex items-start gap-2 text-[0.6875rem] text-[var(--foreground)]">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={again}
                     onChange={(event) => setAgain(event.target.checked)}
                     className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--primary)]"

@@ -13,6 +13,8 @@ import {
   ScrollText,
   Search,
   Trash2,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 import { ReplyToMessageButton } from "./MessageReplyPreview";
 import type { Message, MessageExtra } from "@marinara-engine/shared";
@@ -24,6 +26,7 @@ import { MESSAGE_ACTION_ICON_SIZE } from "./MessageActionButton";
 import { MessageAttachButton } from "./MessageAttachButton";
 import { ReactionAddButton } from "./ReactionAddButton";
 import { MessageMarksAction } from "./MessageMarks";
+import { Spinner } from "../ui/Spinner";
 
 export interface ConversationMessageActionsProps {
   message: Pick<Message, "id" | "chatId" | "content"> & { extra?: unknown };
@@ -59,6 +62,8 @@ export interface ConversationMessageActionsProps {
   onShowThinking: () => void;
   /** Toggle the user's reaction with the picked emoji; omit to hide the add-reaction button. */
   onPickReaction?: (emoji: string, imageUrl: string | null) => void;
+  /** Speak or stop this message aloud; omit to hide the button (text to speech is off). */
+  speech?: { speaking: boolean; loading: boolean; disabled: boolean; hasContent: boolean; onToggle: () => void };
 }
 
 export function ConversationMessageActions({
@@ -90,6 +95,7 @@ export function ConversationMessageActions({
   onShowGenerationReplay,
   onShowThinking,
   onPickReaction,
+  speech,
 }: ConversationMessageActionsProps) {
   const { t: localizeUi } = useUiTranslation();
   const { t } = useTranslation();
@@ -161,6 +167,30 @@ export function ConversationMessageActions({
       />
       {!thinkingOnly && !message.id.startsWith("__") && (
         <MessageAttachButton chatId={message.chatId} messageId={message.id} stopPropagation />
+      )}
+      {speech && (
+        <MsgAction
+          icon={
+            speech.loading ? (
+              <Spinner size="md" />
+            ) : speech.speaking ? (
+              <VolumeX size={MESSAGE_ACTION_ICON_SIZE} />
+            ) : (
+              <Volume2 size={MESSAGE_ACTION_ICON_SIZE} />
+            )
+          }
+          onClick={speech.onToggle}
+          disabled={speech.disabled}
+          title={
+            !speech.hasContent
+              ? localizeUi("ui.chat.chatmessage.noDialogueToSpeak")
+              : speech.loading
+                ? localizeUi("ui.panels.ttsconfigcard.loading")
+                : speech.speaking
+                  ? localizeUi("ui.chat.chatmessage.stopSpeaking")
+                  : localizeUi("ui.chat.chatmessage.speak")
+          }
+        />
       )}
       {canRegenerate && onRegenerate && (
         <MsgAction

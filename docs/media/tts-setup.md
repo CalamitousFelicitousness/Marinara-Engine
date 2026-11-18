@@ -99,7 +99,7 @@ Marinara talks to NanoGPT's OpenAI-compatible endpoint, which returns audio dire
 
 ### PocketTTS is a separate program
 
-PocketTTS is not built into Marinara. Install [the official PocketTTS server](https://github.com/kyutai-labs/pocket-tts) separately and start it with `uvx pocket-tts serve`. Marinara does not download or manage it. The official server uses `http://localhost:8000`. Leave **Base URL** on that unless you changed the host or port. Marinara detects the official multipart `/tts` API. Custom URLs for the [OpenAI-compatible PocketTTS wrapper](https://github.com/teddybear082/pocket-tts-openai_streaming_server) still work.
+PocketTTS is not built into Marinara. Install [the official PocketTTS server](https://github.com/kyutai-labs/pocket-tts) separately and start it with `uvx pocket-tts serve`. Marinara does not download or manage it. The official server uses `http://localhost:8000`. Leave **Address** on that unless you changed the host or port. Marinara detects the official multipart `/tts` API. Custom URLs for the [OpenAI-compatible PocketTTS wrapper](https://github.com/teddybear082/pocket-tts-openai_streaming_server) still work.
 
 ## Step 3: Choose a voice
 
@@ -228,7 +228,7 @@ Turn on **Roleplay speaker extractor** to see **Enable emotion indicators**. It 
 
 ## Speak one message
 
-Once TTS is on, a **Speak** button (a microphone icon) appears in the toolbar under each character or narrator message.
+Once a model is on the **Voice** job, a **Speak** button (a microphone icon) appears in the toolbar under each character or narrator message.
 
 - Click **Speak** to read it. The button shows a loading state while it fetches audio.
 - Click it again while it plays to stop. The tooltip reads **Stop speaking**.

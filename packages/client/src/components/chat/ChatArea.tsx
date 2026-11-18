@@ -72,6 +72,8 @@ import {
   resolveSpriteExpressionState,
 } from "../../lib/sprite-expression-state";
 import { chatBackgroundMetadataToUrl, chatBackgroundUrlToMetadata } from "../../lib/backgrounds";
+import { useLocationBackgroundPinFollower } from "../../hooks/use-location-background-pins";
+import { useChatGalleryBackgroundPins } from "../../hooks/use-chat-gallery-owners";
 import { useGameStateStore } from "../../stores/game-state.store";
 import { toast } from "sonner";
 import { Check, X } from "lucide-react";
@@ -200,6 +202,8 @@ import { ChatHelpOverlay } from "./ChatHelpOverlay";
 import { CHAT_SETTINGS_WINDOW_ID, useFloatingWindowStore } from "../../stores/floating-window.store";
 import { useCombatScreenStore } from "../../stores/combat-screen.store";
 import { readChatHelpMode } from "../../lib/chat-help-events";
+import { useStableCallback } from "../../hooks/use-stable-callback";
+import { Spinner } from "../ui/Spinner";
 
 export type { CharacterMap };
 
@@ -544,9 +548,7 @@ function ChatOpeningState({
       className="mari-app-background-paint flex flex-1 items-center justify-center overflow-hidden p-6"
     >
       <div className="flex flex-col items-center gap-3 text-center">
-        {!hasOpenError && (
-          <div className="h-7 w-7 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--primary)]" />
-        )}
+        {!hasOpenError && <Spinner size="lg" className="h-7 w-7 text-[var(--primary)]" />}
         <div className="space-y-1">
           <p className="text-sm font-medium text-[var(--foreground)]">
             {hasOpenError
@@ -711,14 +713,11 @@ const LocalChatArea = memo(function LocalChatArea({
   const intuitiveTouchStartRef = useRef<{ x: number; y: number; target: EventTarget | null } | null>(null);
   const swipeActionSeq = useRef(0);
   const pendingSwipeMutationsRef = useRef(new Map<string, Promise<void>>());
-  // Tracks whether the initial load stagger animation has played.
-  // After the first render with messages, new/re-mounted messages
-  // skip the entry animation to avoid a visible flash on refetch.
-  const hasAnimatedRef = useRef(false);
   const settingsOpen = useFloatingWindowStore((s) => s.open[CHAT_SETTINGS_WINDOW_ID] === true);
   const settingsPinned = useFloatingWindowStore((s) => s.layouts[CHAT_SETTINGS_WINDOW_ID]?.pinned === true);
   const [settingsInitialSection, setSettingsInitialSection] = useState<ChatSettingsInitialSection>(null);
   const advancedMemoryRequest = useUIStore((state) => state.advancedMemoryRequest);
+  const chatSettingsRequest = useUIStore((state) => state.chatSettingsRequest);
   const [settingsAnchor, setSettingsAnchor] = useState<FloatingPanelAnchor>(null);
   // Held in the store: desktop editors (model settings, characters, agents) unmount ChatArea mid-setup.
   const wizardOpen = useChatStore((s) => s.setupWizardChatId !== null && s.setupWizardChatId === activeChatId);
@@ -858,6 +857,17 @@ const LocalChatArea = memo(function LocalChatArea({
     )
       ui.setAdvancedMemoryRequest(null);
   }, [activeChatId, advancedMemoryRequest, chatDetail?.id, handleOpenSettingsPanel]);
+
+  // Back from a surface opened in Chat Settings reopens the drawer; a pinned one that never closed stays as it is.
+  useEffect(() => {
+    if (!chatSettingsRequest || chatSettingsRequest.chatId !== chatDetail?.id || chatDetail.id !== activeChatId) return;
+    if (!useFloatingWindowStore.getState().open[CHAT_SETTINGS_WINDOW_ID]) {
+      handleOpenSettingsPanel(undefined, {
+        initialSection: chatSettingsRequest.section as ChatSettingsInitialSection,
+      });
+    }
+    useUIStore.getState().consumeChatSettingsRequest();
+  }, [activeChatId, chatDetail?.id, chatSettingsRequest, handleOpenSettingsPanel]);
 
   // The Chat Summary agent's "open summaries" link and the omnibar's chat tool rows land on their Chat Settings drawer.
   useEffect(() => {
@@ -1162,8 +1172,18 @@ const LocalChatArea = memo(function LocalChatArea({
     [activeChatId, retryAgents],
   );
   const handleIllustrate = useCallback(
-    (prompt?: string, messageRange?: [string, string]) => {
+    (prompt?: string, messageRange?: [string, string], promptTemplateId?: string) => {
       if (!activeChatId) return;
+      // /illustrate template=…: that Prompt Mode writes the prompt this once, with the typed text as its guidance.
+      // References follow the chat's switches, and a prompt review comes from the server after the writer runs.
+      if (promptTemplateId) {
+        return retryAgents(activeChatId, ["illustrator"], {
+          illustratorRetryTargets: ["illustration"],
+          illustratorMessageRange: messageRange,
+          agentPromptTemplateIds: { illustrator: promptTemplateId },
+          ...(prompt ? { illustratorRequest: prompt } : {}),
+        }).then(() => undefined);
+      }
       const resultData = { prompt, characters: [] };
       if (prompt && useUIStore.getState().reviewImagePromptsBeforeSend) {
         setIllustratorPromptReview({
@@ -1401,6 +1421,9 @@ const LocalChatArea = memo(function LocalChatArea({
             avatarUrl: row.avatarPath || undefined,
             avatarCrop: normalizeAvatarCrop(extensions.avatarCrop),
             combatIcon: parseCombatIconChoice(extensions.combatIcon),
+            nameAliases: Array.isArray(extensions.nameAliases)
+              ? extensions.nameAliases.filter((alias: unknown): alias is string => typeof alias === "string")
+              : undefined,
             nameColor: typeof extensions.nameColor === "string" ? extensions.nameColor : undefined,
             dialogueColor: typeof extensions.dialogueColor === "string" ? extensions.dialogueColor : undefined,
             boxColor: typeof extensions.boxColor === "string" ? extensions.boxColor : undefined,
@@ -1430,6 +1453,7 @@ const LocalChatArea = memo(function LocalChatArea({
       avatarUrl: persona.avatarPath || undefined,
       avatarCrop: persona.avatarCrop ?? null,
       combatIcon: parseCombatIconChoice(persona.personaStats?.combatIcon),
+      nameAliases: persona.nameAliases?.length ? persona.nameAliases : undefined,
       nameColor: persona.nameColor || undefined,
       dialogueColor: persona.dialogueColor || undefined,
       boxColor: persona.boxColor || undefined,
@@ -2180,6 +2204,34 @@ const LocalChatArea = memo(function LocalChatArea({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatBackground, chat?.id, pendingNewChatSetupId]);
 
+  // Pinned places (Chat settings > Background): arriving at one shows its picture.
+  const pinCharacterNames = useMemo(
+    () => chatCharIds.map((id) => characterMap.get(id)?.name).filter((name): name is string => !!name),
+    [chatCharIds, characterMap],
+  );
+  // Who wrote the message the World State belongs to: "my bedroom" in John's reply is John's.
+  const trackedMessageId = useGameStateStore((state) =>
+    state.current?.chatId === chat?.id ? (state.current?.messageId ?? null) : null,
+  );
+  const trackedMessage = trackedMessageId ? messages?.find((message) => message.id === trackedMessageId) : undefined;
+  const pinSpeakerName = !trackedMessage
+    ? null
+    : trackedMessage.role === "user"
+      ? (personaInfo?.name ?? null)
+      : trackedMessage.characterId
+        ? (characterMap.get(trackedMessage.characterId)?.name ?? null)
+        : null;
+  const galleryBackgroundPins = useChatGalleryBackgroundPins(chat?.mode === "roleplay" ? chat : null);
+  useLocationBackgroundPinFollower({
+    chatId: chat?.id ?? null,
+    chatMode: chat?.mode,
+    chatMetadata: chat?.metadata,
+    userName: personaInfo?.name ?? null,
+    characterNames: pinCharacterNames,
+    speakerName: pinSpeakerName,
+    galleryPins: galleryBackgroundPins,
+  });
+
   const expressionSaveTimer = useRef<ReturnType<typeof setTimeout>>(null);
   const pendingExpressions = useRef<Record<string, string>>(spriteExpressions);
   const pendingSpritePlacements = useRef<Record<string, SpritePlacement>>(spritePlacements);
@@ -2888,7 +2940,7 @@ const LocalChatArea = memo(function LocalChatArea({
     (messageId: string, index: number) => {
       const actionId = ++swipeActionSeq.current;
       const refreshChatId = activeChatId;
-      void (async () => {
+      return (async (): Promise<boolean | undefined> => {
         const gameStateStore = useGameStateStore.getState();
         if (shouldRefreshGameStateOnSwipe && refreshChatId) gameStateStore.setRefreshingChat(refreshChatId);
         try {
@@ -2928,9 +2980,11 @@ const LocalChatArea = memo(function LocalChatArea({
           }
           if (swipeActionSeq.current !== actionId) return;
           await refreshVisibleGameState();
+          return true;
         } catch {
           if (swipeActionSeq.current !== actionId) return;
           toast.error(localizeUi("ui.chat.chatarea.couldNotSwitchSwipes"));
+          return false;
         } finally {
           if (swipeActionSeq.current === actionId) {
             useGameStateStore.getState().clearRefreshingChat(refreshChatId);
@@ -2977,7 +3031,7 @@ const LocalChatArea = memo(function LocalChatArea({
     [updateMessageExtra],
   );
 
-  const handleBranch = useCallback(
+  const handleBranchLatest = useCallback(
     async (messageId: string) => {
       const chatId = activeChatId;
       if (!chatId || branchChat.isPending || branchPendingRef.current) return;
@@ -3016,6 +3070,8 @@ const LocalChatArea = memo(function LocalChatArea({
     },
     [activeChatId, branchChat, localizeUi],
   );
+  // Stable for the memoized message rows: branchChat is a new object every render.
+  const handleBranch = useStableCallback(handleBranchLatest);
 
   const handleCloneSceneFromHere = useCallback(
     (messageId: string) => {
@@ -3054,7 +3110,7 @@ const LocalChatArea = memo(function LocalChatArea({
   // Peek prompt state
   const [peekPromptData, setPeekPromptData] = useState<PeekPromptData | null>(null);
 
-  const handlePeekPrompt = useCallback(
+  const handlePeekPromptLatest = useCallback(
     (messageId?: string) => {
       if (!activeChatId) return;
       peekPrompt.mutate(messageId ? { chatId: activeChatId, messageId } : activeChatId, {
@@ -3096,6 +3152,8 @@ const LocalChatArea = memo(function LocalChatArea({
     },
     [activeChatId, chatMeta.groupChatMode, checkMessage, handleReplyCheckupLink, messages, peekPrompt],
   );
+  // Stable for the memoized message rows: peekPrompt is a new object every render.
+  const handlePeekPrompt = useStableCallback(handlePeekPromptLatest);
 
   // R2: only the newest reply gets the quiet line, and only for facts about the reply itself.
   const replyCheckup = useMemo(() => {
@@ -3301,6 +3359,7 @@ const LocalChatArea = memo(function LocalChatArea({
         } else if (
           target.tagName === "INPUT" ||
           target.tagName === "SELECT" ||
+          target.getAttribute("role") === "combobox" ||
           target.getAttribute("contenteditable") === "true"
         ) {
           return;
@@ -3377,9 +3436,7 @@ const LocalChatArea = memo(function LocalChatArea({
     if (chat) useChatStore.getState().setActiveChat(chat);
   }, [chat]);
 
-  // Reset stagger animation flag when switching chats
   useEffect(() => {
-    hasAnimatedRef.current = false;
     // A remount on the same chat keeps its open wizard; switching chats closes it.
     if (useChatStore.getState().setupWizardChatId !== activeChatId) setWizardOpen(false);
   }, [activeChatId, setWizardOpen]);
@@ -4356,9 +4413,6 @@ const LocalChatArea = memo(function LocalChatArea({
   // ═══════════════════════════════════════════════
   // Roleplay mode — existing layout
   // ═══════════════════════════════════════════════
-  const shouldAnimateMessages = !hasAnimatedRef.current;
-  if (messages?.length) hasAnimatedRef.current = true;
-
   return (
     <>
       {cardCssInjector}
@@ -4409,7 +4463,6 @@ const LocalChatArea = memo(function LocalChatArea({
           generationVisualsPaused={isStreaming || agentProcessing}
           agentProcessing={agentProcessing}
           regenerateMessageId={regenerateMessageId}
-          shouldAnimateMessages={shouldAnimateMessages}
           summaryContextSize={summaryContextSize}
           totalMessageCount={totalMessageCount}
           lastAssistantMessageId={lastAssistantMessageId}

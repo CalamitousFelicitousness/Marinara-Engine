@@ -6,6 +6,7 @@ import type { DB } from "../../db/connection.js";
 import { apiConnections, chats, connectionAccounts } from "../../db/schema/index.js";
 import { newId, now } from "../../utils/id-generator.js";
 import { encryptApiKey, decryptApiKey } from "../../utils/crypto.js";
+import { maskConnectionHeaderSecrets, sealConnectionHeaderSecrets } from "../../utils/stored-secrets.js";
 import {
   MAX_PINNED_MODELS,
   connectionBilling,
@@ -62,11 +63,49 @@ import { LOCAL_SIDECAR_CONNECTION_ID } from "@marinara-engine/shared";
  * registry in sync. Every provider-building read goes through here, so the registry is refreshed
  * exactly when a connection is about to be used.
  */
-function withDecryptedKey<T extends { id: string; apiKeyEncrypted: string; maxRequestsPerMinute?: number | null }>(
-  row: T,
-): T & { apiKey: string } {
+function withDecryptedKey<
+  T extends {
+    id: string;
+    apiKeyEncrypted: string;
+    maxRequestsPerMinute?: number | null;
+    baseUrl?: string | null;
+    modelBaseUrl?: string | null;
+  },
+>(row: T): T & { apiKey: string } {
   setConnectionRateLimit(row.id, row.maxRequestsPerMinute ?? null);
-  return { ...row, apiKey: decryptApiKey(row.apiKeyEncrypted) };
+  // A Model's own address replaces the Connection's for every request it makes (chat, test, embeddings), but
+  // only on the same server: the key it carries belongs to the Connection's origin.
+  const own = ownModelBaseUrl(row);
+  return {
+    ...row,
+    ...(own ? { baseUrl: own, connectionBaseUrl: row.baseUrl } : {}),
+    apiKey: decryptApiKey(row.apiKeyEncrypted),
+  };
+}
+
+export const MODEL_ADDRESS_ORIGIN_ERROR =
+  "A model's own address must be on the same server as its Connection (same https://host), because it uses the Connection's key.";
+
+/** The Model's own address when it is set and on the same origin as the row's address; otherwise null. */
+export function ownModelBaseUrl(row: { baseUrl?: string | null; modelBaseUrl?: string | null }): string | null {
+  const own = row.modelBaseUrl?.trim();
+  if (!own) return null;
+  return sameOriginUrl(own, row.baseUrl ?? "") ? own : null;
+}
+
+/** The address a row has stored: a request copy with the Model's own address keeps it in `connectionBaseUrl`. */
+function storedRow<T extends { baseUrl?: string | null }>(row: T): T {
+  const stored = (row as { connectionBaseUrl?: string | null }).connectionBaseUrl;
+  return stored === undefined ? row : { ...row, baseUrl: stored };
+}
+
+/** Whether two addresses are on one origin (scheme, host and port). */
+export function sameOriginUrl(a: string, b: string): boolean {
+  try {
+    return new URL(a.trim()).origin === new URL(b.trim()).origin;
+  } catch {
+    return false;
+  }
 }
 
 function definedFields<T extends object>(data: T): Partial<T> {
@@ -292,6 +331,8 @@ async function moveAcrossServices(
       ...takenFromAccount(account, provider),
       provider,
       baseUrl: account.baseUrl,
+      // Another service's server: the old own address means nothing there.
+      modelBaseUrl: null,
       model,
       // An automatic name (the old id) becomes the new model's name; a typed name stays.
       name: row.name.trim() === row.model ? (entry?.name ?? model) : row.name,
@@ -430,7 +471,9 @@ export function hasOwnModelSettings(
   const model = typeof row.model === "string" ? row.model : "";
   const entry = catalog?.models.find((saved) => saved.id === model);
   const name = typeof row.name === "string" ? row.name.trim() : "";
-  if (name && name !== model && name !== entry?.name) return true;
+  // A Default model (a chat Model with no model id) always needs a name of its own, so its name is no setting.
+  const needsName = !model && isChatProvider(row.provider);
+  if (name && !needsName && name !== model && name !== entry?.name) return true;
   const set = (value: unknown) => value !== null && value !== undefined && value !== "";
   const on = (value: unknown) => value === true || value === "true";
   const params = typeof row.defaultParameters === "string" ? row.defaultParameters.trim() : row.defaultParameters;
@@ -457,6 +500,26 @@ function clearSidecarAsMain() {
   if (sidecarModelService.getConfig().useAsMainDefault) sidecarModelService.updateConfig({ useAsMainDefault: false });
 }
 
+/**
+ * What the Connection's own catalog says about a decision Model's model (#9310): whether it is a decision model
+ * (NanoGPT lists those with the `decisions` output) and its context, which caps the chat sent to it.
+ */
+function decisionCatalogFacts(
+  account: { provider: string; modelCatalogs?: unknown },
+  model: string | null | undefined,
+): { decisionModel?: true; context?: number } {
+  const id = model?.trim();
+  if (!id) return {};
+  const entry = readAccountCatalogs(account)[account.provider]?.models.find((candidate) => candidate.id === id);
+  if (!entry) return {};
+  const outputs = Array.isArray(entry.outputModalities) ? entry.outputModalities : [];
+  const context = typeof entry.context === "number" && Number.isFinite(entry.context) ? entry.context : undefined;
+  return {
+    ...(outputs.some((output) => String(output).toLowerCase() === "decisions") ? { decisionModel: true as const } : {}),
+    ...(context ? { context } : {}),
+  };
+}
+
 export function createConnectionsStorage(db: DB) {
   /** Decrypt for use, and keep the throttle and shared-account budget registries in sync with the row. */
   const withKey = async <
@@ -475,7 +538,15 @@ export function createConnectionsStorage(db: DB) {
     // A decision Model speaks the protocol of its Connection's vendor (resolveDecisionConnection).
     if (row.provider !== "decision" || !row.accountId) return keyed;
     const account = await getConnectionAccount(db, row.accountId);
-    return { ...keyed, account: account ? { provider: account.provider, baseUrl: account.baseUrl } : null };
+    if (!account) return { ...keyed, account: null };
+    return {
+      ...keyed,
+      account: {
+        provider: account.provider,
+        baseUrl: account.baseUrl,
+        ...decisionCatalogFacts(account, (row as { model?: string | null }).model),
+      },
+    };
   };
 
   return {
@@ -494,6 +565,7 @@ export function createConnectionsStorage(db: DB) {
         billing: connectionBilling(r),
         apiKeyEncrypted: r.apiKeyEncrypted ? "••••••••" : "",
         managementTokenEncrypted: r.managementTokenEncrypted ? "••••••••" : "",
+        defaultParameters: maskConnectionHeaderSecrets(r.defaultParameters),
       }));
     },
 
@@ -569,6 +641,11 @@ export function createConnectionsStorage(db: DB) {
 
     /** Get the connection marked as default for agents (with decrypted key). */
     async getDefaultForAgents() {
+      // The built-in model has no row to flag: while it is the agents default and has a model, it answers as one,
+      // exactly as `getDefault()` does for Main and as agent runs resolve it (#5539). A stale row flag loses.
+      if (sidecarModelService.getConfig().useAsAgentsDefault && sidecarModelService.getConfiguredModelRef() !== null) {
+        return createLocalSidecarGenerationConnection() as never;
+      }
       const rows = await db
         .select()
         .from(apiConnections)
@@ -812,6 +889,7 @@ export function createConnectionsStorage(db: DB) {
         maxRequestsPerMinute: input.maxRequestsPerMinute ?? null,
         embeddingModel: input.embeddingModel ?? "",
         embeddingBaseUrl: input.embeddingBaseUrl ?? "",
+        modelBaseUrl: input.modelBaseUrl ?? "",
         embeddingConnectionId: input.embeddingConnectionId ?? null,
         openrouterProvider: input.openrouterProvider ?? null,
         imageGenerationSource: input.imageGenerationSource ?? null,
@@ -940,7 +1018,8 @@ export function createConnectionsStorage(db: DB) {
     },
 
     /** Commit background metadata only while the captured connection is still current. */
-    async updateContextIfUnchanged(expected: typeof apiConnections.$inferSelect, maxContext: number): Promise<boolean> {
+    async updateContextIfUnchanged(captured: typeof apiConnections.$inferSelect, maxContext: number): Promise<boolean> {
+      const expected = storedRow(captured);
       return db.transaction(async (tx) => {
         const [current] = await tx.select().from(apiConnections).where(eq(apiConnections.id, expected.id));
         // Compare stored scalar fields too: two settings saves can share the same millisecond timestamp.
@@ -979,6 +1058,13 @@ export function createConnectionsStorage(db: DB) {
       if (account) {
         for (const key of ACCOUNT_MIRRORED_INPUT_KEYS) delete data[key];
         if (existing.provider === account.provider && !keepsKeyOnMove && !audioServiceChanged) delete data.baseUrl;
+      }
+      // A Model's own address carries the Connection's key, so it is judged against the address the row will
+      // store: one on another server is refused, and one that an address move left behind is cleared.
+      const nextOwnAddress = (data.modelBaseUrl ?? existing.modelBaseUrl ?? "").trim();
+      if (nextOwnAddress && !sameOriginUrl(nextOwnAddress, data.baseUrl ?? existing.baseUrl ?? "")) {
+        if (data.modelBaseUrl?.trim()) throw Object.assign(new Error(MODEL_ADDRESS_ORIGIN_ERROR), { statusCode: 400 });
+        data.modelBaseUrl = "";
       }
 
       const effectiveProvider = data.provider ?? existing.provider;
@@ -1101,6 +1187,7 @@ export function createConnectionsStorage(db: DB) {
       if (data.embeddingModel !== undefined) {
         updateFields.embeddingModel = data.embeddingModel;
       }
+      if (data.modelBaseUrl !== undefined) updateFields.modelBaseUrl = data.modelBaseUrl.trim();
       if (data.embeddingBaseUrl !== undefined) {
         updateFields.embeddingBaseUrl = data.embeddingBaseUrl;
       }
@@ -1317,6 +1404,7 @@ export function createConnectionsStorage(db: DB) {
         defaultParameters: source.defaultParameters,
         openrouterProvider: source.openrouterProvider,
         embeddingBaseUrl: source.embeddingBaseUrl,
+        modelBaseUrl: source.modelBaseUrl,
         imageGenerationSource: source.imageGenerationSource,
         comfyuiWorkflow: source.comfyuiWorkflow,
         imageService: source.imageService,
@@ -1403,7 +1491,13 @@ export function createConnectionsStorage(db: DB) {
                   : {}),
               }
             : null;
-        return sweepDanglingConnectionReferences(tx, id, carrier?.id ?? null, keptPick);
+        return sweepDanglingConnectionReferences(
+          tx,
+          id,
+          carrier?.id ?? null,
+          keptPick,
+          (row?.name ?? "").trim() || (row?.model ?? "").trim() || null,
+        );
       });
       // Clear the throttle registry only after the delete commits.
       clearConnectionRateLimit(id);
@@ -1424,9 +1518,12 @@ export function createConnectionsStorage(db: DB) {
      * fetched. It is a cache, so `updatedAt` stays as it is.
      */
     async saveModelListIfUnchanged(
-      expected: typeof apiConnections.$inferSelect,
+      captured: typeof apiConnections.$inferSelect,
       models: readonly unknown[],
     ): Promise<SavedConnectionModelList | null> {
+      const expected = storedRow(captured);
+      // A Model with its own address lists that address's models: they are not the Connection's catalog.
+      if (ownModelBaseUrl(expected)) return { fetchedAt: now(), models: toSavedModels(models) };
       return db.transaction(async (tx) => {
         const [current] = await tx.select().from(apiConnections).where(eq(apiConnections.id, expected.id));
         if (!current || MODEL_LIST_SOURCE_FIELDS.some((field) => current[field] !== expected[field])) return null;
@@ -1586,6 +1683,8 @@ export function createConnectionsStorage(db: DB) {
           .set({
             ...takenFromAccount(account, row.provider),
             ...(row.provider === account.provider ? { baseUrl: account.baseUrl } : {}),
+            // The own address was a path on the old Connection's server.
+            modelBaseUrl: null,
             // The new Connection's catalog and favorites apply.
             savedModels: null,
             ...(peer ? { pinnedModels: peer.pinnedModels } : {}),
@@ -1603,7 +1702,11 @@ export function createConnectionsStorage(db: DB) {
     async updateDefaultParameters(id: string, params: Record<string, unknown> | null) {
       await db
         .update(apiConnections)
-        .set({ defaultParameters: params ? JSON.stringify(params) : null, updatedAt: now() })
+        // Custom header values often carry credentials, so they are stored encrypted like the API key.
+        .set({
+          defaultParameters: params ? JSON.stringify(sealConnectionHeaderSecrets(params)) : null,
+          updatedAt: now(),
+        })
         .where(eq(apiConnections.id, id));
     },
   };

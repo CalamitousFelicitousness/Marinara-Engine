@@ -16,6 +16,7 @@ import {
   ChevronRight,
   Cpu,
   Download,
+  HardDrive,
   Info,
   MessageSquare,
   RotateCw,
@@ -37,8 +38,10 @@ import { PRIMARY_CLASS as PRIMARY, SECONDARY_CLASS } from "./create-connection/s
 import type { TFunction } from "i18next";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { api } from "../../lib/api-client.js";
+import { EditorTabNavigation } from "../ui/EditorTabNavigation";
 import { Select } from "../ui/Select";
 import { Spinner } from "../ui/Spinner";
+import { useLocalModels } from "../../hooks/use-local-models";
 
 interface Props {
   open: boolean;
@@ -158,6 +161,7 @@ function ResponseBlock({ label, value }: { label: string; value: string }) {
 
 type SettingsScreen = "settings" | "speed" | "memory" | "replies" | "expert";
 
+const OWN_TABS = ["hf", "file"] as const;
 const LABEL = "text-xs font-medium text-[var(--muted-foreground)]";
 const HINT = "text-xs text-[var(--muted-foreground)]";
 const LIST =
@@ -276,6 +280,7 @@ function EmbeddedShell({ children }: ComponentProps<typeof Modal>) {
 
 export function ModelDownloadModal({ open, onClose, embedded }: Props) {
   const { t: localizeUi } = useUiTranslation();
+  const { data: localModels } = useLocalModels(open);
   const {
     status,
     config,
@@ -577,7 +582,7 @@ export function ModelDownloadModal({ open, onClose, embedded }: Props) {
       parsedTopK < 0 ||
       parsedTopK > 500 ||
       !Number.isFinite(parsedMaxParallelJobs) ||
-      parsedMaxParallelJobs < 1 ||
+      parsedMaxParallelJobs < 0 ||
       parsedMaxParallelJobs > 16
     ) {
       return;
@@ -618,7 +623,7 @@ export function ModelDownloadModal({ open, onClose, embedded }: Props) {
     parsedTopK >= 0 &&
     parsedTopK <= 500 &&
     Number.isFinite(parsedMaxParallelJobs) &&
-    parsedMaxParallelJobs >= 1 &&
+    parsedMaxParallelJobs >= 0 &&
     parsedMaxParallelJobs <= 16;
   const generationSettingsDirty =
     contextSizeInput !== String(config.contextSize) ||
@@ -930,21 +935,15 @@ export function ModelDownloadModal({ open, onClose, embedded }: Props) {
           </button>
           {choice === "own" && (
             <div className="flex flex-col gap-3 rounded-xl bg-foreground/[0.04] p-3.5">
-              <div className="mari-editor-navigation-tabs flex self-start" role="tablist">
-                {(["hf", "file"] as const).map((tab) => (
-                  <button
-                    key={tab}
-                    type="button"
-                    role="tab"
-                    aria-selected={ownTab === tab}
-                    data-active={ownTab === tab}
-                    className="mari-editor-tab"
-                    onClick={() => setOwnTab(tab)}
-                  >
-                    {localizeUi(`connections.builtin.tab.${tab}`)}
-                  </button>
-                ))}
-              </div>
+              <EditorTabNavigation
+                tabs={OWN_TABS.map((tab) => ({
+                  id: tab,
+                  label: localizeUi(`connections.builtin.tab.${tab}`),
+                  icon: tab === "hf" ? Download : HardDrive,
+                }))}
+                activeId={ownTab}
+                onChange={setOwnTab}
+              />
               {ownTab === "file" ? (
                 <>
                   <input
@@ -1425,15 +1424,34 @@ export function ModelDownloadModal({ open, onClose, embedded }: Props) {
                 </p>
               )}
             </div>
-            <Field label={localizeUi("ui.connections.connectioneditor.maxParallelAgentJobs")}>
-              <div className="w-28">
-                {numberInput(
-                  localizeUi("ui.connections.connectioneditor.maxParallelAgentJobs"),
-                  maxParallelJobsInput,
-                  setMaxParallelJobsInput,
-                  "2",
+            <Field label={localizeUi("connections.localModels.atOnce")}>
+              {/* Auto (0) is the default: two where the second slot's context fits in memory, otherwise one. */}
+              <Select
+                value={maxParallelJobsInput}
+                onChange={(next) => setMaxParallelJobsInput(next)}
+                label={localizeUi("connections.localModels.atOnce")}
+                className="mari-editor-field w-full max-w-[14rem] px-3 py-2 text-sm max-sm:max-w-none"
+                options={[
+                  {
+                    value: "0",
+                    label: localizeUi("connections.localModels.atOnceAuto", {
+                      count: localModels?.parallel?.effective ?? 2,
+                    }),
+                  },
+                  ...["1", "2", "3", "4", "6", "8"].map((count) => ({ value: count, label: count })),
+                  ...(!["0", "1", "2", "3", "4", "6", "8"].includes(maxParallelJobsInput) && maxParallelJobsInput
+                    ? [{ value: maxParallelJobsInput, label: maxParallelJobsInput }]
+                    : []),
+                ]}
+              />
+              <p className={HINT}>
+                {maxParallelJobsInput === "0" && localModels?.parallel?.reason && (
+                  <span className="block">
+                    {localizeUi("connections.localModels.atOnceReason", { reason: localModels.parallel.reason })}
+                  </span>
                 )}
-              </div>
+                {localizeUi("connections.localModels.atOnceHint")}
+              </p>
             </Field>
             {activeBackend !== "mlx" && (
               <Field label={localizeUi("ui.modals.modeldownloadmodal.embeddingEndpoint")}>

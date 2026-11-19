@@ -44,6 +44,9 @@ export * from "./types/game.js";
 export * from "./types/sidecar.js";
 export * from "./types/sidecar-footprint.js";
 export * from "./types/utility-sidecar.js";
+export * from "./types/builtin-embedding.js";
+export * from "./types/local-models.js";
+export * from "./types/builtin-tts.js";
 export * from "./types/decision.js";
 export * from "./types/decision-debug.js";
 export * from "./types/decision-catalog.js";
@@ -65,6 +68,9 @@ export * from "./types/chat-insights.js";
 
 // Schemas
 export * from "./schemas/multiplayer.schema.js";
+export * from "./schemas/professor-mari-workspace.schema.js";
+export * from "./schemas/game-routes.schema.js";
+export * from "./schemas/combat-director.schema.js";
 export * from "./schemas/chat.schema.js";
 export * from "./schemas/chat-preset.schema.js";
 export * from "./schemas/character.schema.js";
@@ -177,6 +183,7 @@ export * from "./constants/settings-registry.js";
 // Feature registries
 export * from "./features/agents/agent-manifest.types.js";
 export * from "./features/agents/storyboard-agent-settings.js";
+export * from "./features/agents/writer-reference-settings.js";
 export {
   BUILT_IN_AGENT_MANIFESTS,
   isBuiltInAgentHostManaged,

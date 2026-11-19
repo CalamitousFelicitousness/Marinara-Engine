@@ -15,6 +15,9 @@ import { customToolsRoutes } from "./custom-tools.routes.js";
 import { generateRoutes, type GenerationRunner } from "./generate.routes.js";
 import { multiSwipeFinalizeRoutes } from "./generate/multi-swipe-finalize-route.js";
 import { utilitySidecarRoutes } from "./utility-sidecar.routes.js";
+import { builtinEmbeddingRoutes } from "./builtin-embedding.routes.js";
+import { localModelsRoutes } from "./local-models.routes.js";
+import { builtinTtsRoutes } from "./builtin-tts.routes.js";
 import { decisionRoutes } from "./decision.routes.js";
 import { importRoutes } from "./import.routes.js";
 import { backgroundsRoutes } from "./backgrounds.routes.js";
@@ -125,6 +128,9 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(libraryFoldersRoutes, { prefix: "/api/library-folders" });
   await app.register(agentsRoutes, { prefix: "/api/agents" });
   await app.register(utilitySidecarRoutes, { prefix: "/api/utility-sidecar" });
+  await app.register(builtinEmbeddingRoutes, { prefix: "/api/builtin-embedding" });
+  await app.register(localModelsRoutes, { prefix: "/api/local-models" });
+  await app.register(builtinTtsRoutes, { prefix: "/api/builtin-tts" });
   await app.register(customToolsRoutes, { prefix: "/api/custom-tools" });
   await app.register(generateRoutes, {
     prefix: "/api/generate",

@@ -31,8 +31,10 @@ import {
   type TTSSourceProfiles,
   type TTSModelsResponse,
   type TTSVoicesResponse,
+  BUILTIN_TTS_DEFAULT_VOICE,
 } from "@marinara-engine/shared";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
+import { builtinTtsService } from "../services/sidecar/builtin-tts.service.js";
 import { TTS_EMOTION_CUE_GUIDANCE } from "../services/tts-emotion-guidance.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { encryptApiKey } from "../utils/crypto.js";
@@ -401,7 +403,7 @@ export function maskTTSConfigForResponse(config: TTSConfig): TTSConfig {
  * (loopback, private network, LAN or container host). Connections lists it On this device; a cloud voice it does not.
  */
 export function ttsRunsLocally(cfg: Pick<TTSConfig, "source" | "baseUrl">): boolean {
-  return cfg.source === "pockettts" || isLocalInferenceBaseUrl(configuredBaseUrl(cfg));
+  return cfg.source === "builtin" || cfg.source === "pockettts" || isLocalInferenceBaseUrl(configuredBaseUrl(cfg));
 }
 
 /**
@@ -452,7 +454,40 @@ function responseFromVoiceOptions(
   };
 }
 
+/** The built-in voice model in use: its voices and saved blends, with language and gender for the pickers. */
+function builtinVoices(): TTSVoicesResponse {
+  const status = builtinTtsService.getStatus();
+  const model = status.activeModelId ?? "kokoro-82m";
+  const language: Record<string, string> = {
+    any: "Every language",
+    "en-us": "English (US)",
+    "en-gb": "English (UK)",
+    es: "Español",
+    fr: "Français",
+    hi: "हिन्दी",
+    "pt-br": "Português (Brasil)",
+  };
+  return responseFromVoiceOptions(
+    "builtin",
+    [
+      ...status.blends
+        .filter((blend) => blend.model === model)
+        .map((blend) => ({ id: blend.id, name: blend.name, category: "Blends" })),
+      ...status.voices
+        .filter((voice) => voice.model === model)
+        .map((voice) => ({
+          id: voice.id,
+          name: voice.name,
+          category: language[voice.language] ?? voice.language,
+          labels: { gender: voice.gender, language: voice.language },
+        })),
+    ],
+    true,
+  );
+}
+
 function fallbackVoices(source: TTSSource): TTSVoicesResponse {
+  if (source === "builtin") return builtinVoices();
   if (source === "elevenlabs") {
     return responseFromVoiceOptions(source, ELEVENLABS_DEFAULT_VOICES, false);
   }
@@ -968,6 +1003,7 @@ export async function fetchProviderModels(cfg: TTSConfig): Promise<TTSModelsResp
 }
 
 export async function fetchProviderVoices(cfg: TTSConfig): Promise<TTSVoicesResponse> {
+  if (cfg.source === "builtin") return builtinVoices();
   const base = configuredBaseUrl(cfg);
 
   if (cfg.source === "pockettts") {
@@ -1451,6 +1487,22 @@ export async function ttsRoutes(app: FastifyInstance) {
     }
 
     const requestVoice = resolveTTSRequestVoice(cfg.voice, voice);
+
+    // The built-in voice model runs inside Marinara: no address, key or request to a server.
+    if (cfg.source === "builtin") {
+      try {
+        const audio = await builtinTtsService.speak(
+          text,
+          requestVoice || BUILTIN_TTS_DEFAULT_VOICE[builtinTtsService.getActiveModel() ?? "kokoro-82m"],
+          cfg.speed,
+        );
+        reply.header("Content-Type", "audio/wav");
+        reply.header("Content-Length", String(audio.byteLength));
+        return reply.send(audio);
+      } catch (error) {
+        return reply.status(502).send({ error: error instanceof Error ? error.message : String(error) });
+      }
+    }
 
     if (cfg.source === "elevenlabs" && !requestVoice) {
       return reply.status(400).send({ error: "ElevenLabs voice is not selected" });

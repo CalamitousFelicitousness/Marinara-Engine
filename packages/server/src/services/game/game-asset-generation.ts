@@ -8,7 +8,7 @@ import { supportsNovelAiCharacterPrompts } from "../image/character-prompts.js";
 // `enableSpriteGeneration` is active.
 // ──────────────────────────────────────────────
 
-import { existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, statSync, unlinkSync } from "fs";
 import { createHash } from "crypto";
 import { logger } from "../../lib/logger.js";
 import { basename, extname, join } from "path";
@@ -40,6 +40,7 @@ import type { ImageGenerationSize } from "../image/image-generation-settings.js"
 import { compileImagePrompt } from "../image/image-prompt-compiler.js";
 import { loadGameStoryboardImagePrompt } from "../image/game-storyboard-image-prompt.js";
 import { SPATIAL_LOCATION_REFERENCE_PROMPT_LINE } from "../image/spatial-location-reference.js";
+import { writeFileAtomicSync } from "../../utils/atomic-write.js";
 
 const NPC_AVATAR_DIR = join(DATA_DIR, "avatars", "npc");
 const CHAT_BACKGROUND_DIR = join(DATA_DIR, "backgrounds");
@@ -105,25 +106,6 @@ type GameBackgroundImage = {
 };
 
 type ChatBackgroundMeta = Record<string, { tags: string[] }>;
-
-function atomicWriteBuffer(filePath: string, buffer: Buffer): void {
-  const tmpPath = `${filePath}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
-  try {
-    writeFileSync(tmpPath, buffer);
-    renameSync(tmpPath, filePath);
-  } catch (err) {
-    try {
-      if (existsSync(tmpPath)) unlinkSync(tmpPath);
-    } catch {
-      /* best-effort cleanup */
-    }
-    throw err;
-  }
-}
-
-function atomicWriteText(filePath: string, value: string): void {
-  atomicWriteBuffer(filePath, Buffer.from(value, "utf-8"));
-}
 
 function normalizeSceneIllustrationImageSource(value: string | null | undefined): string {
   const normalized = (value ?? "").trim().toLowerCase();
@@ -322,7 +304,7 @@ function readChatBackgroundMeta(): ChatBackgroundMeta {
 
 function writeChatBackgroundMeta(meta: ChatBackgroundMeta): void {
   if (!existsSync(CHAT_BACKGROUND_DIR)) mkdirSync(CHAT_BACKGROUND_DIR, { recursive: true });
-  atomicWriteText(CHAT_BACKGROUND_META_PATH, JSON.stringify(meta, null, 2));
+  writeFileAtomicSync(CHAT_BACKGROUND_META_PATH, JSON.stringify(meta, null, 2));
 }
 
 export function chatBackgroundTags(req: ChatBackgroundGenRequest, slug: string): string[] {
@@ -586,9 +568,20 @@ export type GameDynamicImagePromptRequest = {
   maxCharacters: number;
 };
 
-export type GameDynamicImagePromptGenerator = (
+export type GameDynamicImagePromptGenerator = ((
   request: GameDynamicImagePromptRequest,
-) => Promise<string | null | undefined>;
+) => Promise<string | null | undefined>) & {
+  /**
+   * False when the player never turned on AI-written image prompts and the rewrite only runs because
+   * the Illustrator prompt or Prompt Director was customized. A failed optional rewrite falls back to
+   * the regular prompt, so the picture is still sent; a required one fails the request.
+   */
+  required?: boolean;
+  /** The request's own signal: a rewrite stopped because the request was cancelled is not a rewrite failure. */
+  signal?: AbortSignal;
+  /** Set once an optional rewrite fails, so the request's other pictures skip it instead of failing again. */
+  failed?: boolean;
+};
 
 async function buildNpcPortraitRawPrompt(req: NpcPortraitRequest): Promise<string> {
   const vars = npcPortraitVariables(req);
@@ -605,7 +598,7 @@ export async function buildNpcPortraitProviderPrompt(req: NpcPortraitRequest): P
     };
   }
   const sourcePrompt = await buildNpcPortraitRawPrompt(req);
-  const prompt = await maybeGenerateDynamicGameImagePrompt(req.dynamicPromptGenerator, {
+  const rewritten = await maybeGenerateDynamicGameImagePrompt(req.dynamicPromptGenerator, {
     kind: "portrait",
     title: req.npcName,
     sourcePrompt,
@@ -619,9 +612,9 @@ export async function buildNpcPortraitProviderPrompt(req: NpcPortraitRequest): P
     ],
   });
   return compileGameImagePrompt(
-    req.dynamicPromptGenerator ? { ...req, appearance: null, preserveFullSourcePrompt: true } : req,
+    rewritten ? { ...req, appearance: null, preserveFullSourcePrompt: true } : req,
     "portrait",
-    prompt,
+    rewritten ?? sourcePrompt,
     GAME_PORTRAIT_NEGATIVE_PROMPT,
   );
 }
@@ -727,18 +720,33 @@ function normalizedPromptText(value: string): string {
     .trim();
 }
 
+/**
+ * The rewritten prompt, or null when there is no rewriter or an optional rewrite failed, in which
+ * case the picture is still sent with the regular prompt, as if no rewriter ran.
+ */
 async function maybeGenerateDynamicGameImagePrompt(
   generator: GameDynamicImagePromptGenerator | undefined,
   request: GameDynamicImagePromptRequest,
-): Promise<string> {
-  if (!generator) return request.sourcePrompt;
+): Promise<string | null> {
+  if (!generator || generator.failed) return null;
   try {
     const generated = cleanDynamicGameImagePrompt(await generator(request));
     if (!generated) throw new Error("Dynamic image prompt generation returned no usable prompt");
     return generated;
   } catch (err) {
-    logger.warn(err, "[game-asset-gen] Dynamic image prompt generation failed");
-    throw err;
+    // A cancelled request is not a rewrite failure: it stops the request, and its caller reports it.
+    if (generator.signal?.aborted) throw err;
+    if (generator.required !== false) {
+      logger.warn(err, "[game-asset-gen] Dynamic image prompt generation failed");
+      throw err;
+    }
+    generator.failed = true;
+    logger.warn(
+      err,
+      "[game-asset-gen] Optional image prompt rewrite failed; using the regular %s prompt",
+      request.kind,
+    );
+    return null;
   }
 }
 
@@ -807,7 +815,7 @@ export async function generateNpcPortrait(req: NpcPortraitRequest): Promise<stri
     const avatarBuffer = Buffer.from(result.base64, "base64");
     const ext = normalizeGeneratedImageExt(result, avatarBuffer);
     const avatarPath = join(avatarDir, `${slug}.${ext}`);
-    atomicWriteBuffer(avatarPath, avatarBuffer);
+    writeFileAtomicSync(avatarPath, avatarBuffer);
 
     const url = `/api/avatars/npc/${req.chatId}/${slug}.${ext}`;
     req.debugLog?.(
@@ -1056,7 +1064,7 @@ export async function buildBackgroundProviderPrompt(req: BackgroundGenRequest): 
     };
   }
   const sourcePrompt = await buildBackgroundRawPrompt(req);
-  const prompt = await maybeGenerateDynamicGameImagePrompt(req.dynamicPromptGenerator, {
+  const rewritten = await maybeGenerateDynamicGameImagePrompt(req.dynamicPromptGenerator, {
     kind: "background",
     title: req.locationSlug,
     sourcePrompt,
@@ -1075,13 +1083,13 @@ export async function buildBackgroundProviderPrompt(req: BackgroundGenRequest): 
     ],
   });
   return compileGameImagePrompt(
-    req.dynamicPromptGenerator
+    rewritten
       ? { ...req, artStyle: req.mapsArtworkContext ? undefined : req.artStyle, preserveFullSourcePrompt: true }
       : req.mapsArtworkContext
         ? { ...req, artStyle: undefined }
         : req,
     "background",
-    prompt,
+    rewritten ?? sourcePrompt,
     GAME_BACKGROUND_NEGATIVE_PROMPT,
   );
 }
@@ -1212,7 +1220,7 @@ export async function buildSceneIllustrationProviderPrompt(
   const sourcePrompt = await buildSceneIllustrationRawPrompt(req);
   const referenceImages = sceneIllustrationReferenceImagesForProvider(req);
   const useGamePromptTemplate = req.useGamePromptTemplate !== false;
-  const prompt = await maybeGenerateDynamicGameImagePrompt(req.dynamicPromptGenerator, {
+  const rewritten = await maybeGenerateDynamicGameImagePrompt(req.dynamicPromptGenerator, {
     kind: "illustration",
     title: req.title || req.reason || req.slug || "Scene illustration",
     sourcePrompt,
@@ -1236,9 +1244,9 @@ export async function buildSceneIllustrationProviderPrompt(
       : [],
   });
   return compileGameImagePrompt(
-    req.dynamicPromptGenerator ? { ...req, preserveFullSourcePrompt: true } : req,
+    rewritten ? { ...req, preserveFullSourcePrompt: true } : req,
     "illustration",
-    prompt,
+    rewritten ?? sourcePrompt,
     GAME_ILLUSTRATION_NEGATIVE_PROMPT,
   );
 }
@@ -1304,7 +1312,7 @@ export async function generateBackground(req: BackgroundGenRequest): Promise<str
     if (!existsSync(targetDir)) mkdirSync(targetDir, { recursive: true });
     const image = await gameBackgroundImage(result, size);
     const targetPath = generatedBackgroundPath(targetDir, slug, image.ext);
-    atomicWriteBuffer(targetPath, image.buffer);
+    writeFileAtomicSync(targetPath, image.buffer);
     removeOtherGeneratedBackgroundFormats(targetDir, slug, image.ext);
 
     // Rebuild manifest so the new tag is available immediately
@@ -1376,7 +1384,7 @@ export async function generateChatBackground(req: ChatBackgroundGenRequest): Pro
 
     const image = await gameBackgroundImage(result, size);
     const filename = `${slug}.${image.ext}`;
-    atomicWriteBuffer(join(CHAT_BACKGROUND_DIR, filename), image.buffer);
+    writeFileAtomicSync(join(CHAT_BACKGROUND_DIR, filename), image.buffer);
 
     const replaced = removeOtherGeneratedBackgroundFormats(CHAT_BACKGROUND_DIR, slug, image.ext);
     const meta = readChatBackgroundMeta();
@@ -1459,7 +1467,7 @@ export async function generateSceneIllustration(req: SceneIllustrationGenRequest
     if (!existsSync(targetDir)) mkdirSync(targetDir, { recursive: true });
     const image = await gameBackgroundImage(result, size);
     const targetPath = generatedBackgroundPath(targetDir, slug, image.ext);
-    atomicWriteBuffer(targetPath, image.buffer);
+    writeFileAtomicSync(targetPath, image.buffer);
     buildAssetManifest();
 
     logger.info('[game-asset-gen] Generated scene illustration "%s" -> tag: %s', slug, tag);

@@ -58,6 +58,7 @@ import {
   isMistralAdjustableReasoningModel,
   isMistralGlm53Model,
   isOpenAIGpt6Model,
+  BUILTIN_EMBEDDING_CONNECTION_ID,
   LOCAL_SIDECAR_CONNECTION_ID,
   localAuthProviderBaseUrl,
   supportsSubscriptionUsageWidget,
@@ -119,11 +120,11 @@ import { buildSpicyApiUrl, normalizeSpicyApiImageModels } from "../services/imag
 import { isImageLocalUrlsEnabled, isProviderLocalUrlsEnabled } from "../config/runtime-config.js";
 import { logger, logDebugOverride } from "../lib/logger.js";
 import {
-  assertInsideDir,
   extensionFromImageMime,
   isAllowedImageBuffer,
   normalizeLoopbackUrl,
   requestHeadersWithDefaultUserAgent,
+  resolveInside,
   safeFetch,
 } from "../utils/security.js";
 import { DATA_DIR } from "../utils/data-dir.js";
@@ -152,6 +153,8 @@ import {
   fetchNanoGptVideoModels,
   normalizeVideoService,
 } from "../services/video/video-generation.js";
+import { notFound } from "../utils/not-found.js";
+import { isRecord } from "../utils/large-json.js";
 
 const CONNECTION_TEST_ERROR_PREVIEW_CHARS = 2000;
 const CONNECTION_IMAGES_DIR = join(DATA_DIR, "connections", "images");
@@ -172,7 +175,7 @@ export async function saveConnectionImage(
   const ext = extensionFromImageMime(imageInfo.mimeType);
   await mkdir(CONNECTION_IMAGES_DIR, { recursive: true });
   const filename = `connection-${randomUUID()}.${ext}`;
-  const filepath = assertInsideDir(CONNECTION_IMAGES_DIR, join(CONNECTION_IMAGES_DIR, filename));
+  const filepath = resolveInside(CONNECTION_IMAGES_DIR, filename);
   await writeFile(filepath, buffer);
   return { imagePath: `/api/connections/images/file/${filename}` };
 }
@@ -211,10 +214,6 @@ async function generativeAudioConnectionError(connection: {
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
 function readDebugMode(body: unknown): boolean {
@@ -613,7 +612,7 @@ function parseImageUpload(image: string): { buffer: Buffer; hintedExt: string } 
 function getSafeConnectionImagePath(filename: string): string | null {
   if (!filename || filename.includes("..") || filename.includes("/") || filename.includes("\\")) return null;
   try {
-    return assertInsideDir(CONNECTION_IMAGES_DIR, join(CONNECTION_IMAGES_DIR, filename));
+    return resolveInside(CONNECTION_IMAGES_DIR, filename);
   } catch {
     return null;
   }
@@ -689,7 +688,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
   const unusableConnection = async (id: string, reply: FastifyReply) =>
     (await storage.getById(id))
       ? reply.status(400).send({ error: "This connection is off, under review, or needs an API key." })
-      : reply.status(404).send({ error: "Connection not found" });
+      : notFound(reply, "Connection not found");
   const migrateLegacyAudio = async (provider?: string) => {
     if (provider !== "audio") return;
     try {
@@ -744,11 +743,11 @@ export async function connectionsRoutes(app: FastifyInstance) {
 
   app.get<{ Params: { filename: string } }>("/images/file/:filename", async (req, reply) => {
     const filepath = getSafeConnectionImagePath(req.params.filename);
-    if (!filepath || !existsSync(filepath)) return reply.status(404).send({ error: "Image not found" });
+    if (!filepath || !existsSync(filepath)) return notFound(reply, "Image not found");
 
     const buffer = await readFile(filepath);
     const imageInfo = isAllowedImageBuffer(buffer, extname(filepath));
-    if (!imageInfo) return reply.status(404).send({ error: "Image not found" });
+    if (!imageInfo) return notFound(reply, "Image not found");
 
     return reply
       .header("Content-Type", imageInfo.mimeType)
@@ -758,7 +757,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
 
   app.get<{ Params: { id: string } }>("/:id", async (req, reply) => {
     const conn = await storage.getById(req.params.id);
-    if (!conn) return reply.status(404).send({ error: "Connection not found" });
+    if (!conn) return notFound(reply, "Connection not found");
     // Mask key in response
     return maskConnection(conn);
   });
@@ -788,7 +787,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
   app.patch<{ Params: { id: string } }>("/:id", async (req, reply) => {
     const data = partialInput(createConnectionSchema).parse(req.body);
     const current = await storage.getById(req.params.id);
-    if (!current) return reply.status(404).send({ error: "Connection not found" });
+    if (!current) return notFound(reply, "Connection not found");
     const merged = { ...current, ...data };
     const validationError = nanoGptVideoConnectionError(merged) || (await generativeAudioConnectionError(merged));
     if (validationError) return reply.status(400).send({ error: validationError });
@@ -803,20 +802,20 @@ export async function connectionsRoutes(app: FastifyInstance) {
 
   app.post<{ Params: { id: string } }>("/:id/image", async (req, reply) => {
     const connection = await storage.getById(req.params.id);
-    if (!connection) return reply.status(404).send({ error: "Connection not found" });
+    if (!connection) return notFound(reply, "Connection not found");
 
     const saved = await saveConnectionImage(req.params.id, req.body);
     if ("error" in saved) return reply.status(400).send(saved);
 
     const updated = await storage.update(req.params.id, { imagePath: saved.imagePath, icon: null });
-    if (!updated) return reply.status(404).send({ error: "Connection not found" });
+    if (!updated) return notFound(reply, "Connection not found");
     return maskConnection(updated);
   });
 
   // Save default generation parameters for a connection
   app.put<{ Params: { id: string } }>("/:id/default-parameters", async (req, reply) => {
     const conn = await storage.getById(req.params.id);
-    if (!conn) return reply.status(404).send({ error: "Connection not found" });
+    if (!conn) return notFound(reply, "Connection not found");
     const raw = req.body;
     if (raw !== null && (typeof raw !== "object" || Array.isArray(raw))) {
       return reply.status(400).send({ error: "Body must be a JSON object or null" });
@@ -862,7 +861,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
   // What uses a Model, so the delete dialog can say what changes.
   app.get<{ Params: { id: string } }>("/:id/usage", async (req, reply) => {
     const row = await storage.getById(req.params.id);
-    if (!row) return reply.status(404).send({ error: "Connection not found" });
+    if (!row) return notFound(reply, "Connection not found");
     return modelUsage(app.db, row);
   });
 
@@ -877,7 +876,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
   // Duplicate a connection (copies everything including the encrypted API key)
   app.post<{ Params: { id: string } }>("/:id/duplicate", async (req, reply) => {
     const result = await storage.duplicate(req.params.id);
-    if (!result) return reply.status(404).send({ error: "Connection not found" });
+    if (!result) return notFound(reply, "Connection not found");
     return maskConnection(result);
   });
 
@@ -1238,7 +1237,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
    */
   app.get<{ Params: { id: string } }>("/:id/subscription-usage", async (req, reply) => {
     const conn = await storage.getById(req.params.id);
-    if (!conn) return reply.status(404).send({ error: "Connection not found" });
+    if (!conn) return notFound(reply, "Connection not found");
     if (!supportsSubscriptionUsageWidget(conn.provider)) {
       return reply.status(400).send({
         error:
@@ -1994,7 +1993,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
     const parsed = accessCheckSchema.safeParse(req.body);
     if (!parsed.success) return reply.status(400).send({ error: "Invalid check" });
     const account = parsed.data.accountId ? await accounts.getById(parsed.data.accountId) : null;
-    if (parsed.data.accountId && !account) return reply.status(404).send({ error: "Connection not found" });
+    if (parsed.data.accountId && !account) return notFound(reply, "Connection not found");
     const provider = account?.provider ?? parsed.data.provider;
     if (!Object.hasOwn(PROVIDERS, provider) || UNCHECKED_ACCESS_PROVIDERS.has(provider)) return { supported: false };
     const typedKey = parsed.data.apiKey?.trim();
@@ -2131,8 +2130,8 @@ export async function connectionsRoutes(app: FastifyInstance) {
       const accountId = typeof req.query.accountId === "string" ? req.query.accountId.trim() : "";
       if (!accountId) return reply.status(400).send({ error: "Send the Connection to move the Model to." });
       const plan = await storage.planMove(req.params.id, accountId);
-      if (plan === "not_found") return reply.status(404).send({ error: "Model not found" });
-      if (plan === "account_not_found") return reply.status(404).send({ error: "Connection not found" });
+      if (plan === "not_found") return notFound(reply, "Model not found");
+      if (plan === "account_not_found") return notFound(reply, "Connection not found");
       const billing = connectionBilling(plan.account);
       const planActive = await readPlanActive(plan.account.provider, plan.account.id);
       const { catalog, error: catalogError } = await ensureMoveCatalog(plan);
@@ -2170,8 +2169,8 @@ export async function connectionsRoutes(app: FastifyInstance) {
       if (error) return reply.status(502).send({ error: `Couldn't load that Connection's models: ${error}` });
     }
     const result = await storage.moveToAccount(req.params.id, parsed.data.accountId, parsed.data.model);
-    if (result === "not_found") return reply.status(404).send({ error: "Model not found" });
-    if (result === "account_not_found") return reply.status(404).send({ error: "Connection not found" });
+    if (result === "not_found") return notFound(reply, "Model not found");
+    if (result === "account_not_found") return notFound(reply, "Connection not found");
     if (result === "review") {
       return reply.status(409).send({ error: "Review this imported Model before you move it." });
     }
@@ -2192,7 +2191,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
     const parsed = connectionModelPinSchema.safeParse(req.body);
     if (!parsed.success) return reply.status(400).send({ error: "Send a model ID and whether it is pinned." });
     const result = await storage.setModelPinned(req.params.id, parsed.data.model, parsed.data.pinned);
-    if (result === "not_found") return reply.status(404).send({ error: "Connection not found" });
+    if (result === "not_found") return notFound(reply, "Connection not found");
     if (result === "limit") {
       return reply.status(400).send({ error: `You can pin up to ${MAX_PINNED_MODELS} models per connection.` });
     }
@@ -2260,15 +2259,20 @@ export async function connectionsRoutes(app: FastifyInstance) {
     const source = await resolveConnectionTestEmbeddingSource(app.db, conn);
     if (!source) {
       const via = conn.embeddingConnectionId;
-      const lender = via && via !== LOCAL_SIDECAR_CONNECTION_ID ? await storage.getWithKey(via) : null;
+      const lender =
+        via && via !== LOCAL_SIDECAR_CONNECTION_ID && via !== BUILTIN_EMBEDDING_CONNECTION_ID
+          ? await storage.getWithKey(via)
+          : null;
       // A model with no address to send it to is a missing endpoint, not a missing model.
       const hasModel = !!(conn.embeddingModel?.trim() || lender?.embeddingModel?.trim());
       const message =
         via === LOCAL_SIDECAR_CONNECTION_ID
           ? "The built-in model makes embeddings only with an enabled llama.cpp model."
-          : hasModel
-            ? "No embedding endpoint set. Add an Embedding endpoint URL or a Base URL."
-            : "No embedding model set.";
+          : via === BUILTIN_EMBEDDING_CONNECTION_ID
+            ? "Download the built-in embedding model first (Connections, On this device)."
+            : hasModel
+              ? "No embedding endpoint set. Add an Embedding endpoint URL or a Base URL."
+              : "No embedding model set.";
       return { success: false, message, latencyMs: 0 };
     }
     const { model, endpoint } = source;

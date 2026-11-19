@@ -1,5 +1,4 @@
 import dotenv from "dotenv";
-import { randomUUID } from "node:crypto";
 import {
   REQUEST_TIMEOUTS,
   requestTimeoutSettingsSchema,
@@ -8,9 +7,10 @@ import {
   type WebSearchSettings,
 } from "@marinara-engine/shared";
 import { logger as sharedLogger } from "../lib/logger.js";
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { writeFileAtomicSync } from "../utils/atomic-write.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -712,6 +712,12 @@ export function platformDefaultMaxResidentChatUnits(constrained = constrainedPla
  */
 let lastInvalidMaxResidentChats: string | null = null;
 
+/** True when MARINARA_MAX_RESIDENT_CHATS is set to 0 on purpose: nothing may evict chat units. */
+export function residentChatEvictionDisabledByConfig() {
+  const raw = normalizeEnvValue(process.env.MARINARA_MAX_RESIDENT_CHATS);
+  return !!raw && /^0+$/.test(raw);
+}
+
 export function getMaxResidentChatUnits() {
   const raw = normalizeEnvValue(process.env.MARINARA_MAX_RESIDENT_CHATS);
   if (!raw) {
@@ -982,14 +988,8 @@ export function getRequestTimeoutSettings(): RequestTimeoutSettings {
 }
 
 function writeSettingsFile(path: string, settings: unknown) {
-  const temporaryPath = `${path}.${randomUUID()}.tmp`;
   mkdirSync(dirname(path), { recursive: true });
-  try {
-    writeFileSync(temporaryPath, JSON.stringify(settings, null, 2) + "\n", { mode: 0o600, flag: "wx" });
-    renameSync(temporaryPath, path);
-  } finally {
-    rmSync(temporaryPath, { force: true });
-  }
+  writeFileAtomicSync(path, JSON.stringify(settings, null, 2) + "\n", { mode: 0o600 });
 }
 
 export function saveRequestTimeoutSettings(input: unknown): RequestTimeoutSettings {

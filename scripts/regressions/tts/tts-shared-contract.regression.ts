@@ -119,7 +119,8 @@ for (const id of TTS_SOURCE_IDS) {
   const definition = TTS_SOURCE_DEFINITIONS[id];
   assert.equal(definition.id, id, `${id}: definition is keyed by its own id`);
   assert.ok(definition.name.length > 0, `${id}: has a display name`);
-  assert.match(definition.defaultBaseUrl, /^https?:\/\//u, `${id}: default base URL is a URL`);
+  // The built-in model runs inside the server, so it alone has no address.
+  if (id !== "builtin") assert.match(definition.defaultBaseUrl, /^https?:\/\//u, `${id}: default base URL is a URL`);
   assert.ok(definition.defaultModel.length > 0, `${id}: has a default model`);
   // ElevenLabs voice ids are account-scoped, so an empty default is legitimate there and only there.
   if (id !== "elevenlabs") assert.ok(definition.defaultVoice.length > 0, `${id}: has a default voice`);

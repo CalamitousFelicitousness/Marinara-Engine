@@ -6,10 +6,10 @@ import {
   TRACKER_PANEL_DEFAULT_BACKGROUND_COLOR,
   QUICK_REPLIES_SETTINGS_CONTROL_ID,
   useUIStore,
-  SIDEBAR_WIDTH_MIN,
-  SIDEBAR_WIDTH_MAX,
-  RIGHT_PANEL_WIDTH_MIN,
-  RIGHT_PANEL_WIDTH_MAX,
+  SHARED_SIDEBAR_WIDTH_MIN,
+  SHARED_SIDEBAR_WIDTH_MAX,
+  normalizeSidebarSide,
+  selectSharedSidebarWidth,
   getDefaultAppAccentColor,
   getDefaultChatChromeTextColor,
   getDefaultChatTextColor,
@@ -24,6 +24,7 @@ import {
   type ChatListBackgroundMode,
   type RoleplayAvatarStyle,
   type RoleplayChatPosition,
+  type SidebarSide,
   type TrackerDataPanelSection,
   type TrackerPanelSizeProfile,
   type TrackerStatDisplayMode,
@@ -34,6 +35,7 @@ import { SECRET_FIELD_PROPS } from "../../lib/secret-field-props";
 import { UILanguageSetting } from "./settings/UILanguageSetting";
 import { LanguagePicker } from "../ui/LanguagePicker";
 import { Select } from "../ui/Select";
+import { Tabs } from "../ui/Tabs";
 import { MultiplayerSettings } from "../../features/multiplayer/MultiplayerSettings";
 import { useLocalizedUiText } from "../../localization/use-localized-ui-text";
 import {
@@ -179,6 +181,7 @@ import {
   useChat,
   useClearAllData,
   useExpungeData,
+  useExpungeStatus,
   useUpdateChatMetadata,
   type ExpungeScope,
 } from "../../hooks/use-chats";
@@ -190,7 +193,7 @@ import { chatKeys } from "../../hooks/use-chats";
 import { useInstalledCapabilityPackages } from "../../hooks/use-capability-packages";
 import { useDocsLanguage, useFixDocsLanguage, useSetDocsLanguage } from "../../hooks/use-docs-language";
 import { HelpTooltip } from "../ui/HelpTooltip";
-import { ColorPicker } from "../ui/ColorPicker";
+import { ColorField, ColorPicker } from "../ui/ColorPicker";
 import { getChatWidgetColorRoles, getChatWidgetColorStyle, type ChatWidgetColors } from "../../lib/chat-widget-colors";
 import { EmojiPicker } from "../ui/EmojiPicker";
 import { TrackerPanelIcon } from "../ui/TrackerPanelIcon";
@@ -533,6 +536,7 @@ function formatStorageBytes(bytes: number): string {
 }
 
 const ROLEPLAY_CHAT_POSITIONS: RoleplayChatPosition[] = ["left", "center", "right"];
+const SIDEBAR_SIDES: SidebarSide[] = ["left", "right"];
 
 const ROLEPLAY_AVATAR_STYLE_OPTIONS: Array<{ id: RoleplayAvatarStyle; label: string; desc: string }> = [
   {
@@ -1733,53 +1737,20 @@ export function SettingsPanel() {
       </div>
 
       <div className="flex shrink-0 flex-col gap-1.5 border-b border-[var(--border)]/70 px-2.5 py-1.5">
-        <div
-          role="tablist"
-          aria-label={localize("Settings categories")}
-          className="grid grid-cols-3 gap-x-1.5 gap-y-1 rounded-xl border border-[var(--border)]/70 bg-[var(--background)]/32 p-1 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--foreground)_7%,transparent)]"
-        >
-          {TABS.map((tab) => {
-            const Icon = tab.icon;
-            const active = settingsTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                id={`settings-tab-${tab.id}`}
-                type="button"
-                role="tab"
-                aria-selected={settingsTab === tab.id}
-                aria-controls={`settings-panel-${tab.id}`}
-                tabIndex={settingsTab === tab.id ? 0 : -1}
-                onClick={() => setSettingsTab(tab.id)}
-                className={cn(
-                  "group relative isolate flex min-h-8 min-w-0 flex-col items-center justify-center gap-0.5 overflow-hidden rounded-md border px-1 py-0.5 text-center text-[0.625rem] font-semibold leading-tight transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40",
-                  active
-                    ? "border-[var(--primary)]/35 bg-[var(--primary)]/10 text-[var(--foreground)] shadow-[inset_0_1px_0_color-mix(in_srgb,var(--foreground)_11%,transparent)]"
-                    : "border-transparent text-[var(--muted-foreground)] hover:border-[var(--border)]/80 hover:bg-[var(--accent)]/60 hover:text-[var(--foreground)]",
-                )}
-                title={t(tab.descriptionKey)}
-              >
-                {active && (
-                  <>
-                    <span className="pointer-events-none absolute inset-0 -z-10 bg-[linear-gradient(135deg,color-mix(in_srgb,var(--primary)_18%,transparent),color-mix(in_srgb,var(--primary)_7%,transparent)_62%,transparent)]" />
-                    <span className="pointer-events-none absolute inset-x-3 bottom-0 h-px rounded-full bg-[var(--primary)]/60" />
-                  </>
-                )}
-                <span
-                  className={cn(
-                    "flex h-4 w-4 shrink-0 items-center justify-center rounded-md border transition-colors",
-                    active
-                      ? "border-[var(--primary)]/35 bg-[var(--primary)]/16 text-[var(--primary)]"
-                      : "border-[var(--border)]/55 bg-[var(--secondary)]/45 text-[var(--muted-foreground)] group-hover:text-[var(--foreground)]",
-                  )}
-                >
-                  <Icon size="0.6875rem" />
-                </span>
-                <span className="w-full min-w-0 break-words px-0.5">{t(tab.labelKey)}</span>
-              </button>
-            );
-          })}
-        </div>
+        <Tabs
+          items={TABS.map((tab) => ({
+            id: tab.id,
+            label: t(tab.labelKey),
+            title: t(tab.descriptionKey),
+            icon: <tab.icon size="0.875rem" />,
+          }))}
+          value={settingsTab}
+          onChange={setSettingsTab}
+          variant="pill"
+          columns={3}
+          idPrefix="settings"
+          label={localize("Settings categories")}
+        />
 
         {activeSections.length > 1 && (
           <div className="min-w-0 rounded-xl border border-[var(--border)]/60 bg-[var(--background)]/24 p-0.5 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--foreground)_6%,transparent)]">
@@ -3538,10 +3509,11 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
   const { t: localizeUi } = useUiTranslation();
   const theme = useUIStore((s) => s.theme);
   const setTheme = useUIStore((s) => s.setTheme);
-  const sidebarWidth = useUIStore((state) => state.sidebarWidth);
+  const sharedSidebarWidth = useUIStore(selectSharedSidebarWidth);
   const setSidebarWidth = useUIStore((state) => state.setSidebarWidth);
-  const rightPanelWidth = useUIStore((state) => state.rightPanelWidth);
   const setRightPanelWidth = useUIStore((state) => state.setRightPanelWidth);
+  const sidebarSide = useUIStore((state) => state.sidebarSide);
+  const setSidebarSide = useUIStore((state) => state.setSidebarSide);
   const appAccentColor = useUIStore((s) => s.appAccentColor);
   const setAppAccentColor = useUIStore((s) => s.setAppAccentColor);
   const appAccentPulseMode = useUIStore((s) => s.appAccentPulseMode);
@@ -3651,8 +3623,6 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
   const setConvoGradientField = useUIStore((s) => s.setConvoGradientField);
   const [activeGradientScheme, setActiveGradientScheme] = useState<"dark" | "light">(theme);
   const currentGradient = convoGradient[activeGradientScheme];
-  const [draftFrom, setDraftFrom] = useState(currentGradient.from);
-  const [draftTo, setDraftTo] = useState(currentGradient.to);
   const pendingGradientChangeRef = useRef<{
     scheme: "dark" | "light";
     field: "from" | "to";
@@ -3717,17 +3687,9 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
     [activeGradientScheme, commitConvoGradientField],
   );
 
-  // Sync draft inputs when switching between scheme tabs so the text fields
-  // always reflect the stored value for the active scheme.
-  useEffect(() => {
-    setDraftFrom(currentGradient.from);
-    setDraftTo(currentGradient.to);
-  }, [activeGradientScheme, currentGradient.from, currentGradient.to]);
   const handleResetAppearance = useCallback(() => {
     resetAppearanceSettings();
     setActiveGradientScheme("dark");
-    setDraftFrom("#0a0a0e");
-    setDraftTo("#1c2133");
     document.getElementById("marinara-css-editor-preview")?.remove();
     if (activeChatId) {
       updateMeta.mutate({ id: activeChatId, background: chatBackgroundUrlToMetadata(null) });
@@ -3925,16 +3887,16 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                   {localizeUi("settings.appearance.sidebarWidth")}
                 </label>
                 <span className="text-[0.625rem] text-[var(--muted-foreground)]">
-                  {localizeUi("settings.appearance.sidebarWidthHelp")}
+                  {localizeUi("settings.appearance.oneSidebarWidthHelp")}
                 </span>
                 <span className="flex min-w-0 items-center gap-2">
                   <input
                     id="desktop-sidebar-width"
                     type="range"
-                    min={Math.max(SIDEBAR_WIDTH_MIN, RIGHT_PANEL_WIDTH_MIN)}
-                    max={Math.min(SIDEBAR_WIDTH_MAX, RIGHT_PANEL_WIDTH_MAX)}
+                    min={SHARED_SIDEBAR_WIDTH_MIN}
+                    max={SHARED_SIDEBAR_WIDTH_MAX}
                     step={8}
-                    value={rightPanelWidth || sidebarWidth}
+                    value={sharedSidebarWidth}
                     onChange={(event) => {
                       const width = Number(event.target.value);
                       setSidebarWidth(width);
@@ -3943,7 +3905,7 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                     className="min-w-0 flex-1 accent-[var(--primary)]"
                   />
                   <output className="shrink-0 text-xs tabular-nums">
-                    {localizeUi("ui.panels.appearancesettings.value1Px", { value1: rightPanelWidth || sidebarWidth })}
+                    {localizeUi("ui.panels.appearancesettings.value1Px", { value1: sharedSidebarWidth })}
                   </output>
                   <button
                     type="button"
@@ -3956,6 +3918,34 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                     {localizeUi("settings.appearance.resetSidebarWidth")}
                   </button>
                 </span>
+              </div>
+              <div className="flex min-w-0 flex-col gap-2" id={getSettingsControlAnchorId("desktop-sidebar-side")}>
+                <span className="text-xs font-medium">{localizeUi("settings.appearance.sidebarSide")}</span>
+                <span className="text-[0.625rem] text-[var(--muted-foreground)]">
+                  {localizeUi("settings.appearance.sidebarSideHelp")}
+                </span>
+                <div
+                  role="group"
+                  aria-label={localizeUi("settings.appearance.sidebarSide")}
+                  className="grid grid-cols-2 gap-1"
+                >
+                  {SIDEBAR_SIDES.map((side) => (
+                    <button
+                      key={side}
+                      type="button"
+                      onClick={() => setSidebarSide(side)}
+                      // An unknown synced value shows as Right, which is how the shell treats it.
+                      aria-pressed={normalizeSidebarSide(sidebarSide) === side}
+                      className={SETTINGS_BUTTON_CLASS}
+                    >
+                      {localizeUi(
+                        side === "left"
+                          ? "settings.appearance.sidebarSideLeft"
+                          : "settings.appearance.sidebarSideRight",
+                      )}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div id={getSettingsControlAnchorId("visual-theme")} className="flex scroll-mt-3 flex-col gap-2">
                 <div className="flex items-center gap-1.5">
@@ -4840,56 +4830,16 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                   style={{ background: `linear-gradient(135deg, ${currentGradient.from}, ${currentGradient.to})` }}
                 />
                 <div className="grid grid-cols-2 gap-3">
-                  <label className="flex flex-col gap-1">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="color"
-                        value={currentGradient.from}
-                        onInput={(e) => handleGradientColorInput("from", e.currentTarget.value)}
-                        onChange={(e) => handleGradientColorInput("from", e.currentTarget.value)}
-                        onBlur={flushPendingGradientChange}
-                        onPointerUp={flushPendingGradientChange}
-                        onKeyUp={flushPendingGradientChange}
-                        className="h-8 w-8 flex-shrink-0 cursor-pointer rounded-md border border-[var(--border)] bg-transparent p-0.5"
-                      />
-                      <input
-                        type="text"
-                        value={draftFrom}
-                        onChange={(e) => {
-                          setDraftFrom(e.target.value);
-                          if (/^#[0-9a-fA-F]{6}$/.test(e.target.value))
-                            commitConvoGradientField(activeGradientScheme, "from", e.target.value);
-                        }}
-                        onBlur={() => setDraftFrom(currentGradient.from)}
-                        className="w-full rounded-md bg-[var(--secondary)] px-2 py-1.5 text-xs outline-none ring-1 ring-transparent transition-shadow focus:ring-[var(--primary)]/40"
-                      />
-                    </div>
-                  </label>
-                  <label className="flex flex-col gap-1">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="color"
-                        value={currentGradient.to}
-                        onInput={(e) => handleGradientColorInput("to", e.currentTarget.value)}
-                        onChange={(e) => handleGradientColorInput("to", e.currentTarget.value)}
-                        onBlur={flushPendingGradientChange}
-                        onPointerUp={flushPendingGradientChange}
-                        onKeyUp={flushPendingGradientChange}
-                        className="h-8 w-8 flex-shrink-0 cursor-pointer rounded-md border border-[var(--border)] bg-transparent p-0.5"
-                      />
-                      <input
-                        type="text"
-                        value={draftTo}
-                        onChange={(e) => {
-                          setDraftTo(e.target.value);
-                          if (/^#[0-9a-fA-F]{6}$/.test(e.target.value))
-                            commitConvoGradientField(activeGradientScheme, "to", e.target.value);
-                        }}
-                        onBlur={() => setDraftTo(currentGradient.to)}
-                        className="w-full rounded-md bg-[var(--secondary)] px-2 py-1.5 text-xs outline-none ring-1 ring-transparent transition-shadow focus:ring-[var(--primary)]/40"
-                      />
-                    </div>
-                  </label>
+                  <ColorField
+                    value={currentGradient.from}
+                    onChange={(color) => handleGradientColorInput("from", color)}
+                    label={localizeUi("ui.ui.colorpicker.editColorStop", { index: 1 })}
+                  />
+                  <ColorField
+                    value={currentGradient.to}
+                    onChange={(color) => handleGradientColorInput("to", color)}
+                    label={localizeUi("ui.ui.colorpicker.editColorStop", { index: 2 })}
+                  />
                 </div>
                 <button
                   type="button"
@@ -4900,8 +4850,6 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                         : { from: "#f2eff7", to: "#eae6f0" };
                     commitConvoGradientField(activeGradientScheme, "from", defaults.from);
                     commitConvoGradientField(activeGradientScheme, "to", defaults.to);
-                    setDraftFrom(defaults.from);
-                    setDraftTo(defaults.to);
                   }}
                   className={cn(SETTINGS_BUTTON_CLASS, "self-start")}
                 >
@@ -7167,8 +7115,11 @@ function AdvancedSettings() {
   const setDebugMode = useUIStore((s) => s.setDebugMode);
   const clearAllData = useClearAllData();
   const expungeData = useExpungeData();
+  const expungeStatus = useExpungeStatus();
   const [selectedScopes, setSelectedScopes] = useState<ExpungeScope[]>([]);
   const [confirmAction, setConfirmAction] = useState<"selected" | "all" | null>(null);
+  const [backupBeforeExpunge, setBackupBeforeExpunge] = useState(true);
+  const [backingUpBeforeExpunge, setBackingUpBeforeExpunge] = useState(false);
   const [exportingProfile, setExportingProfile] = useState(false);
   const [exportProfileDialogOpen, setExportProfileDialogOpen] = useState(false);
   const [refreshingSpa, setRefreshingSpa] = useState(false);
@@ -7686,8 +7637,15 @@ function AdvancedSettings() {
           : applyUnavailableReason === "disabled"
             ? "This install can check for updates, but applying them from the browser is disabled. Update manually with the command below. Advanced git installs can enable server-side apply with UPDATES_APPLY_ENABLED=true."
             : "This install can check for updates, but it cannot apply them from the browser. Relaunch the app if you use the launcher, or update manually for your install type.";
-  const isClearing = clearAllData.isPending || expungeData.isPending;
+  const expungeJob = expungeStatus.job;
+  const expungeRunning = expungeJob?.state === "running";
+  const isClearing = clearAllData.isPending || expungeData.isPending || backingUpBeforeExpunge || expungeRunning;
   const isAllScopesSelected = selectedScopes.length === EXPUNGE_SCOPE_OPTIONS.length;
+  const interruptedExpunge = expungeStatus.status?.interrupted ?? null;
+  const expungeStepLabel = (step: ExpungeScope | "finishing") =>
+    step === "finishing"
+      ? localizeUi("ui.panels.advancedsettings.expungeStepFinishing")
+      : (EXPUNGE_SCOPE_OPTIONS.find((scope) => scope.id === step)?.label ?? step);
 
   const toggleScope = (scope: ExpungeScope) => {
     setSelectedScopes((current) =>
@@ -7695,23 +7653,52 @@ function AdvancedSettings() {
     );
   };
 
-  const runExpunge = (mode: "selected" | "all") => {
-    if (mode === "all") {
-      clearAllData.mutate(undefined, {
-        onSuccess: () =>
-          toast.success(localizeUi("ui.panels.advancedsettings.allSelectedDataWasClearedRuntimeCachesWereReset")),
-        onError: () => toast.error(localizeUi("ui.panels.advancedsettings.failedToClearAllData")),
-        onSettled: () => setConfirmAction(null),
-      });
-      return;
+  // The clear runs on the server; this page only watches it. Report the end once.
+  const finishedExpunge = expungeStatus.finished;
+  const clearFinishedExpunge = expungeStatus.clearFinished;
+  useEffect(() => {
+    if (!finishedExpunge) return;
+    if (finishedExpunge.state === "done") {
+      toast.success(localizeUi("ui.panels.advancedsettings.selectedDataWasClearedRuntimeCachesWereResetImmediately"));
+    } else {
+      toast.error(
+        localizeUi("ui.panels.advancedsettings.expungeFailedPartway", {
+          error: finishedExpunge.error ?? "",
+        }),
+      );
     }
+    setConfirmAction(null);
+    clearFinishedExpunge();
+  }, [finishedExpunge, clearFinishedExpunge, localizeUi]);
 
-    expungeData.mutate(selectedScopes, {
-      onSuccess: () =>
-        toast.success(localizeUi("ui.panels.advancedsettings.selectedDataWasClearedRuntimeCachesWereResetImmediately")),
-      onError: () => toast.error(localizeUi("ui.panels.advancedsettings.failedToClearSelectedData")),
-      onSettled: () => setConfirmAction(null),
-    });
+  const runExpunge = async (mode: "selected" | "all") => {
+    if (backupBeforeExpunge) {
+      setBackingUpBeforeExpunge(true);
+      try {
+        await api.post("/backup", {});
+        toast.success(localizeUi("ui.panels.advancedsettings.expungeBackupSaved"));
+      } catch (error) {
+        // Never delete without the backup the person asked for.
+        toast.error(
+          localizeUi("ui.panels.advancedsettings.expungeBackupFailed", {
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+        return;
+      } finally {
+        setBackingUpBeforeExpunge(false);
+      }
+    }
+    const onError = () =>
+      toast.error(
+        localizeUi(
+          mode === "all"
+            ? "ui.panels.advancedsettings.failedToClearAllData"
+            : "ui.panels.advancedsettings.failedToClearSelectedData",
+        ),
+      );
+    if (mode === "all") clearAllData.mutate(undefined, { onError });
+    else expungeData.mutate(selectedScopes, { onError });
   };
 
   return (
@@ -8422,7 +8409,8 @@ function AdvancedSettings() {
               type="button"
               onClick={() => setConfirmAction("selected")}
               disabled={selectedScopes.length === 0 || isClearing}
-              className={cn(SETTINGS_BUTTON_CLASS, "mari-chrome-control--danger w-full")}
+              // Accent, not red: these only open the confirm step below, whose Confirm Delete stays red.
+              className={cn(SETTINGS_COMPACT_PRIMARY_BUTTON_CLASS, "w-full")}
             >
               <Trash2 size="0.75rem" />
               {localizeUi("ui.panels.advancedsettings.clearSelectedData")}
@@ -8431,13 +8419,13 @@ function AdvancedSettings() {
               type="button"
               onClick={() => setConfirmAction("all")}
               disabled={isClearing}
-              className={cn(SETTINGS_BUTTON_CLASS, "mari-chrome-control--danger w-full")}
+              className={cn(SETTINGS_COMPACT_PRIMARY_BUTTON_CLASS, "w-full")}
             >
               <Trash2 size="0.75rem" />
               {localizeUi("ui.panels.advancedsettings.clearAllData")}
             </button>
           </div>
-          {confirmAction && (
+          {confirmAction && !isClearing && (
             <div className="flex flex-col gap-2 rounded-lg bg-[var(--background)]/55 p-2.5 ring-1 ring-[var(--border)]">
               <div className="flex items-start gap-2 text-[0.6875rem] font-medium text-[var(--marinara-chat-chrome-panel-text)]">
                 <AlertTriangle
@@ -8461,7 +8449,7 @@ function AdvancedSettings() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => runExpunge(confirmAction)}
+                  onClick={() => void runExpunge(confirmAction)}
                   disabled={isClearing}
                   className={cn(SETTINGS_BUTTON_CLASS, "mari-chrome-control--danger w-full")}
                 >
@@ -8469,6 +8457,88 @@ function AdvancedSettings() {
                   {localizeUi("ui.panels.advancedsettings.confirmDelete")}
                 </button>
               </div>
+              <label className="flex cursor-pointer items-start gap-2 text-[0.6875rem] text-[var(--marinara-chat-chrome-panel-text)]">
+                <Checkbox
+                  checked={backupBeforeExpunge}
+                  disabled={isClearing}
+                  onChange={() => setBackupBeforeExpunge((current) => !current)}
+                  className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-[var(--border)] accent-[var(--primary)]"
+                />
+                <span className="min-w-0">
+                  <span className="block font-medium">
+                    {localizeUi("ui.panels.advancedsettings.expungeBackupFirst")}
+                  </span>
+                  <span className="block text-[0.625rem] text-[var(--muted-foreground)]">
+                    {localizeUi("ui.panels.advancedsettings.expungeBackupFirstDescription")}
+                  </span>
+                </span>
+              </label>
+            </div>
+          )}
+          {(backingUpBeforeExpunge || expungeRunning) && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="flex flex-col gap-1.5 rounded-lg bg-[var(--background)]/55 p-2.5 ring-1 ring-[var(--border)]"
+            >
+              <div className="flex items-center gap-2 text-[0.6875rem] font-medium text-[var(--marinara-chat-chrome-panel-text)]">
+                <Spinner size="sm" />
+                <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+                  {backingUpBeforeExpunge || !expungeJob
+                    ? localizeUi("ui.panels.advancedsettings.expungeBackingUp")
+                    : expungeJob.total > 0
+                      ? localizeUi("ui.panels.advancedsettings.expungeProgressCounted", {
+                          step: expungeStepLabel(expungeJob.step),
+                          done: expungeJob.done.toLocaleString(),
+                          total: expungeJob.total.toLocaleString(),
+                        })
+                      : localizeUi("ui.panels.advancedsettings.expungeProgress", {
+                          step: expungeStepLabel(expungeJob.step),
+                        })}
+                </span>
+              </div>
+              {expungeJob && !backingUpBeforeExpunge && (
+                <div className="h-1 overflow-hidden rounded-full bg-[var(--border)]">
+                  <div
+                    className="h-full rounded-full bg-[var(--primary)] transition-[width] duration-300"
+                    style={{
+                      width: `${Math.round(
+                        ((expungeJob.stepIndex +
+                          (expungeJob.total > 0 ? Math.min(1, expungeJob.done / expungeJob.total) : 0)) /
+                          Math.max(1, expungeJob.stepCount)) *
+                          100,
+                      )}%`,
+                    }}
+                  />
+                </div>
+              )}
+              <span className="text-[0.625rem] text-[var(--muted-foreground)]">
+                {localizeUi("ui.panels.advancedsettings.expungeKeepsRunning")}
+              </span>
+            </div>
+          )}
+          {!isClearing && interruptedExpunge && (
+            <div className="flex flex-col gap-2 rounded-lg bg-[var(--background)]/55 p-2.5 ring-1 ring-[var(--border)]">
+              <div className="flex items-start gap-2 text-[0.6875rem] font-medium text-[var(--marinara-chat-chrome-panel-text)]">
+                <AlertTriangle
+                  size="0.875rem"
+                  className="mt-0.5 shrink-0 text-[var(--marinara-chat-chrome-button-text-active)]"
+                />
+                {localizeUi("ui.panels.advancedsettings.expungeInterrupted", {
+                  scopes: interruptedExpunge.scopes.map((scope) => expungeStepLabel(scope)).join(", "),
+                })}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedScopes(interruptedExpunge.scopes);
+                  setConfirmAction("selected");
+                }}
+                className={cn(SETTINGS_BUTTON_CLASS, "mari-chrome-control--danger w-full")}
+              >
+                <Trash2 size="0.75rem" />
+                {localizeUi("ui.panels.advancedsettings.expungeFinishClearing")}
+              </button>
             </div>
           )}
           <div className="mt-2 flex flex-col gap-2 rounded-lg border border-[var(--border)] bg-[var(--background)]/45 p-2.5">

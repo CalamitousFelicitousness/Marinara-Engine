@@ -223,6 +223,8 @@ import { resolveGameGmPromptTemplate } from "../../services/generation/game-gm-p
 
 import { injectCapabilityContexts } from "../../services/generation/capability-prompt-runtime.js";
 import { getCapabilityPromptContextPackageIds } from "../../services/capability-packages/capability-prompt-context.service.js";
+import { notFound } from "../../utils/not-found.js";
+import { isRecord } from "../../utils/large-json.js";
 
 type WrapFormat = "xml" | "markdown" | "none";
 type DryRunPromptMessage = {
@@ -522,10 +524,6 @@ function parsePresetChoices(value: unknown): Record<string, string | string[]> |
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
-}
-
 export async function registerDryRunRoute(app: FastifyInstance) {
   const chats = createChatsStorage(app.db);
   const connections = createConnectionsStorage(app.db);
@@ -588,7 +586,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     if (!chatId) return reply.status(400).send({ error: "chatId is required" });
 
     const chat = await chats.getById(chatId);
-    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    if (!chat) return notFound(reply, "Chat not found");
 
     const impersonate = body.impersonate === true;
     const streaming = body.streaming === true;
@@ -734,7 +732,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       ? allChatMessages.findIndex((message) => message.id === regenerateMessageId)
       : -1;
     if (advancedMemoryEnabled && regenerateMessageId && advancedRegenerationIndex < 0) {
-      return reply.status(404).send({ error: "Regenerated message not found" });
+      return notFound(reply, "Regenerated message not found");
     }
     const advancedMemorySourceMessages =
       advancedRegenerationIndex >= 0 ? allChatMessages.slice(0, advancedRegenerationIndex) : allChatMessages;

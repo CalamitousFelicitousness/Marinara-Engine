@@ -22,7 +22,9 @@ const trackerHeader = readSource("packages/client/src/features/tracker-panel/com
 const uiStore = readSource("packages/client/src/stores/ui.store.ts");
 const chatGallery = readSource("packages/client/src/components/chat/ChatGallery.tsx");
 const chatSettingsDrawer = readSource("packages/client/src/features/chat-settings/ChatSettingsDrawer.tsx");
-const roleplayAgentsSection = readSource("packages/client/src/features/chat-settings/agents/RoleplayAgentsSection.tsx");
+const roleplayAgentsSection = ["RoleplayAgentsSection.tsx", "GameAgentsSection.tsx", "agents-section-parts.tsx"]
+  .map((name) => readSource(`packages/client/src/features/chat-settings/agents/${name}`))
+  .join("\n");
 const agentSettingsRenderers = readSource(
   "packages/client/src/features/chat-settings/agents/agent-settings-renderers.tsx",
 );
@@ -36,7 +38,9 @@ const connectedChatsSections = readSource(
 );
 const chatSidebar = readSource("packages/client/src/components/layout/ChatSidebar.tsx");
 const homeBrowserHub = readSource("packages/client/src/components/chat/HomeBrowserHub.tsx");
-const storyboardChatSettings = readSource("packages/client/src/features/chat-settings/StoryboardChatSettingsPanel.tsx");
+const storyboardChatSettings = readSource(
+  "packages/client/src/features/chat-settings/agents/StoryboardChatSettingsPanel.tsx",
+);
 const conversationView = readSource("packages/client/src/components/chat/ConversationView.tsx");
 const agentSettingsControls = readSource("packages/client/src/components/chat/AgentSettingsControls.tsx");
 const translationSection = readSource("packages/client/src/features/chat-settings/sections/TranslationSection.tsx");
@@ -175,7 +179,7 @@ assert.doesNotMatch(
 );
 assert.match(
   chatGallery,
-  /className="mari-chrome-field h-10 w-full !rounded-md pl-9 pr-10 text-xs"/u,
+  /<SearchInput\b/u,
   "the shared Gallery search must reuse the standard chat field",
 );
 assert.match(

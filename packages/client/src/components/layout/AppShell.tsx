@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// Layout: Main App Shell (Discord-like three-column)
+// Layout: Main App Shell (the chat, and one sidebar for Chats and the panels)
 // ──────────────────────────────────────────────
 import { useQueryClient } from "@tanstack/react-query";
 import { preloadedLazy } from "../../lib/preloaded-lazy";
@@ -16,11 +16,10 @@ import {
   MOBILE_SHELL_MEDIA_QUERY,
   nearestTrackerPanelPreset,
   resolveTrackerPanelPreset,
-  RIGHT_PANEL_WIDTH_MAX,
-  RIGHT_PANEL_WIDTH_MIN,
+  selectSharedSidebarWidth,
   selectSidebarShown,
-  SIDEBAR_WIDTH_MAX,
-  SIDEBAR_WIDTH_MIN,
+  SHARED_SIDEBAR_WIDTH_MAX,
+  SHARED_SIDEBAR_WIDTH_MIN,
   TRACKER_PANEL_DEFAULT_BACKGROUND_COLOR,
   TRACKER_PANEL_MIN_DOCK_WIDTH,
   TRACKER_PANEL_SIZE_PROFILE_WIDTHS,
@@ -28,7 +27,7 @@ import {
   TRACKER_PANEL_WIDTH_MIN,
   useUIStore,
 } from "../../stores/ui.store";
-import { clampPanelWidth, usePanelResize } from "../../hooks/use-panel-resize";
+import { usePanelResize } from "../../hooks/use-panel-resize";
 import { useDiscardNewChatSetup } from "../../hooks/use-discard-new-chat-setup";
 import { useChatStore } from "../../stores/chat.store";
 import { useDialogStore } from "../../stores/dialog.store";
@@ -37,6 +36,7 @@ import { useClearAutonomousUnread, useUpdateChatMetadata } from "../../hooks/use
 import { lorebookKeys } from "../../hooks/use-lorebooks";
 import { useIdleDetection } from "../../hooks/use-idle-detection";
 import { dispatchChatVisualViewportChange } from "../../hooks/use-visual-viewport-chat-bottom";
+import { useKeepFocusedFieldAboveKeyboard } from "../../hooks/use-keep-focused-field-above-keyboard";
 import { usePageActivity } from "../../hooks/use-page-activity";
 import { useCapabilityAgentRegistry, useCapabilityClientModules } from "../../hooks/use-capability-packages";
 import { CapabilityElement } from "../capabilities/CapabilityElement";
@@ -122,8 +122,6 @@ const OnboardingTutorial = lazy(() =>
   import("../onboarding/OnboardingTutorial").then((module) => ({ default: module.OnboardingTutorial })),
 );
 
-const SHARED_SIDEBAR_WIDTH_MIN = Math.max(SIDEBAR_WIDTH_MIN, RIGHT_PANEL_WIDTH_MIN);
-const SHARED_SIDEBAR_WIDTH_MAX = Math.min(SIDEBAR_WIDTH_MAX, RIGHT_PANEL_WIDTH_MAX);
 const TRACKER_PANEL_EDGE_OFFSET = 8;
 const TRACKER_PANEL_HUD_GAP = 6;
 const TRACKER_PANEL_CHAT_GAP = 8;
@@ -296,6 +294,7 @@ export function AppShell({
 
   // Auto idle detection (10 min inactivity → idle, activity → active)
   useIdleDetection();
+  useKeepFocusedFieldAboveKeyboard();
 
   useEffect(() => {
     const handleGlobalSearchShortcut = (event: KeyboardEvent) => {
@@ -506,10 +505,10 @@ export function AppShell({
 
   const sidebarOpen = useUIStore(selectSidebarShown);
   const setSidebarOpen = useUIStore((s) => s.setSidebarOpen);
-  const sidebarWidth = useUIStore((s) => s.sidebarWidth);
   const setSidebarWidth = useUIStore((s) => s.setSidebarWidth);
   const rightPanelOpen = useUIStore((s) => s.rightPanelOpen);
-  const rightPanelWidth = useUIStore((s) => s.rightPanelWidth);
+  const sidebarSide = useUIStore((s) => s.sidebarSide);
+  const sharedSidebarWidth = useUIStore(selectSharedSidebarWidth);
   const setRightPanelWidth = useUIStore((s) => s.setRightPanelWidth);
   const closeRightPanel = useUIStore((s) => s.closeRightPanel);
   const trackerPanelEnabled = useUIStore((s) => s.trackerPanelEnabled);
@@ -553,14 +552,7 @@ export function AppShell({
     if (!returnsToSurface) openRightPanel("agents");
   }, [closeAgentDetail, openRightPanel]);
   const [sidebarDragWidth, setSidebarDragWidth] = useState<number | null>(null);
-  const [rightPanelDragWidth, setRightPanelDragWidth] = useState<number | null>(null);
-  const sharedSidebarWidth = clampPanelWidth(
-    rightPanelWidth || sidebarWidth,
-    SHARED_SIDEBAR_WIDTH_MIN,
-    SHARED_SIDEBAR_WIDTH_MAX,
-  );
-  const liveSidebarWidth = sidebarDragWidth ?? rightPanelDragWidth ?? sharedSidebarWidth;
-  const liveRightPanelWidth = rightPanelDragWidth ?? sidebarDragWidth ?? sharedSidebarWidth;
+  const liveSidebarWidth = sidebarDragWidth ?? sharedSidebarWidth;
   const trackerPanelWidth = trackerPanelStoredWidth;
   // Derived only for the props still typed on the old profile.
   const trackerPanelSizeProfile =
@@ -624,7 +616,18 @@ export function AppShell({
   }, []);
 
   const shellOverlayMode = isMobile;
-  const mobileNavigationPanel = shellOverlayMode ? (rightPanelOpen ? "right" : sidebarOpen ? "chats" : null) : null;
+  // Chats and the panels share one sidebar (one sheet on a phone or tablet). An open panel takes Chats' place.
+  const oneSidebarPanel = rightPanelOpen ? "right" : sidebarOpen ? "chats" : null;
+  const mobileNavigationPanel = shellOverlayMode ? oneSidebarPanel : null;
+  const desktopSidebarOpen = !shellOverlayMode && oneSidebarPanel !== null;
+  // Desktop only: Appearance can dock the sidebar on the left; phones and tablets keep their sheet.
+  const sidebarOnLeft = !shellOverlayMode && sidebarSide === "left";
+  // What the closed sidebar keeps drawn while it slides away, and opens on again without a swap.
+  const [lastOneSidebarPanel, setLastOneSidebarPanel] = useState<"chats" | "right">(oneSidebarPanel ?? "chats");
+  useEffect(() => {
+    if (oneSidebarPanel) setLastOneSidebarPanel(oneSidebarPanel);
+  }, [oneSidebarPanel]);
+  const desktopSidebarPanel = oneSidebarPanel ?? lastOneSidebarPanel;
   const [rightPanelEverOpened, setRightPanelEverOpened] = useState(rightPanelOpen);
   useEffect(() => {
     if (rightPanelOpen) setRightPanelEverOpened(true);
@@ -662,18 +665,12 @@ export function AppShell({
     };
   }, [rightPanelEverOpened]);
 
-  const layoutSidebarOpen = sidebarOpen;
-  const layoutRightPanelOpen = rightPanelOpen;
-  const desktopReservedSidebarWidth = layoutSidebarOpen ? liveSidebarWidth : 0;
-  const desktopReservedRightPanelWidth = layoutRightPanelOpen ? liveRightPanelWidth : 0;
-  const desktopCenterWidth = Math.max(0, viewportWidth - desktopReservedSidebarWidth - desktopReservedRightPanelWidth);
+  const desktopReservedSidebarWidth = desktopSidebarOpen ? liveSidebarWidth : 0;
+  const desktopCenterWidth = Math.max(0, viewportWidth - desktopReservedSidebarWidth);
   const centerSqueezedByPanels =
-    !isMobile &&
-    (layoutSidebarOpen || layoutRightPanelOpen) &&
-    viewportWidth > 0 &&
-    desktopCenterWidth < CENTER_COMPACT_WIDTH;
-  const chatUiInsetLeft = !shellOverlayMode && layoutSidebarOpen ? Math.round(liveSidebarWidth) : 0;
-  const chatUiInsetRight = !shellOverlayMode && layoutRightPanelOpen ? Math.round(liveRightPanelWidth) : 0;
+    !isMobile && desktopSidebarOpen && viewportWidth > 0 && desktopCenterWidth < CENTER_COMPACT_WIDTH;
+  const chatUiInsetLeft = sidebarOnLeft ? Math.round(desktopReservedSidebarWidth) : 0;
+  const chatUiInsetRight = sidebarOnLeft ? 0 : Math.round(desktopReservedSidebarWidth);
 
   const chatUiInsetPublishedRef = useRef(false);
   useLayoutEffect(() => {
@@ -912,12 +909,12 @@ export function AppShell({
   );
 
   const sidebarResize = usePanelResize({
-    edge: "left",
+    edge: sidebarOnLeft ? "left" : "right",
     width: sharedSidebarWidth,
     min: SHARED_SIDEBAR_WIDTH_MIN,
     max: SHARED_SIDEBAR_WIDTH_MAX,
     disabled: shellOverlayMode,
-    label: localizeUi("ui.layout.appshell.resizeLeftSidebar"),
+    label: localizeUi("ui.layout.appshell.resizeSidebar"),
     onCommit: commitSharedSidebarWidth,
     onPreview: setSidebarDragWidth,
   });
@@ -937,17 +934,6 @@ export function AppShell({
     previewVariable: "--mari-tracker-drag-width",
     previewTarget: shellRootRef,
     resetWidth: () => TRACKER_PANEL_SIZE_PROFILE_WIDTHS[nearestTrackerPanelPreset(trackerPanelWidth)],
-  });
-
-  const rightPanelResize = usePanelResize({
-    edge: "right",
-    width: sharedSidebarWidth,
-    min: SHARED_SIDEBAR_WIDTH_MIN,
-    max: SHARED_SIDEBAR_WIDTH_MAX,
-    disabled: shellOverlayMode,
-    label: localizeUi("ui.layout.appshell.resizeRightSidebar"),
-    onCommit: commitSharedSidebarWidth,
-    onPreview: setRightPanelDragWidth,
   });
 
   const detailView = regexDetailId ? (
@@ -1452,9 +1438,7 @@ export function AppShell({
             -56,
             Math.min(56, (trackerPanelToggleAnchorY ?? trackerPanelTop) - trackerPanelTop),
           )}px`,
-          ...(side === "left"
-            ? { left: sidebarOpen ? liveSidebarWidth : 0 }
-            : { right: rightPanelOpen ? liveRightPanelWidth : 0 }),
+          ...(side === "left" ? { left: chatUiInsetLeft } : { right: chatUiInsetRight }),
           ...(trackerPanelBackgroundStyle ?? {}),
         }}
       >
@@ -1502,46 +1486,6 @@ export function AppShell({
             setSidebarOpen(false);
             closeRightPanel();
           }}
-        />
-      )}
-
-      {/* Left sidebar - Chat list */}
-      {!shellOverlayMode && (
-        <aside
-          data-tour="sidebar"
-          data-component="ChatSidebarSlot"
-          aria-label={localizeUi("ui.layout.appshell.chatList")}
-          aria-hidden={!sidebarOpen}
-          inert={!sidebarOpen}
-          className={cn(
-            "mari-shell-panel-slot relative flex-shrink-0 overflow-hidden",
-            sidebarDragWidth != null && "!transition-none",
-            !sidebarOpen && "pointer-events-none",
-          )}
-          style={{ width: sidebarOpen ? liveSidebarWidth : 0 }}
-        >
-          <div
-            data-component="ChatSidebarPanel"
-            aria-hidden={!sidebarOpen}
-            inert={!sidebarOpen}
-            className={cn(
-              "mari-sidebar mari-shell-panel-motion mari-shell-panel-edge mari-shell-panel-edge--right absolute inset-y-0 left-0 overflow-hidden bg-[var(--background)]/95",
-              sidebarOpen ? "mari-shell-panel-enter-left" : "mari-shell-panel-exit-left pointer-events-none",
-            )}
-            style={{ width: liveSidebarWidth }}
-          >
-            <ChatSidebar />
-          </div>
-        </aside>
-      )}
-      {/* Stay mounted and hide: adding a sibling to the shell row restyles the whole chat column. */}
-      {!shellOverlayMode && (
-        <div
-          {...sidebarResize.separatorProps}
-          hidden={!sidebarOpen}
-          aria-valuenow={Math.round(liveSidebarWidth)}
-          className="absolute inset-y-0 z-40 hidden w-1 cursor-col-resize bg-transparent transition-colors hover:bg-[var(--primary)]/30 focus-visible:bg-[var(--primary)]/40 focus-visible:outline-none md:block"
-          style={{ ...sidebarResize.separatorProps.style, left: sidebarOpen ? liveSidebarWidth : 0 }}
         />
       )}
 
@@ -1647,15 +1591,9 @@ export function AppShell({
             style={{
               ...trackerPanelResize.separatorProps.style,
               top: trackerPanelTop,
-              height: `calc(100vh - ${trackerPanelTop + TRACKER_PANEL_EDGE_OFFSET}px)`,
+              height: `calc(var(--mari-visual-viewport-height, 100vh) - ${trackerPanelTop + TRACKER_PANEL_EDGE_OFFSET}px)`,
               [trackerPanelSide]: `calc(${
-                trackerPanelSide === "left"
-                  ? sidebarOpen
-                    ? liveSidebarWidth
-                    : 0
-                  : rightPanelOpen
-                    ? liveRightPanelWidth
-                    : 0
+                trackerPanelSide === "left" ? chatUiInsetLeft : chatUiInsetRight
               }px + var(--mari-tracker-drag-width, ${trackerPanelRenderWidth}px))`,
             }}
           />
@@ -1715,7 +1653,7 @@ export function AppShell({
 
       {shellOverlayMode && <ChatResourceMobileDropDock />}
 
-      {/* Mobile navigation swaps content in one shell; desktop keeps independent sidebars. */}
+      {/* Chats and the panels share one sidebar: a sheet from the right on a phone or tablet, docked on desktop. */}
       {shellOverlayMode ? (
         <AnimatePresence mode="wait">
           {mobileNavigationPanel && (
@@ -1761,51 +1699,91 @@ export function AppShell({
           )}
         </AnimatePresence>
       ) : (
+        // The one desktop sidebar: Chats or a panel, swapped in place. It keeps its place in the tree and moves to
+        // the left with CSS order, so changing sides never remounts a panel and loses what it holds.
         <aside
-          data-component="RightPanelDesktopSlot"
-          aria-label={localizeUi("ui.layout.appshell.settingsAndToolsPanel")}
-          aria-hidden={!rightPanelOpen}
-          inert={!rightPanelOpen}
+          data-component="SidebarSlot"
+          data-sidebar-side={sidebarOnLeft ? "left" : "right"}
+          data-tour={desktopSidebarPanel === "chats" ? "sidebar" : undefined}
+          aria-label={localizeUi(
+            desktopSidebarPanel === "chats"
+              ? "ui.layout.appshell.chatList"
+              : "ui.layout.appshell.settingsAndToolsPanel",
+          )}
+          aria-hidden={!desktopSidebarOpen}
+          inert={!desktopSidebarOpen}
           className={cn(
             "mari-shell-panel-slot relative flex-shrink-0 overflow-hidden",
-            rightPanelDragWidth != null && "!transition-none",
-            !rightPanelOpen && "pointer-events-none",
+            sidebarDragWidth != null && "!transition-none",
+            !desktopSidebarOpen && "pointer-events-none",
           )}
           style={
             {
-              width: rightPanelOpen ? liveRightPanelWidth : 0,
-              "--mari-right-panel-width": `${liveRightPanelWidth}px`,
+              order: sidebarOnLeft ? -1 : undefined,
+              width: desktopSidebarOpen ? liveSidebarWidth : 0,
+              "--mari-right-panel-width": `${liveSidebarWidth}px`,
             } as CSSProperties
           }
         >
-          {(rightPanelOpen || rightPanelEverOpened) && (
+          <div
+            data-component="SidebarSlotPanel"
+            className={cn(
+              "mari-shell-panel-motion mari-shell-panel-edge absolute inset-y-0 overflow-hidden",
+              sidebarOnLeft
+                ? cn(
+                    "mari-shell-panel-edge--right left-0",
+                    desktopSidebarOpen ? "mari-shell-panel-enter-left" : "mari-shell-panel-exit-left",
+                  )
+                : cn(
+                    "mari-shell-panel-edge--left right-0",
+                    desktopSidebarOpen ? "mari-shell-panel-enter-right" : "mari-shell-panel-exit-right",
+                  ),
+            )}
+            style={{ width: liveSidebarWidth }}
+          >
+            {/* Chats stays mounted, as it always was on desktop: its unread counts and bubbles load from it. */}
             <div
-              data-component="RightPanelDesktop"
-              aria-hidden={!rightPanelOpen}
-              inert={!rightPanelOpen}
+              data-component="ChatSidebarPanel"
+              aria-hidden={desktopSidebarPanel !== "chats"}
+              inert={desktopSidebarPanel !== "chats"}
               className={cn(
-                "mari-right-panel mari-shell-panel-motion mari-shell-panel-edge mari-shell-panel-edge--left absolute inset-y-0 right-0 overflow-hidden bg-[var(--background)]/95",
-                rightPanelOpen ? "mari-shell-panel-enter-right" : "mari-shell-panel-exit-right pointer-events-none",
+                "mari-sidebar absolute inset-0 overflow-hidden bg-[var(--background)]/95",
+                desktopSidebarPanel !== "chats" && "pointer-events-none invisible",
               )}
-              style={{ width: liveRightPanelWidth }}
             >
-              <Suspense fallback={<SidePanelFallback />}>
-                <RightPanel />
-              </Suspense>
+              <ChatSidebar />
             </div>
-          )}
+            {(rightPanelOpen || rightPanelEverOpened) && (
+              <div
+                data-component="RightPanelDesktop"
+                aria-hidden={desktopSidebarPanel !== "right"}
+                inert={desktopSidebarPanel !== "right"}
+                className={cn(
+                  "mari-right-panel absolute inset-0 overflow-hidden bg-[var(--background)]/95",
+                  desktopSidebarPanel !== "right" && "pointer-events-none invisible",
+                )}
+              >
+                <Suspense fallback={<SidePanelFallback />}>
+                  <RightPanel />
+                </Suspense>
+              </div>
+            )}
+          </div>
         </aside>
       )}
 
+      {/* Stay mounted and hide: adding a sibling to the shell row restyles the whole chat column. */}
       {!shellOverlayMode && (
         <div
-          {...rightPanelResize.separatorProps}
-          hidden={!rightPanelOpen}
-          aria-valuenow={Math.round(liveRightPanelWidth)}
+          {...sidebarResize.separatorProps}
+          hidden={!desktopSidebarOpen}
+          aria-valuenow={Math.round(liveSidebarWidth)}
           className="absolute inset-y-0 z-40 hidden w-1 cursor-col-resize bg-transparent transition-colors hover:bg-[var(--primary)]/30 focus-visible:bg-[var(--primary)]/40 focus-visible:outline-none md:block"
           style={{
-            ...rightPanelResize.separatorProps.style,
-            right: rightPanelOpen ? Math.max(0, liveRightPanelWidth - 4) : 0,
+            ...sidebarResize.separatorProps.style,
+            ...(sidebarOnLeft
+              ? { left: desktopSidebarOpen ? liveSidebarWidth : 0 }
+              : { right: desktopSidebarOpen ? Math.max(0, liveSidebarWidth - 4) : 0 }),
           }}
         />
       )}

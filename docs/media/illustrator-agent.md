@@ -74,6 +74,15 @@ When it is on, a card or persona with **Image Appearance Override** turned on se
 
 **Send Avatar References** sends character and persona avatars, or their sprites, to the image service as reference images, so the model can copy a face or outfit. Not every service accepts them. In a Roleplay chat it is a list like **Attach Card Appearance**. With videos included, a clip whose **First frame** is **Prompt only** starts from the character's avatar or sprite, and the choice reads **Prompt only (avatar from Send Avatar References)**.
 
+With **Send Avatar References** on for images, **Reference pictures go to** picks who gets them:
+
+- **Automatic** (default): the image model when its connection takes reference pictures, otherwise the prompt writer.
+- **Image model**: only the image model. A connection that can't take them gets none.
+- **Prompt writer**: only the Illustrator's prompt writer, which looks at them and describes what it sees in the image prompt.
+- **Both**: the image model and the prompt writer.
+
+The prompt writer is the way around image models that drop reference pictures, such as NovelAI V5. It needs a writer model that reads images. If the writer refuses them, its request is sent again without the pictures, and that writer gets none until the server restarts. A writer whose connection is marked as not reading images gets none. Sending pictures to the writer costs tokens on every run. Up to four pictures go: the cards named in `[illustrate: characters="…"]`, or else the chat's active characters and persona. **What to carry over from the pictures** says what the writer copies, such as only the look and not the art style. A Roleplay chat can set its own **Reference pictures go to** under **Send Avatar References**.
+
 ## Control how often it draws
 
 The Illustrator card has an **Open Setup** button for the full setup screen. There you set the default run interval and give it its own image model.
@@ -112,6 +121,19 @@ Clips use the video model under **Scene Videos**, and each clip is a video reque
 A clip with no picture of its own describes everyone it names, including your persona. The avatar first frame starts from whoever is named first.
 
 Re-running Illustrator from a message's **Illustrate** button follows **Illustrator makes** and **First frame** too.
+
+## Check pictures with a decision model
+
+With a built-in [decision model that reads pictures](../connections/decision-models.md#features-that-look-at-pictures) (Liquid d1, Valen or Winnow), the Illustrator card offers three more settings. All are off by default, and greyed out with an ⓘ without such a model.
+
+- **Picture check** looks at each new picture and selfie, and checks that it shows what was asked. A selfie is also compared with the character's avatar. **Make another if it doesn't match** draws once more after a miss. **Always make two, keep the better** draws two and keeps the better one. Each extra picture is another image generation.
+- **Also check** (under **Picture check**) adds your own checks, one per line, up to 6, such as `Kaelen has short red hair`. Start a line with `not:` for something the picture must not show, such as `not: The picture has writing or a watermark`.
+- **Skip a picture the newest one already shows** compares the newest picture in the chat with what is about to be drawn, and skips a repeat. Pictures you ask for are always made.
+- **Reuse a library background that looks like the place** helps **Generate Scene Backgrounds**: when no library background is named after a new place, the decision model looks at up to 4 library backgrounds that share a word with the place and shows one that matches instead of painting a new one.
+
+In a Conversation chat, **Picture check** is on the Illustrator card for selfies.
+
+A check that cannot run counts as a pass, so the picture is kept.
 
 ## Multiple characters on NovelAI
 

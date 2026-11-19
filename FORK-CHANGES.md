@@ -1609,6 +1609,27 @@ and `packages/client/src/localization/locales/en.json`.
 
 Covered by `scripts/regressions/chat/chat-branch-preview.regression.ts`.
 
+### Sync with upstream, 2026-11-19
+
+214 upstream commits, merge base `8b8939d931`, through `52abdf1e1d`. 29 conflicts.
+
+- **Built-in TTS model.** Upstream's Kokoro-82M and Supertonic 3 run as the audio connection source
+  `builtin` (`TTS_SOURCE_DEFINITIONS`), not through its Voice job. `BuiltinTtsDetail.tsx` reads
+  `/tts/effective-config`, "Use for voice" makes or picks a `builtin` audio connection and sets it as the
+  speech default, and "Make default voice" writes that connection's `audioVoice`. The speech request
+  preview (`/tts/effective-request`) still builds an OpenAI-shaped request for it.
+- **Character import.** Upstream's card update step runs first; the fork's name prompt asks only about
+  files it did not match. An Overwrite runs through upstream's `updateCharacterFromCard` (same id, version
+  snapshot, lorebook replaced) with Creator's Notes taken from the card.
+- **One sidebar.** Upstream's single docked sidebar resizes through the fork's `usePanelResize`; the
+  Tracker Panel resize handle follows `chatUiInsetLeft`/`chatUiInsetRight`.
+- **Ported by hand.** Game voice, sound effect and music connection ids in the shared
+  `gameRouteSetupConfigSchema`; the persona tracker portrait in `agent-result-effects/character-tracker.ts`
+  (generate only); the game audio card in `GameAgentsSection.tsx`; the trackers clear as a step of
+  upstream's Clear data job; `writeSettingsFile` on `writeFileAtomicSync`.
+- **Viewport check.** The fork's tracker heights read `--mari-visual-viewport-height` instead of raising
+  the allowance in `check-viewport-height.mjs`.
+
 ### Sync with upstream, 2026-11-18
 
 848 upstream commits, merge base `11489b413`, through `8b8939d931`. v2.5.2 on both sides, storage format

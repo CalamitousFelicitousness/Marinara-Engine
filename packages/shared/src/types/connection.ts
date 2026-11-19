@@ -92,7 +92,7 @@ export const AUDIO_SOURCE_OPTIONS: Array<{
   defaultBaseUrl: string;
   defaultModel: string;
   defaultVoice: string;
-}> = (["elevenlabs", "openai", "nanogpt", "pockettts", "xai"] as const).map((id) => {
+}> = (["elevenlabs", "openai", "nanogpt", "pockettts", "xai", "builtin"] as const).map((id) => {
   const { name, defaultBaseUrl, defaultModel, defaultVoice } = TTS_SOURCE_DEFINITIONS[id];
   return { id, name, defaultBaseUrl, defaultModel, defaultVoice };
 });

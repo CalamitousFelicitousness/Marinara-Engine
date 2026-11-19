@@ -1,5 +1,5 @@
 import { ActivationQuestionFields } from "./ActivationQuestionFields";
-import { useDecisionCalibration, useHasDecisionModel } from "../../hooks/use-decision-model";
+import { useDecisionCalibration, useDecisionReadsPictures, useHasDecisionModel } from "../../hooks/use-decision-model";
 // ──────────────────────────────────────────────
 // Full-Page Agent Editor
 // Click an agent → opens this editor
@@ -141,6 +141,10 @@ import {
   type ToolDefinition,
   isChatProvider,
   NARRATIVE_DIRECTOR_SECRET_PLOT_PROMPT,
+  DEFAULT_WRITER_REFERENCE_INSTRUCTION,
+  readWriterReferenceSettings,
+  REFERENCE_PICTURE_TARGETS,
+  type ReferencePictureTarget,
 } from "@marinara-engine/shared";
 import {
   createAgentFolderPackageFilename,
@@ -801,6 +805,7 @@ export function AgentEditor() {
   );
   /** Whether any decision model is chosen, which is what enables the question fields. */
   const hasDecisionModel = useHasDecisionModel();
+  const decisionReadsPictures = useDecisionReadsPictures();
   /**
    * The selected model's operating point. A saved question keeps whatever its author
    * chose; this only supplies the starting value, because 0.5 is meaningful for a
@@ -819,6 +824,9 @@ export function AgentEditor() {
   const [localActivationQuestion, setLocalActivationQuestion] = useState("");
   const [localActivationThreshold, setLocalActivationThreshold] = useState(0.5);
   const [localActivationMaxSkip, setLocalActivationMaxSkip] = useState<number | "">("");
+  const [localActivationPictures, setLocalActivationPictures] = useState(0);
+  const [localActivationClips, setLocalActivationClips] = useState(0);
+  const [localActivationMediaWithin, setLocalActivationMediaWithin] = useState<number | "">("");
   const [localActivationKeywordsText, setLocalActivationKeywordsText] = useState("");
   const [localActivationScanDepth, setLocalActivationScanDepth] = useState<number | "">(
     DEFAULT_CUSTOM_AGENT_ACTIVATION_SCAN_DEPTH,
@@ -867,6 +875,8 @@ export function AgentEditor() {
   const [localIncludeOutfitInAvatars, setLocalIncludeOutfitInAvatars] = useState(true);
   const [localUseAvatarReferences, setLocalUseAvatarReferences] = useState(false);
   const [localIncludeCharacterAppearance, setLocalIncludeCharacterAppearance] = useState(false);
+  const [localReferencePictureTarget, setLocalReferencePictureTarget] = useState<ReferencePictureTarget>("auto");
+  const [localWriterReferenceInstruction, setLocalWriterReferenceInstruction] = useState("");
   const [localImagePositivePrompt, setLocalImagePositivePrompt] = useState("");
   const [localImageNegativePrompt, setLocalImageNegativePrompt] = useState("");
   const [localStoryboardSettings, setLocalStoryboardSettings] = useState<StoryboardAgentSettings>(() =>
@@ -1027,6 +1037,11 @@ export function AgentEditor() {
         Number(settings.activationThreshold ?? decisionCalibrationRef.current.defaultThreshold),
       );
       setLocalActivationMaxSkip(typeof settings.activationMaxSkip === "number" ? settings.activationMaxSkip : "");
+      setLocalActivationPictures(typeof settings.activationPictures === "number" ? settings.activationPictures : 0);
+      setLocalActivationClips(typeof settings.activationClips === "number" ? settings.activationClips : 0);
+      setLocalActivationMediaWithin(
+        typeof settings.activationMediaWithin === "number" ? settings.activationMediaWithin : "",
+      );
       setLocalActivationScanDepth(
         (settings.activationScanDepth as number | undefined) ?? DEFAULT_CUSTOM_AGENT_ACTIVATION_SCAN_DEPTH,
       );
@@ -1081,6 +1096,10 @@ export function AgentEditor() {
       setLocalIncludeOutfitInAvatars(settings.includeOutfitInAvatars !== false);
       setLocalUseAvatarReferences(
         (settings.useAvatarReferences as boolean | undefined) ?? defaultSettings.useAvatarReferences === true,
+      );
+      setLocalReferencePictureTarget(readWriterReferenceSettings(settings).target);
+      setLocalWriterReferenceInstruction(
+        typeof settings.writerReferenceInstruction === "string" ? settings.writerReferenceInstruction : "",
       );
       setLocalIncludeCharacterAppearance(
         (settings.includeCharacterAppearance as boolean | undefined) ??
@@ -1162,6 +1181,8 @@ export function AgentEditor() {
       setLocalAutoGenerateAvatars(false);
       setLocalIncludeOutfitInAvatars(true);
       setLocalUseAvatarReferences(defaultSettings.useAvatarReferences === true);
+      setLocalReferencePictureTarget("auto");
+      setLocalWriterReferenceInstruction("");
       setLocalIncludeCharacterAppearance(defaultSettings.includeCharacterAppearance === true);
       setLocalImagePositivePrompt("");
       setLocalImageNegativePrompt("");
@@ -1237,6 +1258,8 @@ export function AgentEditor() {
       setLocalIncludeOutfitInAvatars(true);
       setLocalUseAvatarReferences(false);
       setLocalIncludeCharacterAppearance(false);
+      setLocalReferencePictureTarget("auto");
+      setLocalWriterReferenceInstruction("");
       setLocalImagePositivePrompt("");
       setLocalImageNegativePrompt("");
       setLocalProseGuardianBanned(DEFAULT_PROSE_GUARDIAN_BANNED_WORDS);
@@ -1599,6 +1622,11 @@ export function AgentEditor() {
               activationThreshold: localActivationThreshold,
               activationScanDepth,
               ...(localActivationMaxSkip !== "" ? { activationMaxSkip: localActivationMaxSkip } : {}),
+              ...(localActivationPictures > 0 ? { activationPictures: localActivationPictures } : {}),
+              ...(localActivationClips > 0 ? { activationClips: localActivationClips } : {}),
+              ...((localActivationPictures > 0 || localActivationClips > 0) && localActivationMediaWithin !== ""
+                ? { activationMediaWithin: localActivationMediaWithin }
+                : {}),
             }
           : {}),
         ...(mayIncludeTurnData && localIncludePreGenInjections ? { includePreGenInjections: true } : {}),
@@ -1661,6 +1689,12 @@ export function AgentEditor() {
           ? {
               useAvatarReferences: localUseAvatarReferences,
               includeCharacterAppearance: localIncludeCharacterAppearance,
+              ...(isIllustratorAgent
+                ? {
+                    referencePictureTarget: localReferencePictureTarget,
+                    writerReferenceInstruction: localWriterReferenceInstruction.trim(),
+                  }
+                : {}),
             }
           : {}),
         ...(isStoryboardAgent ? storyboardSettingsForStorage(localStoryboardSettings) : {}),
@@ -1714,6 +1748,9 @@ export function AgentEditor() {
     localActivationQuestion,
     localActivationThreshold,
     localActivationMaxSkip,
+    localActivationPictures,
+    localActivationClips,
+    localActivationMediaWithin,
     localActivationKeywordsText,
     localActivationScanDepth,
     localInjectAsSection,
@@ -1739,6 +1776,8 @@ export function AgentEditor() {
     localIncludeOutfitInAvatars,
     localUseAvatarReferences,
     localIncludeCharacterAppearance,
+    localReferencePictureTarget,
+    localWriterReferenceInstruction,
     localProseGuardianBanned,
     localProseGuardianAvoid,
     localProseGuardianPrefer,
@@ -1928,6 +1967,11 @@ export function AgentEditor() {
             activationThreshold: localActivationThreshold,
             activationScanDepth,
             ...(localActivationMaxSkip !== "" ? { activationMaxSkip: localActivationMaxSkip } : {}),
+            ...(localActivationPictures > 0 ? { activationPictures: localActivationPictures } : {}),
+            ...(localActivationClips > 0 ? { activationClips: localActivationClips } : {}),
+            ...((localActivationPictures > 0 || localActivationClips > 0) && localActivationMediaWithin !== ""
+              ? { activationMediaWithin: localActivationMediaWithin }
+              : {}),
           }
         : {}),
       ...(mayIncludeTurnData && localIncludePreGenInjections ? { includePreGenInjections: true } : {}),
@@ -1983,6 +2027,12 @@ export function AgentEditor() {
         ? {
             useAvatarReferences: localUseAvatarReferences,
             includeCharacterAppearance: localIncludeCharacterAppearance,
+            ...(isIllustratorAgent
+              ? {
+                  referencePictureTarget: localReferencePictureTarget,
+                  writerReferenceInstruction: localWriterReferenceInstruction.trim(),
+                }
+              : {}),
           }
         : {}),
       ...(isStoryboardAgent ? storyboardSettingsForStorage(localStoryboardSettings) : {}),
@@ -3223,6 +3273,69 @@ export function AgentEditor() {
                     "ui.agents.agenteditor.sendsReferencesOnlyForCharactersOrPersonaNamesMatched",
                   )}
                 />
+                {isIllustratorAgent && localUseAvatarReferences && (
+                  <div className="grid gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--secondary)] px-3 py-2.5">
+                    <span className="text-xs font-medium text-[var(--foreground)]">
+                      {localizeUi("ui.agents.agenteditor.referencePictureTarget")}
+                    </span>
+                    <span className="text-[0.625rem] leading-snug text-[var(--muted-foreground)]">
+                      {localizeUi(`ui.agents.agenteditor.referencePictureTargetHelp.${localReferencePictureTarget}`)}
+                    </span>
+                    <Select<ReferencePictureTarget>
+                      label={localizeUi("ui.agents.agenteditor.referencePictureTarget")}
+                      value={localReferencePictureTarget}
+                      onChange={(target) => {
+                        setLocalReferencePictureTarget(target);
+                        markDirty();
+                      }}
+                      options={REFERENCE_PICTURE_TARGETS.map((target) => ({
+                        value: target,
+                        label: localizeUi(`ui.agents.agenteditor.referencePictureTargetOption.${target}`),
+                      }))}
+                      className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-1.5 text-xs text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)]/50"
+                    />
+                    {localReferencePictureTarget !== "image" && (
+                      <div className="mt-1.5 grid gap-1.5 border-t border-[var(--border)] pt-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[0.6875rem] font-medium text-[var(--foreground)]">
+                            {localizeUi("ui.agents.agenteditor.writerReferenceInstruction")}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setLocalWriterReferenceInstruction(
+                                localWriterReferenceInstruction.trim() ? "" : DEFAULT_WRITER_REFERENCE_INSTRUCTION,
+                              );
+                              markDirty();
+                            }}
+                            className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-[0.625rem] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+                          >
+                            {localWriterReferenceInstruction.trim() ? (
+                              <>
+                                <RotateCcw size="0.625rem" /> {localizeUi("ui.agents.agenteditor.resetToDefault")}
+                              </>
+                            ) : (
+                              <>
+                                <FileText size="0.625rem" /> {localizeUi("ui.agents.agenteditor.copyDefaultToEdit")}
+                              </>
+                            )}
+                          </button>
+                        </div>
+                        <textarea
+                          aria-label={localizeUi("ui.agents.agenteditor.writerReferenceInstruction")}
+                          value={localWriterReferenceInstruction}
+                          onChange={(event) => {
+                            setLocalWriterReferenceInstruction(event.target.value);
+                            markDirty();
+                          }}
+                          placeholder={DEFAULT_WRITER_REFERENCE_INSTRUCTION}
+                          rows={4}
+                          className="min-h-[5rem] resize-y rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-2 text-xs text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-foreground)]/45 focus:border-[var(--primary)]/50"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
                 <EditorSwitchRow
                   label={localizeUi(
                     "ui.agents.agenteditor.attachMatchingCharacterAppearanceDescriptionsToImagePrompts",
@@ -3600,6 +3713,10 @@ export function AgentEditor() {
                 threshold={localActivationThreshold}
                 recommendedThreshold={decisionCalibration.defaultThreshold}
                 maxSkip={localActivationMaxSkip}
+                pictures={localActivationPictures}
+                clips={localActivationClips}
+                mediaWithin={localActivationMediaWithin}
+                readsPictures={decisionReadsPictures}
                 // A local model slot is a decision model too, and it owns no
                 // connection row, so this asks the server which entry is selected
                 // rather than scanning the connections list for a flag.
@@ -3608,6 +3725,9 @@ export function AgentEditor() {
                   if (values.question !== undefined) setLocalActivationQuestion(values.question);
                   if (values.threshold !== undefined) setLocalActivationThreshold(values.threshold);
                   if (values.maxSkip !== undefined) setLocalActivationMaxSkip(values.maxSkip);
+                  if (values.pictures !== undefined) setLocalActivationPictures(values.pictures);
+                  if (values.clips !== undefined) setLocalActivationClips(values.clips);
+                  if (values.mediaWithin !== undefined) setLocalActivationMediaWithin(values.mediaWithin);
                   markDirty();
                 }}
               />

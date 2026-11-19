@@ -73,6 +73,7 @@ export type ConnectionRowData = {
   videoGenerationSource?: string | null;
   videoService?: string | null;
   audioSource?: string | null;
+  audioVoice?: string | null;
   audioSoundEffects?: boolean | string;
   audioMusic?: boolean | string;
   audioGenerationSource?: string | null;

@@ -61,12 +61,15 @@ import { cn, getAvatarCropStyle } from "../../lib/utils";
 import { chatBackgroundMetadataToUrl } from "../../lib/backgrounds";
 import { formatRelativeContact } from "../../lib/relative-time";
 import { ChatRowPeek } from "./ChatRowPeek";
-import { Fragment, lazy, Suspense, useState, useCallback, useMemo, useRef, useEffect, type ReactNode } from "react";
+import { Fragment, lazy, Suspense, useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useTouchFolderDrag } from "../../hooks/use-touch-folder-drag";
 import { usePresenceClock } from "../../hooks/use-presence-clock";
 import { usePanelKeyboardFocus } from "./use-panel-keyboard-focus";
+import { PanelVirtualList } from "../panels/PanelVirtualList";
 import { PanelErrorState, PanelListSkeleton } from "../ui/PanelStates";
 import { Select } from "../ui/Select";
+import { Tabs } from "../ui/Tabs";
+import { ACTION_BUTTON_LAYOUT, ActionContent, useActionIconsFit } from "../ui/LibraryToolbar";
 import { toast } from "sonner";
 import {
   BACKGROUND_THUMBNAIL_WIDTH,
@@ -118,39 +121,6 @@ type ChatListEntry = {
   branchCount: number;
   branchRows?: BranchTreeRow<Chat>[];
 };
-// 40 rows at a time, the next 40 joining as you scroll near the end: every row is ~45 elements, and 100 of
-// them made each sidebar toggle and chat switch re-style ~4,500 elements (1-2 s on an iPad, Nov 14).
-const CHAT_LIST_PAGE_SIZE = 40;
-
-/** "Load more", pressed for you when it scrolls within reach (you can still press it). */
-function LoadMoreChatsButton({ onLoadMore, children }: { onLoadMore: () => void; children: ReactNode }) {
-  const ref = useRef<HTMLButtonElement | null>(null);
-  const latest = useRef(onLoadMore);
-  latest.current = onLoadMore;
-  useEffect(() => {
-    const button = ref.current;
-    if (!button || typeof IntersectionObserver === "undefined") return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) latest.current();
-      },
-      { rootMargin: "0px 0px 600px 0px" },
-    );
-    observer.observe(button);
-    return () => observer.disconnect();
-  }, []);
-  return (
-    <button
-      ref={ref}
-      type="button"
-      onClick={() => latest.current()}
-      className="mari-chrome-control mari-chrome-control--primary justify-center text-xs"
-    >
-      {children}
-    </button>
-  );
-}
-
 const CONVERSATION_STATUS_PRIORITY: Record<ConversationPresenceStatus, number> = {
   online: 0,
   idle: 1,
@@ -354,7 +324,6 @@ export function ChatSidebar() {
   const [tagsExpanded, setTagsExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<"conversation" | "roleplay" | "game">("conversation");
   const [scheduleManagerOpen, setScheduleManagerOpen] = useState(false);
-  const [visibleChatLimit, setVisibleChatLimit] = useState(CHAT_LIST_PAGE_SIZE);
   const [deleteTarget, setDeleteTarget] = useState<{
     chatId: string;
     chatName: string;
@@ -370,6 +339,7 @@ export function ChatSidebar() {
   const [draggedChatId, setDraggedChatId] = useState<string | null>(null);
   const [isRootDropTarget, setIsRootDropTarget] = useState(false);
   const chatImportInputRef = useRef<HTMLInputElement>(null);
+  const chatActionsRef = useRef<HTMLDivElement>(null);
   const suppressTouchDragClickRef = useRef(false);
 
   // Multi-select state
@@ -406,10 +376,6 @@ export function ChatSidebar() {
     setActiveTag(null);
     setTagsExpanded(false);
   }, [activeTab, exitMultiSelect]);
-
-  useEffect(() => {
-    setVisibleChatLimit(CHAT_LIST_PAGE_SIZE);
-  }, [activeTab, searchQuery, activeTag, sort]);
 
   const modeChats = useMemo(
     () =>
@@ -593,20 +559,6 @@ export function ChatSidebar() {
     autoExpandedBranchChatRef.current = activeChatId;
     setExpandedBranchGroups((previous) => (previous.has(groupId) ? previous : new Set(previous).add(groupId)));
   }, [activeChatId, activeChat?.groupId, branchTreesByGroup]);
-  const activeDisplayChatIndex = useMemo(
-    () =>
-      displayChats.findIndex(
-        (entry) => activeChatId === entry.chat.id || (activeGroupId != null && entry.chat.groupId === activeGroupId),
-      ),
-    [activeChatId, activeGroupId, displayChats],
-  );
-  const effectiveVisibleChatLimit =
-    activeDisplayChatIndex >= 0 ? Math.max(visibleChatLimit, activeDisplayChatIndex + 1) : visibleChatLimit;
-  const visibleDisplayChats = useMemo(
-    () => displayChats.slice(0, effectiveVisibleChatLimit),
-    [displayChats, effectiveVisibleChatLimit],
-  );
-  const hasMoreDisplayChats = visibleDisplayChats.length < displayChats.length;
 
   // ── Folder grouping ──
   const modeFolders = useMemo(() => {
@@ -624,11 +576,11 @@ export function ChatSidebar() {
   }, [folders, activeTab, sort, modeChats]);
 
   const { unfiledChats, folderChatsMap } = useMemo(() => {
-    if (!visibleDisplayChats.length)
-      return { unfiledChats: visibleDisplayChats, folderChatsMap: new Map<string, typeof displayChats>() };
+    if (!displayChats.length)
+      return { unfiledChats: displayChats, folderChatsMap: new Map<string, typeof displayChats>() };
     const unfiled: typeof displayChats = [];
     const map = new Map<string, typeof displayChats>();
-    for (const entry of visibleDisplayChats) {
+    for (const entry of displayChats) {
       const fid = entry.chat.folderId;
       if (!fid) {
         unfiled.push(entry);
@@ -638,7 +590,7 @@ export function ChatSidebar() {
       map.get(fid)!.push(entry);
     }
     return { unfiledChats: unfiled, folderChatsMap: map };
-  }, [visibleDisplayChats]);
+  }, [displayChats]);
   const folderChatCounts = useMemo(() => {
     const map = new Map<string, Set<string>>();
     for (const chat of modeChats) {
@@ -897,6 +849,14 @@ export function ChatSidebar() {
   );
 
   const activeModeConfig = MODE_CONFIG[activeTab] ?? MODE_CONFIG.conversation;
+  const chatActionIcons = useActionIconsFit(
+    chatActionsRef,
+    [
+      localizeUi("ui.librarytoolbar.add"),
+      localizeUi("ui.librarytoolbar.import"),
+      localizeUi("ui.librarytoolbar.select"),
+    ].join("\n"),
+  );
   const activeModeHasChats = modeChats.length > 0;
 
   // ── Folder handlers ──
@@ -1592,7 +1552,7 @@ export function ChatSidebar() {
           <PersonalExtensionContributionSlot surface="chats" position="header" className="max-w-28" />
           <button
             onClick={() => setSidebarOpen(false)}
-            className="mari-chrome-control mari-chrome-control--small mari-accent-animated p-1.5 active:scale-90 md:hidden max-md:h-9 max-md:w-9 [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9"
+            className="mari-chrome-control mari-chrome-control--small mari-accent-animated shrink-0 p-1.5 active:scale-90 max-md:h-9 max-md:w-9 [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9"
             title={localize("Close")}
             aria-label={localize("Close chats")}
           >
@@ -1609,40 +1569,35 @@ export function ChatSidebar() {
 
       {/* Tabs */}
       <div className="px-3 pt-3">
-        <div className="mari-chrome-segmented">
-          {(["conversation", "roleplay", "game"] as const).map((tab) => {
+        {/* Icon before the label, so the row keeps the height of the other panels' Download | Open Library. */}
+        <Tabs
+          variant="pill"
+          inlineIcons
+          label={t("navigation.chatSidebar.mode")}
+          value={activeTab}
+          onChange={setActiveTab}
+          items={(["conversation", "roleplay", "game"] as const).map((tab) => {
             const cfg = MODE_CONFIG[tab];
-            const isActive = activeTab === tab;
             const tabUnread =
               chats?.filter((c) => c.mode === tab).reduce((sum, c) => sum + (unreadCounts.get(c.id) || 0), 0) ?? 0;
-            return (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                aria-pressed={isActive}
-                data-chat-mode-tab={tab}
-                data-tour={`chat-mode-${tab}`}
-                className={cn(
-                  "mari-chrome-segmented__button gap-1 overflow-visible px-1.5 py-2 text-[0.625rem] leading-normal",
-                  isActive && "mari-chrome-segmented__button--selected",
-                )}
-              >
-                <span className="shrink-0 leading-none">{cfg.icon}</span>
-                <span className="inline-flex min-h-[1rem] items-center whitespace-nowrap pb-px leading-normal">
-                  {localize(cfg.shortLabel)}
-                </span>
-                {tabUnread > 0 && !isActive && (
-                  <span className="absolute -top-1 -right-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-md bg-red-500 px-0.5 text-[0.5rem] font-bold leading-none text-white">
+            return {
+              id: tab,
+              label: localize(cfg.shortLabel),
+              icon: cfg.icon,
+              badge:
+                tabUnread > 0 && activeTab !== tab ? (
+                  <span className="absolute -right-0.5 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-md bg-red-500 px-0.5 text-[0.5rem] font-bold leading-none text-white">
                     {tabUnread > 99 ? "99+" : tabUnread}
                   </span>
-                )}
-              </button>
-            );
+                ) : undefined,
+              buttonProps: { "data-chat-mode-tab": tab, "data-tour": `chat-mode-${tab}` },
+            };
           })}
-        </div>
+        />
       </div>
 
-      <div className="flex gap-2 px-3 pt-2">
+      {/* New, Import and Select, labelled as in the other sidebars (LibraryToolbar's action row). */}
+      <div ref={chatActionsRef} className="flex gap-2 px-3 pt-2">
         <input
           ref={chatImportInputRef}
           type="file"
@@ -1654,34 +1609,41 @@ export function ChatSidebar() {
           onClick={handleNewChatFromTab}
           disabled={createChat.isPending}
           className={cn(
-            "mari-chrome-control mari-chrome-control--primary mari-chat-mode-action flex-1 text-xs",
+            "mari-chrome-control mari-chrome-control--primary mari-chat-mode-action",
+            ACTION_BUTTON_LAYOUT,
             activeModeConfig.logoModeClass,
           )}
           title={t(`navigation.chatSidebar.new.${activeTab}`)}
           aria-label={t(`navigation.chatSidebar.new.${activeTab}`)}
         >
-          <Plus size="0.8125rem" className="mari-rgb-static-icon" />
+          <ActionContent
+            icon={Plus}
+            label={localizeUi("ui.librarytoolbar.add")}
+            showIcon={chatActionIcons}
+            iconClassName="mari-rgb-static-icon"
+          />
         </button>
         <button
           onClick={() => chatImportInputRef.current?.click()}
           disabled={isImportingChat}
-          className="mari-chrome-control mari-chrome-control--primary flex-1 text-xs"
+          className={cn("mari-chrome-control mari-chrome-control--primary", ACTION_BUTTON_LAYOUT)}
           title={localize(isImportingChat ? "Importing chat" : "Import SillyTavern or Marinara chat JSONL")}
           aria-label={localize(isImportingChat ? "Importing chat" : "Import SillyTavern or Marinara chat JSONL")}
         >
-          <Download size="0.8125rem" />
+          <ActionContent icon={Download} label={localizeUi("ui.librarytoolbar.import")} showIcon={chatActionIcons} />
         </button>
         <button
           onClick={() => (multiSelectMode ? exitMultiSelect() : setMultiSelectMode(true))}
           disabled={displayChats.length === 0}
           className={cn(
-            "mari-chrome-control mari-chrome-control--primary flex-1 text-xs",
+            "mari-chrome-control mari-chrome-control--primary",
+            ACTION_BUTTON_LAYOUT,
             multiSelectMode && "mari-chrome-control--selected",
           )}
           title={localize(multiSelectMode ? "Cancel selection" : "Select chats")}
           aria-label={localize(multiSelectMode ? "Cancel selection" : "Select chats")}
         >
-          <Check size="0.8125rem" />
+          <ActionContent icon={Check} label={localizeUi("ui.librarytoolbar.select")} showIcon={chatActionIcons} />
         </button>
       </div>
 
@@ -1934,6 +1896,8 @@ export function ChatSidebar() {
                       onRename={handleRenameFolder}
                       onDelete={handleDeleteFolder}
                       draggedChatId={draggedChatId}
+                      activeChatId={activeChatId}
+                      activeGroupId={activeGroupId}
                       onDropChat={handleDropChatsToFolder}
                     />
                   );
@@ -1942,16 +1906,22 @@ export function ChatSidebar() {
           )}
 
           {/* Unfiled chats */}
-          {unfiledChats.map(renderChatRow)}
-
-          {hasMoreDisplayChats && (
-            <LoadMoreChatsButton
-              key={visibleDisplayChats.length}
-              onLoadMore={() => setVisibleChatLimit((limit) => limit + CHAT_LIST_PAGE_SIZE)}
-            >
-              {t("navigation.chatSidebar.loadMore", { count: visibleDisplayChats.length })}
-            </LoadMoreChatsButton>
-          )}
+          <PanelVirtualList
+            listKey={`chat-sidebar:${activeTab}:unfiled`}
+            count={unfiledChats.length}
+            getItemKey={(i) => unfiledChats[i]!.chat.groupId ?? unfiledChats[i]!.chat.id}
+            renderRow={(i) => renderChatRow(unfiledChats[i]!)}
+            estimateSize={52}
+            gap={2}
+            pinnedIndex={unfiledChats.findIndex((entry) => entry.chat.id === draggedChatId)}
+            scrollToIndex={(() => {
+              const i = unfiledChats.findIndex(
+                (entry) =>
+                  entry.chat.id === activeChatId || (activeGroupId != null && entry.chat.groupId === activeGroupId),
+              );
+              return i >= 0 ? i : undefined;
+            })()}
+          />
         </div>
       </div>
 
@@ -2164,6 +2134,8 @@ function FolderRow({
   onRename,
   onDelete,
   draggedChatId,
+  activeChatId,
+  activeGroupId,
   onDropChat,
 }: {
   folderDragBindings: ReturnType<ReturnType<typeof useLibraryFolderDrag>["bind"]>;
@@ -2176,6 +2148,8 @@ function FolderRow({
   onRename: (id: string, name: string) => void;
   onDelete: (folder: ChatFolder, chatCount: number) => void;
   draggedChatId: string | null;
+  activeChatId: string | null;
+  activeGroupId: string | null;
   onDropChat: (chatIds: string[], folderId: string | null) => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
@@ -2326,7 +2300,22 @@ function FolderRow({
         className="ml-4 border-l border-[var(--border)]/20 pl-1"
         innerClassName="flex flex-col gap-0.5"
       >
-        {entries.map(renderChatRow)}
+        <PanelVirtualList
+          listKey={`chat-sidebar:folder:${folder.id}`}
+          count={entries.length}
+          getItemKey={(i) => entries[i]!.chat.groupId ?? entries[i]!.chat.id}
+          renderRow={(i) => renderChatRow(entries[i]!)}
+          estimateSize={52}
+          gap={2}
+          pinnedIndex={entries.findIndex((entry) => entry.chat.id === draggedChatId)}
+          scrollToIndex={(() => {
+            const i = entries.findIndex(
+              (entry) =>
+                entry.chat.id === activeChatId || (activeGroupId != null && entry.chat.groupId === activeGroupId),
+            );
+            return i >= 0 ? i : undefined;
+          })()}
+        />
       </SmoothFolderContent>
     </Reorder.Item>
   );

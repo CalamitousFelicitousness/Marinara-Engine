@@ -28,6 +28,7 @@ import {
   getChatWindowDefaultSettingsKey,
   getChatWindowSharedLayoutSettingsKey,
   isChatWindowLayoutShape,
+  BUILTIN_EMBEDDING_CONNECTION_ID,
   LOCAL_SIDECAR_CONNECTION_ID,
   isChatProvider,
   parseChatWindowDefault,
@@ -44,6 +45,7 @@ import {
   readDefaultEmbeddingConnectionId,
   resetMemoryRecallVectorizerCache,
 } from "../services/memory-recall-embedding.js";
+import { builtinEmbeddingService } from "../services/sidecar/builtin-embedding.service.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { createChatsStorage } from "../services/storage/chats.storage.js";
@@ -57,6 +59,7 @@ import { readFeatureModelConnections } from "../services/storage/feature-model-c
 import { featureSettingsResponse, loadFeatureSettings } from "../services/features/feature-settings.js";
 import { loadMediaQueueUiSettings } from "../services/image/image-generation-queue.js";
 import { loadGeneratedImageFormatUiSettings } from "../services/image/generated-image-format.js";
+import { notFound } from "../utils/not-found.js";
 
 const ALLOWED_KEYS = new Set([
   "ui",
@@ -195,7 +198,14 @@ export async function appSettingsRoutes(app: FastifyInstance) {
   // null clears the default. Its own route so the id is checked and Long-term memory re-indexes.
   app.put(`/${DEFAULT_EMBEDDING_CONNECTION_SETTINGS_KEY}`, async (req, reply) => {
     const { connectionId } = z.object({ connectionId: z.string().trim().min(1).nullable() }).parse(req.body);
-    if (connectionId && connectionId !== LOCAL_SIDECAR_CONNECTION_ID) {
+    if (connectionId === BUILTIN_EMBEDDING_CONNECTION_ID && !builtinEmbeddingService.getActiveModel()) {
+      return reply.status(400).send({ error: "Download the built-in embedding model first" });
+    }
+    if (
+      connectionId &&
+      connectionId !== LOCAL_SIDECAR_CONNECTION_ID &&
+      connectionId !== BUILTIN_EMBEDDING_CONNECTION_ID
+    ) {
       const connection = await createConnectionsStorage(app.db).getWithKey(connectionId);
       if (!connection) return reply.status(400).send({ error: "Connection not found" });
       // A connection with no embedding source of its own would leave the default silently unused.
@@ -213,7 +223,7 @@ export async function appSettingsRoutes(app: FastifyInstance) {
 
   app.get<{ Params: { key: string } }>("/:key", async (req, reply) => {
     if (!isAllowedSettingsKey(req.params.key)) {
-      return reply.status(404).send({ error: "Unknown settings key" });
+      return notFound(reply, "Unknown settings key");
     }
     const value = await storage.get(req.params.key);
     // The translator defaults can hold a DeepL key: the response only says one is saved.
@@ -223,7 +233,7 @@ export async function appSettingsRoutes(app: FastifyInstance) {
 
   app.put<{ Params: { key: string }; Querystring: { fromChatId?: string } }>("/:key", async (req, reply) => {
     if (!isAllowedSettingsKey(req.params.key)) {
-      return reply.status(404).send({ error: "Unknown settings key" });
+      return notFound(reply, "Unknown settings key");
     }
     const input = appSettingsUpdateSchema.parse(req.body);
     if (req.params.key.startsWith("chat-window-default-")) {

@@ -122,6 +122,7 @@ import { api, formatFirstApiValidationIssue } from "../../lib/api-client";
 import { downloadSpriteFile } from "../../lib/sprite-download";
 import { downloadUrlToDevice, shouldUseIosImageShare } from "../../lib/file-download";
 import { ImageDownloadButton } from "../ui/ImageDownloadButton";
+import { ImageViewer, VIEWER_BUTTON_CLASS } from "../ui/ImageViewer";
 import { parseTrackerCardColorConfig, serializeTrackerCardColorConfig } from "../../lib/tracker-card-colors";
 import {
   getStatNameOccurrence,
@@ -196,6 +197,7 @@ import {
   reconcileVersionedPersonaEditorSave,
 } from "./persona-editor-transitions";
 import { Spinner } from "../ui/Spinner";
+import { ColorField } from "../ui/ColorPicker";
 
 // ── Tabs ──
 const TABS = [
@@ -486,8 +488,6 @@ function PersonaGalleryTab({
   const {
     lightbox,
     setLightbox,
-    lightboxRef,
-    lightboxCloseRef,
     selectingImages,
     setSelectingImages,
     selectedImageIds,
@@ -496,6 +496,7 @@ function PersonaGalleryTab({
     leaveImageSelection,
     toggleImageSelection,
   } = useCardGallerySelection(images);
+  const lightboxIndex = images?.findIndex((item) => item.id === lightbox?.id) ?? -1;
 
   const handleUpload = useCallback(
     (files: File[]) => {
@@ -839,33 +840,23 @@ function PersonaGalleryTab({
       )}
 
       {lightbox && (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 max-md:pt-[env(safe-area-inset-top)]"
-          ref={lightboxRef}
-          tabIndex={-1}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              event.stopPropagation();
-              setLightbox(null);
-            }
-          }}
-          role="dialog"
-          aria-modal="true"
-          aria-label={localizeUi("ui.chat.chatimagelightbox.imagePreview")}
-          onClick={() => setLightbox(null)}
-        >
-          <div className="relative max-h-[90vh] max-w-[90vw] w-[min(90vw,90vh)]" onClick={(e) => e.stopPropagation()}>
-            <img
-              src={lightbox.url}
-              alt={lightbox.prompt || personaName || "Persona image"}
-              className="max-h-[85vh] w-full rounded-lg object-contain shadow-2xl"
-            />
-            <div className="absolute right-2 top-2 flex gap-2">
+        <ImageViewer
+          title={localizeUi("ui.chat.chatimagelightbox.imagePreview")}
+          onClose={() => setLightbox(null)}
+          src={lightbox.url}
+          alt={lightbox.prompt || personaName || "Persona image"}
+          items={
+            images && lightboxIndex >= 0 ? images.map((item) => ({ url: item.url, alt: item.prompt || "" })) : undefined
+          }
+          index={lightboxIndex}
+          onIndexChange={(next) => images && setLightbox(images[next]!)}
+          actions={
+            <>
               <button
                 type="button"
                 onClick={() => onSetAvatar(lightbox)}
                 disabled={editorBusy}
-                className="rounded-lg bg-black/60 p-2 text-white transition-colors hover:bg-black/80 disabled:opacity-50"
+                className={VIEWER_BUTTON_CLASS}
                 title={localizeUi("ui.personas.personagallerytab.setAsAvatar")}
               >
                 {galleryAvatarPending ? <Spinner size="sm" /> : <User size="0.875rem" />}
@@ -877,24 +868,15 @@ function PersonaGalleryTab({
               <button
                 type="button"
                 onClick={() => void handleDelete(lightbox)}
-                className="rounded-lg bg-black/60 p-2 text-white transition-colors hover:bg-black/80"
+                className={VIEWER_BUTTON_CLASS}
                 title={localizeUi("lorebook.editor.batch.delete")}
                 aria-label={localizeUi("lorebook.editor.batch.delete")}
               >
                 <Trash2 size="0.875rem" />
               </button>
-              <button
-                type="button"
-                ref={lightboxCloseRef}
-                onClick={() => setLightbox(null)}
-                aria-label={localizeUi("ui.chat.chatimagelightbox.closeImage")}
-                className="rounded-lg bg-black/60 p-2 text-white transition-colors hover:bg-black/80"
-              >
-                <X size="0.875rem" />
-              </button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        />
       )}
     </div>
   );
@@ -3346,12 +3328,7 @@ function PersonaStatsTab({
               {parsed.bars.map((bar, i) => (
                 <div key={i} className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-3 space-y-2">
                   <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={bar.color}
-                      onChange={(e) => updateBar(i, "color", e.target.value)}
-                      className="h-6 w-6 cursor-pointer rounded border-0 bg-transparent"
-                    />
+                    <ColorField value={bar.color} onChange={(color) => updateBar(i, "color", color)} label={bar.name} />
                     <StatIconPicker
                       value={resolveStatIconAssignment(
                         formData.trackerCardColors.statIcons ?? [],
@@ -3650,7 +3627,7 @@ function PersonaMetadataTab({
         </fieldset>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <CardIdentityFields
           kind="persona"
           fields={formData}

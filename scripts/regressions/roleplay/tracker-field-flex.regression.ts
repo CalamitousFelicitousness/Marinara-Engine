@@ -21,8 +21,8 @@ const readClient = (path: string) =>
 const rowLayout = readClient("features/tracker-panel/lib/tracker-row-layout.ts");
 const compactField = readClient("features/tracker-panel/components/character-card/CharacterTrackerField.tsx");
 const featuredFields = readClient("features/tracker-panel/components/character-card/FeaturedCharacterFields.tsx");
-const generateRoutes = readFileSync(
-  new URL("../../../packages/server/src/routes/generate.routes.ts", import.meta.url),
+const characterTrackerEffect = readFileSync(
+  new URL("../../../packages/server/src/services/generation/agent-result-effects/character-tracker.ts", import.meta.url),
   "utf8",
 );
 
@@ -110,9 +110,9 @@ assert.equal(compactCard.includes("TRACKER_DETAIL_VALUE_CLAMP_CLASS"), true, "co
 assert.equal(bubbles.includes("TRACKER_DETAIL_VALUE_CLAMP_CLASS"), false, "featured thoughts show in full");
 
 // ── Persona avatar sits between the chat card and the fuzzy library match ──
-const personaMatch = generateRoutes.indexOf("isPersonaCharacter && personaAvatarPath");
-const cardMatch = generateRoutes.indexOf("if (matched?.avatarPath) {");
-const fuzzyMatch = generateRoutes.indexOf("findCharAvatarFuzzy(name, libraryAvatarByName)");
+const personaMatch = characterTrackerEffect.indexOf("isPersonaCharacter && personaAvatarPath");
+const cardMatch = characterTrackerEffect.indexOf("if (matched?.avatarPath) {");
+const fuzzyMatch = characterTrackerEffect.indexOf("findCharAvatarFuzzy(name, libraryAvatarByName)");
 assert.ok(personaMatch > 0, "the persona is a tracker avatar source");
 assert.ok(cardMatch > 0 && fuzzyMatch > 0, "the existing avatar chain is intact");
 assert.ok(
@@ -120,7 +120,7 @@ assert.ok(
   "a chat character card stays more specific than the persona, which beats the fuzzy library match",
 );
 assert.equal(
-  generateRoutes.includes("personaAvatarName = persona?.name ? normalizeTextForMatch(persona.name)"),
+  characterTrackerEffect.includes("personaName = target.persona?.name ? normalizeTextForMatch(target.persona.name)"),
   true,
   "the persona is matched by normalized name, as the tracker emits names",
 );

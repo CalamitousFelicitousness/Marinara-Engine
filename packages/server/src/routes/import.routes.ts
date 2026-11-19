@@ -3,6 +3,7 @@
 // ──────────────────────────────────────────────
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { execFile } from "child_process";
+import { randomUUID } from "node:crypto";
 import { inflateSync } from "node:zlib";
 import { platform, homedir } from "os";
 import { readdir, stat } from "fs/promises";
@@ -22,7 +23,12 @@ import {
   inspectSTCharacter,
   inspectCharX,
   getExistingCharacterTagKeys,
+  findMatchingCharacters,
+  loadCharacterMatchCandidates,
+  type CharacterMatchCandidates,
   IMPORT_BODY_LIMIT_BYTES,
+  type CharacterImportMatch,
+  type CreatorNotesUpdate,
   type STCharacterImportPreview,
   type STCharacterTagImportMode,
 } from "../services/import/st-character.importer.js";
@@ -30,7 +36,13 @@ import { importSTPreset } from "../services/import/st-prompt.importer.js";
 import { importSTLorebook } from "../services/import/st-lorebook.importer.js";
 import { importMarinara } from "../services/import/marinara.importer.js";
 import { findImportNameConflicts } from "../services/import/name-conflicts.js";
-import { scanSTFolder, runSTBulkImport, type STBulkImportOptions } from "../services/import/st-bulk.importer.js";
+import {
+  scanSTFolder,
+  runSTBulkImport,
+  type ImportProgress as STBulkImportProgress,
+  type STBulkImportOptions,
+  type STBulkImportResult,
+} from "../services/import/st-bulk.importer.js";
 import { characters as charactersTable } from "../db/schema/index.js";
 import { createChatsStorage } from "../services/storage/chats.storage.js";
 import { newId } from "../utils/id-generator.js";
@@ -41,6 +53,7 @@ import { assertInsideDir, safeCompareString, tokenForPath } from "../utils/secur
 import { logger } from "../lib/logger.js";
 import { openZipArchive, type ZipArchive } from "../lib/zip-reader.js";
 import { parseJsonBytes } from "../utils/large-json.js";
+import { STATUS_POLL_RATE_LIMIT } from "../middleware/rate-limit.js";
 
 const PICK_FOLDER_TIMEOUT_MS = 60_000; // 60s — prevents infinite hang on headless servers
 const FOLDER_TOKEN_TTL_MS = 15 * 60_000;
@@ -471,6 +484,56 @@ function flagDecisionStatements<T extends { success?: boolean }>(result: T, pars
   return result.success && containsDecisionStatements(parsed) ? { ...result, usesDecisions: true } : result;
 }
 
+/** Which existing character a card updates, when the person picked "Update" for a newer release of a card. */
+type CharacterUpdateTarget = { characterId: string; useCardPicture?: boolean; creatorNotes?: CreatorNotesUpdate };
+
+function readCreatorNotesUpdate(value: unknown): CreatorNotesUpdate {
+  return value === "card" || value === "mine" ? value : "merge";
+}
+
+type CharacterUpdateTargets = {
+  byIndex: Map<number, CharacterUpdateTarget>;
+  byName: Map<string, CharacterUpdateTarget[]>;
+};
+
+/**
+ * Parse the `updateTargets` field: `[{ index, name: filename, characterId, useCardPicture, creatorNotes }]`, one per
+ * file to update. `index` is the file's position in the upload; entries without one are matched by filename.
+ */
+function readCharacterUpdateTargets(value: unknown): CharacterUpdateTargets {
+  const targets: CharacterUpdateTargets = { byIndex: new Map(), byName: new Map() };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(String(value ?? "[]"));
+  } catch {
+    return targets;
+  }
+  if (!Array.isArray(parsed)) return targets;
+  for (const entry of parsed) {
+    if (!entry || typeof entry !== "object") continue;
+    const { index, name, characterId, useCardPicture, creatorNotes } = entry as Record<string, unknown>;
+    if (typeof characterId !== "string" || !characterId) continue;
+    const target: CharacterUpdateTarget = {
+      characterId,
+      useCardPicture: useCardPicture !== false,
+      creatorNotes: readCreatorNotesUpdate(creatorNotes),
+    };
+    if (typeof index === "number" && Number.isInteger(index) && index >= 0) {
+      targets.byIndex.set(index, target);
+      continue;
+    }
+    if (typeof name !== "string") continue;
+    const queue = targets.byName.get(name) ?? [];
+    queue.push(target);
+    targets.byName.set(name, queue);
+  }
+  return targets;
+}
+
+function takeCharacterUpdateTarget(targets: CharacterUpdateTargets, index: number, filename: string) {
+  return targets.byIndex.get(index) ?? targets.byName.get(filename)?.shift();
+}
+
 async function importCharacterBuffer(
   fileName: string,
   buffer: Buffer,
@@ -482,7 +545,15 @@ async function importCharacterBuffer(
   regexScriptScope?: "character" | "global",
   overwriteId?: string | null,
   splitDescription?: boolean,
+  update?: CharacterUpdateTarget,
 ) {
+  const updateOptions = update
+    ? {
+        updateCharacterId: update.characterId,
+        useCardPicture: update.useCardPicture !== false,
+        creatorNotes: update.creatorNotes ?? "merge",
+      }
+    : {};
   if (fileName.toLowerCase().endsWith(".png")) {
     const charData = extractCharaFromPng(buffer);
     if (!charData) {
@@ -504,6 +575,7 @@ async function importCharacterBuffer(
           regexScriptScope,
           overwriteId,
           splitDescription,
+          ...updateOptions,
         }),
         charData,
       );
@@ -521,6 +593,7 @@ async function importCharacterBuffer(
       regexScriptScope,
       overwriteId,
       splitDescription,
+      ...updateOptions,
     });
   }
 
@@ -544,6 +617,7 @@ async function importCharacterBuffer(
         regexScriptScope,
         overwriteId,
         splitDescription,
+        ...updateOptions,
       }),
       json,
     );
@@ -582,6 +656,22 @@ async function inspectCharacterBuffer(fileName: string, buffer: Buffer) {
       embeddedLorebookEntries: 0,
     };
   }
+}
+
+type STBulkImportJob = {
+  id: string;
+  running: boolean;
+  startedAt: string;
+  finishedAt?: string;
+  progress: STBulkImportProgress | null;
+  result: STBulkImportResult | null;
+};
+
+/** One SillyTavern import at a time; a second start would import everything twice. */
+let stBulkImportJob: STBulkImportJob | null = null;
+
+function emptyImportCounts(): STBulkImportResult["imported"] {
+  return { characters: 0, chats: 0, groupChats: 0, presets: 0, lorebooks: 0, backgrounds: 0, personas: 0 };
 }
 
 export async function importRoutes(app: FastifyInstance) {
@@ -899,10 +989,16 @@ export async function importRoutes(app: FastifyInstance) {
     const regexScriptScope = readRegexScriptScope(rawRegexScriptScope);
     if (rawRegexScriptScope !== undefined && regexScriptScope === undefined) return invalidRegexScriptScopeResponse();
     const splitDescription = readBooleanOption(body.splitDescription);
+    const updateCharacterId = typeof body.updateCharacterId === "string" ? body.updateCharacterId : undefined;
+    const useCardPicture = body.useCardPicture !== false;
+    const creatorNotes = readCreatorNotesUpdate(body.creatorNotes);
     delete body.importEmbeddedLorebook;
     delete body.tagImportMode;
     delete body.regexScriptScope;
     delete body.splitDescription;
+    delete body.updateCharacterId;
+    delete body.useCardPicture;
+    delete body.creatorNotes;
     try {
       const overwriteId = typeof body.overwriteId === "string" ? body.overwriteId : null;
       delete body.overwriteId;
@@ -913,6 +1009,7 @@ export async function importRoutes(app: FastifyInstance) {
         regexScriptScope,
         overwriteId,
         splitDescription,
+        ...(updateCharacterId ? { updateCharacterId, useCardPicture, creatorNotes } : {}),
       });
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : String(err) };
@@ -945,12 +1042,29 @@ export async function importRoutes(app: FastifyInstance) {
   });
 
   /** Inspect character cards before importing, so clients can ask about embedded lorebooks. */
+  /** Characters a card from the Card Browser may be a newer release of (same page, or same name and creator). */
+  app.post("/st-character/matches", async (req) => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const text = (value: unknown) => (typeof value === "string" ? value.slice(0, 500) : "");
+    return {
+      matches: await findMatchingCharacters(app.db, {
+        name: text(body.name),
+        creator: text(body.creator),
+        botBrowserSource: text(body.botBrowserSource),
+        characterId: text(body.characterId),
+      }),
+    };
+  });
+
+  /** Inspect character cards before importing, so clients can ask about embedded lorebooks and cards you already have. */
   app.post("/st-character/inspect", { bodyLimit: IMPORT_BODY_LIMIT_BYTES }, async (req, reply) => {
     const parts = req.parts({
       limits: { files: MAX_BATCH_IMPORT_FILES, parts: MAX_BATCH_IMPORT_FILES + 8, fileSize: IMPORT_BODY_LIMIT_BYTES },
     });
     let totalBytes = 0;
-    const results: Array<{ filename: string } & STCharacterImportPreview> = [];
+    const results: Array<{ filename: string; matches?: CharacterImportMatch[] } & STCharacterImportPreview> = [];
+    // The library is read once for every file in the request.
+    let candidates: CharacterMatchCandidates | null = null;
 
     for await (const part of parts) {
       if (part.type !== "file") continue;
@@ -965,7 +1079,12 @@ export async function importRoutes(app: FastifyInstance) {
       }
       try {
         const result = await inspectCharacterBuffer(part.filename ?? "character", buffer);
-        results.push({ filename: part.filename ?? "character", ...result });
+        let matches: CharacterImportMatch[] = [];
+        if (result.success) {
+          candidates ??= await loadCharacterMatchCandidates(app.db);
+          matches = await findMatchingCharacters(app.db, result, candidates);
+        }
+        results.push({ filename: part.filename ?? "character", ...result, matches });
       } catch (error) {
         results.push({
           filename: part.filename ?? "character",
@@ -1011,6 +1130,7 @@ export async function importRoutes(app: FastifyInstance) {
     let overwriteTargets = new Map<string, string>();
     let invalidRegexScriptScope = false;
     let splitDescription: boolean | undefined;
+    let updateTargets: CharacterUpdateTargets = { byIndex: new Map(), byName: new Map() };
 
     for await (const part of parts) {
       if (part.type === "file") {
@@ -1059,6 +1179,10 @@ export async function importRoutes(app: FastifyInstance) {
       if (part.fieldname === "splitDescription") {
         splitDescription = readBooleanOption(part.value);
       }
+
+      if (part.fieldname === "updateTargets") {
+        updateTargets = readCharacterUpdateTargets(part.value);
+      }
     }
 
     if (invalidTagImportMode) return { ...invalidTagImportModeResponse(), results: [] };
@@ -1079,7 +1203,7 @@ export async function importRoutes(app: FastifyInstance) {
     const results = [];
     const existingTagKeys =
       tagImportMode === "existing" && files.length > 0 ? await getExistingCharacterTagKeys(app.db) : undefined;
-    for (const file of files) {
+    for (const [fileIndex, file] of files.entries()) {
       const timestampEntry = timestampsByName.get(file.filename)?.shift();
       const timestampOverrides = normalizeTimestampOverrides({
         createdAt: timestampEntry?.lastModified,
@@ -1097,6 +1221,7 @@ export async function importRoutes(app: FastifyInstance) {
           regexScriptScope,
           overwriteTargets.get(file.filename),
           splitDescription,
+          takeCharacterUpdateTarget(updateTargets, fileIndex, file.filename),
         );
         results.push({ filename: file.filename, ...result });
       } catch (error) {
@@ -1169,6 +1294,22 @@ export async function importRoutes(app: FastifyInstance) {
     }
     if (bulkRegexScriptScope) options.regexScriptScope = bulkRegexScriptScope;
 
+    if (stBulkImportJob?.running) {
+      return reply.status(409).send({
+        success: false,
+        code: "import-running",
+        error: "A SillyTavern import is already running. Its progress is shown here until it finishes.",
+      });
+    }
+    const job: STBulkImportJob = {
+      id: randomUUID(),
+      running: true,
+      startedAt: new Date().toISOString(),
+      progress: null,
+      result: null,
+    };
+    stBulkImportJob = job;
+
     // Set up SSE headers
     reply.raw.writeHead(200, {
       "Content-Type": "text/event-stream",
@@ -1176,19 +1317,42 @@ export async function importRoutes(app: FastifyInstance) {
       Connection: "keep-alive",
     });
 
+    // The import keeps going when the page goes away (tab closed, laptop asleep, dropped
+    // connection): it is the server's work, and stopping halfway would leave half a library.
+    // GET /st-bulk/status lets a reopened page pick the progress back up.
     const sendEvent = (event: string, data: unknown) => {
+      if (reply.raw.destroyed || reply.raw.writableEnded) return;
       reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     };
+    // A heartbeat keeps proxies and browsers from closing a quiet stream during one long item.
+    const heartbeat = setInterval(() => {
+      if (!reply.raw.destroyed && !reply.raw.writableEnded) reply.raw.write(": keep-alive\n\n");
+    }, 15_000);
+    heartbeat.unref();
 
     try {
       const result = await runSTBulkImport(resolved.path, options, app.db, (progress) => {
+        job.progress = progress;
         sendEvent("progress", progress);
       });
+      job.result = result;
       sendEvent("done", result);
     } catch (err) {
-      sendEvent("done", { success: false, error: (err as Error).message, imported: {}, errors: [] });
+      job.result = { success: false, error: (err as Error).message, imported: emptyImportCounts(), errors: [] };
+      sendEvent("done", job.result);
+    } finally {
+      clearInterval(heartbeat);
+      job.running = false;
+      job.finishedAt = new Date().toISOString();
     }
-    reply.raw.end();
+    if (!reply.raw.destroyed && !reply.raw.writableEnded) reply.raw.end();
+  });
+
+  /** The running or last SillyTavern import, for a page that lost or never had its progress stream. */
+  app.get("/st-bulk/status", { config: { rateLimit: STATUS_POLL_RATE_LIMIT } }, async (req, reply) => {
+    if (!requirePrivilegedAccess(req, reply, { feature: "SillyTavern bulk import" })) return;
+    reply.header("Cache-Control", "no-store");
+    return { job: stBulkImportJob };
   });
 
   /** Open a native OS folder picker dialog and return the selected path. */

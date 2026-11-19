@@ -1,4 +1,4 @@
-// The pieces both faces of Agents in Chat Settings draw: agent cards, the Illustrator and prompt pickers, the custom
+// The pieces the faces of Agents in Chat Settings share: agent cards, the Illustrator and prompt pickers, the custom
 // agent and Haptic cards and the custom music library. Plain render functions over the Agents hook's result, called on
 // each render as they were inside the drawer, so no input in them remounts.
 import { Suspense, lazy } from "react";
@@ -47,8 +47,8 @@ import {
   type UseChatAgentsOptions,
 } from "./use-chat-agents";
 
-export const StoryboardChatSettingsPanel = lazy(() => import("../StoryboardChatSettingsPanel"));
-const BeholderChatSettingsPanel = lazy(() => import("../BeholderChatSettingsPanel"));
+export const StoryboardChatSettingsPanel = lazy(() => import("./StoryboardChatSettingsPanel"));
+const BeholderChatSettingsPanel = lazy(() => import("./BeholderChatSettingsPanel"));
 
 const DEFAULT_CUSTOM_LOREBOOK_BACKFILL_CHUNK_SIZE = 25;
 const MAX_CUSTOM_LOREBOOK_BACKFILL_CHUNK_SIZE = 100;
@@ -124,6 +124,7 @@ export function createAgentSettingsRenderers(agents: ChatAgents, drawer: AgentSe
     agentWriteApprovalRequired,
     avatarLayoutActive,
     avatarSettingsOrder,
+    builtInAgentCards,
     characterMusicFolder,
     chatCustomMusicFolder,
     chatMusicFolder,
@@ -142,8 +143,6 @@ export function createAgentSettingsRenderers(agents: ChatAgents, drawer: AgentSe
     handleBackfillCustomAgent,
     handleRerunCustomAgent,
     handleSnapshotCustomAgent,
-    hapticActive,
-    hapticAgentMeta,
     illustratorChatRunInterval,
     illustratorChatVideoRunInterval,
     illustratorConfig,
@@ -752,16 +751,16 @@ export function createAgentSettingsRenderers(agents: ChatAgents, drawer: AgentSe
   };
 
   const renderHapticSettingsCard = () => {
-    if (!metadata.enableAgents || !hapticActive) return null;
+    if (!metadata.enableAgents || !builtInAgentCards.haptic.active) return null;
 
     return (
       <AgentSettingsCard
         id={getAgentSettingsMenuId(chat.id, "haptic")}
         icon={renderRoleplayAgentMenuIcon("haptic")}
-        title={hapticAgentMeta.name}
-        description={hapticAgentMeta.description}
+        title={builtInAgentCards.haptic.name}
+        description={builtInAgentCards.haptic.description}
         order={getRoleplayAgentSettingsOrder("haptic")}
-        onRemove={getRoleplayAgentMenuRemoveHandler("haptic", hapticAgentMeta.name)}
+        onRemove={getRoleplayAgentMenuRemoveHandler("haptic", builtInAgentCards.haptic.name)}
       >
         {renderAgentLorebookAttachment("haptic")}
         <HapticSettings chat={chat} metadata={metadata} />

@@ -1,5 +1,6 @@
 import { api } from "./api-client";
 import type { CharacterData, ImportNameConflict } from "@marinara-engine/shared";
+import type { CardUpdateMatch } from "../components/characters/CardUpdateChoices";
 
 // The server takes a native .marinara.json as a JSON request up to 256 MiB (IMPORT_BODY_LIMIT_BYTES), less
 // headroom for the fields sent with it. A bigger export, such as a character with a large gallery, is
@@ -22,11 +23,6 @@ export interface EmbeddedLorebookImportPreview {
   hasEmbeddedLorebook: boolean;
   embeddedLorebookEntries: number;
   error?: string;
-}
-
-/** A preview plus the library row this card would collide with, when there is one. */
-export interface CharacterImportInspection extends EmbeddedLorebookImportPreview {
-  conflict?: ImportNameConflict;
 }
 
 export interface CharacterCardDetailFields {
@@ -188,14 +184,17 @@ export function readEmbeddedLorebookFromCharacterPayload(raw: Record<string, unk
   return readCharacterCardData(raw).character_book;
 }
 
-/**
- * Parses the cards server-side and reports what the caller has to ask about.
- *
- * One call answers both questions an import can raise, the embedded lorebook and
- * the name already in the library, because the route has to parse the card to
- * know either.
- */
-export async function inspectCharacterFiles(files: File[]): Promise<CharacterImportInspection[]> {
+/** One file's inspection: its embedded lorebook and the characters it may be a newer release of. */
+export interface CharacterFileInspection extends EmbeddedLorebookImportPreview {
+  creator?: string;
+  version?: string;
+  matches?: CardUpdateMatch[];
+  /** A character already in the library under this name. */
+  conflict?: ImportNameConflict;
+}
+
+/** Inspect card files before importing, in the order given. */
+export async function inspectCharacterFiles(files: File[]): Promise<CharacterFileInspection[]> {
   if (files.length === 0) return [];
 
   const form = new FormData();
@@ -205,9 +204,8 @@ export async function inspectCharacterFiles(files: File[]): Promise<CharacterImp
 
   const result = await api.upload<{
     success: boolean;
-    results: CharacterImportInspection[];
+    results: CharacterFileInspection[];
   }>("/import/st-character/inspect", form);
-
   return result.results;
 }
 

@@ -5,7 +5,7 @@ import { useState, useRef } from "react";
 import { createDecisionImportTracker } from "../../lib/decision-import-notice";
 import { Modal } from "../ui/Modal";
 import { SHEET_BUTTON_PRIMARY, SHEET_BUTTON_SECONDARY } from "../ui/neutral-surface-styles";
-import { Download, FileJson, Image, CheckCircle, XCircle, BookOpen, Scissors } from "lucide-react";
+import { Download, FileJson, Image, CheckCircle, XCircle, BookOpen, Scissors, RefreshCw } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { characterKeys } from "../../hooks/use-characters";
 import { lorebookKeys } from "../../hooks/use-lorebooks";
@@ -13,6 +13,7 @@ import { api } from "../../lib/api-client";
 import {
   inspectCharacterFiles,
   isOversizedMarinaraJson,
+  type CharacterFileInspection,
   type EmbeddedLorebookImportPreview,
 } from "../../lib/character-import";
 import {
@@ -24,6 +25,15 @@ import {
 } from "../../lib/import-conflicts";
 import { ImportConflictPrompt } from "./ImportConflictPrompt";
 import type { ImportNameConflict } from "@marinara-engine/shared";
+import {
+  CardUpdateChoices,
+  defaultCardUpdateDecision,
+  isCardUpdate,
+  isCardUpdatePending,
+  type CardUpdateDecision,
+  type CardUpdateRow,
+  type CreatorNotesUpdate,
+} from "../characters/CardUpdateChoices";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import type { DescriptionSplitResult } from "@marinara-engine/shared";
 import { HelpTooltip } from "../ui/HelpTooltip";
@@ -47,6 +57,15 @@ type ImportResultRow = {
 };
 
 type TagImportMode = "all" | "none" | "existing";
+
+/** Per-file choices for cards that look like newer releases of characters you have, keyed by file position. */
+type CardUpdatePlan = {
+  decisions: Record<string, CardUpdateDecision>;
+  useCardPicture: boolean;
+  creatorNotes: CreatorNotesUpdate;
+};
+
+const fileKey = (file: File, index: number) => `${index}:${file.name}`;
 
 const TAG_IMPORT_OPTIONS: Array<{ value: TagImportMode; label: string; description: string }> = [
   {
@@ -90,13 +109,25 @@ export function ImportCharacterModal({ open, onClose }: Props) {
   const [pendingLorebookChoice, setPendingLorebookChoice] = useState<{
     files: File[];
     previews: EmbeddedLorebookImportPreview[];
+    updatePlan?: CardUpdatePlan;
+    inspections?: CharacterFileInspection[];
   } | null>(null);
   const [pendingConflicts, setPendingConflicts] = useState<{
     files: File[];
     importEmbeddedLorebook?: boolean;
+    updatePlan?: CardUpdatePlan;
+    inspections?: CharacterFileInspection[];
     conflicts: ImportNameConflict[];
   } | null>(null);
   const [conflictChoices, setConflictChoices] = useState<ImportConflictChoices>({});
+  const [pendingUpdateChoice, setPendingUpdateChoice] = useState<{
+    files: File[];
+    rows: CardUpdateRow[];
+    inspections: CharacterFileInspection[];
+  } | null>(null);
+  const [updateDecisions, setUpdateDecisions] = useState<Record<string, CardUpdateDecision>>({});
+  const [useCardPicture, setUseCardPicture] = useState(true);
+  const [creatorNotes, setCreatorNotes] = useState<CreatorNotesUpdate>("merge");
   const [tagImportMode, setTagImportMode] = useState<TagImportMode>("all");
   const [regexScriptScope, setRegexScriptScope] = useState<RegexScriptScope>("character");
   const [splitDescription, setSplitDescription] = useState(false);
@@ -116,12 +147,19 @@ export function ImportCharacterModal({ open, onClose }: Props) {
     return head[0] === 0x50 && head[1] === 0x4b;
   };
 
-  const handleFiles = async (files: File[], importEmbeddedLorebook?: boolean, choices?: ImportConflictChoices) => {
+  const handleFiles = async (
+    files: File[],
+    importEmbeddedLorebook?: boolean,
+    updatePlan?: CardUpdatePlan,
+    knownInspections?: CharacterFileInspection[],
+    choices?: ImportConflictChoices,
+  ) => {
     if (files.length === 0) return;
     setStatus("loading");
     setResults([]);
     setPendingLorebookChoice(null);
     setPendingConflicts(null);
+    setPendingUpdateChoice(null);
 
     try {
       const decisionImports = createDecisionImportTracker();
@@ -157,25 +195,65 @@ export function ImportCharacterModal({ open, onClose }: Props) {
         }
       }
 
-      // The cards are parsed server-side once, and that one answer settles both
-      // questions an import can raise.
-      const inspections =
-        stCharacterFiles.length > 0 && (importEmbeddedLorebook === undefined || choices === undefined)
-          ? await inspectCharacterFiles(stCharacterFiles)
-          : [];
-
-      if (stCharacterFiles.length > 0 && importEmbeddedLorebook === undefined) {
-        const previews = inspections.filter((item) => item.success && item.hasEmbeddedLorebook);
-        if (previews.length > 0) {
-          setPendingLorebookChoice({ files, previews });
+      // Card files are inspected once: cards you may already have (newer releases) are asked about first, then
+      // embedded lorebooks. The files keep their positions, so a choice stays with its file.
+      const stKeys = new Map(stCharacterFiles.map((file) => [file, fileKey(file, files.indexOf(file))] as const));
+      let inspections = knownInspections;
+      if (stCharacterFiles.length > 0 && (updatePlan === undefined || importEmbeddedLorebook === undefined)) {
+        inspections ??= await inspectCharacterFiles(stCharacterFiles);
+      }
+      if (inspections && updatePlan === undefined) {
+        const rows: CardUpdateRow[] = stCharacterFiles.flatMap((file, index) => {
+          const inspection = inspections![index];
+          if (!inspection?.success || !inspection.matches?.length) return [];
+          return [
+            {
+              key: stKeys.get(file)!,
+              name: inspection.name ?? file.name,
+              version: inspection.version,
+              matches: inspection.matches,
+            },
+          ];
+        });
+        if (rows.length > 0) {
+          setUpdateDecisions(Object.fromEntries(rows.map((row) => [row.key, defaultCardUpdateDecision(row.matches)])));
+          setUseCardPicture(true);
+          setCreatorNotes("merge");
+          setPendingUpdateChoice({ files, rows, inspections });
           setStatus("idle");
           return;
         }
       }
-
+      const decisionFor = (file: File) => updatePlan?.decisions[stKeys.get(file) ?? ""];
+      if (inspections && importEmbeddedLorebook === undefined) {
+        const previews = stCharacterFiles.flatMap((file, index) => {
+          const inspection = inspections![index];
+          return inspection?.success && inspection.hasEmbeddedLorebook && decisionFor(file) !== "skip"
+            ? [{ ...inspection, filename: file.name }]
+            : [];
+        });
+        if (previews.length > 0) {
+          setPendingLorebookChoice({
+            files,
+            previews,
+            updatePlan: updatePlan ?? { decisions: {}, useCardPicture: true, creatorNotes: "merge" },
+            inspections,
+          });
+          setStatus("idle");
+          return;
+        }
+      }
+      // A name already in the library, for cards the update step did not match and for Marinara files. Keeping
+      // both is what an import did before this question existed, so dismissing the dialog changes nothing.
+      const cardConflicts = stCharacterFiles.flatMap((file, index) => {
+        const inspection = inspections?.[index];
+        return inspection?.conflict && !inspection.matches?.length && decisionFor(file) !== "skip"
+          ? [inspection.conflict]
+          : [];
+      });
       if (choices === undefined) {
         const conflicts = [
-          ...inspections.flatMap((item) => (item.conflict ? [item.conflict] : [])),
+          ...cardConflicts,
           ...(await fetchImportNameConflicts(
             marinaraPayloads.flatMap((item) => {
               const candidate = envelopeCandidate(item.payload, item.file.name);
@@ -184,47 +262,61 @@ export function ImportCharacterModal({ open, onClose }: Props) {
           )),
         ];
         if (conflicts.length > 0) {
-          setPendingConflicts({ files, importEmbeddedLorebook, conflicts });
-          // Keeping both is what an import did before this question existed, so
-          // dismissing the dialog changes nothing.
+          setPendingConflicts({ files, importEmbeddedLorebook, updatePlan, inspections, conflicts });
           setConflictChoices(Object.fromEntries(conflicts.map((c) => [c.ref ?? c.name, "additional" as const])));
           setStatus("idle");
           return;
         }
       }
-
       const resolved = choices ?? {};
-      const allConflicts = [
-        ...inspections.flatMap((item) => (item.conflict ? [item.conflict] : [])),
-        ...(pendingConflicts?.conflicts ?? []),
-      ];
+      const allConflicts = [...cardConflicts, ...(pendingConflicts?.conflicts ?? [])];
       const skipped = skippedRefs(allConflicts, resolved);
       const targets = overwriteTargets(allConflicts, resolved);
       const targetByFilename = new Map(targets.map((target) => [target.filename, target.existingId]));
 
-      const nextResults: ImportResultRow[] = [];
+      const skippedFiles = stCharacterFiles.filter((file) => decisionFor(file) === "skip");
+      const skippedExisting = stCharacterFiles.filter((file) => decisionFor(file) !== "skip" && skipped.has(file.name));
+      const filesToImport = stCharacterFiles.filter((file) => decisionFor(file) !== "skip" && !skipped.has(file.name));
+      // `index` is the file's place in the upload, so two files with the same name keep their own choice.
+      const updateTargets = filesToImport.flatMap((file, index) => {
+        const decision = decisionFor(file);
+        return isCardUpdate(decision)
+          ? [
+              {
+                index,
+                name: file.name,
+                characterId: decision,
+                useCardPicture: updatePlan?.useCardPicture !== false,
+                creatorNotes: updatePlan?.creatorNotes ?? "merge",
+              },
+            ]
+          : [];
+      });
+
+      const nextResults: ImportResultRow[] = [
+        ...skippedFiles.map((file) => ({
+          filename: file.name,
+          success: true,
+          message: localizeUi("ui.cardUpdate.skipped"),
+        })),
+        ...skippedExisting.map((file) => ({
+          filename: file.name,
+          success: true,
+          message: localizeUi("ui.modals.importcharactermodal.skippedExisting"),
+        })),
+      ];
       let importedLorebook = false;
 
-      const importableCharacterFiles = stCharacterFiles.filter((file) => !skipped.has(file.name));
-      for (const file of stCharacterFiles) {
-        if (skipped.has(file.name)) {
-          nextResults.push({
-            filename: file.name,
-            success: true,
-            message: localizeUi("ui.modals.importcharactermodal.skippedExisting"),
-          });
-        }
-      }
-
-      if (importableCharacterFiles.length > 0) {
+      if (filesToImport.length > 0) {
         const form = new FormData();
-        for (const file of importableCharacterFiles) {
+        for (const file of filesToImport) {
           form.append("files", file);
         }
+        if (updateTargets.length > 0) form.append("updateTargets", JSON.stringify(updateTargets));
         form.append(
           "fileTimestamps",
           JSON.stringify(
-            importableCharacterFiles.map((file) => ({
+            filesToImport.map((file) => ({
               name: file.name,
               lastModified: file.lastModified,
             })),
@@ -244,6 +336,8 @@ export function ImportCharacterModal({ open, onClose }: Props) {
             characterId?: string;
             name?: string;
             error?: string;
+            updated?: boolean;
+            lorebookError?: string;
             lorebook?: { lorebookId?: string };
             embeddedLorebook?: { hasEmbeddedLorebook?: boolean; skipped?: boolean; entries?: number };
             usesDecisions?: boolean;
@@ -258,14 +352,19 @@ export function ImportCharacterModal({ open, onClose }: Props) {
             filename: result.filename,
             success: result.success,
             message: result.success
-              ? localizeUi(
-                  result.embeddedLorebook?.skipped
-                    ? "ui.modals.importcharactermodal.importedNameWithoutLorebook"
-                    : result.lorebook?.lorebookId
-                      ? "ui.modals.importcharactermodal.importedNameWithLorebook"
-                      : "ui.modals.importcharactermodal.importedName",
-                  { name: result.name ?? result.filename },
-                )
+              ? result.updated
+                ? localizeUi(
+                    result.lorebookError ? "ui.cardUpdate.updatedLorebookFailed" : "ui.cardUpdate.updatedName",
+                    { name: result.name ?? result.filename, error: result.lorebookError },
+                  )
+                : localizeUi(
+                    result.embeddedLorebook?.skipped
+                      ? "ui.modals.importcharactermodal.importedNameWithoutLorebook"
+                      : result.lorebook?.lorebookId
+                        ? "ui.modals.importcharactermodal.importedNameWithLorebook"
+                        : "ui.modals.importcharactermodal.importedName",
+                    { name: result.name ?? result.filename },
+                  )
               : (result.error ?? localizeUi("ui.modals.importcharactermodal.importFailed")),
             characterId: result.characterId,
             name: result.name,
@@ -353,7 +452,8 @@ export function ImportCharacterModal({ open, onClose }: Props) {
       if (splitRows.length === 1) showSplitSummary(splitRows[0]!);
 
       if (nextResults.some((result) => result.success)) {
-        qc.invalidateQueries({ queryKey: characterKeys.list() });
+        // An update changes an existing character's card, versions and lorebook link, not only the list.
+        qc.invalidateQueries({ queryKey: updateTargets.length > 0 ? characterKeys.all : characterKeys.list() });
       }
       if (importedLorebook) {
         qc.invalidateQueries({ queryKey: lorebookKeys.all });
@@ -406,6 +506,10 @@ export function ImportCharacterModal({ open, onClose }: Props) {
     setPendingLorebookChoice(null);
     setPendingConflicts(null);
     setConflictChoices({});
+    setPendingUpdateChoice(null);
+    setUpdateDecisions({});
+    setUseCardPicture(true);
+    setCreatorNotes("merge");
     setTagImportMode("all");
     setRegexScriptScope("character");
     setSplitDescription(false);
@@ -433,6 +537,59 @@ export function ImportCharacterModal({ open, onClose }: Props) {
       }
     >
       <div className="flex flex-col gap-4">
+        {pendingUpdateChoice && (
+          <div
+            className="rounded-xl border border-[var(--primary)]/30 bg-[var(--primary)]/10 p-4"
+            data-import-card-update
+          >
+            <div className="flex items-start gap-3">
+              <RefreshCw className="mt-0.5 shrink-0 text-[var(--primary)]" size="1.125rem" />
+              <div className="min-w-0 flex-1">
+                <p className="mb-2 text-sm font-semibold text-[var(--foreground)]">
+                  {localizeUi("ui.cardUpdate.title")}
+                </p>
+                <CardUpdateChoices
+                  rows={pendingUpdateChoice.rows}
+                  decisions={updateDecisions}
+                  onDecisionChange={(key, decision) =>
+                    setUpdateDecisions((current) => ({ ...current, [key]: decision }))
+                  }
+                  useCardPicture={useCardPicture}
+                  onUseCardPictureChange={setUseCardPicture}
+                  creatorNotes={creatorNotes}
+                  onCreatorNotesChange={setCreatorNotes}
+                />
+                <div className="mt-3 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <button type="button" onClick={() => setPendingUpdateChoice(null)} className={SHEET_BUTTON_SECONDARY}>
+                    {localizeUi("ui.cardUpdate.cancel")}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={pendingUpdateChoice.rows.some((row) =>
+                      isCardUpdatePending(updateDecisions[row.key] ?? defaultCardUpdateDecision(row.matches)),
+                    )}
+                    data-card-update-continue
+                    onClick={() =>
+                      void handleFiles(
+                        pendingUpdateChoice.files,
+                        undefined,
+                        {
+                          decisions: updateDecisions,
+                          useCardPicture,
+                          creatorNotes,
+                        },
+                        pendingUpdateChoice.inspections,
+                      )
+                    }
+                    className={SHEET_BUTTON_PRIMARY}
+                  >
+                    {localizeUi("ui.cardUpdate.continue")}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         {pendingLorebookChoice && (
           <div className="rounded-xl border border-[var(--primary)]/30 bg-[var(--primary)]/10 p-4">
             <div className="flex items-start gap-3">
@@ -463,14 +620,28 @@ export function ImportCharacterModal({ open, onClose }: Props) {
                 <div className="mt-3 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                   <button
                     type="button"
-                    onClick={() => void handleFiles(pendingLorebookChoice.files, false)}
+                    onClick={() =>
+                      void handleFiles(
+                        pendingLorebookChoice.files,
+                        false,
+                        pendingLorebookChoice.updatePlan,
+                        pendingLorebookChoice.inspections,
+                      )
+                    }
                     className={SHEET_BUTTON_SECONDARY}
                   >
                     {localizeUi("ui.modals.importcharactermodal.noImport")}
                   </button>
                   <button
                     type="button"
-                    onClick={() => void handleFiles(pendingLorebookChoice.files, true)}
+                    onClick={() =>
+                      void handleFiles(
+                        pendingLorebookChoice.files,
+                        true,
+                        pendingLorebookChoice.updatePlan,
+                        pendingLorebookChoice.inspections,
+                      )
+                    }
                     className={SHEET_BUTTON_PRIMARY}
                   >
                     {localizeUi("ui.modals.importcharactermodal.importLorebook")}
@@ -487,7 +658,13 @@ export function ImportCharacterModal({ open, onClose }: Props) {
             choices={conflictChoices}
             onChange={setConflictChoices}
             onConfirm={() =>
-              void handleFiles(pendingConflicts.files, pendingConflicts.importEmbeddedLorebook, conflictChoices)
+              void handleFiles(
+                pendingConflicts.files,
+                pendingConflicts.importEmbeddedLorebook,
+                pendingConflicts.updatePlan,
+                pendingConflicts.inspections,
+                conflictChoices,
+              )
             }
             onCancel={() => {
               setPendingConflicts(null);

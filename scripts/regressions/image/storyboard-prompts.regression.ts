@@ -310,7 +310,10 @@ const cases: RegressionCase[] = [
         generateRouteSource,
         /if \(!commandTarget && automaticBackgroundsEnabled && illustratorBackgroundAgent\)/u,
       );
-      assert.match(generateRouteSource, /if \(!storyboardSuppressesForeground && shouldGenerate && imagePrompt\)/u);
+      assert.match(
+        generateRouteSource,
+        /if \(!storyboardSuppressesForeground && shouldGenerate && imagePrompt(?: && !alreadyShown)?\)/u,
+      );
     },
   },
   {
@@ -523,13 +526,14 @@ const cases: RegressionCase[] = [
         new URL("../../../packages/client/src/features/chat-settings/ChatSettingsDrawer.tsx", import.meta.url),
         "utf8",
       );
-      const roleplayAgentsSource = readFileSync(
-        new URL(
-          "../../../packages/client/src/features/chat-settings/agents/RoleplayAgentsSection.tsx",
-          import.meta.url,
-        ),
-        "utf8",
-      );
+      const roleplayAgentsSource = ["RoleplayAgentsSection.tsx", "GameAgentsSection.tsx", "agents-section-parts.tsx"]
+        .map((name) =>
+          readFileSync(
+            new URL(`../../../packages/client/src/features/chat-settings/agents/${name}`, import.meta.url),
+            "utf8",
+          ),
+        )
+        .join("\n");
       const agentRenderersSource = readFileSync(
         new URL(
           "../../../packages/client/src/features/chat-settings/agents/agent-settings-renderers.tsx",
@@ -550,7 +554,10 @@ const cases: RegressionCase[] = [
         "utf8",
       ).replace(/\r\n/gu, "\n");
       const storyboardChatSettingsSource = readFileSync(
-        new URL("../../../packages/client/src/features/chat-settings/StoryboardChatSettingsPanel.tsx", import.meta.url),
+        new URL(
+          "../../../packages/client/src/features/chat-settings/agents/StoryboardChatSettingsPanel.tsx",
+          import.meta.url,
+        ),
         "utf8",
       );
       const setupSource = readFileSync(
@@ -681,7 +688,7 @@ const cases: RegressionCase[] = [
       for (const source of [drawerSource, roleplayAgentsSource, agentRenderersSource, chatAgentsSource]) {
         assert.doesNotMatch(source, /gameStoryboard/u);
       }
-      assert.match(agentRenderersSource, /lazy\(\(\) =>\s*import\("\.\.\/StoryboardChatSettingsPanel"\)/u);
+      assert.match(agentRenderersSource, /lazy\(\(\) =>\s*import\("\.\/StoryboardChatSettingsPanel"\)/u);
       assert.match(
         roleplayMenuLinksSource,
         /addLink\(STORYBOARD_AGENT_ID, activeAgentIds\.includes\(STORYBOARD_AGENT_ID\), storyboardAgent\.name\)/u,
@@ -829,7 +836,7 @@ const cases: RegressionCase[] = [
       );
 
       const setupIndex = activeEditorSource.indexOf("<StoryboardSetupSection");
-      const workflowTabsIndex = activeEditorSource.indexOf('role="tablist"');
+      const workflowTabsIndex = activeEditorSource.indexOf("<Tabs");
       const roleplayWorkflowStart = activeEditorSource.indexOf("data-storyboard-active-roleplay");
       const gameWorkflowStart = activeEditorSource.indexOf("data-storyboard-active-game");
       assert.ok(
@@ -841,8 +848,8 @@ const cases: RegressionCase[] = [
         "Roleplay and Game Mode should be distinct navigable workflows",
       );
       assert.match(activeEditorSource, /role="tabpanel"/u);
-      assert.match(activeEditorSource, /aria-controls="storyboard-active-flow"/u);
-      const roleplayWorkflowSource = activeEditorSource.slice(roleplayWorkflowStart, gameWorkflowStart);
+  assert.match(activeEditorSource, /idPrefix="storyboard-workflow"/u);
+          const roleplayWorkflowSource = activeEditorSource.slice(roleplayWorkflowStart, gameWorkflowStart);
       const gameWorkflowSource = activeEditorSource.slice(gameWorkflowStart);
       assert.ok(
         roleplayWorkflowSource.indexOf("number={1}") < roleplayWorkflowSource.indexOf("{sharedWorkflowStages}"),
@@ -1615,7 +1622,10 @@ const cases: RegressionCase[] = [
         "utf8",
       );
       const storyboardChatSettingsSource = readFileSync(
-        new URL("../../../packages/client/src/features/chat-settings/StoryboardChatSettingsPanel.tsx", import.meta.url),
+        new URL(
+          "../../../packages/client/src/features/chat-settings/agents/StoryboardChatSettingsPanel.tsx",
+          import.meta.url,
+        ),
         "utf8",
       );
       const roleplaySettingsStart = storyboardChatSettingsSource.indexOf(
@@ -1633,6 +1643,8 @@ const cases: RegressionCase[] = [
       );
       for (const path of [
         "agents/RoleplayAgentsSection.tsx",
+        "agents/GameAgentsSection.tsx",
+        "agents/agents-section-parts.tsx",
         "agents/agent-settings-renderers.tsx",
         "agents/use-chat-agents.ts",
       ]) {

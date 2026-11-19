@@ -169,7 +169,7 @@ for (const [file, path] of [
 // change without starting a new game.
 {
   const card = readSource("packages/client/src/components/chat/GameAudioSettingsCard.tsx");
-  const drawer = readSource("packages/client/src/features/chat-settings/agents/RoleplayAgentsSection.tsx");
+  const drawer = readSource("packages/client/src/features/chat-settings/agents/GameAgentsSection.tsx");
   for (const key of ["gameVoiceConnectionId", "gameSfxConnectionId", "gameMusicConnectionId"] as const) {
     assert.match(card, new RegExp(String.raw`renderLane\("${key}"`, "u"), `${key} must be settable per game`);
   }

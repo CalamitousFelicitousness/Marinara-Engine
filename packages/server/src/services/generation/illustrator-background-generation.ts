@@ -31,6 +31,7 @@ import { createConnectionsStorage } from "../storage/connections.storage.js";
 import { createPromptOverridesStorage } from "../storage/prompt-overrides.storage.js";
 import { appendImagePromptInstructions } from "./image-prompt-instructions.js";
 import { resolveImageConnectionFallback } from "./media-connection-fallback.js";
+import { isRecord } from "../../utils/large-json.js";
 
 const ROLEPLAY_BACKGROUND_MODES = new Set(["roleplay"]);
 const BACKGROUND_PLAN_MAX_TOKENS = 1_200;
@@ -76,10 +77,6 @@ type IllustratorSceneBackgroundArgs = {
   signal?: AbortSignal;
   debugLog?: (message: string, ...args: unknown[]) => void;
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
-}
 
 function readTrimmedString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -473,11 +470,11 @@ export async function generateIllustratorSceneBackground(
     promptOverride?: string;
     negativePromptOverride?: string;
     /** After the plan is written: a library picture to show instead of painting one (null paints). */
-    reuseExisting?: (plan: IllustratorBackgroundPlan) => string | null;
+    reuseExisting?: (plan: IllustratorBackgroundPlan) => string | null | Promise<string | null>;
   },
 ): Promise<GeneratedIllustratorBackground> {
   const { plan, request } = await prepareIllustratorSceneBackground(args, args.planOverride);
-  const existing = args.reuseExisting?.(plan);
+  const existing = await args.reuseExisting?.(plan);
   if (existing) {
     return { ...plan, filename: existing, url: `/api/backgrounds/file/${encodeURIComponent(existing)}`, reused: true };
   }

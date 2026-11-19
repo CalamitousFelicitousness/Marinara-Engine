@@ -5,6 +5,7 @@ import { useTranslation, useTranslation as useUiTranslation } from "react-i18nex
 import { Archive, Image, Puzzle, Sparkles } from "lucide-react";
 import { VIDEO_FIRST_FRAMES, normalizeVideoFirstFrame, type Chat } from "@marinara-engine/shared";
 import { ChatSettingsSection as Section } from "../ChatSettingsSection";
+import { PictureCheckFields } from "../PictureCheckFields";
 import { type ChatConnectionOption } from "../sections/ConnectionSection";
 import {
   AgentSettingsCard,
@@ -33,7 +34,7 @@ interface ConversationAgentsSectionProps {
   textConnectionsList: ChatConnectionOption[];
   requestClose: () => Promise<boolean>;
   rememberSettingsReturn: () => void;
-  /** The render helpers both faces of Agents use. */
+  /** The render helpers the faces of Agents share. */
   renderers: AgentSettingsRenderers;
 }
 
@@ -305,6 +306,7 @@ export function ConversationAgentsSection({
                       })
                     }
                   />
+                  <PictureCheckFields chatId={chat.id} metadata={metadata} />
                 </div>
               </AgentSettingsCard>
             )}

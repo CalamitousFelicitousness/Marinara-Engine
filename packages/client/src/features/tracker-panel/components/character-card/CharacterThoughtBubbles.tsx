@@ -117,7 +117,9 @@ function ThoughtBubble({
   const thoughtBubbleSize = getThoughtBubbleSize(thoughtText);
   const thoughtTextFit = getThoughtTextFit(thoughtText, thoughtBubbleSize);
   const thoughtBubbleStyle: CSSProperties | undefined =
-    thoughtBubbleSize === "long" ? { maxHeight: "min(22rem, calc(100vh - 1rem))" } : undefined;
+    thoughtBubbleSize === "long"
+      ? { maxHeight: "min(22rem, calc(var(--mari-visual-viewport-height, 100vh) - 1rem))" }
+      : undefined;
   const compactThoughtBubble = thoughtBubbleSize !== "long";
   const thoughtDots = tailOnLeft
     ? ["h-1.5 w-1.5 opacity-55", "h-2 w-2 opacity-70", "h-2.5 w-2.5 opacity-85"]
@@ -264,7 +266,7 @@ export function InlineThoughtBubble({
     >
       <div
         className={cn(
-          "relative z-[1] max-h-[min(22rem,calc(100vh-2rem))] min-w-0 overflow-y-auto rounded-[1.05rem] border border-[color-mix(in_srgb,var(--tracker-profile-dialogue-border)_24%,transparent)] bg-[image:var(--tracker-profile-field-material)] [background-blend-mode:var(--tracker-profile-field-material-blend)] px-2.5 py-1 text-[color:var(--tracker-profile-text)] shadow-[0_3px_8px_color-mix(in_srgb,var(--background)_22%,transparent),0_0_6px_color-mix(in_srgb,var(--tracker-profile-accent-solid)_7%,transparent),inset_0_1px_0_color-mix(in_srgb,var(--foreground)_4%,transparent)]",
+          "relative z-[1] max-h-[min(22rem,calc(var(--mari-visual-viewport-height,100vh)-2rem))] min-w-0 overflow-y-auto rounded-[1.05rem] border border-[color-mix(in_srgb,var(--tracker-profile-dialogue-border)_24%,transparent)] bg-[image:var(--tracker-profile-field-material)] [background-blend-mode:var(--tracker-profile-field-material-blend)] px-2.5 py-1 text-[color:var(--tracker-profile-text)] shadow-[0_3px_8px_color-mix(in_srgb,var(--background)_22%,transparent),0_0_6px_color-mix(in_srgb,var(--tracker-profile-accent-solid)_7%,transparent),inset_0_1px_0_color-mix(in_srgb,var(--foreground)_4%,transparent)]",
           surfaceClassName,
         )}
       >

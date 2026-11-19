@@ -63,6 +63,7 @@ import {
   parseScenePackageOrigin,
   releaseScenePackageOrigin,
 } from "../services/capability-packages/capability-scene-origin.service.js";
+import { notFound } from "../utils/not-found.js";
 
 const BG_DIR = join(DATA_DIR, "backgrounds");
 const ALLOWED_BG_EXTS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif"]);
@@ -712,7 +713,7 @@ export async function sceneRoutes(app: FastifyInstance) {
     const { sceneChatId, connectionId } = req.body;
 
     const sceneChat = await chats.getById(sceneChatId);
-    if (!sceneChat) return reply.status(404).send({ error: "Scene chat not found" });
+    if (!sceneChat) return notFound(reply, "Scene chat not found");
 
     const sceneMeta = parseMetadata(sceneChat);
 
@@ -895,7 +896,7 @@ export async function sceneRoutes(app: FastifyInstance) {
     const { sceneChatId } = req.body;
 
     const sceneChat = await chats.getById(sceneChatId);
-    if (!sceneChat) return reply.status(404).send({ error: "Scene chat not found" });
+    if (!sceneChat) return notFound(reply, "Scene chat not found");
 
     const sceneMeta = parseMetadata(sceneChat);
 
@@ -945,7 +946,7 @@ export async function sceneRoutes(app: FastifyInstance) {
     }
 
     const sceneChat = await chats.getById(sceneChatId);
-    if (!sceneChat) return reply.status(404).send({ error: "Scene chat not found" });
+    if (!sceneChat) return notFound(reply, "Scene chat not found");
 
     const sceneMeta = parseMetadata(sceneChat);
     const originChatId = typeof sceneMeta.sceneOriginChatId === "string" ? sceneMeta.sceneOriginChatId : null;

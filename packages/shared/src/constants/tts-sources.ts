@@ -33,7 +33,7 @@ export const NANOGPT_TTS_MODEL_IDS = [
   "Elevenlabs-V3",
 ] as const;
 
-export const TTS_SOURCE_IDS = ["openai", "elevenlabs", "nanogpt", "pockettts", "xai"] as const;
+export const TTS_SOURCE_IDS = ["openai", "elevenlabs", "nanogpt", "pockettts", "xai", "builtin"] as const;
 export type TTSSourceId = (typeof TTS_SOURCE_IDS)[number];
 
 /**
@@ -126,6 +126,17 @@ export const TTS_SOURCE_DEFINITIONS: Record<TTSSourceId, TTSSourceDefinition> = 
     defaultBaseUrl: "https://api.x.ai/v1",
     defaultModel: "grok-tts",
     defaultVoice: "eve",
+    maxInputChars: 4096,
+    recommendedChunkChars: 900,
+    baseUrlMode: "fixed",
+  },
+  builtin: {
+    id: "builtin",
+    name: "Built-in model",
+    // Runs in this server (services/sidecar/builtin-tts.service.ts): no address, no key.
+    defaultBaseUrl: "",
+    defaultModel: "kokoro-82m",
+    defaultVoice: "af_heart",
     maxInputChars: 4096,
     recommendedChunkChars: 900,
     baseUrlMode: "fixed",

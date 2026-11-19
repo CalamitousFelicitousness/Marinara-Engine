@@ -8,17 +8,8 @@
 // ──────────────────────────────────────────────
 
 import { basename, isAbsolute, join, relative, resolve, sep } from "path";
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  realpathSync,
-  renameSync,
-  rmSync,
-  statSync,
-  unlinkSync,
-  writeFileSync,
-} from "fs";
+import { sleep } from "../../utils/sleep.js";
+import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, unlinkSync } from "fs";
 import {
   SIDECAR_DEFAULT_CONFIG,
   SIDECAR_EMBEDDING_POOLING_TYPES,
@@ -45,6 +36,7 @@ import {
   validateLocalGgufPath,
 } from "./sidecar-model-files.js";
 import { logger } from "../../lib/logger.js";
+import { writeFileAtomicSync } from "../../utils/atomic-write.js";
 
 export const MODELS_DIR = join(getDataDir(), "models");
 export const CUSTOM_MODELS_DIR = join(MODELS_DIR, "custom");
@@ -125,10 +117,6 @@ function isEmbeddingPooling(value: unknown): value is SidecarConfig["embeddingPo
   return typeof value === "string" && (SIDECAR_EMBEDDING_POOLING_TYPES as readonly string[]).includes(value);
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 function normalizeIntegerSetting(value: unknown, fallback: number, min: number, max?: number): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
   const rounded = Math.max(min, Math.round(value));
@@ -179,10 +167,17 @@ class SidecarModelService {
         );
         nextConfig.topP = normalizeFloatSetting(nextConfig.topP, SIDECAR_DEFAULT_CONFIG.topP, Number.EPSILON, 1);
         nextConfig.topK = normalizeIntegerSetting(nextConfig.topK, SIDECAR_DEFAULT_CONFIG.topK, 0, 500);
+        // Before Auto existed every config carried the old default of 2. Those become Auto, which still
+        // picks 2 wherever the second slot fits; a 2 chosen after this point is kept.
+        if (raw.maxParallelJobsVersion !== 2) {
+          if (raw.maxParallelJobs === 2 || raw.maxParallelJobs === undefined) nextConfig.maxParallelJobs = 0;
+          nextConfig.maxParallelJobsVersion = 2;
+          shouldRewrite = true;
+        }
         nextConfig.maxParallelJobs = normalizeIntegerSetting(
           nextConfig.maxParallelJobs,
           SIDECAR_DEFAULT_CONFIG.maxParallelJobs,
-          1,
+          0,
           16,
         );
         nextConfig.gpuLayers = normalizeIntegerSetting(
@@ -267,13 +262,7 @@ class SidecarModelService {
   }
 
   private writeConfig(config: SidecarConfig): void {
-    const temporary = `${CONFIG_PATH}.${process.pid}.tmp`;
-    try {
-      writeFileSync(temporary, JSON.stringify(config, null, 2), "utf-8");
-      renameSync(temporary, CONFIG_PATH);
-    } finally {
-      rmSync(temporary, { force: true });
-    }
+    writeFileAtomicSync(CONFIG_PATH, JSON.stringify(config, null, 2));
   }
 
   private saveConfig(): void {
@@ -338,6 +327,23 @@ class SidecarModelService {
     return this.resolveBackend(config) === "mlx"
       ? mlxRuntimeService.hasModelCache(config.modelRepo)
       : this.getModelFilePathForConfig(config) !== null;
+  }
+
+  private cachedModelSize: { key: string; size: number | null; at: number } | null = null;
+
+  /**
+   * The configured model's size, read at most every ten seconds. Called on request paths
+   * (the slot count and memory checks), where a file stat on every call is not wanted.
+   */
+  getCachedModelSize(): number | null {
+    const key = `${this.config.backend}:${this.config.modelPath ?? ""}:${this.config.externalModelPath ?? ""}:${this.config.modelRepo ?? ""}`;
+    const now = Date.now();
+    if (this.cachedModelSize && this.cachedModelSize.key === key && now - this.cachedModelSize.at < 10_000) {
+      return this.cachedModelSize.size;
+    }
+    const size = this.getConfiguredModelSize();
+    this.cachedModelSize = { key, size, at: now };
+    return size;
   }
 
   private getConfiguredModelSize(config: SidecarConfig = this.config): number | null {
@@ -962,7 +968,7 @@ class SidecarModelService {
           logger.warn(error, "[sidecar] Failed to remove local model file %s", modelPath);
           return;
         }
-        await delay(250);
+        await sleep(250);
       }
     }
   }

@@ -52,7 +52,7 @@ const read = (...parts: string[]) => readFileSync(join(repositoryRoot, ...parts)
     "every row starts on keep-both, which is what an import did before this question existed",
   );
   assert.ok(
-    modal.includes("setPendingConflicts({ files, importEmbeddedLorebook, conflicts })"),
+    modal.includes("setPendingConflicts({ files, importEmbeddedLorebook, updatePlan, inspections, conflicts })"),
     "a collision parks the import rather than proceeding",
   );
   assert.ok(

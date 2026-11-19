@@ -45,6 +45,8 @@ const SPEED_RANGES: Record<TTSSourceId, { min: number; max: number }> = {
   nanogpt: { min: 0.5, max: 2.0 },
   pockettts: { min: 0.25, max: 4.0 },
   xai: { min: 0.7, max: 1.5 },
+  // builtin-tts.service.ts clamps speak() to this range.
+  builtin: { min: 0.5, max: 2.0 },
 };
 
 export function audioSpeedRange(source: TTSSourceId) {

@@ -4,7 +4,7 @@
 // type scale, so widening the panel enlarged text instead of showing more of it
 // and a resize handle would have been pointless. Width and density are now
 // independent. This lane pins the migration off the old profile, the clamp
-// range, and the preset resolution the settings UI and the resize handle use.
+// range, and the preset resolution the settings UI and the header use.
 
 import assert from "node:assert/strict";
 
@@ -14,10 +14,8 @@ import {
   migrateTrackerPanelSize,
   nearestTrackerPanelPreset,
   nextTrackerPanelTextSize,
-  normalizeTrackerPanelPlacement,
   normalizeTrackerPanelTextSize,
   resolveTrackerPanelPreset,
-  TRACKER_PANEL_MIN_DOCK_WIDTH,
   TRACKER_PANEL_SIZE_PROFILE_WIDTHS,
   TRACKER_PANEL_TEXT_SCALES,
   TRACKER_PANEL_TEXT_SIZE_DEFAULT,
@@ -26,14 +24,9 @@ import {
   TRACKER_PANEL_WIDTH_MAX,
   TRACKER_PANEL_WIDTH_MIN,
 } from "../../../packages/client/src/lib/tracker-panel-size.js";
-import {
-  resolveTrackerPanelColumnRoom,
-  resolveTrackerPanelDesktopWidth,
-  resolveTrackerPanelGutterWidth,
-} from "../../../packages/client/src/lib/tracker-panel-layout.js";
 import { clampPanelWidth } from "../../../packages/client/src/hooks/use-panel-resize.js";
 
-// ── Three independent axes ──
+// ── Two independent axes ──
 // Presets set width only. Coupling text size into them would re-conflate the
 // two things this change exists to separate.
 assert.equal(resolveTrackerPanelPreset(420), "expanded");
@@ -85,22 +78,8 @@ assert.equal(normalizeTrackerPanelTextSize(undefined), TRACKER_PANEL_TEXT_SIZE_D
 assert.equal(normalizeTrackerPanelTextSize(undefined, "compact"), "s");
 assert.equal(normalizeTrackerPanelTextSize(undefined, "comfortable"), "l");
 
-// ── Placement ──
-assert.equal(normalizeTrackerPanelPlacement(undefined), "dock", "docking with a float fallback is the default");
-assert.equal(normalizeTrackerPanelPlacement("float"), "float", "always-float is its own choice, not a fallback");
-assert.equal(normalizeTrackerPanelPlacement("scale"), "scale", "shrinking type stays available as an opt-out");
-assert.equal(normalizeTrackerPanelPlacement("zoom"), "dock");
-// The short-lived narrow-behaviour setting maps onto the placement it became.
-assert.equal(normalizeTrackerPanelPlacement(undefined, "overlay"), "dock");
-assert.equal(normalizeTrackerPanelPlacement(undefined, "scale"), "scale");
-// The dock threshold is the same width at which a label and a value stop
-// sharing a line, which is what makes overlaying the right answer below it.
-assert.equal(TRACKER_PANEL_MIN_DOCK_WIDTH, 176);
-assert.ok(TRACKER_PANEL_MIN_DOCK_WIDTH < TRACKER_PANEL_WIDTH_MIN);
-
-// ── Drag range is wider than the presets ──
-// Presets are starting points, not limits; the gutter clamp is what actually
-// bounds the rendered width.
+// ── Width range is wider than the presets ──
+// Presets are starting points, not limits.
 assert.ok(TRACKER_PANEL_WIDTH_MIN < TRACKER_PANEL_SIZE_PROFILE_WIDTHS.compact, "min sits below the smallest preset");
 assert.ok(TRACKER_PANEL_WIDTH_MAX > TRACKER_PANEL_SIZE_PROFILE_WIDTHS.expanded, "max sits above the largest preset");
 
@@ -118,18 +97,14 @@ assert.equal(clampTrackerPanelWidth(Number.NaN), TRACKER_PANEL_WIDTH_DEFAULT);
 assert.deepEqual(migrateTrackerPanelSize({ trackerPanelSizeProfile: "expanded" }), {
   width: 420,
   textSize: "l",
-  placement: "dock",
 });
 assert.deepEqual(migrateTrackerPanelSize({}), {
   width: TRACKER_PANEL_WIDTH_DEFAULT,
   textSize: "l",
-  placement: "dock",
 });
 // A store that already migrated to the density step keeps its choice.
 assert.equal(migrateTrackerPanelSize({ trackerPanelDensity: "compact" }).textSize, "s");
 assert.equal(migrateTrackerPanelSize({ trackerPanelTextSize: "xl" }).textSize, "xl");
-assert.equal(migrateTrackerPanelSize({ trackerPanelNarrowBehavior: "scale" }).placement, "scale");
-assert.equal(migrateTrackerPanelSize({ trackerPanelPlacement: "float" }).placement, "float");
 
 // A pre-profile store kept a free width; it wins, and density comes from the
 // profile that width implies.
@@ -140,7 +115,6 @@ assert.equal(migrateTrackerPanelSize({ trackerPanelWidth: 400 }).width, 400);
 assert.deepEqual(migrateTrackerPanelSize({ trackerPanelWidth: 512, trackerPanelTextSize: "s" }), {
   width: 512,
   textSize: "s",
-  placement: "dock",
 });
 
 // A junk width does not poison the result.
@@ -154,46 +128,11 @@ assert.equal(resolveTrackerPanelPreset(340), "standard");
 // Drag off a preset and no button claims to be active.
 assert.equal(resolveTrackerPanelPreset(421), null);
 
-// ── Nearest preset drives the handle's double-click reset ──
+// ── Nearest preset: the header's size label for a window resized off every preset ──
 assert.equal(nearestTrackerPanelPreset(300), "compact");
 assert.equal(nearestTrackerPanelPreset(311), "standard");
 assert.equal(nearestTrackerPanelPreset(640), "expanded");
 assert.equal(nearestTrackerPanelPreset(0), "compact", "clamped before comparing");
-
-// ── The gutter is the drag ceiling ──
-// A drag that can exceed the room beside the chat column snaps back on release,
-// so the handle needs the gutter, not just the preferred width.
-const gutterArgs = {
-  mainLeft: 280,
-  mainRight: 1920,
-  chatColumnLeft: 636,
-  chatColumnRight: 1564,
-  side: "right" as const,
-  gap: 8,
-};
-assert.equal(resolveTrackerPanelGutterWidth(gutterArgs), 348);
-// Preferred width still wins while it fits.
-assert.equal(resolveTrackerPanelDesktopWidth({ preferredWidth: 340, ...gutterArgs }), 340);
-// And the gutter clamps once it does not.
-assert.equal(resolveTrackerPanelDesktopWidth({ preferredWidth: 640, ...gutterArgs }), 348);
-// A gutter narrower than the gap cannot go negative.
-assert.equal(
-  resolveTrackerPanelGutterWidth({ ...gutterArgs, chatColumnRight: 1919 }),
-  0,
-  "a collapsed gutter clamps to zero rather than inverting",
-);
-// The gutter alone ignores the docked floor; the panel width does not.
-assert.equal(resolveTrackerPanelDesktopWidth({ preferredWidth: 340, ...gutterArgs, chatColumnRight: 1900 }), 12);
-assert.equal(
-  resolveTrackerPanelDesktopWidth({ preferredWidth: 340, ...gutterArgs, chatColumnRight: 1900, minWidth: 96 }),
-  96,
-);
-
-// ── Column room ──
-// Dock reserves the width below which it would float, so the column gives way before the panel does.
-assert.equal(resolveTrackerPanelColumnRoom("dock", 8, 96), TRACKER_PANEL_MIN_DOCK_WIDTH + 8);
-assert.equal(resolveTrackerPanelColumnRoom("float", 8, 96), 0, "a floating panel narrows nothing");
-assert.equal(resolveTrackerPanelColumnRoom("scale", 8, 96), 104);
 
 // ── The shared resize clamp ──
 assert.equal(clampPanelWidth(300, 240, 640), 300);
@@ -202,15 +141,16 @@ assert.equal(clampPanelWidth(900, 240, 640), 640);
 
 // ── Server-synced blob ──
 // A current blob keeps its width; the old sync path turned it into a profile and dropped it.
+// The edge-docked panel's placement setting has no reader left, so a synced blob drops it.
 const synced: Record<string, unknown> = { trackerPanelWidth: 500, trackerPanelTextSize: "s", trackerPanelPlacement: "float" };
 migrateSyncedTrackerPanelSize(synced);
-assert.deepEqual(synced, { trackerPanelWidth: 500, trackerPanelTextSize: "s", trackerPanelPlacement: "float" });
+assert.deepEqual(synced, { trackerPanelWidth: 500, trackerPanelTextSize: "s" });
 const clamped: Record<string, unknown> = { trackerPanelWidth: 9000 };
 migrateSyncedTrackerPanelSize(clamped);
 assert.deepEqual(clamped, { trackerPanelWidth: 640 });
 const legacy: Record<string, unknown> = { trackerPanelSizeProfile: "expanded", trackerPanelDensity: "compact" };
 migrateSyncedTrackerPanelSize(legacy);
-assert.deepEqual(legacy, { trackerPanelWidth: 420, trackerPanelTextSize: "s", trackerPanelPlacement: "dock" });
+assert.deepEqual(legacy, { trackerPanelWidth: 420, trackerPanelTextSize: "s" });
 const untouched: Record<string, unknown> = { chatFontSize: 16 };
 migrateSyncedTrackerPanelSize(untouched);
 assert.deepEqual(untouched, { chatFontSize: 16 });

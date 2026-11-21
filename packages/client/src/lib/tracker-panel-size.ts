@@ -1,11 +1,10 @@
 // ──────────────────────────────────────────────
 // Tracker panel size model
 // ──────────────────────────────────────────────
-// Three independent axes, deliberately not derived from one another:
+// Two independent axes, deliberately not derived from one another:
 //
-//   width           dragged or set from a preset
-//   text size       a legibility preference, its own header control
-//   narrow behavior what happens when the gutter cannot hold the panel
+//   width      the desktop window's width, or a preset that resizes it
+//   text size  a legibility preference, its own header control
 //
 // They used to be one setting. `trackerPanelSizeProfile` picked both a pixel
 // width and a type scale, so widening the panel enlarged its text instead of
@@ -57,38 +56,8 @@ export const TRACKER_PANEL_TEXT_SCALES: Record<TrackerPanelTextSize, number> = {
 
 export const TRACKER_PANEL_TEXT_SIZE_DEFAULT: TrackerPanelTextSize = "l";
 
-/**
- * Where the panel sits relative to the chat column.
- *
- *   dock   beside the chat, reflowing as it narrows, floating only when the
- *          gutter drops below TRACKER_PANEL_MIN_DOCK_WIDTH. The default.
- *   float  always over the chat column, at whatever width the panel is set to,
- *          regardless of how much gutter there is.
- *   scale  always docked, shrinking type to fit. The behaviour that shipped
- *          before reflow existed, kept as an opt-out.
- */
-export const TRACKER_PANEL_PLACEMENTS = ["dock", "float", "scale"] as const;
-export type TrackerPanelPlacement = (typeof TRACKER_PANEL_PLACEMENTS)[number];
-export const TRACKER_PANEL_PLACEMENT_DEFAULT: TrackerPanelPlacement = "dock";
-
-/** The short-lived narrow-behaviour setting this replaced. */
-const LEGACY_NARROW_BEHAVIOR_PLACEMENTS: Record<string, TrackerPanelPlacement> = {
-  overlay: "dock",
-  scale: "scale",
-};
-
-/**
- * Below this the docked panel cannot show a usable row at any type size, so
- * `overlay` stops docking and floats over the chat column instead. It is also
- * the card's stacked/two-column container breakpoint, which is not a
- * coincidence: it is the width at which a label and a value stop fitting side
- * by side.
- */
-export const TRACKER_PANEL_MIN_DOCK_WIDTH = 176;
-
 export const TRACKER_PANEL_WIDTH_DEFAULT = TRACKER_PANEL_SIZE_PROFILE_WIDTHS.standard;
 // Deliberately wider than the presets: presets are starting points, not limits.
-// resolveTrackerPanelDesktopWidth still clamps to the gutter actually available.
 export const TRACKER_PANEL_WIDTH_MIN = 240;
 export const TRACKER_PANEL_WIDTH_MAX = 640;
 
@@ -135,14 +104,6 @@ export function normalizeTrackerPanelTextSize(value: unknown, legacyDensity?: un
   return TRACKER_PANEL_TEXT_SIZE_DEFAULT;
 }
 
-export function normalizeTrackerPanelPlacement(value: unknown, legacyNarrowBehavior?: unknown): TrackerPanelPlacement {
-  if (TRACKER_PANEL_PLACEMENTS.includes(value as TrackerPanelPlacement)) return value as TrackerPanelPlacement;
-  if (typeof legacyNarrowBehavior === "string" && legacyNarrowBehavior in LEGACY_NARROW_BEHAVIOR_PLACEMENTS) {
-    return LEGACY_NARROW_BEHAVIOR_PLACEMENTS[legacyNarrowBehavior]!;
-  }
-  return TRACKER_PANEL_PLACEMENT_DEFAULT;
-}
-
 /** Next step in the header's cycle button, wrapping at the end. */
 export function nextTrackerPanelTextSize(current: TrackerPanelTextSize): TrackerPanelTextSize {
   const index = TRACKER_PANEL_TEXT_SIZES.indexOf(current);
@@ -155,7 +116,7 @@ export function resolveTrackerPanelPreset(width: number): TrackerPanelSizeProfil
   return TRACKER_PANEL_SIZE_PROFILES.find((profile) => TRACKER_PANEL_SIZE_PROFILE_WIDTHS[profile] === clamped) ?? null;
 }
 
-/** Nearest preset by width, for the resize handle's double-click reset. */
+/** Nearest preset by width, for a window resized off every preset. */
 export function nearestTrackerPanelPreset(width: number): TrackerPanelSizeProfile {
   const clamped = clampTrackerPanelWidth(width);
   return TRACKER_PANEL_SIZE_PROFILES.reduce((closest, profile) =>
@@ -168,16 +129,14 @@ export function nearestTrackerPanelPreset(width: number): TrackerPanelSizeProfil
 
 /**
  * Persisted-state migration for the size model.
- * Returns the three fields from whatever the old store held.
+ * Returns the two fields from whatever the old store held.
  */
 export function migrateTrackerPanelSize(persisted: {
   trackerPanelWidth?: unknown;
   trackerPanelTextSize?: unknown;
   trackerPanelDensity?: unknown;
-  trackerPanelPlacement?: unknown;
-  trackerPanelNarrowBehavior?: unknown;
   trackerPanelSizeProfile?: unknown;
-}): { width: number; textSize: TrackerPanelTextSize; placement: TrackerPanelPlacement } {
+}): { width: number; textSize: TrackerPanelTextSize } {
   const legacyProfile = normalizeTrackerPanelSizeProfile(
     persisted.trackerPanelSizeProfile,
     persisted.trackerPanelWidth,
@@ -186,24 +145,25 @@ export function migrateTrackerPanelSize(persisted: {
     // An explicit width from before the profile era still wins.
     width: clampTrackerPanelWidth(persisted.trackerPanelWidth ?? TRACKER_PANEL_SIZE_PROFILE_WIDTHS[legacyProfile]),
     textSize: normalizeTrackerPanelTextSize(persisted.trackerPanelTextSize, persisted.trackerPanelDensity),
-    placement: normalizeTrackerPanelPlacement(persisted.trackerPanelPlacement, persisted.trackerPanelNarrowBehavior),
   };
 }
 
 const LEGACY_SIZE_KEYS = ["trackerPanelSizeProfile", "trackerPanelDensity", "trackerPanelNarrowBehavior"] as const;
+// Settings of the edge-docked panel the desktop window replaced.
+export const RETIRED_TRACKER_PANEL_KEYS = ["trackerPanelPlacement"] as const;
 
 /**
  * Same migration for the server-synced settings blob, in place. A blob with no
- * legacy keys keeps its text size and placement as written; only the width is clamped.
+ * legacy keys keeps its text size as written; only the width is clamped.
  */
 export function migrateSyncedTrackerPanelSize(settings: Record<string, unknown>): void {
   if (LEGACY_SIZE_KEYS.some((key) => key in settings)) {
     const size = migrateTrackerPanelSize(settings);
     settings.trackerPanelWidth = size.width;
     settings.trackerPanelTextSize = size.textSize;
-    settings.trackerPanelPlacement = size.placement;
     for (const key of LEGACY_SIZE_KEYS) delete settings[key];
   } else if ("trackerPanelWidth" in settings) {
     settings.trackerPanelWidth = clampTrackerPanelWidth(settings.trackerPanelWidth);
   }
+  for (const key of RETIRED_TRACKER_PANEL_KEYS) delete settings[key];
 }

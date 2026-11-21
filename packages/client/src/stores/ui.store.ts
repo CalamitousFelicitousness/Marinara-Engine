@@ -38,14 +38,12 @@ import { DEFAULT_APP_LANGUAGE, type AppLanguage } from "../localization/locale-t
 import {
   clampTrackerPanelWidth,
   migrateTrackerPanelSize,
-  normalizeTrackerPanelPlacement,
   normalizeTrackerPanelSizeProfile,
   normalizeTrackerPanelTextSize,
-  TRACKER_PANEL_PLACEMENT_DEFAULT,
+  RETIRED_TRACKER_PANEL_KEYS,
   TRACKER_PANEL_SIZE_PROFILE_WIDTHS,
   TRACKER_PANEL_TEXT_SIZE_DEFAULT,
   TRACKER_PANEL_WIDTH_DEFAULT,
-  type TrackerPanelPlacement,
   type TrackerPanelSizeProfile,
   type TrackerPanelTextSize,
 } from "../lib/tracker-panel-size";
@@ -56,13 +54,9 @@ export {
   migrateTrackerPanelSize,
   nearestTrackerPanelPreset,
   nextTrackerPanelTextSize,
-  normalizeTrackerPanelPlacement,
   normalizeTrackerPanelSizeProfile,
   normalizeTrackerPanelTextSize,
   resolveTrackerPanelPreset,
-  TRACKER_PANEL_MIN_DOCK_WIDTH,
-  TRACKER_PANEL_PLACEMENT_DEFAULT,
-  TRACKER_PANEL_PLACEMENTS,
   TRACKER_PANEL_SIZE_PROFILE_WIDTHS,
   TRACKER_PANEL_SIZE_PROFILES,
   TRACKER_PANEL_TEXT_SCALES,
@@ -71,7 +65,6 @@ export {
   TRACKER_PANEL_WIDTH_DEFAULT,
   TRACKER_PANEL_WIDTH_MAX,
   TRACKER_PANEL_WIDTH_MIN,
-  type TrackerPanelPlacement,
   type TrackerPanelSizeProfile,
   type TrackerPanelTextSize,
 } from "../lib/tracker-panel-size";
@@ -771,7 +764,6 @@ export interface UIState {
   trackerPanelDockedThoughtsAlwaysVisible: boolean;
   trackerPanelWidth: number;
   trackerPanelTextSize: TrackerPanelTextSize;
-  trackerPanelPlacement: TrackerPanelPlacement;
   trackerPanelBackgroundColor: string;
   trackerTemperatureUnit: TrackerTemperatureUnit;
   trackerPanelCollapsedSections: TrackerPanelCollapsedSections;
@@ -1412,7 +1404,6 @@ export interface UIState {
   setTrackerPanelSizeProfile: (profile: TrackerPanelSizeProfile) => void;
   setTrackerPanelWidth: (width: number) => void;
   setTrackerPanelTextSize: (size: TrackerPanelTextSize) => void;
-  setTrackerPanelPlacement: (placement: TrackerPanelPlacement) => void;
   setTrackerPanelBackgroundColor: (color: string) => void;
   setTrackerTemperatureUnit: (unit: TrackerTemperatureUnit) => void;
   setTrackerPanelSectionOrder: (order: TrackerPanelSectionOrder) => void;
@@ -1972,7 +1963,6 @@ export function pickSyncedSettings(state: UIState) {
     trackerPanelDockedThoughtsAlwaysVisible: state.trackerPanelDockedThoughtsAlwaysVisible,
     trackerPanelWidth: state.trackerPanelWidth,
     trackerPanelTextSize: state.trackerPanelTextSize,
-    trackerPanelPlacement: state.trackerPanelPlacement,
     trackerPanelBackgroundColor: state.trackerPanelBackgroundColor,
     trackerTemperatureUnit: state.trackerTemperatureUnit,
     trackerPanelCollapsedSections: state.trackerPanelCollapsedSections,
@@ -2247,7 +2237,6 @@ export function pickPersistedUIState(state: UIState) {
     trackerPanelDockedThoughtsAlwaysVisible: state.trackerPanelDockedThoughtsAlwaysVisible,
     trackerPanelWidth: state.trackerPanelWidth,
     trackerPanelTextSize: state.trackerPanelTextSize,
-    trackerPanelPlacement: state.trackerPanelPlacement,
     trackerPanelBackgroundColor: state.trackerPanelBackgroundColor,
     trackerTemperatureUnit: state.trackerTemperatureUnit,
     trackerPanelCollapsedSections: state.trackerPanelCollapsedSections,
@@ -2496,7 +2485,6 @@ export const useUIStore = create<UIState>()(
         trackerPanelDockedThoughtsAlwaysVisible: false,
         trackerPanelWidth: TRACKER_PANEL_WIDTH_DEFAULT,
         trackerPanelTextSize: TRACKER_PANEL_TEXT_SIZE_DEFAULT,
-        trackerPanelPlacement: TRACKER_PANEL_PLACEMENT_DEFAULT,
         trackerPanelBackgroundColor: TRACKER_PANEL_DEFAULT_BACKGROUND_COLOR,
         trackerTemperatureUnit: "celsius" as TrackerTemperatureUnit,
         trackerPanelCollapsedSections: {},
@@ -2903,8 +2891,6 @@ export const useUIStore = create<UIState>()(
           set({ trackerPanelWidth: TRACKER_PANEL_SIZE_PROFILE_WIDTHS[normalizeTrackerPanelSizeProfile(profile)] }),
         setTrackerPanelWidth: (width) => set({ trackerPanelWidth: clampTrackerPanelWidth(width) }),
         setTrackerPanelTextSize: (size) => set({ trackerPanelTextSize: normalizeTrackerPanelTextSize(size) }),
-        setTrackerPanelPlacement: (placement) =>
-          set({ trackerPanelPlacement: normalizeTrackerPanelPlacement(placement) }),
         setTrackerPanelBackgroundColor: (color) =>
           set({ trackerPanelBackgroundColor: normalizeTrackerPanelBackgroundColor(color) }),
         setTrackerTemperatureUnit: (unit) => set({ trackerTemperatureUnit: normalizeTrackerTemperatureUnit(unit) }),
@@ -3573,7 +3559,6 @@ export const useUIStore = create<UIState>()(
             trackerPanelDockedThoughtsAlwaysVisible: false,
             trackerPanelWidth: TRACKER_PANEL_WIDTH_DEFAULT,
             trackerPanelTextSize: TRACKER_PANEL_TEXT_SIZE_DEFAULT,
-            trackerPanelPlacement: TRACKER_PANEL_PLACEMENT_DEFAULT,
             trackerPanelBackgroundColor: TRACKER_PANEL_DEFAULT_BACKGROUND_COLOR,
             trackerTemperatureUnit: "celsius" as TrackerTemperatureUnit,
             trackerPanelCollapsedSections: {},
@@ -4124,13 +4109,13 @@ export const useUIStore = create<UIState>()(
         persisted.trackerPanelThoughtBubbleDisplay = normalizeTrackerThoughtBubbleDisplay(
           persisted.trackerPanelThoughtBubbleDisplay,
         );
-        // v95 -> v98: width, text size, and placement become independent settings.
+        // v95 -> v98: width and text size become independent settings.
         {
           const size = migrateTrackerPanelSize(persisted);
           persisted.trackerPanelWidth = size.width;
           persisted.trackerPanelTextSize = size.textSize;
-          persisted.trackerPanelPlacement = size.placement;
           delete persisted.trackerPanelNarrowBehavior;
+          for (const key of RETIRED_TRACKER_PANEL_KEYS) delete persisted[key];
           delete persisted.trackerPanelSizeProfile;
           delete persisted.trackerPanelDensity;
         }

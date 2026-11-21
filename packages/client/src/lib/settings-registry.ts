@@ -1224,16 +1224,6 @@ export const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMet
     kind: "Toggle",
   },
   {
-    id: "tracker-replace-hud-icons",
-    sectionId: "roleplay-tracker",
-    labelKey: "settings.search.trackerReplaceHudIcons.label",
-    label: "Replace tracker HUD icons",
-    description: "Hide the old world/player tracker icon strip.",
-    descriptionKey: "settings.search.trackerReplaceHudIcons.description",
-    aliases: ["tracker", "hud", "icons"],
-    kind: "Toggle",
-  },
-  {
     id: "tracker-expression-sprites",
     sectionId: "roleplay-tracker",
     labelKey: "settings.controls.useExpressionSprites.label",

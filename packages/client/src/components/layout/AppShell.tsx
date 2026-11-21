@@ -14,17 +14,11 @@ import { ChatResourceMobileDropDock } from "../chat/ChatResourceMobileDropDock";
 import {
   isMobileShellViewport,
   MOBILE_SHELL_MEDIA_QUERY,
-  nearestTrackerPanelPreset,
-  resolveTrackerPanelPreset,
   selectSharedSidebarWidth,
   selectSidebarShown,
   SHARED_SIDEBAR_WIDTH_MAX,
   SHARED_SIDEBAR_WIDTH_MIN,
   TRACKER_PANEL_DEFAULT_BACKGROUND_COLOR,
-  TRACKER_PANEL_MIN_DOCK_WIDTH,
-  TRACKER_PANEL_SIZE_PROFILE_WIDTHS,
-  TRACKER_PANEL_WIDTH_MAX,
-  TRACKER_PANEL_WIDTH_MIN,
   useUIStore,
 } from "../../stores/ui.store";
 import { usePanelResize } from "../../hooks/use-panel-resize";
@@ -50,11 +44,7 @@ import { cn } from "../../lib/utils";
 import { parseChatMetadata } from "../../lib/chat-display";
 import { openGlobalSearch } from "../../lib/chat-insights";
 import { requestChatSummaryOpen } from "../../lib/chat-floating-ui-events";
-import {
-  resolveTrackerPanelColumnRoom,
-  resolveTrackerPanelContentScale,
-  resolveTrackerPanelGutterWidth,
-} from "../../lib/tracker-panel-layout";
+import { TrackerPanelWindow } from "../../features/tracker-panel/components/TrackerPanelWindow";
 import {
   closeTrackerPanelWindow,
   openTrackerPanelWindow,
@@ -122,21 +112,9 @@ const OnboardingTutorial = lazy(() =>
   import("../onboarding/OnboardingTutorial").then((module) => ({ default: module.OnboardingTutorial })),
 );
 
-const TRACKER_PANEL_EDGE_OFFSET = 8;
-const TRACKER_PANEL_HUD_GAP = 6;
-const TRACKER_PANEL_CHAT_GAP = 8;
-// The narrowest docked Tracker Panel: its close, settings and help buttons still fit side by side (#7188).
-const TRACKER_PANEL_MIN_DOCKED_WIDTH = 96;
 // Matches the .mari-shell-panel-slot width transition in globals.css.
 const SHELL_PANEL_SLIDE_MS = 220;
-const TRACKER_PANEL_DESKTOP_MOTION_MS = 260;
-const TRACKER_PANEL_DESKTOP_EXIT_MS = 240;
-const TRACKER_PANEL_DESKTOP_EASE = [0.16, 1, 0.3, 1] as const;
-const TRACKER_PANEL_DESKTOP_EXIT_EASE = [0.4, 0, 1, 1] as const;
-const TRACKER_PANEL_TOGGLE_SELECTOR = '[data-tracker-panel-toggle="bubble"]';
-const TRACKER_PANEL_ANCHOR_SELECTOR = '[data-tracker-panel-anchor="roleplay-hud"]';
-const ROLEPLAY_CHAT_COLUMN_SELECTOR = '[data-roleplay-chat-column="true"]';
-const TOP_BAR_SELECTOR = '[data-component="TopBar"]';
+const TRACKER_WINDOW_GAP_PX = 12;
 // Below the TopBar, whose height a sideways phone shortens (--mari-topbar-height in globals.css).
 const MOBILE_SHELL_PANEL_TOP_CLASS = "top-[calc(env(safe-area-inset-top)_+_var(--mari-topbar-height,3rem))]";
 // Phone sheets fill the width the shell has: a phone turned sideways keeps its camera insets clear.
@@ -180,12 +158,6 @@ function hasHorizontalOverflow(root: Element) {
   };
   scan(root, 0);
   return overflows;
-}
-
-function readVisibleElementRect(element: HTMLElement) {
-  const rect = element.getBoundingClientRect();
-  if (rect.width <= 0 || rect.height <= 0 || window.getComputedStyle(element).display === "none") return null;
-  return rect;
 }
 
 /** The focused element, looking inside open shadow roots (a field in one leaves its host as document.activeElement). */
@@ -514,10 +486,7 @@ export function AppShell({
   const trackerPanelEnabled = useUIStore((s) => s.trackerPanelEnabled);
   const trackerPanelOpen = useUIStore((s) => s.trackerPanelOpen);
   const trackerPanelSide = useUIStore((s) => s.trackerPanelSide);
-  const trackerPanelHideHudWidgets = useUIStore((s) => s.trackerPanelHideHudWidgets);
-  const trackerPanelStoredWidth = useUIStore((s) => s.trackerPanelWidth);
-  const trackerPanelPlacement = useUIStore((s) => s.trackerPanelPlacement);
-  const setTrackerPanelWidth = useUIStore((s) => s.setTrackerPanelWidth);
+  const trackerPanelWidth = useUIStore((s) => s.trackerPanelWidth);
   const trackerPanelBackgroundColor = useUIStore((s) => s.trackerPanelBackgroundColor);
   const spatialMapDetailChatId = useUIStore((s) => s.spatialMapDetailChatId);
   const pendingSpatialMapDraftReview = useUIStore((s) => s.pendingSpatialMapDraftReview);
@@ -553,23 +522,6 @@ export function AppShell({
   }, [closeAgentDetail, openRightPanel]);
   const [sidebarDragWidth, setSidebarDragWidth] = useState<number | null>(null);
   const liveSidebarWidth = sidebarDragWidth ?? sharedSidebarWidth;
-  const trackerPanelWidth = trackerPanelStoredWidth;
-  // Derived only for the props still typed on the old profile.
-  const trackerPanelSizeProfile =
-    resolveTrackerPanelPreset(trackerPanelWidth) ?? nearestTrackerPanelPreset(trackerPanelWidth);
-  const [trackerPanelResolvedWidth, setTrackerPanelResolvedWidth] = useState(trackerPanelWidth);
-  const [trackerPanelWidthMeasured, setTrackerPanelWidthMeasured] = useState(false);
-  const [trackerPanelGutterWidth, setTrackerPanelGutterWidth] = useState(TRACKER_PANEL_WIDTH_MAX);
-  const [trackerPanelMainWidth, setTrackerPanelMainWidth] = useState(0);
-  const shellRootRef = useRef<HTMLDivElement>(null);
-  const trackerPanelResizeMax = Math.min(
-    TRACKER_PANEL_WIDTH_MAX,
-    // Floating over the chat column means the gutter no longer bounds the drag.
-    trackerPanelPlacement === "float" ? Math.max(0, trackerPanelMainWidth - 16) : trackerPanelGutterWidth,
-  );
-  // A gutter too narrow to reach the minimum leaves nothing to drag. Showing a
-  // handle there advertises an aria-valuemax the panel can never reach.
-  const trackerPanelResizable = trackerPanelResizeMax > TRACKER_PANEL_WIDTH_MIN;
   const [trackerPanelWindowTarget, setTrackerPanelWindowTarget] = useState<TrackerPanelWindowTarget | null>(null);
   const trackerPanelWindowTargetRef = useRef<TrackerPanelWindowTarget | null>(null);
   const trackerPanelDockingPopupRef = useRef<TrackerPanelWindowTarget["popup"] | null>(null);
@@ -817,10 +769,6 @@ export function AppShell({
   const clearUnread = useChatStore((s) => s.clearUnread);
   const { mutate: clearAutonomousUnread, isPending: isClearingAutonomousUnread } = useClearAutonomousUnread();
   const isPageActive = usePageActivity();
-  const [trackerPanelTop, setTrackerPanelTop] = useState(TRACKER_PANEL_EDGE_OFFSET);
-  const [trackerPanelExitLayoutHold, setTrackerPanelExitLayoutHold] = useState(false);
-  const [trackerPanelToggleAnchorY, setTrackerPanelToggleAnchorY] = useState<number | null>(null);
-  const trackerPanelWasActiveRef = useRef(false);
   const lastAutonomousUnreadClearRef = useRef<string | null>(null);
 
   const selectedFeatureAgent = useMemo(
@@ -917,23 +865,6 @@ export function AppShell({
     label: localizeUi("ui.layout.appshell.resizeSidebar"),
     onCommit: commitSharedSidebarWidth,
     onPreview: setSidebarDragWidth,
-  });
-
-  const trackerPanelResize = usePanelResize({
-    edge: trackerPanelSide,
-    width: trackerPanelWidth,
-    min: TRACKER_PANEL_WIDTH_MIN,
-    // The gutter beside the chat column is the real ceiling; without it a drag
-    // past the edge would snap back on release.
-    max: Math.max(TRACKER_PANEL_WIDTH_MIN, trackerPanelResizeMax),
-    disabled: shellOverlayMode || !trackerPanelResizable,
-    label: localizeUi("ui.layout.appshell.resizeTrackerPanel"),
-    onCommit: setTrackerPanelWidth,
-    // No onPreview: the panel follows this custom property so a drag never
-    // re-renders the tracker subtree.
-    previewVariable: "--mari-tracker-drag-width",
-    previewTarget: shellRootRef,
-    resetWidth: () => TRACKER_PANEL_SIZE_PROFILE_WIDTHS[nearestTrackerPanelPreset(trackerPanelWidth)],
   });
 
   const detailView = regexDetailId ? (
@@ -1077,289 +1008,6 @@ export function AppShell({
     trackerPanelWindowTargetRef.current = null;
     setTrackerPanelWindowTarget(null);
   }, [trackerPanelActive, trackerPanelModeAvailable, trackerPanelWindowTarget]);
-  useEffect(() => {
-    if (trackerPanelVisible) {
-      trackerPanelWasActiveRef.current = true;
-      setTrackerPanelExitLayoutHold(false);
-      return;
-    }
-    if (!trackerPanelWasActiveRef.current) return;
-
-    trackerPanelWasActiveRef.current = false;
-    setTrackerPanelExitLayoutHold(true);
-    const timeout = window.setTimeout(() => setTrackerPanelExitLayoutHold(false), TRACKER_PANEL_DESKTOP_EXIT_MS);
-    return () => window.clearTimeout(timeout);
-  }, [trackerPanelVisible]);
-
-  const trackerPanelPendingExit = !trackerPanelVisible && trackerPanelWasActiveRef.current;
-  const trackerPanelAnchoredForMotion = trackerPanelVisible || trackerPanelExitLayoutHold || trackerPanelPendingExit;
-  const trackerPanelDockToEdge = trackerPanelAnchoredForMotion && trackerPanelHideHudWidgets;
-  const updateTrackerPanelToggleAnchor = useCallback(() => {
-    const root = mainRef.current;
-    const toggle =
-      root?.querySelector<HTMLElement>(TRACKER_PANEL_TOGGLE_SELECTOR) ??
-      document.querySelector<HTMLElement>(TRACKER_PANEL_TOGGLE_SELECTOR);
-    if (!toggle) return;
-    const rect = readVisibleElementRect(toggle);
-    if (!rect) return;
-
-    const nextCenterY = rect.top + rect.height / 2;
-    setTrackerPanelToggleAnchorY((current) =>
-      current !== null && Math.abs(current - nextCenterY) < 0.5 ? current : nextCenterY,
-    );
-  }, []);
-  const updateTrackerPanelTop = useCallback(() => {
-    const root = mainRef.current;
-    const topCandidates = [TRACKER_PANEL_EDGE_OFFSET];
-    const topBar =
-      root?.querySelector<HTMLElement>(TOP_BAR_SELECTOR) ?? document.querySelector<HTMLElement>(TOP_BAR_SELECTOR);
-    const topBarRect = topBar ? readVisibleElementRect(topBar) : null;
-    if (topBarRect) topCandidates.push(Math.ceil(topBarRect.bottom + TRACKER_PANEL_HUD_GAP));
-
-    if (!trackerPanelDockToEdge) {
-      const anchors = Array.from(document.querySelectorAll<HTMLElement>(TRACKER_PANEL_ANCHOR_SELECTOR));
-      anchors.forEach((anchor) => {
-        const rect = readVisibleElementRect(anchor);
-        if (rect) topCandidates.push(Math.ceil(rect.bottom + TRACKER_PANEL_HUD_GAP));
-      });
-    }
-
-    const nextTop = Math.max(...topCandidates);
-    setTrackerPanelTop((current) => (current === nextTop ? current : nextTop));
-  }, [trackerPanelDockToEdge]);
-
-  useLayoutEffect(() => {
-    if (shellOverlayMode || trackerPanelVisible || !trackerPanelSurfaceAvailable) return;
-
-    let frame = 0;
-    let discoveryObserver: MutationObserver | null = null;
-    let observedToggle: HTMLElement | null = null;
-    const observer = new ResizeObserver(() => scheduleUpdate());
-    const observeToggle = () => {
-      const root = mainRef.current;
-      const toggle =
-        root?.querySelector<HTMLElement>(TRACKER_PANEL_TOGGLE_SELECTOR) ??
-        document.querySelector<HTMLElement>(TRACKER_PANEL_TOGGLE_SELECTOR);
-      if (!toggle) return false;
-      if (observedToggle !== toggle) {
-        if (observedToggle) observer.unobserve(observedToggle);
-        observer.observe(toggle);
-        observedToggle = toggle;
-      }
-      return true;
-    };
-    function scheduleUpdate() {
-      if (frame) window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(() => {
-        frame = 0;
-        const foundToggle = observeToggle();
-        updateTrackerPanelToggleAnchor();
-        if (foundToggle) {
-          discoveryObserver?.disconnect();
-          discoveryObserver = null;
-        }
-      });
-    }
-
-    scheduleUpdate();
-    if (mainRef.current) {
-      discoveryObserver = new MutationObserver(() => scheduleUpdate());
-      discoveryObserver.observe(mainRef.current, { childList: true, subtree: true });
-    }
-    window.addEventListener("resize", scheduleUpdate);
-    return () => {
-      if (frame) window.cancelAnimationFrame(frame);
-      observer.disconnect();
-      discoveryObserver?.disconnect();
-      window.removeEventListener("resize", scheduleUpdate);
-    };
-  }, [
-    activeChat?.mode,
-    activeChatId,
-    botBrowserOpen,
-    gameAssetsBrowserOpen,
-    centerCompact,
-    shellOverlayMode,
-    trackerPanelSurfaceAvailable,
-    trackerPanelVisible,
-    updateTrackerPanelToggleAnchor,
-  ]);
-
-  useLayoutEffect(() => {
-    if (shellOverlayMode || !trackerPanelAnchoredForMotion || !trackerPanelSurfaceAvailable) {
-      setTrackerPanelTop(TRACKER_PANEL_EDGE_OFFSET);
-      return;
-    }
-
-    let frame = 0;
-    let discoveryObserver: MutationObserver | null = null;
-    const observedTargets = new Set<HTMLElement>();
-    const observer = new ResizeObserver(() => {
-      scheduleUpdate();
-    });
-    const observeTargets = () => {
-      const topBarTargets = Array.from(document.querySelectorAll<HTMLElement>(TOP_BAR_SELECTOR));
-      const anchorTargets = Array.from(document.querySelectorAll<HTMLElement>(TRACKER_PANEL_ANCHOR_SELECTOR));
-      const targets = [...topBarTargets, ...anchorTargets];
-      targets.forEach((target) => {
-        if (observedTargets.has(target)) return;
-        observer.observe(target);
-        observedTargets.add(target);
-      });
-      return anchorTargets.length > 0;
-    };
-    function scheduleUpdate() {
-      if (frame) window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(() => {
-        frame = 0;
-        const foundTargets = observeTargets();
-        updateTrackerPanelTop();
-        if (foundTargets) {
-          discoveryObserver?.disconnect();
-          discoveryObserver = null;
-        }
-      });
-    }
-
-    scheduleUpdate();
-    if (mainRef.current) {
-      discoveryObserver = new MutationObserver(() => scheduleUpdate());
-      discoveryObserver.observe(mainRef.current, { childList: true, subtree: true });
-    }
-    window.addEventListener("resize", scheduleUpdate);
-    return () => {
-      if (frame) window.cancelAnimationFrame(frame);
-      observer.disconnect();
-      discoveryObserver?.disconnect();
-      window.removeEventListener("resize", scheduleUpdate);
-    };
-  }, [
-    activeChat?.mode,
-    activeChatId,
-    botBrowserOpen,
-    gameAssetsBrowserOpen,
-    centerCompact,
-    shellOverlayMode,
-    trackerPanelAnchoredForMotion,
-    trackerPanelDockToEdge,
-    trackerPanelSurfaceAvailable,
-    updateTrackerPanelTop,
-  ]);
-
-  useLayoutEffect(() => {
-    if (shellOverlayMode || !trackerPanelSurfaceAvailable || !trackerPanelAnchoredForMotion) {
-      setTrackerPanelResolvedWidth(trackerPanelWidth);
-      setTrackerPanelWidthMeasured(false);
-      return;
-    }
-
-    setTrackerPanelWidthMeasured(false);
-    let frame = 0;
-    let discoveryObserver: MutationObserver | null = null;
-    let observedChatColumn: HTMLElement | null = null;
-    const observer = new ResizeObserver(() => scheduleUpdate());
-    const update = () => {
-      const main = mainRef.current;
-      const chatColumn = main?.querySelector<HTMLElement>(ROLEPLAY_CHAT_COLUMN_SELECTOR) ?? null;
-      const mainRect = main ? readVisibleElementRect(main) : null;
-      const chatColumnRect = chatColumn ? readVisibleElementRect(chatColumn) : null;
-
-      if (!mainRect || !chatColumn || !chatColumnRect) {
-        setTrackerPanelWidthMeasured(false);
-        return false;
-      }
-
-      const gutter = resolveTrackerPanelGutterWidth({
-        mainLeft: mainRect.left,
-        mainRight: mainRect.right,
-        chatColumnLeft: chatColumnRect.left,
-        chatColumnRight: chatColumnRect.right,
-        side: trackerPanelSide,
-        gap: TRACKER_PANEL_CHAT_GAP,
-      });
-      const nextWidth = Math.max(TRACKER_PANEL_MIN_DOCKED_WIDTH, Math.min(trackerPanelWidth, gutter));
-      setTrackerPanelGutterWidth((current) => (current === gutter ? current : gutter));
-      const mainWidth = Math.round(mainRect.width);
-      setTrackerPanelMainWidth((current) => (current === mainWidth ? current : mainWidth));
-      setTrackerPanelResolvedWidth((current) => (current === nextWidth ? current : nextWidth));
-      setTrackerPanelWidthMeasured(true);
-
-      if (observedChatColumn !== chatColumn) {
-        if (observedChatColumn) observer.unobserve(observedChatColumn);
-        observer.observe(chatColumn);
-        observedChatColumn = chatColumn;
-      }
-      return true;
-    };
-    // Watches for a chat column while there is none. A chat switch unmounts the column after the first
-    // measure, so a miss re-arms it; otherwise the panel would stay unmeasured and hidden (#7188).
-    const discoverChatColumn = () => {
-      if (discoveryObserver || !mainRef.current) return;
-      discoveryObserver = new MutationObserver(() => scheduleUpdate());
-      discoveryObserver.observe(mainRef.current, { childList: true, subtree: true });
-    };
-    function scheduleUpdate() {
-      if (frame) window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(() => {
-        frame = 0;
-        const foundChatColumn = update();
-        if (foundChatColumn) {
-          discoveryObserver?.disconnect();
-          discoveryObserver = null;
-        } else {
-          discoverChatColumn();
-        }
-      });
-    }
-
-    if (mainRef.current) observer.observe(mainRef.current);
-    scheduleUpdate();
-    discoverChatColumn();
-    window.addEventListener("resize", scheduleUpdate);
-    return () => {
-      if (frame) window.cancelAnimationFrame(frame);
-      observer.disconnect();
-      discoveryObserver?.disconnect();
-      window.removeEventListener("resize", scheduleUpdate);
-    };
-  }, [
-    shellOverlayMode,
-    trackerPanelAnchoredForMotion,
-    trackerPanelSide,
-    trackerPanelSurfaceAvailable,
-    trackerPanelWidth,
-  ]);
-
-  // "float" always sits over the chat column. "dock" only gives up and floats
-  // once the gutter cannot hold a usable row.
-  const trackerPanelOverlaid =
-    trackerPanelPlacement === "float" ||
-    (trackerPanelPlacement === "dock" && trackerPanelGutterWidth < TRACKER_PANEL_MIN_DOCK_WIDTH);
-  const trackerPanelRenderWidth = trackerPanelOverlaid
-    ? Math.min(trackerPanelWidth, Math.max(TRACKER_PANEL_MIN_DOCK_WIDTH, trackerPanelMainWidth - 16))
-    : trackerPanelResolvedWidth;
-  // The width the panel is drawn at: a floating panel is wider than the gutter it was measured in, and the
-  // Chat Settings button and chat tool buttons place themselves by this.
-  const trackerPanelOverlayClearance =
-    !shellOverlayMode && trackerPanelAnchoredForMotion && trackerPanelSurfaceAvailable
-      ? trackerPanelRenderWidth + TRACKER_PANEL_HUD_GAP
-      : 0;
-  const trackerPanelHudClearance = trackerPanelHideHudWidgets ? trackerPanelOverlayClearance : 0;
-  // Shrinking type is now the opt-out, not the default: with reflow doing the
-  // adapting there is nothing left for a width-derived scale to fix.
-  const trackerPanelContentScale =
-    trackerPanelPlacement === "scale"
-      ? resolveTrackerPanelContentScale(trackerPanelWidth, trackerPanelResolvedWidth)
-      : 1;
-  // Room a Roleplay column placed on the panel's side (Chat position) leaves for it. It uses the chosen
-  // width, not the width measured beside that column, so the two never resize each other.
-  const trackerPanelChatClearance = trackerPanelOverlayClearance > 0 ? trackerPanelWidth + TRACKER_PANEL_CHAT_GAP : 0;
-  // Room every Roleplay column leaves on each side for the docked panel. A fixed amount per placement,
-  // so a column only narrows when the window is too small for both, and the two never resize each other.
-  const trackerPanelColumnRoom =
-    trackerPanelOverlayClearance > 0
-      ? resolveTrackerPanelColumnRoom(trackerPanelPlacement, TRACKER_PANEL_CHAT_GAP, TRACKER_PANEL_MIN_DOCKED_WIDTH)
-      : 0;
   const trackerPanelPortal =
     trackerPanelActive &&
     trackerPanelModeAvailable &&
@@ -1377,7 +1025,7 @@ export function AppShell({
           <Suspense fallback={<SidePanelFallback />}>
             <TrackerDataSidebar
               detached={trackerPanelDetached}
-              fillHeight={trackerPanelDetached || shellOverlayMode}
+              fillHeight
               queuePersonaPortraitSave={queuePersonaPortraitSave}
               flushPersonaPortraitSave={flushPersonaPortraitSave}
               onToggleDetached={
@@ -1390,72 +1038,8 @@ export function AppShell({
       trackerPanelHost,
     );
 
-  const trackerPanelDesktop = (side: "left" | "right") =>
-    trackerPanelVisible && trackerPanelWidthMeasured && trackerPanelSide === side ? (
-      <motion.aside
-        key={`tracker-${side}`}
-        initial={{
-          x: side === "left" ? -22 : 22,
-          y: Math.max(-18, Math.min(10, ((trackerPanelToggleAnchorY ?? trackerPanelTop) - trackerPanelTop) * 0.25)),
-          scaleX: 0.86,
-          scaleY: 0.12,
-          opacity: 0,
-        }}
-        animate={{
-          x: 0,
-          y: 0,
-          scaleX: 1,
-          scaleY: 1,
-          opacity: 1,
-          transition: { duration: TRACKER_PANEL_DESKTOP_MOTION_MS / 1000, ease: TRACKER_PANEL_DESKTOP_EASE },
-        }}
-        exit={{
-          x: side === "left" ? -14 : 14,
-          y: Math.max(-16, Math.min(8, ((trackerPanelToggleAnchorY ?? trackerPanelTop) - trackerPanelTop) * 0.2)),
-          scaleX: 0.9,
-          scaleY: 0.14,
-          opacity: 0,
-          transition: {
-            duration: TRACKER_PANEL_DESKTOP_EXIT_MS / 1000,
-            ease: TRACKER_PANEL_DESKTOP_EXIT_EASE,
-            opacity: { duration: 0.08, delay: TRACKER_PANEL_DESKTOP_EXIT_MS / 1000 - 0.08, ease: "linear" },
-          },
-        }}
-        data-component={`TrackerDataSidebarDesktop.${side}`}
-        data-tracker-size-profile={trackerPanelSizeProfile}
-        aria-label={localizeUi("ui.layout.appshell.trackerDataPanel")}
-        className={cn(
-          "mari-tracker-panel fixed z-30 hidden overflow-hidden bg-zinc-950/95 shadow-2xl ring-1 ring-[var(--marinara-app-accent-solid)] backdrop-blur-2xl transition-[width] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] will-change-[transform,opacity] md:block",
-          side === "left" ? "rounded-r-xl" : "rounded-l-xl",
-          trackerPanelResize.dragging && "!transition-none",
-          trackerPanelOverlaid && "z-40 shadow-[0_0_40px_rgba(0,0,0,0.55)]",
-        )}
-        style={{
-          top: trackerPanelTop,
-          maxHeight: `calc(100vh - ${trackerPanelTop + TRACKER_PANEL_EDGE_OFFSET}px)`,
-          width: `var(--mari-tracker-drag-width, ${trackerPanelRenderWidth}px)`,
-          transformOrigin: `${side === "left" ? "left" : "right"} ${Math.max(
-            -56,
-            Math.min(56, (trackerPanelToggleAnchorY ?? trackerPanelTop) - trackerPanelTop),
-          )}px`,
-          ...(side === "left" ? { left: chatUiInsetLeft } : { right: chatUiInsetRight }),
-          ...(trackerPanelBackgroundStyle ?? {}),
-        }}
-      >
-        <div
-          data-tracker-content-scale={trackerPanelContentScale.toFixed(4)}
-          data-tracker-content-constrained={trackerPanelContentScale < 1 ? "true" : undefined}
-          className="mari-tracker-panel-scroll max-h-[inherit] overflow-x-hidden overflow-y-auto"
-          style={{ "--tracker-panel-font-scale": trackerPanelContentScale } as CSSProperties}
-        >
-          <TrackerPanelHostSlot host={trackerPanelHost} />
-        </div>
-      </motion.aside>
-    ) : null;
-
   return (
     <div
-      ref={shellRootRef}
       data-component="AppShell"
       data-chat-surface-active={chatSurfaceActive ? "true" : undefined}
       className={cn(
@@ -1519,13 +1103,12 @@ export function AppShell({
               "mari-app-background-paint flex flex-1 flex-col overflow-hidden",
               (botBrowserOpen || gameAssetsBrowserOpen || (!shellOverlayMode && hasDetailView)) && "hidden",
             )}
+            // Chat Settings and the chat's control bubbles open beside the Tracker window rather than under it.
             style={
               {
-                "--tracker-panel-hud-clear-left": `${trackerPanelSide === "left" ? trackerPanelHudClearance : 0}px`,
-                "--tracker-panel-hud-clear-right": `${trackerPanelSide === "right" ? trackerPanelHudClearance : 0}px`,
-                "--tracker-panel-overlay-clearance": `${trackerPanelOverlayClearance}px`,
-                "--tracker-panel-chat-clearance": `${trackerPanelChatClearance}px`,
-                "--tracker-panel-column-room": `${trackerPanelColumnRoom}px`,
+                "--tracker-panel-overlay-clearance": `${
+                  !shellOverlayMode && trackerPanelVisible ? trackerPanelWidth + TRACKER_WINDOW_GAP_PX : 0
+                }px`,
               } as CSSProperties
             }
           >
@@ -1579,26 +1162,13 @@ export function AppShell({
         </Suspense>
       </main>
 
-      <AnimatePresence initial={false} mode="wait">
-        {!shellOverlayMode && trackerPanelSurfaceAvailable && trackerPanelDesktop(trackerPanelSide)}
-        {!shellOverlayMode && trackerPanelVisible && trackerPanelWidthMeasured && trackerPanelResizable && (
-          <div
-            {...trackerPanelResize.separatorProps}
-            className={cn(
-              "fixed z-40 hidden w-1 cursor-col-resize bg-transparent transition-colors hover:bg-[var(--primary)]/30 focus-visible:bg-[var(--primary)]/40 focus-visible:outline-none md:block",
-              trackerPanelResize.dragging && "bg-[var(--primary)]/40",
-            )}
-            style={{
-              ...trackerPanelResize.separatorProps.style,
-              top: trackerPanelTop,
-              height: `calc(var(--mari-visual-viewport-height, 100vh) - ${trackerPanelTop + TRACKER_PANEL_EDGE_OFFSET}px)`,
-              [trackerPanelSide]: `calc(${
-                trackerPanelSide === "left" ? chatUiInsetLeft : chatUiInsetRight
-              }px + var(--mari-tracker-drag-width, ${trackerPanelRenderWidth}px))`,
-            }}
-          />
-        )}
-      </AnimatePresence>
+      {!shellOverlayMode && trackerPanelVisible && (
+        <TrackerPanelWindow>
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden" style={trackerPanelBackgroundStyle}>
+            <TrackerPanelHostSlot host={trackerPanelHost} />
+          </div>
+        </TrackerPanelWindow>
+      )}
 
       {trackerPanelWindowTarget && trackerPanelActive && trackerPanelModeAvailable && (
         <TrackerPanelDetachedWindow

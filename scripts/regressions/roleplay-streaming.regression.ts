@@ -698,8 +698,8 @@ assert.match(
 );
 assert.match(
   appShellSource,
-  /side === "left" \? \{ left: chatUiInsetLeft \} : \{ right: chatUiInsetRight \}/u,
-  "the Trackers Panel should stay outside the open sidebar on its side",
+  /<TrackerPanelWindow>/u,
+  "the desktop Trackers Panel is a chat window, kept to the chat area beside an open sidebar",
 );
 assert.doesNotMatch(
   peekPromptModalSource.match(/<div\s+className="fixed inset-0 z-\[100\][^\n]*/u)?.[0] ?? "",

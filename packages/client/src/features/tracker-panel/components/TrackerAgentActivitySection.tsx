@@ -34,7 +34,8 @@ export function TrackerAgentActivitySection({ chatId }: { chatId: string }) {
         />
         {expanded && (
           <Suspense fallback={null}>
-            <AgentActivitySection chatId={chatId} trackerPanel />
+            {/* Its rows are bare text, unlike the bordered tracker cards, so they need their own inset. */}
+            <AgentActivitySection chatId={chatId} trackerPanel className="px-1.5" />
           </Suspense>
         )}
       </div>

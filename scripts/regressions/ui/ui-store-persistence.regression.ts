@@ -34,6 +34,7 @@ const representativeTrackerSettings = {
   trackerPanelThoughtBubbleDisplay: "floating",
   trackerPanelSizeProfile: "invalid",
   trackerPanelWidth: 280,
+  trackerPanelPlacement: "float",
   trackerTemperatureUnit: "kelvin",
   trackerPanelDockedThoughtsAlwaysVisible: undefined,
   quoteFormat: "invalid",
@@ -81,7 +82,8 @@ assert.deepEqual(trackerMigrationProjection(currentTrackerSettings), {
   trackerPanelWidth: 280,
   // No legacy density in the fixture, so this is TRACKER_PANEL_TEXT_SIZE_DEFAULT.
   trackerPanelTextSize: "l",
-  trackerPanelPlacement: "dock",
+  // The edge-docked panel's placement has no reader once the desktop panel is a window.
+  trackerPanelPlacement: undefined,
   trackerPanelSizeProfile: undefined,
   trackerTemperatureUnit: "celsius",
   trackerPanelDockedThoughtsAlwaysVisible: false,

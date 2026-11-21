@@ -17,6 +17,18 @@ const TRACKERS_WINDOW_TESTS = [
   "the Trackers window and its button reach the bottom beside the message box, never over it",
 ];
 
+// Upstream tests of the edge-docked desktop Tracker Panel. On a computer the panel is a floating window over the
+// chat (TrackerPanelWindow.tsx), so nothing docks beside the Roleplay column and the column makes no room for it.
+// Phones keep the sheet, so their runs stay.
+const DOCKED_TRACKER_PANEL_TESTS = [
+  "the docked Tracker Panel stays usable beside the chat at",
+  "narrowing the window to a phone puts Chat Settings back in its corner",
+  "Chat position keeps the column clear of a Tracker Panel on the same side",
+  "a narrow docked Tracker Panel gives the button its own row",
+  "Roleplay custom width keeps text, avatars and composer usable",
+  "desktop Tracker scales into either Roleplay gutter without shifting chat",
+];
+
 // Upstream tests of designs this fork replaced, skipped on every project. The Text to Speech card picks
 // no Audio connection as its Source: speech resolves its engine through the audio connection defaults.
 const REPLACED_DESIGN_TESTS = ["An Audio connection chosen as the Source is saved by ID and reported when it is gone"];
@@ -25,6 +37,8 @@ const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$
 
 /** Playwright matches these against "<project> <file> <describe> <title>". */
 export const forkExcludedTests = [
-  ...TRACKERS_WINDOW_TESTS.map((title) => new RegExp(`^desktop-\\S* .*${escapeRegExp(title)}`, "u")),
+  ...[...TRACKERS_WINDOW_TESTS, ...DOCKED_TRACKER_PANEL_TESTS].map(
+    (title) => new RegExp(`^desktop-\\S* .*${escapeRegExp(title)}`, "u"),
+  ),
   ...REPLACED_DESIGN_TESTS.map((title) => new RegExp(escapeRegExp(title), "u")),
 ];

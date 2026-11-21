@@ -948,8 +948,7 @@ export function App() {
         state.trackerPanelOpen !== previous.trackerPanelOpen ||
         state.sidebarWidth !== previous.sidebarWidth ||
         state.rightPanelWidth !== previous.rightPanelWidth ||
-        state.trackerPanelWidth !== previous.trackerPanelWidth ||
-        state.trackerPanelPlacement !== previous.trackerPanelPlacement
+        state.trackerPanelWidth !== previous.trackerPanelWidth
       ) {
         shellPanelQuietUntil = performance.now() + SHELL_PANEL_ACCENT_QUIET_MS;
       }

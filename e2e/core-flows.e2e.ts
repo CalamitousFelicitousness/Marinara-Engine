@@ -8724,11 +8724,7 @@ test("desktop Tracker scales into either Roleplay gutter without shifting chat",
         trackerPanelEnabled: true,
         trackerPanelOpen: false,
         trackerPanelSide: "left",
-        // The size profile became a free width, and shrinking type to fit is the
-        // opt-in `scale` placement rather than the default. This spec covers that
-        // mode; the default `dock` placement reflows instead.
         trackerPanelWidth: 420,
-        trackerPanelPlacement: "scale",
         trackerPanelHideHudWidgets: false,
       },
       "merge",

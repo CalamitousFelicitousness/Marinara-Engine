@@ -326,7 +326,7 @@ the request builder, so reverting either half fails there.
 `RoleplayTrackerWindow.tsx` gates upstream's Trackers window off with `trackersWindowAvailable =
 false`. Upstream shows that window on a computer whenever the Tracker Panel is closed, each of its
 drawers pops out into a window of its own, and World State minimizes to a banner, all beside the
-panel's own dock, float and detach. The panel is now the only computer surface: the Chat Settings
+panel's own window and pop-out. The panel is now the only computer surface: the Chat Settings
 dice opens and closes it, and closing it from its header leaves upstream's Trackers button, which
 reopens it. Beholder's control windows render from the same component and stay. Phones never had
 the window.
@@ -1168,8 +1168,8 @@ from a regression) and so the upstream-hot store shrinks to re-exports plus stat
 
 - The three profiles survive as one-click presets that set both fields. `resolveTrackerPanelPreset`
   returns null once the user drags off a preset, so no button falsely claims to be active.
-- Drag range is 240-640px, deliberately wider than the 280/340/420 presets.
-  `resolveTrackerPanelDesktopWidth` still clamps to the gutter actually available.
+- Width range is 240-640px, deliberately wider than the 280/340/420 presets. On a computer the
+  window's own width writes it.
 - Persist migration v95 -> v96. The old `migrate` ended with an unconditional
   `delete persisted.trackerPanelWidth` from when upstream removed free width; leaving it would have
   wiped the new field on every rehydrate, so it is gone.
@@ -1521,9 +1521,6 @@ Three changes, chosen from an interactive width explorer built for the decision:
 - **Reflow.** `lib/tracker-row-layout.ts` holds one label/value grid shared by the compact card, the
   featured card, and the nested extras tree: stacked below 176px, tight two-column to 259px, roomy at
   260px+. Narrowing now costs columns, not legibility.
-- **Overlay.** Below a 176px gutter the panel stops docking and floats over the chat column at its own
-  width. 176px is also the stacked/two-column breakpoint, which is the point: it is the width at which
-  a label and a value stop sharing a line.
 - **Text size**, a four-step S/M/L/XL control in the panel header beside the width control, default L.
   Spacing and line clamps ride along, so one control moves the whole card. There is deliberately no XS:
   it would land near 7.6px labels, the state this work exists to fix.
@@ -1537,7 +1534,8 @@ Three changes, chosen from an interactive width explorer built for the decision:
 The nine-rule font-size allowlist in `globals.css` is gone. It matched literal Tailwind class strings
 such as `[class~="text-[0.5625rem]"]`, so it silently missed any size not listed -- `0.4375rem`,
 `0.5rem` and `0.875rem` were all in use and none of them scaled. Type now comes from one token per
-size on the panel root, each multiplied by both the user's text scale and the legacy width scale:
+size on the panel root, each multiplied by the user's text scale and by `--tracker-panel-font-scale`,
+which nothing sets any more and so stays 1:
 
     --tracker-fs-0-5625: calc(0.5625rem * var(--tracker-text-scale) * var(--tracker-panel-font-scale))
 
@@ -1550,38 +1548,64 @@ panel, so the tokens are declared on `:root` at scale 1 and again on the panel a
 
 Text size is also a row in Settings → Appearance → Roleplay → Tracker Panel, below Desktop size.
 
-Placement is a three-way setting, since the question turned out to be where the panel sits rather than
-only what happens when it does not fit:
-
-| Value            | Behaviour                                                                                                                                                    |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `dock` (default) | Beside the chat, reflowing as it narrows; floats only below a 176px gutter.                                                                                  |
-| `float`          | Always over the chat column at its own width, whatever the gutter.                                                                                           |
-| `scale`          | Always docked, shrinking type to fit. The pre-reflow behaviour, kept as an opt-out, and the only value that lets `--tracker-panel-font-scale` differ from 1. |
-
-Measured in a browser at a 249px gutter, with the settings-sync fetch blocked so local state was
-authoritative: `dock` renders 249px with no overlap and scale 1.0, `float` renders 340px overlapping
-the chat by 83px at scale 1.0, and `scale` renders 249px at scale 0.7324 (249/340). A drag under
-`float` is bounded by the main area rather than the gutter.
-
-Verified in a browser: at 1500px, where the gutter is 89px, the panel now renders at 340px with
-11.7px labels and two-column rows instead of an 89px sliver at 5.9px.
-
-Upstream later made the Roleplay column give way to a docked panel instead
-(`--tracker-panel-column-room` in `globals.css`, set by `AppShell`). The room is per placement
-(`resolveTrackerPanelColumnRoom` in `lib/tracker-panel-layout.ts`): `dock` reserves 176px plus the
-gap, so the panel docks wherever the pane can hold both; `float` reserves nothing; `scale` reserves
-upstream's 96px floor, where the panel's own buttons still fit.
-
-Upstream's Chat Settings button and chat tool buttons stay clear of the panel by
-`--tracker-panel-overlay-clearance`. A floating panel is drawn wider than the gutter it was measured
-in, so the clearance is the drawn width (`trackerPanelRenderWidth`); from the gutter width the panel
-covered the Chat Settings button. `e2e/floating-tracker-panel.e2e.ts` checks every button against a
-floating panel at 1024px and 1440px.
+How the panel sits beside the chat is now the desktop window's job; see "The desktop Tracker Panel is
+a floating window".
 
 Persist migration v96 -> v97 folds the short-lived density setting into the text scale
 (compact/standard/comfortable -> S/M/L). Width presets set width only now; pairing them with a text
 size would re-conflate the axes this work separated.
+
+### The desktop Tracker Panel is a floating window
+
+On a computer the Tracker Panel was a fixed aside pinned to one edge of the chat, placed by its own
+top calculation, gutter measurement and resize handle. It could not be moved, and once it floated
+over the chat column its top cleared the HUD row but not the bubble row, so the chat's control
+bubbles sat on its header.
+
+It now renders through `FloatingWindow` like Chat Settings
+(`features/tracker-panel/components/TrackerPanelWindow.tsx`): moved by its title bar, resized from
+any edge, pinned by default so a press in the chat leaves it open, and remembered per chat. Its
+window id is the existing `TRACKER_PANEL_BUBBLE_ID`, so `TrackerPanelBubble` stays its button. An
+unplaced window opens full height on the chosen side, below the chat's top controls and the bubble
+row. The phone sheet and the pop-out to a separate browser window are unchanged.
+
+The window's width is the panel's width setting, which picks the size profile its sections lay out
+by. A resized window writes the setting; a preset (Settings, or the header's size button) resizes a
+placed window. A ref on the last mirrored value keeps the two from feeding back into each other.
+
+The window root carries `mari-tracker-panel` and the accent ring the aside had, so the border still
+follows the app's accent animation. AppShell sets `--tracker-panel-overlay-clearance` to the window's
+width while it is open, which is what upstream's Chat Settings window and control bubbles read to
+open beside a right-side panel instead of under it; without it, Chat Settings opened under the
+window and the window covered the Tracker Panel dice.
+
+Removed with the aside: the dock/float/scale placement setting (`trackerPanelPlacement`, dropped
+from persisted and synced settings), the "Dock Tracker Panel to edge" toggle with its search and
+omnibar entries, the tracker resize handle, and the column-room and HUD clearance variables. Upstream
+components read those with a `0px` fallback, so they are left as they are.
+`lib/tracker-panel-layout.ts` is back to upstream's version.
+
+`e2e/tracker-panel-window.e2e.ts` replaces `e2e/floating-tracker-panel.e2e.ts`: an unplaced window
+clears every chat bubble at 1024px and 1440px, the title bar moves it and the place survives a
+reload, and window width and the width setting follow each other both ways. Six upstream tests of the
+edge-docked panel and of the column making room for it are listed in `e2e/fork-excluded-tests.ts`
+for the desktop projects; phones keep the sheet, so their runs stay.
+
+Two fixes found while testing the window on scrubbed data (see "Sandbox instance on scrubbed
+data"):
+
+- **Agent activity rows were flush with the window edge.** They are bare text, unlike the bordered
+  tracker cards, and the panel variant's `px-1` left 4px; `TrackerAgentActivitySection` now insets
+  them.
+- **World tiles split words at narrow widths** ("RECORD / ED"). `WorldValueText` shrinks its type to
+  a line limit, but measured with `overflow-wrap: anywhere`, so a split word counted as fitting. The
+  fit now measures with normal wrapping and also requires no sideways overflow; it falls back to
+  splitting only for a word too long to fit at the smallest scale.
+
+Patches upstream files: `AppShell.tsx` (the aside replaced by the window), `ui.store.ts`,
+`SettingsPanel.tsx`, `settings-registry.ts`, `omnibar-settings-toggle-bindings.ts`,
+`WorldEditableTile.tsx`, `e2e/core-flows.e2e.ts` (a removed setting in a seed) and
+`roleplay-streaming.regression.ts`, whose AppShell source assertion now checks for the window.
 
 ### Branches can be read without switching to them
 
@@ -2973,33 +2997,17 @@ into equal columns and needs no per-count breakpoint. Two or fewer keep the flex
 case always fits one row and carries the ornament rails and dividers. Dividers are dropped in the
 wrapping mode: a divider element cannot know where a wrapped row breaks.
 
-### One drag-resize primitive, and a resizable tracker panel
+### One drag-resize primitive for the sidebar
 
 `AppShell.tsx` carried two near-identical inline resize implementations (~40 lines each) for the left
-sidebar and the right panel, differing only in the clamp expression. The tracker had none. Rather
-than add a third copy, `packages/client/src/hooks/use-panel-resize.ts` now owns it, with two upgrades
-taken while extracting:
-
-- **Pointer events instead of mouse events**, with `setPointerCapture`, so touch and stylus work.
-  The old handlers listened for `mousemove`/`mouseup`, which never fire in the Android WebView wrapper.
-- **The live width can be published as a CSS custom property instead of React state.** The old
-  handlers called `setState` per `mousemove`, re-rendering the whole shell each frame. The tracker's
-  subtree is far larger and would visibly stutter, so its handle uses the variable path and never
-  re-renders during a drag; the sidebar and right panel keep their `onPreview` state for unchanged
-  behaviour, now coalesced to one update per frame.
+sidebar and the right panel, differing only in the clamp expression.
+`packages/client/src/hooks/use-panel-resize.ts` now owns it, with pointer events instead of mouse
+events and `setPointerCapture`, so touch and stylus work: the old handlers listened for
+`mousemove`/`mouseup`, which never fire in the Android WebView wrapper. The live width reaches React
+through `onPreview`, coalesced to one update per frame.
 
 Keyboard handling and the `role="separator"` / `aria-valuenow` markup were already correct upstream
-and are preserved, with arrow directions now derived from which edge the panel is anchored to.
-Double-click resets to the nearest preset.
-
-The handle is not rendered when the gutter cannot reach `TRACKER_PANEL_WIDTH_MIN`: there is nothing
-to drag, and showing one would advertise an `aria-valuemax` the panel can never reach. Verified in a
-browser at both widths -- at 2400px the drag tracks the pointer, commits, and persists past the
-store's 1s write debounce; at 1500px the gutter is 89px and no handle appears.
-
-`resolveTrackerPanelGutterWidth` is split out of `resolveTrackerPanelDesktopWidth` so the drag can be
-clamped to the room actually available beside the chat column; without it, dragging past the edge
-would snap back on release.
+and are preserved, with arrow directions derived from which edge the panel is anchored to.
 
 `open-issues.regression.ts` asserted the old settings-sync projection carried `trackerPanelSizeProfile`.
 That contract changed deliberately, so the assertion now pins width and density instead. That lane is

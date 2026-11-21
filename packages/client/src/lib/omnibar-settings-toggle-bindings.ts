@@ -160,10 +160,6 @@ export const OMNIBAR_SETTINGS_TOGGLE_BINDINGS: Readonly<Record<string, OmnibarSe
     get: (state) => state.trackerPanelEnabled,
     set: (value) => useUIStore.getState().setTrackerPanelEnabled(value),
   },
-  "tracker-replace-hud-icons": {
-    get: (state) => state.trackerPanelHideHudWidgets,
-    set: (value) => useUIStore.getState().setTrackerPanelHideHudWidgets(value),
-  },
   "tracker-expression-sprites": {
     get: (state) => state.trackerPanelUseExpressionSprites,
     set: (value) => useUIStore.getState().setTrackerPanelUseExpressionSprites(value),

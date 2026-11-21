@@ -1,19 +1,10 @@
 // ──────────────────────────────────────────────
 // Drag-to-resize for edge-anchored panels
 // ──────────────────────────────────────────────
-// Extracted from two near-identical inline implementations in AppShell (left
-// sidebar, right panel) so the tracker does not become a third copy.
-//
-// Two upgrades over what it replaces:
-//
-// - Pointer events instead of mouse events, so touch and stylus work. This app
-//   ships an Android WebView wrapper where mousemove never fires.
-// - The live width can be published as a CSS custom property instead of React
-//   state. The old handlers called setState on every mousemove, re-rendering the
-//   whole shell each frame; the tracker's subtree is far larger and would
-//   visibly stutter. Callers that still need a React value get `onPreview`,
-//   coalesced to one call per frame.
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type RefObject } from "react";
+// Pointer events rather than mouse events, so touch and stylus work: the Android
+// WebView wrapper never fires mousemove. `onPreview` is coalesced to one call
+// per frame.
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 
 export const PANEL_RESIZE_STEP = 16;
 export const PANEL_RESIZE_LARGE_STEP = 48;
@@ -35,11 +26,6 @@ interface UsePanelResizeOptions {
   onCommit: (width: number) => void;
   /** Live width for callers that must re-render mid-drag; null on release. At most once per frame. */
   onPreview?: (width: number | null) => void;
-  /** Custom property to publish the live width on, e.g. "--mari-tracker-panel-width". */
-  previewVariable?: string;
-  previewTarget?: RefObject<HTMLElement | null>;
-  /** Width to snap to on double-click. Omit to disable. */
-  resetWidth?: () => number;
   disabled?: boolean;
   label?: string;
 }
@@ -51,9 +37,6 @@ export function usePanelResize({
   max,
   onCommit,
   onPreview,
-  previewVariable,
-  previewTarget,
-  resetWidth,
   disabled = false,
   label,
 }: UsePanelResizeOptions) {
@@ -62,20 +45,9 @@ export function usePanelResize({
   const pendingRef = useRef<number | null>(null);
   const latestRef = useRef(width);
 
-  const publish = useCallback(
-    (next: number | null) => {
-      const node = previewTarget?.current;
-      if (node && previewVariable) {
-        if (next === null) node.style.removeProperty(previewVariable);
-        else node.style.setProperty(previewVariable, `${next}px`);
-      }
-      onPreview?.(next);
-    },
-    [onPreview, previewTarget, previewVariable],
-  );
+  const publish = useCallback((next: number | null) => onPreview?.(next), [onPreview]);
 
-  // A drag that ends while unmounting must not leave the cursor or the preview
-  // variable stuck.
+  // A drag that ends while unmounting must not leave a frame pending.
   useEffect(
     () => () => {
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
@@ -175,11 +147,6 @@ export function usePanelResize({
     [disabled, edge, max, min, onCommit, width],
   );
 
-  const onDoubleClick = useCallback(() => {
-    if (disabled || !resetWidth) return;
-    onCommit(clampPanelWidth(resetWidth(), min, max));
-  }, [disabled, max, min, onCommit, resetWidth]);
-
   return {
     dragging,
     separatorProps: {
@@ -192,7 +159,6 @@ export function usePanelResize({
       tabIndex: disabled ? -1 : 0,
       onPointerDown,
       onKeyDown,
-      onDoubleClick: resetWidth ? onDoubleClick : undefined,
       // Without this a touch drag scrolls the page instead of resizing.
       style: { touchAction: "none" as const },
     },

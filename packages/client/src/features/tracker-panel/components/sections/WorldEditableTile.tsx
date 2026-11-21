@@ -201,23 +201,30 @@ export function WorldValueText({
       const baseLineHeight = Number.parseFloat(computed.lineHeight);
       if (!container.clientWidth || !baseFontSize || !baseLineHeight) return;
 
-      const fits = (candidate: number) => {
+      // Whole words first: measured with normal wrapping, a word wider than the line overflows sideways
+      // instead of splitting, so the fit shrinks the type rather than breaking "RECORDED" into "RECORD / ED".
+      const fits = (candidate: number, wholeWords: boolean) => {
+        measure.style.overflowWrap = wholeWords ? "normal" : "";
         measure.style.fontSize = `${baseFontSize * candidate}px`;
         measure.style.lineHeight = `${baseLineHeight * candidate}px`;
-        return measure.scrollHeight <= baseLineHeight * candidate * maxLines + 1;
+        const linesFit = measure.scrollHeight <= baseLineHeight * candidate * maxLines + 1;
+        return linesFit && (!wholeWords || measure.scrollWidth <= measure.clientWidth + 1);
       };
-
-      let nextScale = 1;
-      if (!fits(1)) {
+      const largestFit = (wholeWords: boolean) => {
+        if (fits(1, wholeWords)) return 1;
         let lower = minScale;
         let upper = 1;
         for (let step = 0; step < 7; step += 1) {
           const candidate = (lower + upper) / 2;
-          if (fits(candidate)) lower = candidate;
+          if (fits(candidate, wholeWords)) lower = candidate;
           else upper = candidate;
         }
-        nextScale = fits(lower) ? lower : minScale;
-      }
+        return fits(lower, wholeWords) ? lower : null;
+      };
+
+      // A word too long for the line even at minScale can only be split.
+      const nextScale = largestFit(true) ?? largestFit(false) ?? minScale;
+      measure.style.overflowWrap = "";
 
       setFit((previous) =>
         Math.abs(previous.scale - nextScale) < 0.01 &&

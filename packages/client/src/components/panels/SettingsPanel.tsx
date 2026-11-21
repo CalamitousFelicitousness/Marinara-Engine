@@ -1203,8 +1203,6 @@ function TrackerPanelAppearanceDrawer() {
   const { t: localizeUi } = useUiTranslation();
   const trackerPanelEnabled = useUIStore((state) => state.trackerPanelEnabled);
   const setTrackerPanelEnabled = useUIStore((state) => state.setTrackerPanelEnabled);
-  const trackerPanelHideHudWidgets = useUIStore((state) => state.trackerPanelHideHudWidgets);
-  const setTrackerPanelHideHudWidgets = useUIStore((state) => state.setTrackerPanelHideHudWidgets);
   const trackerPanelUseExpressionSprites = useUIStore((state) => state.trackerPanelUseExpressionSprites);
   const setTrackerPanelUseExpressionSprites = useUIStore((state) => state.setTrackerPanelUseExpressionSprites);
   const trackerPanelThoughtBubbleDisplay = useUIStore((state) => state.trackerPanelThoughtBubbleDisplay);
@@ -1216,8 +1214,6 @@ function TrackerPanelAppearanceDrawer() {
   const trackerPanelWidth = useUIStore((state) => state.trackerPanelWidth);
   // null once the user drags off a preset, so no button claims to be active.
   const trackerPanelSizeProfile = resolveTrackerPanelPreset(trackerPanelWidth);
-  const trackerPanelPlacement = useUIStore((state) => state.trackerPanelPlacement);
-  const setTrackerPanelPlacement = useUIStore((state) => state.setTrackerPanelPlacement);
   const setTrackerPanelSizeProfile = useUIStore((state) => state.setTrackerPanelSizeProfile);
   const trackerPanelBackgroundColor = useUIStore((state) => state.trackerPanelBackgroundColor);
   const setTrackerPanelBackgroundColor = useUIStore((state) => state.setTrackerPanelBackgroundColor);
@@ -1266,13 +1262,6 @@ function TrackerPanelAppearanceDrawer() {
           trackerPanelEnabled ? "" : "opacity-45",
         )}
       >
-        <ToggleSetting
-          anchorId={getSettingsControlAnchorId("tracker-replace-hud-icons")}
-          label={localizeUi("settings.controls.replaceTrackerIcons.label")}
-          checked={trackerPanelHideHudWidgets}
-          onChange={setTrackerPanelHideHudWidgets}
-          help={localizeUi("settings.controls.replaceTrackerIcons.help")}
-        />
         <ToggleSetting
           anchorId={getSettingsControlAnchorId("tracker-expression-sprites")}
           label={localizeUi("settings.controls.useExpressionSprites.label")}
@@ -1389,39 +1378,6 @@ function TrackerPanelAppearanceDrawer() {
           >
             {localizeUi("ui.panels.trackerpanelappearancedrawer.resetTrackerDataAction")}
           </button>
-        </div>
-        <div className="mt-2 grid gap-1.5">
-          <span className="inline-flex items-center gap-1 text-[0.6875rem] font-medium">
-            {localizeUi("ui.panels.trackerpanelappearancedrawer.placement")}
-            <HelpTooltip text={localizeUi("ui.panels.trackerpanelappearancedrawer.placementHelp")} />
-          </span>
-          <div className="grid grid-cols-3 gap-0.5 rounded-lg border border-[var(--border)] bg-[var(--secondary)]/45 p-0.5">
-            {(
-              [
-                ["dock", "ui.panels.trackerpanelappearancedrawer.placementDock"],
-                ["float", "ui.panels.trackerpanelappearancedrawer.placementFloat"],
-                ["scale", "ui.panels.trackerpanelappearancedrawer.placementScale"],
-              ] as const
-            ).map(([value, labelKey]) => {
-              const selected = trackerPanelPlacement === value;
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setTrackerPanelPlacement(value)}
-                  aria-pressed={selected}
-                  className={cn(
-                    "flex min-h-8 items-center justify-center rounded-md px-1.5 text-[0.6875rem] font-semibold transition-all",
-                    selected
-                      ? "bg-[var(--primary)]/12 text-[var(--foreground)] ring-1 ring-[var(--primary)]/45"
-                      : "text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
-                  )}
-                >
-                  {localizeUi(labelKey)}
-                </button>
-              );
-            })}
-          </div>
         </div>
         <div id={getSettingsControlAnchorId("tracker-thought-display-mode")} className="mt-2 grid scroll-mt-3 gap-1.5">
           <span className="inline-flex items-center gap-1 text-[0.6875rem] font-medium">

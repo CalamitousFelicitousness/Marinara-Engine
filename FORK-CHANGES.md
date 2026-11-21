@@ -3187,6 +3187,47 @@ mode), `ChatWindowFavoriteButton.tsx` (`ChatWindowApplyAllButton`), `ChatSetting
 `e2e/chat-window-shared-layout.e2e.ts`; `e2e/chat-settings-window.e2e.ts` lists the new header
 button in its two expected control orders.
 
+### Sandbox instance on scrubbed data
+
+`pnpm sandbox` runs a second copy of the app from source on a scrubbed clone of the data, for
+browser-driven testing that must neither touch the real install nor show private chats.
+
+`scripts/make-sandbox-data.mjs` (`pnpm sandbox:data --from <copy>`) builds the clone. Tables, ids,
+row counts, settings and text lengths survive; words in free text become same-length pseudo-words,
+names and lorebook keys map consistently, ids and slugs map by letter run, and shard files are
+renamed to match their mapped keys. Secrets, encrypted values, remote URLs and embeddings are
+blanked, images become same-size placeholders, and other media is left out. A word the app's own
+source spells is treated as structure, so modes and model ids keep working. A bare file name maps the
+way the file it names was renamed.
+
+Scrubbed instructions would prompt in pseudo-words, so the clone gets working defaults: every
+`promptTemplate` is emptied, which makes each agent run its package default
+(`config.promptTemplate || getDefaultPromptForAgent(config)`), and every chat uses Marinara's
+Universal Preset, which is also made the default. That preset is found by its system key, and the
+server's seed restores its stock text on boot. `--defaults-only` applies the same to an existing
+sandbox in place, keeping connections and settings made in it since; it takes only a marked folder
+clear of the real install, with its server stopped. The run prints counts only. It samples the source's free text and every name, looks for them in the output, and exits 1
+without writing the `.sandbox-data.json` marker when a rule copied source text through.
+
+`scripts/run-sandbox.mjs` starts only a marked folder that lies clear of the real install's data
+and storage folders, and exports `MARINARA_ENV_FILE`, `DATA_DIR` and `FILE_STORAGE_DIR` together.
+The repo `.env` can set `FILE_STORAGE_DIR`, which `getFileStorageDir()` reads before `DATA_DIR`, so
+a server started with only `PORT` and `DATA_DIR` overridden opens the real storage and the
+running-copy takeover stops the live server. The launcher runs the server without a file watcher: a
+watcher outlives a killed launcher and restarts its server with the environment it was born with,
+and one watching a data folder outside `packages/server/data` restarts on every runtime file the
+server writes there. `--stop` shuts the server down through `/api/admin/shutdown`, with the pid
+from the sandbox's writer lease.
+
+`scripts/sandbox-paths.mjs` holds the default locations (beside the checkout), the marker name and
+the overlap checks both scripts use. The scrubber's `--force` deletes only a folder that carries
+the marker. `scripts/regressions/tooling/sandbox-launcher.regression.mjs` pins the refusals and the
+exported environment, mutation-verified against dropping the storage export.
+`.claude/skills/marinara-sandbox/SKILL.md` has the procedure, and the validation skill's
+boot-diagnosis recipe now sets all three variables.
+
+Patches `package.json` (two scripts, `sandbox` and `sandbox:data`); everything else is new files.
+
 ### Validation skill
 
 `.claude/skills/marinara-validation/SKILL.md` records how to validate a change here: which lane

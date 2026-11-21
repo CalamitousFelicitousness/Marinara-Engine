@@ -137,17 +137,24 @@ the launcher when finished, and confirm the ports are released.
 
 `playwright.config.ts` sets `LOG_LEVEL: "silent"` for the webServer, so a boot
 failure appears as a bare timeout with no cause. To see what the server is
-actually doing, boot it directly against a scratch data dir so real data is
-untouched:
+actually doing, boot it directly against a scratch data dir:
 
 ```bash
-cd packages/server && PORT=7975 DATA_DIR=/tmp/bootdata LOG_LEVEL=info \
-  AUTO_OPEN_BROWSER=false AUTO_CREATE_DEFAULT_CONNECTION=false npx tsx src/index.ts
+cd packages/server && MARINARA_ENV_FILE=/tmp/bootdata/.env DATA_DIR=/tmp/bootdata \
+  FILE_STORAGE_DIR=/tmp/bootdata/storage PORT=7975 LOG_LEVEL=info \
+  AUTO_OPEN_BROWSER=false AUTO_CREATE_DEFAULT_CONNECTION=false ./node_modules/.bin/tsx src/index.ts
 ```
 
-A healthy boot logs the storage dir, seeds, and `listening on` within ~1–2s.
-This is also the fastest way to exercise a new route end to end with `curl`
-before involving a browser.
+**All three of `MARINARA_ENV_FILE`, `DATA_DIR` and `FILE_STORAGE_DIR` are
+required.** `PORT` and `DATA_DIR` alone open the real storage: the repo `.env`
+can set `FILE_STORAGE_DIR`, which the server reads before `DATA_DIR`, and a
+second server on the real storage takes the running one over. The
+`marinara-sandbox` skill has the launcher for a second instance on realistic data.
+
+A healthy boot logs the storage dir, seeds, and `listening on` within a second
+or two. Check that the logged `FILE_STORAGE_DIR=` is the scratch folder. This
+is also the fastest way to exercise a new route end to end with `curl` before
+involving a browser.
 
 ### `pnpm dev` dying instantly and silently is usually the writer lease
 

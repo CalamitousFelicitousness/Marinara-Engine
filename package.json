@@ -60,6 +60,8 @@
     "credits:sync": "node ./scripts/sync-credits.mjs",
     "credits:check": "node ./scripts/sync-credits.mjs --check",
     "dev-ports:check": "node ./scripts/check-dev-port-resolution.mjs",
+    "sandbox": "node ./scripts/run-sandbox.mjs",
+    "sandbox:data": "node ./scripts/make-sandbox-data.mjs",
     "ruleset:schema": "node ./scripts/pnpm-runner.mjs build:shared && node ./scripts/generate-ruleset-schema.mjs",
     "backgroundremover:install": "node ./scripts/install-backgroundremover.mjs",
     "backgroundremover:reinstall": "node ./scripts/install-backgroundremover.mjs --reinstall",
